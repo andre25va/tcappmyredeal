@@ -9,9 +9,13 @@ function decodeBody(raw: string, encoding: string): string {
     if (encoding?.toLowerCase() === 'base64') {
       return Buffer.from(raw.replace(/\s/g, ''), 'base64').toString('utf-8');
     } else if (encoding?.toLowerCase() === 'quoted-printable') {
-      return raw
-        .replace(/=\r?\n/g, '')
-        .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      // Join soft line breaks first
+      const joined = raw.replace(/=\r?\n/g, '');
+      // Group consecutive =XX sequences and decode as UTF-8 buffer (handles emojis + multi-byte chars)
+      return joined.replace(/((?:=[0-9A-F]{2})+)/gi, (match) => {
+        const bytes = match.split('=').filter(Boolean).map(h => parseInt(h, 16));
+        return Buffer.from(bytes).toString('utf-8');
+      });
     }
     return raw;
   } catch {
