@@ -11,7 +11,8 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^0.469.0"
+    "lucide-react": "^0.469.0",
+    "daisyui": "^4.12.23"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
