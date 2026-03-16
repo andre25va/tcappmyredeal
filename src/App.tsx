@@ -22,6 +22,7 @@ import { ComplianceManager } from './components/ComplianceManager';
 import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
+import { Inbox } from './components/Inbox';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -46,6 +47,7 @@ export default function App() {
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
+  const [inboxUnread, setInboxUnread]       = useState(0);
 
   const [directory, setDirectory]               = useState<DirectoryContact[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -159,6 +161,23 @@ export default function App() {
     saveMasterItems('dd', updated).catch(console.error);
   };
 
+  // ── Poll inbox unread count ──────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const resp = await fetch('/api/sms/conversations');
+        if (resp.ok) {
+          const data = await resp.json();
+          const total = (data.conversations || []).reduce((a: number, c: any) => a + (c.unread_count || 0), 0);
+          setInboxUnread(total);
+        }
+      } catch { /* silent */ }
+    };
+    fetchUnread();
+    const t = setInterval(fetchUnread, 60000);
+    return () => clearInterval(t);
+  }, []);
+
   // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistDeals = (updated: Deal[]) => {
     setDeals(updated);
@@ -253,6 +272,7 @@ export default function App() {
         onToggleCollapse={() => setSidebarCollapsed(c => !c)}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        inboxUnread={inboxUnread}
       />
 
       {/* Main content */}
@@ -273,7 +293,7 @@ export default function App() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3">
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : 'Settings'}
           </span>
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
@@ -364,6 +384,12 @@ export default function App() {
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
               />
+            </div>
+          )}
+
+          {view === 'inbox' && (
+            <div className="flex-1 overflow-hidden">
+              <Inbox onSelectDeal={handleSelectDeal} />
             </div>
           )}
 

@@ -264,3 +264,42 @@ export interface Deal {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Inbox / Messaging ────────────────────────────────────────────────────────
+
+export interface ConversationParticipant {
+  contact_id: string | null;
+  name: string;
+  phone: string;
+}
+
+export interface Conversation {
+  id: string;
+  name: string;
+  deal_id: string | null;
+  type: 'direct' | 'broadcast' | 'group';
+  channel: 'sms' | 'email';
+  participants: ConversationParticipant[];
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  unread_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsMessage {
+  id: string;
+  conversation_id: string | null;
+  deal_id: string | null;
+  contact_id: string | null;
+  direction: 'inbound' | 'outbound';
+  channel: 'sms' | 'email';
+  body: string;
+  status: 'sent' | 'delivered' | 'received' | 'failed';
+  from_number: string | null;
+  to_number: string | null;
+  external_message_id: string | null;
+  auto_created_task_id: string | null;
+  sent_at: string;
+  created_at: string;
+}

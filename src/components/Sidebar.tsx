@@ -2,10 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
-  ClipboardList, Settings, FileText, UserPlus,
+  ClipboardList, Settings, FileText, UserPlus, MessageSquare,
 } from 'lucide-react';
 
-export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings';
+export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox';
 
 interface SidebarProps {
   onAddDeal: () => void;
@@ -20,10 +20,12 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  inboxUnread: number;
 }
 
-const NAV_ITEMS = (dealCount: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
+const NAV_ITEMS = (dealCount: number, inboxUnread: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
+  { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
   { id: 'mls',          label: 'MLS',          icon: <Globe size={18} /> },
@@ -33,9 +35,9 @@ const NAV_ITEMS = (dealCount: number): { id: View; label: string; icon: React.Re
 
 function SidebarInner({
   onAddDeal, onAddAgentClient, onAddContact, dealCount, pendingAlerts, onAmberClick,
-  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay,
+  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay, inboxUnread,
 }: SidebarProps & { isMobileOverlay: boolean }) {
-  const navItems = NAV_ITEMS(dealCount);
+  const navItems = NAV_ITEMS(dealCount, inboxUnread);
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
 
