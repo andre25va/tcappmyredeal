@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useAuth } from './AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,

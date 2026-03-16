@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Gmail not configured' });
   }
 
-  const { to, subject, body, replyTo, inReplyTo, references } = req.body;
+  const { to, cc, bcc, subject, body, replyTo, inReplyTo, references } = req.body;
 
   if (!to || !subject || !body) {
     return res.status(400).json({ error: 'Missing required fields: to, subject, body' });
@@ -34,9 +34,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       to,
       subject,
       text: body,
-      html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">${body.replace(/\n/g, '<br/>')}</div>`,
+      html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">${body.replace(/\n/g, '<br/>')}</div>`,
     };
 
+    if (cc && cc.trim()) mailOptions.cc = cc;
+    if (bcc && bcc.trim()) mailOptions.bcc = bcc;
     if (replyTo) mailOptions.replyTo = replyTo;
     if (inReplyTo) mailOptions.inReplyTo = inReplyTo;
     if (references) mailOptions.references = references;
