@@ -1248,7 +1248,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
               complianceChecklist: loadedItems,
               activityLog: [
                 ...(deal.activityLog ?? []),
-                { id: generateId(), action: `Compliance template loaded: "${tpl.name}"`, timestamp: new Date().toISOString(), user: 'TC Staff' },
+                { id: generateId(), action: `Compliance template loaded: "${tpl.name}"`, timestamp: new Date().toISOString(), user: 'TC Staff', type: 'note' as const },
               ],
             });
           }}

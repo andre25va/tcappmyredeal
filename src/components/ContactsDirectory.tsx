@@ -251,6 +251,7 @@ export const ContactsDirectory: React.FC<Props> = ({ directory, onUpdate, mlsEnt
   const [stateInfoMap, setStateInfoMap] = useState<AgentClientStateInfo[]>([]);
   const [expandedStates, setExpandedStates] = useState<Set<string>>(new Set());
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
 
   // Handle external trigger from topbar quick-add
   useEffect(() => {
@@ -295,7 +296,7 @@ export const ContactsDirectory: React.FC<Props> = ({ directory, onUpdate, mlsEnt
 
   const openAdd = (presetRole?: string) => {
     setEditing(null);
-    setForm({ ...emptyForm(), role: presetRole || 'buyer' as ContactRole });
+    setForm({ ...emptyForm(), role: (presetRole ?? 'buyer') as ContactRole });
     setStateInfoMap([]);
     setExpandedStates(new Set());
     setShowModal(true);

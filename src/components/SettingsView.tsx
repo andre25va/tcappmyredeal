@@ -967,10 +967,10 @@ export const SettingsView: React.FC<Props> = ({
     const rows: (string | number | boolean)[][] = [];
     complianceTemplates.forEach(t => {
       if (t.items.length === 0) {
-        rows.push([t.agentClientName, t.agentClientName, '(no items)', false, 0, t.updatedAt]);
+        rows.push([t.agentClientName ?? '', t.agentClientName ?? '', '(no items)', false, 0, t.updatedAt ?? '']);
       } else {
         t.items.forEach(item => {
-          rows.push([t.agentClientName, t.agentClientName, item.title, item.required, item.order, t.updatedAt]);
+          rows.push([t.agentClientName ?? '', t.agentClientName ?? '', item.title, item.required ?? false, item.order ?? 0, t.updatedAt ?? '']);
         });
       }
     });
