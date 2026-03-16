@@ -4,6 +4,97 @@ import { ImapFlow } from 'imapflow';
 const GMAIL_USER = process.env.GMAIL_USER || 'tc@myredeal.com';
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
 
+function decodeBody(raw: string, encoding: string): string {
+  try {
+    if (encoding?.toLowerCase() === 'base64') {
+      return Buffer.from(raw.replace(/\s/g, ''), 'base64').toString('utf-8');
+    } else if (encoding?.toLowerCase() === 'quoted-printable') {
+      return raw
+        .replace(/=\r?\n/g, '')
+        .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
+function extractPartsFromSource(source: string): { text: string; html: string; attachments: any[] } {
+  const result = { text: '', html: '', attachments: [] as any[] };
+
+  // Find all MIME parts
+  const boundaryMatch = source.match(/boundary="?([^"\r\n;]+)"?/i);
+  if (!boundaryMatch) {
+    // Simple non-multipart email
+    const headerEnd = source.indexOf('\r\n\r\n');
+    if (headerEnd === -1) return result;
+    const headers = source.substring(0, headerEnd);
+    const body = source.substring(headerEnd + 4);
+    const encMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const encoding = encMatch ? encMatch[1] : '7bit';
+    const decoded = decodeBody(body, encoding);
+    if (headers.toLowerCase().includes('text/html')) {
+      result.html = decoded;
+    } else {
+      result.text = decoded;
+    }
+    return result;
+  }
+
+  const boundary = boundaryMatch[1].trim();
+  const parts = source.split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:--)?\r?\n`));
+
+  for (const part of parts) {
+    if (!part.trim() || part.trim() === '--') continue;
+    const partHeaderEnd = part.indexOf('\r\n\r\n');
+    if (partHeaderEnd === -1) continue;
+    const partHeaders = part.substring(0, partHeaderEnd);
+    const partBody = part.substring(partHeaderEnd + 4).replace(/\r?\n$/, '');
+
+    const ctMatch = partHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
+    const encMatch = partHeaders.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const dispMatch = partHeaders.match(/Content-Disposition:\s*([^;\r\n]+)/i);
+    const nameMatch = partHeaders.match(/(?:filename|name)="?([^"\r\n;]+)"?/i);
+
+    const contentType = ctMatch ? ctMatch[1].trim().toLowerCase() : '';
+    const encoding = encMatch ? encMatch[1].trim() : '7bit';
+    const disposition = dispMatch ? dispMatch[1].trim().toLowerCase() : '';
+
+    if (disposition === 'attachment' || nameMatch) {
+      // It's an attachment
+      const filename = nameMatch ? nameMatch[1] : 'attachment';
+      const cidMatch = partHeaders.match(/Content-ID:\s*<([^>]+)>/i);
+      result.attachments.push({
+        filename,
+        contentType: ctMatch ? ctMatch[1].trim() : 'application/octet-stream',
+        size: Math.round(partBody.length * 0.75), // approx decoded size
+        contentId: cidMatch ? cidMatch[1] : null,
+        // We encode the raw base64 part body for the attachment endpoint
+        data: encoding.toLowerCase() === 'base64' ? partBody.replace(/\s/g, '') : null,
+      });
+    } else if (contentType.includes('text/html') && !result.html) {
+      result.html = decodeBody(partBody, encoding);
+    } else if (contentType.includes('text/plain') && !result.text) {
+      result.text = decodeBody(partBody, encoding);
+    }
+  }
+
+  return result;
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -34,21 +125,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const msg = await client.fetchOne(targetUid, {
           envelope: true,
-          bodyStructure: true,
           source: true,
         });
         if (!msg) return res.status(404).json({ error: 'Message not found' });
 
-        const source = msg.source?.toString() || '';
-        const textMatch = source.match(/Content-Type: text\/plain[\s\S]*?\r\n\r\n([\s\S]*?)(\r\n--|\r\n\r\n--|---=-)/i);
-        const htmlMatch = source.match(/Content-Type: text\/html[\s\S]*?\r\n\r\n([\s\S]*?)(\r\n--|---=-)/i);
-        const body = textMatch
-          ? textMatch[1].trim()
-          : htmlMatch
-          ? htmlMatch[1].replace(/<[^>]*>/g, '').trim()
-          : source.replace(/.*\r\n\r\n/s, '').substring(0, 2000);
+        const source = msg.source?.toString('utf-8') || '';
+        const { text, html, attachments } = extractPartsFromSource(source);
+
+        // Prefer HTML body for display, fallback to plain text
+        const bodyHtml = html || '';
+        const bodyText = text || (html ? stripHtml(html) : '');
 
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+
         return res.status(200).json({
           messages: [{
             id: msg.uid.toString(),
@@ -61,8 +150,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             cc: msg.envelope?.cc?.map((a: any) => a.address).join(', ') || '',
             date: msgDate.toISOString(),
             internalDate: msgDate.getTime().toString(),
-            body,
-            snippet: body.substring(0, 150),
+            bodyHtml,
+            body: bodyText,
+            snippet: bodyText.substring(0, 200),
+            attachments: attachments.map(a => ({
+              filename: a.filename,
+              contentType: a.contentType,
+              size: a.size,
+              // URL to fetch this attachment
+              downloadUrl: `/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
+            })),
           }],
         });
       } finally {
@@ -75,13 +172,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const threads: any[] = [];
     try {
       const messages = await client.search({ all: true }, { uid: true });
-      const recent = messages.slice(-50).reverse(); // last 50 msgs
+      const recent = messages.slice(-50).reverse();
 
       for await (const msg of client.fetch(recent.join(','), {
         envelope: true,
         flags: true,
         uid: true,
         internalDate: true,
+        bodyStructure: true,
       })) {
         const msgDate = (msg as any).internalDate
           ? new Date((msg as any).internalDate)
@@ -94,16 +192,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `${fromAddr.name ? fromAddr.name + ' ' : ''}<${fromAddr.address || ''}>`.trim()
           : '';
 
+        // Check for attachments in body structure
+        const hasAttachment = JSON.stringify((msg as any).bodyStructure || {}).toLowerCase().includes('"attachment"');
+
         threads.push({
           id: msg.uid.toString(),
           subject: msg.envelope?.subject || '(no subject)',
           from: fromStr,
           to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
           snippet: msg.envelope?.subject || '',
-          // internalDate as millisecond string — matches what Inbox.tsx expects
           internalDate: msgDate.getTime().toString(),
           messageCount: 1,
           isUnread: !msg.flags?.has('\\Seen'),
+          hasAttachment,
           labelIds: [],
         });
       }

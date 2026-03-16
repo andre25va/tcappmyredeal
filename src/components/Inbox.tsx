@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users, Phone,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, Forward, ExternalLink, Inbox as InboxIcon
+  Reply, Forward, ExternalLink, Inbox as InboxIcon, Paperclip, Download, FileText
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -41,6 +41,13 @@ interface Message {
   contacts?: { first_name: string; last_name: string; phone: string; role: string } | null;
 }
 
+interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  downloadUrl: string;
+}
+
 interface EmailThread {
   id: string;
   subject: string;
@@ -50,6 +57,7 @@ interface EmailThread {
   internalDate: string;
   messageCount: number;
   isUnread: boolean;
+  hasAttachment?: boolean;
   labelIds: string[];
 }
 
@@ -63,7 +71,9 @@ interface EmailMessage {
   date: string;
   internalDate: string;
   body: string;
+  bodyHtml?: string;
   snippet: string;
+  attachments?: EmailAttachment[];
 }
 
 interface DBContact {
@@ -123,6 +133,21 @@ function parseFromName(from: string): string {
   return from.replace(/<.*>/, '').trim() || from;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFileIcon(contentType: string): string {
+  if (contentType.includes('pdf')) return '📄';
+  if (contentType.includes('image')) return '🖼️';
+  if (contentType.includes('word') || contentType.includes('document')) return '📝';
+  if (contentType.includes('sheet') || contentType.includes('excel') || contentType.includes('csv')) return '📊';
+  if (contentType.includes('zip') || contentType.includes('compressed')) return '🗜️';
+  return '📎';
+}
+
 function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' }) {
   if (channel === 'whatsapp') return (
     <span className="badge badge-xs text-white font-bold" style={{ backgroundColor: '#25D366' }}>WA</span>
@@ -143,6 +168,90 @@ function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp
   );
   return (
     <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold bg-green-100 text-green-600">{letter}</div>
+  );
+}
+
+// ── Attachment Chips ──────────────────────────────────────────────────────────
+
+function AttachmentChips({ attachments }: { attachments: EmailAttachment[] }) {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-base-200 bg-base-50">
+      <div className="w-full text-[10px] text-base-content/40 font-semibold uppercase tracking-wide mb-0.5">
+        <Paperclip size={10} className="inline mr-1" />{attachments.length} attachment{attachments.length > 1 ? 's' : ''}
+      </div>
+      {attachments.map((att, i) => (
+        <a
+          key={i}
+          href={att.downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-base-200 hover:bg-base-300 border border-base-300 rounded-xl px-3 py-2 transition-colors group"
+          title={`Open ${att.filename} in new tab`}
+        >
+          <span className="text-base">{getFileIcon(att.contentType)}</span>
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-base-content truncate max-w-[140px]">{att.filename}</div>
+            <div className="text-[10px] text-base-content/40">{formatFileSize(att.size)}</div>
+          </div>
+          <ExternalLink size={11} className="text-base-content/30 group-hover:text-primary flex-none" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ── Email Body Renderer ───────────────────────────────────────────────────────
+
+function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
+  const [showHtml, setShowHtml] = useState(true);
+  const hasHtml = !!msg.bodyHtml;
+
+  if (hasHtml && showHtml) {
+    return (
+      <div>
+        <div className="flex items-center justify-between px-4 pt-2 pb-1">
+          <div />
+          <button
+            onClick={() => setShowHtml(false)}
+            className="text-[10px] text-base-content/35 hover:text-base-content/60 transition-colors"
+          >
+            View plain text
+          </button>
+        </div>
+        <iframe
+          srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#374151;margin:0;padding:12px;word-wrap:break-word;}img{max-width:100%;height:auto;}a{color:#2563eb;}*{box-sizing:border-box;}</style></head><body>${msg.bodyHtml}</body></html>`}
+          className="w-full border-0 min-h-[120px]"
+          style={{ height: '300px', maxHeight: '400px' }}
+          sandbox="allow-same-origin"
+          title="Email content"
+          onLoad={(e) => {
+            // Auto-resize iframe to content
+            try {
+              const iframe = e.currentTarget;
+              const height = iframe.contentDocument?.body?.scrollHeight;
+              if (height) iframe.style.height = Math.min(height + 24, 500) + 'px';
+            } catch {}
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3">
+      {hasHtml && (
+        <button
+          onClick={() => setShowHtml(true)}
+          className="text-[10px] text-base-content/35 hover:text-primary transition-colors mb-2 block"
+        >
+          View formatted email
+        </button>
+      )}
+      <pre className="text-sm text-base-content/80 whitespace-pre-wrap font-sans leading-relaxed max-h-80 overflow-y-auto">
+        {msg.body || msg.snippet || '(no content)'}
+      </pre>
+    </div>
   );
 }
 
@@ -245,7 +354,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     return () => clearInterval(refreshRef.current);
   }, [loadConversations]);
 
-  // Load emails when Email tab is selected
   useEffect(() => {
     if (tab === 'email' && gmailConnected === null) {
       loadEmailThreads();
@@ -317,7 +425,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     setSelectedEmailThread(thread);
     setSelectedConv(null);
     setMobileShowThread(true);
-    // Mark as read locally
     setEmailThreads(prev => prev.map(t => t.id === thread.id ? { ...t, isUnread: false } : t));
   };
 
@@ -348,8 +455,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       setSending(false);
     }
   };
-
-  // ── Email Reply ──────────────────────────────────────────────────────────────
 
   const handleEmailReply = async () => {
     if (!emailReplyText.trim() || !selectedEmailThread || emailSending) return;
@@ -383,8 +488,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   };
 
-  // ── Compose Email ────────────────────────────────────────────────────────────
-
   const handleComposeEmail = async () => {
     if (!emailTo.trim() || !emailSubject.trim() || !emailBody.trim()) {
       setEmailComposeError('Please fill in To, Subject, and Message.');
@@ -412,8 +515,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       setEmailComposeSending(false);
     }
   };
-
-  // ── SMS Compose ──────────────────────────────────────────────────────────────
 
   const loadComposeData = async () => {
     try {
@@ -534,7 +635,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
   const ConversationList = (
     <div className={`flex flex-col h-full border-r border-base-300 bg-base-100 ${mobileShowThread ? 'hidden md:flex' : 'flex'} md:w-80 w-full flex-none`}>
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200">
         <MessageSquare size={18} className="text-primary flex-none" />
         <span className="font-bold text-sm flex-1">Inbox</span>
@@ -549,7 +649,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-base-300 bg-base-200 px-2 gap-1 py-1.5 overflow-x-auto">
         {(['all', 'sms', 'whatsapp', 'email'] as const).map(t => (
           <button
@@ -568,7 +667,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         ))}
       </div>
 
-      {/* Search */}
       <div className="px-3 py-2 border-b border-base-300">
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
@@ -581,7 +679,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         </div>
       </div>
 
-      {/* Email List */}
       {tab === 'email' ? (
         <div className="flex-1 overflow-y-auto">
           {emailLoading ? (
@@ -594,7 +691,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
               <Mail size={32} className="text-base-content/20" />
               <div>
                 <p className="text-sm font-semibold text-base-content/50">Gmail not connected</p>
-                <p className="text-xs text-base-content/35 mt-1">Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN to Vercel env vars</p>
+                <p className="text-xs text-base-content/35 mt-1">{emailError}</p>
               </div>
               <button onClick={loadEmailThreads} className="btn btn-xs btn-outline gap-1">
                 <RefreshCw size={11} /> Retry
@@ -624,6 +721,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                         <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'font-bold text-base-content' : 'font-medium text-base-content/75'}`}>
                           {senderName}
                         </span>
+                        {thread.hasAttachment && <Paperclip size={11} className="text-base-content/30 flex-none" />}
                         {thread.isUnread && (
                           <span className="bg-primary text-white text-[9px] font-bold rounded-full w-2 h-2 flex-none" />
                         )}
@@ -635,9 +733,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                         {thread.subject}
                       </p>
                       <p className="text-xs text-base-content/40 truncate">{thread.snippet}</p>
-                      {thread.messageCount > 1 && (
-                        <span className="text-[10px] text-base-content/30">{thread.messageCount} messages</span>
-                      )}
                     </div>
                   </div>
                 </button>
@@ -646,7 +741,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           )}
         </div>
       ) : (
-        /* SMS / WA List */
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
@@ -718,7 +812,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
   const EmailThreadPanel = selectedEmailThread && (
     <>
-      {/* Email Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
         <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
           <ChevronLeft size={16} />
@@ -733,18 +826,15 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           </div>
           <p className="text-[11px] text-base-content/50 truncate">{parseFromName(selectedEmailThread.from)}</p>
         </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => { setShowEmailCompose(true); setEmailTo(selectedEmailThread.from); setEmailSubject(`Re: ${selectedEmailThread.subject}`); setEmailBody(''); setEmailComposeError(''); }}
-            className="btn btn-ghost btn-xs gap-1"
-            title="New email in thread"
-          >
-            <Reply size={13} />
-          </button>
-        </div>
+        <button
+          onClick={() => { setShowEmailCompose(true); setEmailTo(selectedEmailThread.from); setEmailSubject(`Re: ${selectedEmailThread.subject}`); setEmailBody(''); setEmailComposeError(''); }}
+          className="btn btn-ghost btn-xs gap-1"
+          title="Reply"
+        >
+          <Reply size={13} />
+        </button>
       </div>
 
-      {/* Email Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {emailMsgLoading ? (
           <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
@@ -773,7 +863,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                     </span>
                   </div>
                 )}
-                <div className={`rounded-xl border border-base-300 bg-base-100 shadow-sm overflow-hidden`}>
+                <div className="rounded-xl border border-base-300 bg-base-100 shadow-sm overflow-hidden">
                   {/* Email meta bar */}
                   <div className="flex items-center gap-3 px-4 py-2.5 bg-base-200 border-b border-base-300">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${isMe ? 'bg-primary text-primary-content' : 'bg-green-100 text-green-700'}`}>
@@ -787,15 +877,15 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                       {msg.cc && <p className="text-[10px] text-base-content/35">cc: {msg.cc}</p>}
                     </div>
                     <span className="text-[10px] text-base-content/35 flex-none">
-                      {new Date(Number(msg.internalDate)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  {/* Email body */}
-                  <div className="px-4 py-3">
-                    <pre className="text-sm text-base-content/80 whitespace-pre-wrap font-sans leading-relaxed max-h-64 overflow-y-auto">
-                      {msg.body || msg.snippet}
-                    </pre>
-                  </div>
+                  {/* Email body - HTML or plain text */}
+                  <EmailBodyRenderer msg={msg} />
+                  {/* Attachments */}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <AttachmentChips attachments={msg.attachments} />
+                  )}
                 </div>
               </React.Fragment>
             );
@@ -804,7 +894,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         <div ref={emailEndRef} />
       </div>
 
-      {/* Email Reply Bar */}
       <div className="px-4 py-3 border-t border-base-300 bg-base-200">
         <div className="flex gap-2 items-end">
           <textarea
@@ -834,7 +923,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
   const SmsThreadPanel = selectedConv && (
     <>
-      {/* Thread Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
         <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
           <ChevronLeft size={16} />
@@ -866,7 +954,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {msgLoading ? (
           <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
@@ -923,7 +1010,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Reply Bar */}
       <div className="px-4 py-3 border-t border-base-300 bg-base-200">
         <div className="flex gap-2 items-end">
           <textarea
@@ -948,10 +1034,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
           {selectedConv.channel === 'whatsapp'
             ? '💬 Sending via WhatsApp'
-            : selectedConv.channel === 'sms'
-            ? '📱 Sending via SMS from (464) 733-3257'
-            : '✉️ Email thread'}
-          {selectedConv.type === 'broadcast' && ' · Broadcast (recipients can\'t see each other)'}
+            : '📱 Sending via SMS from (464) 733-3257'}
+          {selectedConv.type === 'broadcast' && ' · Broadcast'}
           {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
         </p>
       </div>
@@ -1042,7 +1126,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {/* Channel Toggle */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-2 block">SEND VIA</label>
             <div className="grid grid-cols-2 gap-2">
@@ -1081,7 +1164,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             )}
           </div>
 
-          {/* Recipients */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-1.5 block">
               TO: RECIPIENTS {selectedRecipients.length > 0 && `(${selectedRecipients.length} selected)`}
