@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, MoreVertical, Search, X, Building2, User, UserCheck } from 'lucide-react';
+import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, MoreVertical, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save } from 'lucide-react';
 import { formatPhone } from '../utils/helpers';
-import { Deal, Contact, ContactRole, DirectoryContact } from '../types';
+import { Deal, Contact, ContactRole, DirectoryContact, AdditionalPerson } from '../types';
 import { roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -157,27 +157,158 @@ const DirectoryPicker: React.FC<{
   );
 };
 
-// Agent Client — primary contact row with red dot + "our client"
-const AgentClientRow: React.FC<{ contact: Contact; onClick: () => void }> = ({ contact, onClick }) => (
-  <button onClick={onClick}
-    className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/70 transition-colors text-left group">
-    <div className="relative flex-none">
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(contact.role)}`}>
-        {getInitials(contact.name)}
+// Additional People collapsed section inside AgentClientRow card
+const MARITAL_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated', 'Other'];
+const RELATIONSHIP_OPTIONS = ['Spouse', 'Co-Buyer', 'Co-Seller', 'Partner', 'Family Member', 'Other'];
+
+const AgentClientRow: React.FC<{
+  contact: Contact;
+  onClick: () => void;
+  onUpdateContact: (updated: Contact) => void;
+}> = ({ contact, onClick, onUpdateContact }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<Omit<AdditionalPerson, 'id'>>({
+    name: '', relationship: '', maritalStatus: '', phone: '', email: ''
+  });
+
+  const people = contact.additionalPeople || [];
+
+  const resetForm = () => { setForm({ name: '', relationship: '', maritalStatus: '', phone: '', email: '' }); setEditId(null); setShowForm(false); };
+
+  const saveForm = () => {
+    if (!form.name.trim()) return;
+    let updated: AdditionalPerson[];
+    if (editId) {
+      updated = people.map(p => p.id === editId ? { ...form, id: editId } : p);
+    } else {
+      updated = [...people, { ...form, id: generateId() }];
+    }
+    onUpdateContact({ ...contact, additionalPeople: updated });
+    resetForm();
+  };
+
+  const removePerson = (id: string) => {
+    onUpdateContact({ ...contact, additionalPeople: people.filter(p => p.id !== id) });
+  };
+
+  const startEdit = (p: AdditionalPerson) => {
+    setForm({ name: p.name, relationship: p.relationship, maritalStatus: p.maritalStatus, phone: p.phone, email: p.email });
+    setEditId(p.id);
+    setShowForm(true);
+    setExpanded(true);
+  };
+
+  return (
+    <div className="rounded-lg overflow-hidden">
+      {/* Main row */}
+      <button onClick={onClick}
+        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/70 transition-colors text-left group">
+        <div className="relative flex-none">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(contact.role)}`}>
+            {getInitials(contact.name)}
+          </div>
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-bold text-black truncate">{contact.name}</span>
+            <span className="text-xs bg-red-100 text-red-600 rounded-full px-1.5 py-0 font-semibold whitespace-nowrap">our client</span>
+          </div>
+          <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
+        </div>
+        <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
+      </button>
+
+      {/* Additional People toggle */}
+      <div className="ml-2 mt-0.5">
+        <button
+          onClick={() => setExpanded(o => !o)}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-white/50 w-full"
+        >
+          <Users size={11} />
+          <span className="font-medium">Additional People</span>
+          {people.length > 0 && (
+            <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0 text-[10px] font-bold">{people.length}</span>
+          )}
+          {expanded ? <ChevronDown size={11} className="ml-auto" /> : <ChevronRight size={11} className="ml-auto" />}
+        </button>
+
+        {expanded && (
+          <div className="mt-1 ml-2 border-l-2 border-gray-200 pl-3 space-y-1.5">
+            {/* Existing people */}
+            {people.map(p => (
+              <div key={p.id} className="bg-white border border-gray-100 rounded-lg p-2 text-xs">
+                <div className="flex items-start justify-between gap-1">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-black truncate">{p.name}</p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {p.relationship && <span className="bg-blue-50 text-blue-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.relationship}</span>}
+                      {p.maritalStatus && <span className="bg-purple-50 text-purple-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.maritalStatus}</span>}
+                    </div>
+                    {p.phone && <p className="text-gray-400 mt-0.5">{p.phone}</p>}
+                    {p.email && <p className="text-gray-400 truncate">{p.email}</p>}
+                  </div>
+                  <div className="flex gap-1 flex-none">
+                    <button onClick={() => startEdit(p)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-primary"><Edit2 size={10} /></button>
+                    <button onClick={() => removePerson(p.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={10} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Add form */}
+            {showForm ? (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 space-y-1.5">
+                <p className="text-[11px] font-semibold text-blue-700 mb-1">{editId ? 'Edit Person' : 'Add Person'}</p>
+                <input
+                  className="input input-bordered input-xs w-full text-xs"
+                  placeholder="Full Name *"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select className="select select-bordered select-xs w-full text-xs" value={form.relationship} onChange={e => setForm(f => ({ ...f, relationship: e.target.value }))}>
+                    <option value="">Relationship</option>
+                    {RELATIONSHIP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <select className="select select-bordered select-xs w-full text-xs" value={form.maritalStatus} onChange={e => setForm(f => ({ ...f, maritalStatus: e.target.value }))}>
+                    <option value="">Marital Status</option>
+                    {MARITAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                <input
+                  className="input input-bordered input-xs w-full text-xs"
+                  placeholder="Phone"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                />
+                <input
+                  className="input input-bordered input-xs w-full text-xs"
+                  placeholder="Email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                />
+                <div className="flex gap-1.5 pt-0.5">
+                  <button onClick={saveForm} className="btn btn-primary btn-xs flex-1 gap-1"><Save size={10} /> Save</button>
+                  <button onClick={resetForm} className="btn btn-ghost btn-xs flex-1">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', relationship: '', maritalStatus: '', phone: '', email: '' }); }}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline px-2 py-1"
+              >
+                <UserPlus size={11} /> Add Person
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      {/* Red dot */}
-      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
     </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-sm font-bold text-black truncate">{contact.name}</span>
-        <span className="text-xs bg-red-100 text-red-600 rounded-full px-1.5 py-0 font-semibold whitespace-nowrap">our client</span>
-      </div>
-      <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-    </div>
-    <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
-  </button>
-);
+  );
+};
 
 // Sub-contact row — indented with tree line
 const SubContactRow: React.FC<{ contact: Contact; isLast: boolean; onClick: () => void }> = ({ contact, isLast, onClick }) => (
@@ -390,6 +521,13 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
               <AgentClientRow
                 contact={agentClient}
                 onClick={() => setPopupContactId(agentClient.id)}
+                onUpdateContact={(updated) => {
+                  onUpdate({
+                    ...deal,
+                    contacts: deal.contacts.map(c => c.id === updated.id ? updated : c),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }}
               />
             )}
             {/* Sub-contacts — indented under agent client if present, flat if not */}

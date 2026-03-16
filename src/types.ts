@@ -157,6 +157,15 @@ export interface DirectoryContact {
 }
 
 /** Deal-level contact — linked from directory, has deal-specific fields */
+export interface AdditionalPerson {
+  id: string;
+  name: string;
+  relationship: string;
+  maritalStatus: string;
+  phone: string;
+  email: string;
+}
+
 export interface Contact {
   id: string;
   directoryId?: string;  // reference back to DirectoryContact.id
@@ -167,6 +176,7 @@ export interface Contact {
   company?: string;
   inNotificationList: boolean;
   side?: 'buy' | 'sell' | 'both';  // which side of the transaction
+  additionalPeople?: AdditionalPerson[];
 }
 
 export interface ChecklistItem {
