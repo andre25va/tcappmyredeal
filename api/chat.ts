@@ -9,6 +9,7 @@ You have access to the following tools to query and modify the database:
 
 CAPABILITIES:
 - Look up active deals, deal details, closing dates, statuses
+- Filter deals by state (KS, MO) or city
 - Find overdue tasks or tasks due today
 - Create new tasks on deals
 - Search contacts in the directory
@@ -30,18 +31,21 @@ IMPORTANT RULES:
 - If you don't have enough info, ask clarifying questions
 - Never make up data — only reference what's in the database
 - When data is empty (no deals, no tasks, etc.), tell the user in a helpful way — e.g., "You don't have any active deals yet. Add a deal in TC Command to get started!"
-- NEVER say "there is an issue" when data is simply empty — empty is normal for new accounts`;
+- NEVER say "there is an issue" when data is simply empty — empty is normal for new accounts
+- When user asks for deals in a state like "KS deals" or "Missouri deals", use get_active_deals with the state filter`;
 
 const TOOLS = [
   {
     type: 'function' as const,
     function: {
       name: 'get_active_deals',
-      description: 'Get all active deals with their details including address, close date, status, stage, agent, and contacts. Returns empty array if no deals exist yet.',
+      description: 'Get all active deals with their details including address, close date, status, stage, agent, and contacts. Can filter by state (e.g. KS, MO) or city. Returns empty array if no deals exist yet.',
       parameters: {
         type: 'object',
         properties: {
           limit: { type: 'number', description: 'Max deals to return (default 20)' },
+          state: { type: 'string', description: 'Filter by state abbreviation e.g. KS or MO (optional)' },
+          city: { type: 'string', description: 'Filter by city name (optional)' },
         },
       },
     },
@@ -169,18 +173,29 @@ async function executeTool(
     switch (name) {
       case 'get_active_deals': {
         const limit = (args.limit as number) || 20;
-        // Try deal_data JSONB first (Phase 1 migration format)
-        const { data, error } = await supabase
+        const stateFilter = args.state as string | undefined;
+        const cityFilter = args.city as string | undefined;
+
+        let query = supabase
           .from('deals')
           .select('id, property_address, city, state, status, pipeline_stage, closing_date, purchase_price, deal_data, created_at')
-          .order('created_at', { ascending: false })
+          .order('closing_date', { ascending: true })
           .limit(limit);
+
+        if (stateFilter) {
+          query = query.ilike('state', stateFilter.trim());
+        }
+        if (cityFilter) {
+          query = query.ilike('city', `%${cityFilter.trim()}%`);
+        }
+
+        const { data, error } = await query;
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) {
-          return JSON.stringify({ deals: [], message: 'No deals in the system yet. Add your first deal in TC Command to get started!' });
+          const filterMsg = stateFilter ? ` in ${stateFilter.toUpperCase()}` : cityFilter ? ` in ${cityFilter}` : '';
+          return JSON.stringify({ deals: [], message: `No deals found${filterMsg}. Add your first deal in TC Command to get started!` });
         }
         const deals = data.map((r: any) => {
-          // Use structured columns first, fall back to deal_data JSONB
           const d = r.deal_data || {};
           return {
             id: r.id,
@@ -193,8 +208,6 @@ async function executeTool(
             purchasePrice: r.purchase_price || d.contractPrice,
             agentName: d.agentName,
             transactionSide: d.transactionSide,
-            taskCount: d.tasks?.length ?? 0,
-            overdueTasks: (d.tasks ?? []).filter((t: any) => t.completedAt == null && t.dueDate && t.dueDate < new Date().toISOString().slice(0, 10)).length,
           };
         });
         return JSON.stringify({ deals, total: deals.length });
@@ -210,6 +223,7 @@ async function executeTool(
         const match = data.find((r: any) => {
           return (r.property_address || '').toLowerCase().includes(search) ||
                  (r.deal_data?.address || '').toLowerCase().includes(search) ||
+                 (r.city || '').toLowerCase().includes(search) ||
                  r.id === search;
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.search}". Try a different address or check your deals list.` });
@@ -229,9 +243,6 @@ async function executeTool(
           purchasePrice: match.purchase_price || d.contractPrice,
           earnestMoney: match.earnest_money,
           agentName: d.agentName,
-          contacts: (d.contacts ?? []).map((c: any) => ({ name: c.name, role: c.role, email: c.email, phone: c.phone })),
-          tasks: (d.tasks ?? []).map((t: any) => ({ title: t.title, dueDate: t.dueDate, priority: t.priority, completed: !!t.completedAt })),
-          documents: (d.documentRequests ?? []).map((dr: any) => ({ label: dr.label, status: dr.status, urgency: dr.urgency })),
           notes: match.notes || d.notes,
         });
       }
@@ -242,86 +253,53 @@ async function executeTool(
         const futureDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
         const { data, error } = await supabase
           .from('deals')
-          .select('property_address, city, state, status, pipeline_stage, closing_date, deal_data');
+          .select('property_address, city, state, status, pipeline_stage, closing_date, deal_data')
+          .gte('closing_date', today)
+          .lte('closing_date', futureDate)
+          .order('closing_date', { ascending: true });
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) {
-          return JSON.stringify({ closing: [], message: 'No deals in the system yet.' });
-        }
-        const closing = data
-          .filter((r: any) => {
-            const cd = r.closing_date || r.deal_data?.closingDate;
-            return cd && cd >= today && cd <= futureDate;
-          })
-          .map((r: any) => {
-            const d = r.deal_data || {};
-            const cd = r.closing_date || d.closingDate;
-            const daysLeft = Math.ceil((new Date(cd).getTime() - Date.now()) / 86400000);
-            return {
-              address: r.property_address || d.address,
-              closingDate: cd,
-              daysLeft,
-              status: r.status || d.status,
-              stage: r.pipeline_stage || d.milestone,
-              agentName: d.agentName,
-            };
-          })
-          .sort((a: any, b: any) => a.daysLeft - b.daysLeft);
-        if (closing.length === 0) {
           return JSON.stringify({ closing: [], message: `No deals closing in the next ${days} days.` });
         }
+        const closing = data.map((r: any) => {
+          const d = r.deal_data || {};
+          const cd = r.closing_date || d.closingDate;
+          const daysLeft = Math.ceil((new Date(cd).getTime() - Date.now()) / 86400000);
+          return {
+            address: r.property_address || d.address,
+            city: r.city,
+            state: r.state,
+            closingDate: cd,
+            daysLeft,
+            status: r.status || d.status,
+            stage: r.pipeline_stage || d.milestone,
+          };
+        });
         return JSON.stringify({ closing, total: closing.length });
       }
 
       case 'get_overdue_tasks': {
         const today = new Date().toISOString().slice(0, 10);
-        // Check structured tasks table first
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id')
+          .select('id, title, due_date, priority, category, status, deal_id, deals(property_address, city, state)')
           .lt('due_date', today)
-          .neq('status', 'completed');
-        
-        // Also check deal_data JSONB tasks
-        const { data: deals, error: dError } = await supabase
-          .from('deals')
-          .select('property_address, deal_data');
-        
-        const overdue: any[] = [];
-        
-        // From structured tasks table
-        if (!stError && structuredTasks && structuredTasks.length > 0) {
-          structuredTasks.forEach((t: any) => {
-            overdue.push({
-              source: 'tasks_table',
-              task: t.title,
-              dueDate: t.due_date,
-              priority: t.priority,
-              category: t.category,
-              daysOverdue: Math.ceil((Date.now() - new Date(t.due_date).getTime()) / 86400000),
-            });
-          });
-        }
-        
-        // From deal_data JSONB
-        if (!dError && deals) {
-          deals.forEach((r: any) => {
-            const d = r.deal_data || {};
-            (d.tasks ?? []).forEach((t: any) => {
-              if (!t.completedAt && t.dueDate && t.dueDate < today) {
-                overdue.push({
-                  source: 'deal_data',
-                  address: r.property_address || d.address,
-                  task: t.title,
-                  dueDate: t.dueDate,
-                  priority: t.priority,
-                  daysOverdue: Math.ceil((Date.now() - new Date(t.dueDate).getTime()) / 86400000),
-                });
-              }
-            });
-          });
-        }
-        
-        overdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
+          .neq('status', 'completed')
+          .order('due_date', { ascending: true });
+
+        if (stError) return JSON.stringify({ error: stError.message });
+
+        const overdue: any[] = (structuredTasks || []).map((t: any) => ({
+          task: t.title,
+          dueDate: t.due_date,
+          priority: t.priority,
+          category: t.category,
+          address: t.deals?.property_address,
+          city: t.deals?.city,
+          state: t.deals?.state,
+          daysOverdue: Math.ceil((Date.now() - new Date(t.due_date).getTime()) / 86400000),
+        }));
+
         if (overdue.length === 0) {
           return JSON.stringify({ overdue: [], message: 'No overdue tasks — you\'re all caught up! 🎉' });
         }
@@ -330,48 +308,23 @@ async function executeTool(
 
       case 'get_tasks_due_today': {
         const today = new Date().toISOString().slice(0, 10);
-        // Check structured tasks table
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id')
+          .select('id, title, due_date, priority, category, status, deal_id, deals(property_address, city, state)')
           .eq('due_date', today)
           .neq('status', 'completed');
-        
-        // Also check deal_data JSONB
-        const { data: deals, error: dError } = await supabase
-          .from('deals')
-          .select('property_address, deal_data');
-        
-        const dueToday: any[] = [];
-        
-        if (!stError && structuredTasks && structuredTasks.length > 0) {
-          structuredTasks.forEach((t: any) => {
-            dueToday.push({
-              source: 'tasks_table',
-              task: t.title,
-              priority: t.priority,
-              category: t.category,
-            });
-          });
-        }
-        
-        if (!dError && deals) {
-          deals.forEach((r: any) => {
-            const d = r.deal_data || {};
-            (d.tasks ?? []).forEach((t: any) => {
-              if (!t.completedAt && t.dueDate === today) {
-                dueToday.push({
-                  source: 'deal_data',
-                  address: r.property_address || d.address,
-                  task: t.title,
-                  priority: t.priority,
-                  category: t.category,
-                });
-              }
-            });
-          });
-        }
-        
+
+        if (stError) return JSON.stringify({ error: stError.message });
+
+        const dueToday: any[] = (structuredTasks || []).map((t: any) => ({
+          task: t.title,
+          priority: t.priority,
+          category: t.category,
+          address: t.deals?.property_address,
+          city: t.deals?.city,
+          state: t.deals?.state,
+        }));
+
         if (dueToday.length === 0) {
           return JSON.stringify({ tasks: [], message: 'No tasks due today. Enjoy the breathing room! ☕' });
         }
@@ -382,67 +335,52 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, deal_data');
+          .select('id, property_address, city, state, deal_data');
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals exist yet. Create a deal first, then add tasks to it.' });
-        
+
         const match = data.find((r: any) => {
           return (r.property_address || '').toLowerCase().includes(search) ||
                  (r.deal_data?.address || '').toLowerCase().includes(search);
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.deal_search}". Check the address and try again.` });
 
-        const deal = match.deal_data || {};
-        const newTask = {
-          id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          title: args.title as string,
-          dueDate: args.due_date as string,
-          priority: (args.priority as string) || 'medium',
-          category: (args.category as string) || 'Follow-up',
-          milestone: deal.milestone || 'contract-received',
-          autoGenerated: false,
-          notes: (args.notes as string) || '',
-        };
+        const { error: insertError, data: inserted } = await supabase
+          .from('tasks')
+          .insert({
+            deal_id: match.id,
+            title: args.title as string,
+            due_date: args.due_date as string,
+            priority: (args.priority as string) || 'medium',
+            category: (args.category as string) || 'Follow-up',
+            status: 'pending',
+            description: (args.notes as string) || '',
+          })
+          .select()
+          .single();
 
-        // Update deal_data JSONB
-        const updatedTasks = [...(deal.tasks || []), newTask];
-        const updatedDeal = { ...deal, tasks: updatedTasks, updatedAt: new Date().toISOString() };
-
-        const { error: updateError } = await supabase
-          .from('deals')
-          .update({ deal_data: updatedDeal, updated_at: new Date().toISOString() })
-          .eq('id', match.id);
-
-        if (updateError) return JSON.stringify({ error: updateError.message });
-        
-        // Also insert into structured tasks table
-        await supabase.from('tasks').insert({
-          deal_id: match.id,
-          title: args.title as string,
-          due_date: args.due_date as string,
-          priority: (args.priority as string) || 'normal',
-          category: (args.category as string) || 'Follow-up',
-          status: 'pending',
-          description: (args.notes as string) || '',
-        }).then(() => {}).catch(() => {});
-        
-        return JSON.stringify({ success: true, task: newTask, dealAddress: match.property_address || deal.address });
+        if (insertError) return JSON.stringify({ error: insertError.message });
+        return JSON.stringify({
+          success: true,
+          task: inserted,
+          dealAddress: match.property_address || match.deal_data?.address,
+          city: match.city,
+          state: match.state,
+        });
       }
 
       case 'search_contacts': {
         const query = (args.query as string).toLowerCase();
-        // Search structured contacts table
         const { data: contacts, error: cError } = await supabase
           .from('contacts')
           .select('first_name, last_name, email, phone, role, company');
-        
-        // Search directory_contacts table
+
         const { data: dirContacts, error: dError } = await supabase
           .from('directory_contacts')
           .select('name, email, phone, role, company, data');
-        
+
         const matches: any[] = [];
-        
+
         if (!cError && contacts) {
           contacts.forEach((c: any) => {
             const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim().toLowerCase();
@@ -452,7 +390,7 @@ async function executeTool(
             }
           });
         }
-        
+
         if (!dError && dirContacts) {
           dirContacts.forEach((c: any) => {
             if ((c.name || '').toLowerCase().includes(query) || (c.email || '').toLowerCase().includes(query) ||
@@ -461,7 +399,7 @@ async function executeTool(
             }
           });
         }
-        
+
         if (matches.length === 0) {
           return JSON.stringify({ contacts: [], message: `No contacts found matching "${args.query}". Try a different search term or add contacts in your directory.` });
         }
@@ -471,40 +409,34 @@ async function executeTool(
       case 'get_deal_summary': {
         const { data, error } = await supabase
           .from('deals')
-          .select('status, pipeline_stage, purchase_price, closing_date, deal_data');
+          .select('status, pipeline_stage, purchase_price, closing_date, state');
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) {
           return JSON.stringify({
             totalDeals: 0,
             totalActive: 0,
-            totalClosed: 0,
             totalValue: 0,
             byStage: {},
-            overdueTasks: 0,
+            byState: {},
             message: 'No deals in your portfolio yet. Add your first deal to get started!'
           });
         }
         const today = new Date().toISOString().slice(0, 10);
-        const active = data.filter((d: any) => d.status === 'active');
-        const closed = data.filter((d: any) => d.status === 'closed');
-        const totalValue = active.reduce((sum: number, d: any) => sum + (Number(d.purchase_price) || d.deal_data?.contractPrice || 0), 0);
+        const active = data.filter((d: any) => d.status !== 'closed');
+        const totalValue = active.reduce((sum: number, d: any) => sum + (Number(d.purchase_price) || 0), 0);
         const byStage: Record<string, number> = {};
+        const byState: Record<string, number> = {};
         active.forEach((d: any) => {
-          const stage = d.pipeline_stage || d.deal_data?.milestone || 'unknown';
+          const stage = d.pipeline_stage || 'unknown';
           byStage[stage] = (byStage[stage] || 0) + 1;
-        });
-        let overdueTasks = 0;
-        data.forEach((d: any) => {
-          const dd = d.deal_data || {};
-          overdueTasks += (dd.tasks ?? []).filter((t: any) => !t.completedAt && t.dueDate && t.dueDate < today).length;
+          if (d.state) byState[d.state] = (byState[d.state] || 0) + 1;
         });
         return JSON.stringify({
           totalDeals: data.length,
           totalActive: active.length,
-          totalClosed: closed.length,
           totalValue,
           byStage,
-          overdueTasks,
+          byState,
         });
       }
 
@@ -526,31 +458,22 @@ async function executeTool(
         const address = match.property_address || d.address;
         const city = match.city || d.city;
         const state = match.state || d.state;
-        const zip = match.zip || d.zipCode;
         const price = match.purchase_price || d.contractPrice;
         const closingDate = match.closing_date || d.closingDate;
 
         const emailPrompt = `Draft a professional real estate transaction coordinator email.
 
-Deal: ${address}, ${city}, ${state} ${zip}
+Deal: ${address}, ${city}, ${state}
 Contract Price: $${price ? Number(price).toLocaleString() : 'N/A'}
 Closing Date: ${closingDate || 'TBD'}
 Status: ${match.status || d.status} / ${match.pipeline_stage || d.milestone}
-Agent: ${d.agentName || 'N/A'}
-Transaction Side: ${d.transactionSide || match.deal_type || 'N/A'}
 
 Recipient: ${recipient}
 Purpose: ${purpose}
 
-Write a concise, professional email with:
-1. Clear subject line
-2. Professional greeting
-3. Purpose stated in first sentence
-4. Any relevant deal details
-5. Clear call to action
-6. Professional sign-off as "TC Command - Transaction Coordinator"
+Write a concise, professional email with subject line, body, and sign-off as "TC Command - Transaction Coordinator".
 
-Format as:
+Format:
 SUBJECT: ...
 ---
 [email body]`;
@@ -583,7 +506,6 @@ SUBJECT: ...
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: any, res: any) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -597,25 +519,22 @@ export default async function handler(req: any, res: any) {
 
   if (!openaiKey || !supabaseUrl || !supabaseKey) {
     console.error('Missing env vars:', { hasOpenAI: !!openaiKey, hasSupabaseUrl: !!supabaseUrl, hasSupabaseKey: !!supabaseKey });
-    return res.status(500).json({ error: 'Server configuration error — missing environment variables. Please check Vercel settings.' });
+    return res.status(500).json({ error: 'Server configuration error — missing environment variables.' });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
     const { messages } = req.body;
-
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
     }
 
-    // Build conversation with system prompt
     const fullMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
       ...messages,
     ];
 
-    // First call — may trigger tool use
     let response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
@@ -630,39 +549,25 @@ export default async function handler(req: any, res: any) {
     });
 
     let data = await response.json();
-    
     if (data.error) {
       console.error('OpenAI API error:', data.error);
       return res.status(500).json({ error: `AI error: ${data.error.message || 'Unknown error'}` });
     }
-    
     let message = data.choices?.[0]?.message;
 
-    // Handle tool calls (up to 3 rounds)
     let rounds = 0;
     while (message?.tool_calls && rounds < 3) {
       rounds++;
       fullMessages.push(message);
 
-      // Execute all tool calls
       for (const toolCall of message.tool_calls) {
         const fnName = toolCall.function.name;
         let fnArgs: Record<string, unknown> = {};
-        try {
-          fnArgs = JSON.parse(toolCall.function.arguments || '{}');
-        } catch (e) {
-          fnArgs = {};
-        }
+        try { fnArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { fnArgs = {}; }
         const result = await executeTool(fnName, fnArgs, supabase, openaiKey);
-
-        fullMessages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: result,
-        } as any);
+        fullMessages.push({ role: 'tool', tool_call_id: toolCall.id, content: result } as any);
       }
 
-      // Call OpenAI again with tool results
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
@@ -677,24 +582,17 @@ export default async function handler(req: any, res: any) {
       });
 
       data = await response.json();
-      if (data.error) {
-        console.error('OpenAI API error (round ' + rounds + '):', data.error);
-        break;
-      }
+      if (data.error) { console.error('OpenAI error round ' + rounds + ':', data.error); break; }
       message = data.choices?.[0]?.message;
     }
 
     const reply = message?.content || 'I encountered an issue processing your request. Please try again.';
 
-    // Log the chat interaction (non-blocking)
     supabase.from('activity_log').insert({
       action: 'chat_message',
       entity_type: 'ai_chat',
       description: `AI Chat: ${messages[messages.length - 1]?.content?.substring(0, 200)}`,
-      metadata: JSON.stringify({
-        toolsUsed: rounds > 0,
-        rounds,
-      }),
+      metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds }),
     }).then(() => {}).catch(() => {});
 
     return res.status(200).json({ reply, toolsUsed: rounds > 0 });
