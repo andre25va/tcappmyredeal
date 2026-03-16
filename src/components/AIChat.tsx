@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, Trash2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -7,6 +7,16 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   toolsUsed?: boolean;
+  navigateTo?: NavigateTo | null;
+}
+
+type NavigateTo =
+  | { type: 'deal'; dealId: string; address: string; city?: string; state?: string }
+  | { type: 'view'; view: string; label: string };
+
+interface AIChatProps {
+  onNavigateToDeal?: (dealId: string) => void;
+  onSetView?: (view: string) => void;
 }
 
 const QUICK_ACTIONS = [
@@ -16,7 +26,7 @@ const QUICK_ACTIONS = [
   { label: '📅 Closing Soon', prompt: 'What deals are closing soon?' },
 ];
 
-export const AIChat: React.FC = () => {
+export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -37,6 +47,16 @@ export const AIChat: React.FC = () => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  const handleNavigate = (nav: NavigateTo) => {
+    if (nav.type === 'deal' && onNavigateToDeal) {
+      onNavigateToDeal(nav.dealId);
+      setIsOpen(false);
+    } else if (nav.type === 'view' && onSetView) {
+      onSetView(nav.view);
+      setIsOpen(false);
+    }
+  };
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
@@ -77,6 +97,7 @@ export const AIChat: React.FC = () => {
         content: data.reply || 'Sorry, I could not process that request.',
         timestamp: new Date(),
         toolsUsed: data.toolsUsed,
+        navigateTo: data.navigateTo || null,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -136,6 +157,36 @@ export const AIChat: React.FC = () => {
     });
   };
 
+  const renderNavigateButton = (nav: NavigateTo) => {
+    if (nav.type === 'deal') {
+      return (
+        <button
+          onClick={() => handleNavigate(nav)}
+          className="mt-3 flex items-center gap-2 w-full px-3 py-2.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl text-primary text-xs font-semibold transition-all group"
+        >
+          <MapPin size={13} className="flex-none" />
+          <span className="flex-1 text-left truncate">
+            {nav.address}{nav.city ? `, ${nav.city}` : ''}{nav.state ? ` ${nav.state}` : ''}
+          </span>
+          <ArrowRight size={13} className="flex-none group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      );
+    }
+    if (nav.type === 'view') {
+      return (
+        <button
+          onClick={() => handleNavigate(nav)}
+          className="mt-3 flex items-center gap-2 w-full px-3 py-2.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl text-primary text-xs font-semibold transition-all group"
+        >
+          <LayoutDashboard size={13} className="flex-none" />
+          <span className="flex-1 text-left">Open {nav.label}</span>
+          <ArrowRight size={13} className="flex-none group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      );
+    }
+    return null;
+  };
+
   return (
     <>
       {/* Floating button */}
@@ -189,7 +240,7 @@ export const AIChat: React.FC = () => {
                 <div>
                   <h3 className="font-bold text-base-content text-lg">Hi! I'm TC Command AI 🧠</h3>
                   <p className="text-sm text-base-content/60 mt-1 max-w-[280px]">
-                    I can help you manage deals, create tasks, look up contacts, draft emails, and more.
+                    I can help you manage deals, create tasks, look up contacts, draft emails, and more. Ask me to "show me" any deal and I'll take you right there!
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 w-full max-w-[300px]">
@@ -235,7 +286,11 @@ export const AIChat: React.FC = () => {
                   ) : (
                     <div>{msg.content}</div>
                   )}
-                  {msg.toolsUsed && (
+
+                  {/* Navigation button */}
+                  {msg.role === 'assistant' && msg.navigateTo && renderNavigateButton(msg.navigateTo)}
+
+                  {msg.toolsUsed && !msg.navigateTo && (
                     <div className="flex items-center gap-1 mt-2 pt-1.5 border-t border-base-300/30">
                       <Sparkles size={10} className="text-accent" />
                       <span className="text-[10px] opacity-60">Queried live data</span>
@@ -270,7 +325,7 @@ export const AIChat: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about your deals, create tasks..."
+                placeholder="Ask about deals, or say 'show me Oak Trafficway'..."
                 className="textarea textarea-bordered flex-1 min-h-[40px] max-h-[100px] text-sm resize-none rounded-xl leading-snug"
                 rows={1}
                 disabled={isLoading}

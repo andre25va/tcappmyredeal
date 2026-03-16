@@ -16,6 +16,7 @@ CAPABILITIES:
 - Check compliance status and missing documents
 - Provide TC best practices and advice
 - Draft follow-up emails
+- Navigate the user directly to a specific deal in the app
 
 PERSONALITY:
 - Professional but friendly
@@ -23,6 +24,11 @@ PERSONALITY:
 - Always reference specific deal addresses and dates
 - Proactively flag risks or concerns
 - Use emoji sparingly for visual clarity
+
+NAVIGATION RULES:
+- When a user says "show me", "take me to", "open", "go to", "navigate to", or "pull up" a deal → ALWAYS call navigate_to_deal
+- After navigating, briefly describe what they'll see in the deal workspace
+- You can also navigate to app views (contacts, dashboard, compliance) using navigate_to_view
 
 IMPORTANT RULES:
 - When creating tasks, always confirm what you created
@@ -61,6 +67,38 @@ const TOOLS = [
           search: { type: 'string', description: 'Address or partial address to search for' },
         },
         required: ['search'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'navigate_to_deal',
+      description: 'Navigate the user directly to a specific deal workspace in the app. Use this when the user says "show me", "take me to", "open", "go to", "pull up", or "navigate to" a specific deal. This opens the full deal workspace with all details, tasks, documents, and contacts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          deal_search: { type: 'string', description: 'Address or partial address of the deal to open' },
+        },
+        required: ['deal_search'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'navigate_to_view',
+      description: 'Navigate the user to a specific section of the app (e.g., contacts directory, dashboard, compliance manager)',
+      parameters: {
+        type: 'object',
+        properties: {
+          view: {
+            type: 'string',
+            enum: ['dashboard', 'transactions', 'contacts', 'compliance', 'mls', 'settings'],
+            description: 'The app section to navigate to',
+          },
+        },
+        required: ['view'],
       },
     },
   },
@@ -247,6 +285,50 @@ async function executeTool(
         });
       }
 
+      case 'navigate_to_deal': {
+        const search = (args.deal_search as string).toLowerCase();
+        const { data, error } = await supabase
+          .from('deals')
+          .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data');
+        if (error) return JSON.stringify({ error: error.message });
+        if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add a deal first.' });
+
+        const match = data.find((r: any) => {
+          return (r.property_address || '').toLowerCase().includes(search) ||
+                 (r.deal_data?.address || '').toLowerCase().includes(search) ||
+                 (r.city || '').toLowerCase().includes(search);
+        });
+        if (!match) return JSON.stringify({ error: `No deal found matching "${args.deal_search}". Check the address and try again.` });
+
+        const d = match.deal_data || {};
+        return JSON.stringify({
+          navigate: true,
+          dealId: match.id,
+          address: match.property_address || d.address,
+          city: match.city || d.city,
+          state: match.state || d.state,
+          stage: match.pipeline_stage || d.milestone,
+          closingDate: match.closing_date || d.closingDate,
+        });
+      }
+
+      case 'navigate_to_view': {
+        const view = args.view as string;
+        const viewLabels: Record<string, string> = {
+          dashboard: 'Dashboard',
+          transactions: 'Transactions / Deals',
+          contacts: 'Contacts Directory',
+          compliance: 'Compliance Manager',
+          mls: 'MLS Directory',
+          settings: 'Settings',
+        };
+        return JSON.stringify({
+          navigate: true,
+          view,
+          label: viewLabels[view] || view,
+        });
+      }
+
       case 'get_closing_soon': {
         const days = (args.days as number) || 14;
         const today = new Date().toISOString().slice(0, 10);
@@ -421,7 +503,6 @@ async function executeTool(
             message: 'No deals in your portfolio yet. Add your first deal to get started!'
           });
         }
-        const today = new Date().toISOString().slice(0, 10);
         const active = data.filter((d: any) => d.status !== 'closed');
         const totalValue = active.reduce((sum: number, d: any) => sum + (Number(d.purchase_price) || 0), 0);
         const byStage: Record<string, number> = {};
@@ -535,6 +616,10 @@ export default async function handler(req: any, res: any) {
       ...messages,
     ];
 
+    // Track any navigation actions the AI triggers
+    let navigateTo: { type: 'deal'; dealId: string; address: string; city?: string; state?: string } |
+                    { type: 'view'; view: string; label: string } | null = null;
+
     let response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
@@ -565,6 +650,21 @@ export default async function handler(req: any, res: any) {
         let fnArgs: Record<string, unknown> = {};
         try { fnArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { fnArgs = {}; }
         const result = await executeTool(fnName, fnArgs, supabase, openaiKey);
+
+        // Capture navigation actions
+        if (fnName === 'navigate_to_deal' || fnName === 'navigate_to_view') {
+          try {
+            const parsed = JSON.parse(result);
+            if (parsed.navigate) {
+              if (fnName === 'navigate_to_deal' && parsed.dealId) {
+                navigateTo = { type: 'deal', dealId: parsed.dealId, address: parsed.address, city: parsed.city, state: parsed.state };
+              } else if (fnName === 'navigate_to_view' && parsed.view) {
+                navigateTo = { type: 'view', view: parsed.view, label: parsed.label };
+              }
+            }
+          } catch (e) {}
+        }
+
         fullMessages.push({ role: 'tool', tool_call_id: toolCall.id, content: result } as any);
       }
 
@@ -592,10 +692,10 @@ export default async function handler(req: any, res: any) {
       action: 'chat_message',
       entity_type: 'ai_chat',
       description: `AI Chat: ${messages[messages.length - 1]?.content?.substring(0, 200)}`,
-      metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds }),
+      metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds, navigated: !!navigateTo }),
     }).then(() => {}).catch(() => {});
 
-    return res.status(200).json({ reply, toolsUsed: rounds > 0 });
+    return res.status(200).json({ reply, toolsUsed: rounds > 0, navigateTo });
   } catch (err: any) {
     console.error('Chat API error:', err);
     return res.status(500).json({ error: 'Failed to process chat request. Please try again.' });

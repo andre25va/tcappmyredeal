@@ -385,7 +385,10 @@ export default function App() {
       )}
 
       {/* AI Chat — floating widget available on all views */}
-      <AIChat />
+      <AIChat
+        onNavigateToDeal={(id) => { handleSelectDeal(id); }}
+        onSetView={(v) => setView(v as any)}
+      />
     </div>
   );
 }
