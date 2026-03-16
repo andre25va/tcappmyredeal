@@ -23,6 +23,7 @@ import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
 import { Inbox } from './components/Inbox';
+import { CommTasksView } from './components/CommTasksView';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -48,6 +49,8 @@ export default function App() {
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
   const [inboxUnread, setInboxUnread]       = useState(0);
+  const [tasksPending, setTasksPending]     = useState(0);
+  const [inboxNav, setInboxNav]             = useState<{ channel?: string; phone?: string; email?: string } | null>(null);
 
   const [directory, setDirectory]               = useState<DirectoryContact[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -178,6 +181,27 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  // ── Poll comm tasks pending count ────────────────────────────────────────────
+  useEffect(() => {
+    const fetchTaskCount = async () => {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const url = import.meta.env.VITE_SUPABASE_URL;
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!url || !key) return;
+        const sb = createClient(url, key);
+        const { count } = await sb
+          .from('comm_tasks')
+          .select('id', { count: 'exact', head: true })
+          .neq('status', 'done');
+        setTasksPending(count || 0);
+      } catch { /* silent */ }
+    };
+    fetchTaskCount();
+    const t = setInterval(fetchTaskCount, 60000);
+    return () => clearInterval(t);
+  }, []);
+
   // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistDeals = (updated: Deal[]) => {
     setDeals(updated);
@@ -273,6 +297,7 @@ export default function App() {
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
         inboxUnread={inboxUnread}
+        tasksPending={tasksPending}
       />
 
       {/* Main content */}
@@ -293,7 +318,7 @@ export default function App() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3">
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Tasks' : 'Settings'}
           </span>
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
@@ -390,6 +415,18 @@ export default function App() {
           {view === 'inbox' && (
             <div className="flex-1 overflow-hidden">
               <Inbox onSelectDeal={handleSelectDeal} />
+            </div>
+          )}
+
+          {view === 'tasks' && (
+            <div className="flex-1 overflow-hidden">
+              <CommTasksView
+                onOpenInbox={(channel, phone, email) => {
+                  setInboxNav({ channel, phone, email });
+                  setView('inbox');
+                }}
+                onSelectDeal={handleSelectDeal}
+              />
             </div>
           )}
 

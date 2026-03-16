@@ -3,9 +3,10 @@ import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   ClipboardList, Settings, FileText, UserPlus, MessageSquare,
+  CheckSquare,
 } from 'lucide-react';
 
-export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox';
+export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks';
 
 interface SidebarProps {
   onAddDeal: () => void;
@@ -21,11 +22,13 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   inboxUnread: number;
+  tasksPending?: number;
 }
 
-const NAV_ITEMS = (dealCount: number, inboxUnread: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
+const NAV_ITEMS = (dealCount: number, inboxUnread: number, tasksPending: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
   { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined },
+  { id: 'tasks',        label: 'Tasks',        icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
   { id: 'mls',          label: 'MLS',          icon: <Globe size={18} /> },
@@ -35,9 +38,9 @@ const NAV_ITEMS = (dealCount: number, inboxUnread: number): { id: View; label: s
 
 function SidebarInner({
   onAddDeal, onAddAgentClient, onAddContact, dealCount, pendingAlerts, onAmberClick,
-  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay, inboxUnread,
+  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay, inboxUnread, tasksPending = 0,
 }: SidebarProps & { isMobileOverlay: boolean }) {
-  const navItems = NAV_ITEMS(dealCount, inboxUnread);
+  const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending);
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
 
