@@ -7,6 +7,26 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+// Map full state names to abbreviations (and vice versa)
+const STATE_SYNONYMS: Record<string, string[]> = {
+  'kansas': ['KS', 'kansas', 'ks'],
+  'ks': ['KS', 'kansas', 'ks'],
+  'missouri': ['MO', 'missouri', 'mo'],
+  'mo': ['MO', 'missouri', 'mo'],
+  'overland park': ['overland park', 'Overland Park'],
+  'leawood': ['leawood', 'Leawood'],
+  'topeka': ['topeka', 'Topeka'],
+  'kansas city': ['kansas city', 'Kansas City', 'KC'],
+  'kc': ['Kansas City', 'kansas city', 'KC'],
+};
+
+function expandTerms(term: string): string[] {
+  const lower = term.toLowerCase().trim();
+  const synonyms = STATE_SYNONYMS[lower];
+  if (synonyms) return [...new Set([lower, ...synonyms.map(s => s.toLowerCase())])]; 
+  return [lower];
+}
+
 interface SearchResult {
   id: string;
   type: 'deal' | 'contact' | 'task' | 'document';
@@ -54,32 +74,46 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
   };
 
   const runSearch = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); setOpen(false); return; }
+    if (!q.trim() || q.trim().length < 2) { setResults([]); setOpen(false); return; }
     setLoading(true);
     const term = q.trim().toLowerCase();
+    const terms = expandTerms(term); // includes synonyms like KS for kansas
     const collected: SearchResult[] = [];
 
     try {
-      // ── Deals ────────────────────────────────────────────────────
+      // ── Deals: fetch all (small dataset) and filter client-side ──
+      // This ensures JSONB fields + state abbreviations are all searchable
       const { data: deals } = await supabase
         .from('deals')
         .select('id, property_address, milestone, closing_date, deal_data')
-        .or(`property_address.ilike.%${term}%`)
-        .limit(5);
+        .limit(100);
 
       (deals ?? []).forEach((d: any) => {
         const extra = d.deal_data ?? {};
-        const addr = d.property_address || extra.propertyAddress || 'Unknown address';
-        // also search inside deal_data fields
-        const haystack = JSON.stringify(extra).toLowerCase();
-        if (addr.toLowerCase().includes(term) || haystack.includes(term)) {
+        const addr = (d.property_address || extra.propertyAddress || '').toLowerCase();
+        const haystack = [
+          addr,
+          (extra.buyerName || '').toLowerCase(),
+          (extra.sellerName || '').toLowerCase(),
+          (extra.milestone || d.milestone || '').toLowerCase(),
+          (extra.listingAgentName || '').toLowerCase(),
+          (extra.buyerAgentName || '').toLowerCase(),
+          (extra.lenderName || '').toLowerCase(),
+          JSON.stringify(extra).toLowerCase(),
+        ].join(' ');
+
+        const matches = terms.some(t => haystack.includes(t));
+        if (matches) {
+          const displayAddr = d.property_address || extra.propertyAddress || 'Unknown address';
           collected.push({
             id: d.id,
             type: 'deal',
-            title: addr,
+            title: displayAddr,
             subtitle: d.milestone ?? extra.milestone ?? 'Active',
             icon: iconFor('deal'),
-            meta: d.closing_date ? `Closes ${new Date(d.closing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : undefined,
+            meta: d.closing_date
+              ? `Closes ${new Date(d.closing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+              : undefined,
           });
         }
       });
@@ -88,7 +122,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
       const { data: contacts } = await supabase
         .from('directory')
         .select('id, name, role, company, email, phone')
-        .or(`name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%`)
+        .or(`name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%,role.ilike.%${term}%`)
         .limit(5);
 
       (contacts ?? []).forEach((c: any) => {
@@ -116,7 +150,9 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
           title: t.title ?? 'Task',
           subtitle: t.status ?? 'pending',
           icon: iconFor('task'),
-          meta: t.due_date ? `Due ${new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : undefined,
+          meta: t.due_date
+            ? `Due ${new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+            : undefined,
         });
       });
 
@@ -236,7 +272,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
 
           {!loading && results.length === 0 && query.length > 1 && (
             <div className="py-4 px-4 text-sm text-gray-400 text-center">
-              No results for "{query}"
+              No results for &ldquo;{query}&rdquo;
             </div>
           )}
 
