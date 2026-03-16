@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Building2, Plus, AlertTriangle, FileText, UserPlus, Users } from 'lucide-react';
+import { GlobalSearch } from './GlobalSearch';
 
 interface TopbarProps {
   onAddDeal: () => void;
@@ -7,6 +8,8 @@ interface TopbarProps {
   onAddContact: () => void;
   dealCount: number;
   pendingAlerts: number;
+  onSelectDeal: (id: string) => void;
+  onSetView: (view: string) => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -15,6 +18,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onAddContact,
   dealCount,
   pendingAlerts,
+  onSelectDeal,
+  onSetView,
 }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -32,7 +37,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <div className="navbar bg-base-200 border-b border-base-300 px-4 min-h-12 flex-none z-50">
       {/* Brand */}
-      <div className="flex-none flex items-center gap-2.5 mr-6">
+      <div className="flex-none flex items-center gap-2.5 mr-4">
         <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center flex-none">
           <Building2 size={15} className="text-primary-content" />
         </div>
@@ -42,11 +47,14 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       </div>
 
-      {/* Status badges */}
-      <div className="flex-1 flex items-center gap-2">
-        <span className="badge badge-primary badge-sm font-semibold">{dealCount} Active</span>
+      {/* Global Search */}
+      <div className="flex-1 flex items-center gap-3 mr-4">
+        <GlobalSearch onSelectDeal={onSelectDeal} onSetView={onSetView} />
+
+        {/* Status badges */}
+        <span className="badge badge-primary badge-sm font-semibold hidden lg:inline-flex">{dealCount} Active</span>
         {pendingAlerts > 0 && (
-          <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-500/15 border border-orange-400/40 rounded-full animate-pulse">
+          <div className="hidden lg:flex items-center gap-1 px-2 py-0.5 bg-orange-500/15 border border-orange-400/40 rounded-full animate-pulse">
             <AlertTriangle size={12} className="text-orange-500" />
             <span className="text-xs font-semibold text-orange-500">
               {pendingAlerts} Pending {pendingAlerts === 1 ? 'Alert' : 'Alerts'}

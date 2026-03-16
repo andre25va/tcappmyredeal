@@ -228,7 +228,6 @@ export default function App() {
       <Sidebar
         onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}
         onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
-
         onAddDeal={() => setShowAdd(true)}
         dealCount={deals.length}
         pendingAlerts={totalPending}
@@ -251,6 +250,8 @@ export default function App() {
             onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
             dealCount={deals.filter(d => d.milestone !== 'archived').length}
             pendingAlerts={totalPending}
+            onSelectDeal={handleSelectDeal}
+            onSetView={(v) => setView(v as any)}
           />
         </div>
         {/* Mobile top bar */}
