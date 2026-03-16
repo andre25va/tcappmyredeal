@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, MoreVertical } from 'lucide-react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
 import { Deal, DealStatus, DirectoryContact } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
@@ -50,8 +50,6 @@ const renderDealCard = (
   selectedId: string | null,
   onSelect: (id: string) => void,
   styles: typeof sideStylesConst,
-  menuOpenId: string | null,
-  setMenuOpenId: (id: string | null) => void,
 ) => {
   const isArchived = deal.milestone === 'archived';
   const side      = deal.transactionSide ?? 'buyer';
@@ -69,31 +67,7 @@ const renderDealCard = (
       } hover:opacity-90 ${isArchived ? 'opacity-60' : ''}`}
       onClick={() => onSelect(deal.id)}
     >
-      {/* 3-dot menu button */}
-      <div
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        onClick={e => e.stopPropagation()}
-      >
-        <button
-          className="btn btn-ghost btn-xs btn-square"
-          onClick={() => setMenuOpenId(menuOpenId === deal.id ? null : deal.id)}
-        >
-          <MoreVertical size={13} />
-        </button>
-        {menuOpenId === deal.id && (
-          <div
-            className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[140px] py-1"
-            onMouseLeave={() => setMenuOpenId(null)}
-          >
-            <button
-              className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => { setMenuOpenId(null); onSelect(deal.id); }}
-            >
-              View Deal
-            </button>
-          </div>
-        )}
-      </div>
+
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
@@ -190,7 +164,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
   const [showArchived, setShowArchived] = useState(false);
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   // Reset local filters when amber filter activates
   useEffect(() => {
@@ -338,13 +311,13 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
                 Closing This Week ({closingThisWeek.length})
               </span>
             </div>
-            {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, menuOpenId, setMenuOpenId))}
+            {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
             {otherDeals.length > 0 && (
               <div className="border-t border-gray-200 my-1" />
             )}
           </>
         )}
-        {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, menuOpenId, setMenuOpenId))}
+        {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
       </div>
 
       {/* Footer */}
