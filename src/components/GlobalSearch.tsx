@@ -1,11 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, X, Home, Users, CheckSquare, FileText } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase';
 
 // Map full state names / cities to abbreviations (and vice versa)
 const STATE_SYNONYMS: Record<string, string[]> = {
@@ -86,7 +81,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
     const collected: SearchResult[] = [];
 
     try {
-      // ── Deals: fetch all columns needed, filter client-side ──────
+      // ── Deals: fetch all, filter client-side across all fields ──────
       const { data: deals, error: dealErr } = await supabase
         .from('deals')
         .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
@@ -131,12 +126,14 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
         }
       });
 
-      // ── Contacts ─────────────────────────────────────────────────
-      const { data: contacts } = await supabase
+      // ── Contacts (directory table) ────────────────────────────────────
+      const { data: contacts, error: contactErr } = await supabase
         .from('directory')
         .select('id, name, role, company, email, phone')
         .or(`name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%,role.ilike.%${term}%`)
         .limit(5);
+
+      if (contactErr) console.error('Contact search error:', contactErr);
 
       (contacts ?? []).forEach((c: any) => {
         collected.push({
@@ -150,11 +147,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
       });
 
       // ── Tasks ────────────────────────────────────────────────────
-      const { data: tasks } = await supabase
+      const { data: tasks, error: taskErr } = await supabase
         .from('tasks')
         .select('id, title, status, due_date, deal_id')
         .ilike('title', `%${term}%`)
         .limit(5);
+
+      if (taskErr) console.error('Task search error:', taskErr);
 
       (tasks ?? []).forEach((t: any) => {
         collected.push({
@@ -170,11 +169,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
       });
 
       // ── Documents ────────────────────────────────────────────────
-      const { data: docs } = await supabase
+      const { data: docs, error: docErr } = await supabase
         .from('documents')
         .select('id, name, type, deal_id')
         .ilike('name', `%${term}%`)
         .limit(3);
+
+      if (docErr) console.error('Document search error:', docErr);
 
       (docs ?? []).forEach((doc: any) => {
         collected.push({
