@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
+import nodemailer from 'nodemailer';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -18,34 +19,48 @@ function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  const maskedLocal = local.slice(0, 3) + '***';
+  const domainParts = domain.split('.');
+  const maskedDomain = domainParts[0].slice(0, 3) + '***.' + domainParts.slice(1).join('.');
+  return `${maskedLocal}@${maskedDomain}`;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { phone } = req.body || {};
+  const { phone, delivery = 'sms' } = req.body || {};
   if (!phone) return res.status(400).json({ error: 'Phone number required' });
 
   const normalized = normalizePhone(phone);
 
   try {
-    // Check if whitelist has any entries
+    // Check whitelist
     const { count: whitelistCount } = await supabase
       .from('allowed_phones')
       .select('*', { count: 'exact', head: true });
 
-    // Bootstrap: if whitelist is empty, first person in becomes admin
+    let allowedEntry: any = null;
     if ((whitelistCount ?? 0) > 0) {
       const { data: allowed } = await supabase
         .from('allowed_phones')
-        .select('id')
+        .select('id, email, is_demo')
         .eq('phone', normalized)
         .single();
 
       if (!allowed) {
         return res.status(403).json({ error: 'This phone number is not authorized. Contact your admin.' });
       }
+      allowedEntry = allowed;
     }
 
-    // Invalidate old codes for this phone
+    // Block demo accounts from OTP flow
+    if (allowedEntry?.is_demo) {
+      return res.status(400).json({ error: 'Use the Demo Access button to log in.' });
+    }
+
+    // Invalidate old codes
     await supabase
       .from('otp_codes')
       .update({ used: true })
@@ -61,14 +76,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       expires_at: expiresAt,
     });
 
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    await client.messages.create({
-      body: `Your TC Command login code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: normalized,
-    });
+    if (delivery === 'email') {
+      if (!allowedEntry?.email) {
+        return res.status(400).json({ error: 'No email address on file for this number.' });
+      }
 
-    return res.status(200).json({ success: true, message: 'Code sent!' });
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: 'tc@myredeal.com',
+          pass: process.env.GMAIL_APP_PASSWORD,
+        },
+      });
+
+      await transporter.sendMail({
+        from: 'TC Command <tc@myredeal.com>',
+        to: allowedEntry.email,
+        subject: 'Your TC Command Login Code',
+        html: `
+          <div style="font-family: sans-serif; max-width: 420px; margin: 0 auto; padding: 32px 24px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+              <div style="width: 40px; height: 40px; background: #1a56db; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-weight: 700; font-size: 18px;">TC</span>
+              </div>
+              <span style="font-size: 18px; font-weight: 700; color: #111827;">TC Command</span>
+            </div>
+            <p style="color: #374151; font-size: 15px; margin-bottom: 8px;">Your login verification code:</p>
+            <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0 24px;">
+              <span style="font-size: 40px; font-weight: 700; letter-spacing: 10px; color: #111827; font-family: monospace;">${code}</span>
+            </div>
+            <p style="color: #6b7280; font-size: 13px;">This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+            <p style="color: #9ca3af; font-size: 12px;">MyReDeal · TC Command</p>
+          </div>
+        `,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Code sent to email!',
+        emailHint: maskEmail(allowedEntry.email),
+      });
+    } else {
+      // SMS via Twilio
+      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await client.messages.create({
+        body: `Your TC Command login code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: normalized,
+      });
+
+      return res.status(200).json({ success: true, message: 'Code sent!' });
+    }
   } catch (err: any) {
     console.error('request-otp error:', err);
     return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2 } from 'lucide-react';
+import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type Step = 'phone' | 'otp' | 'success';
@@ -18,8 +18,12 @@ export function LoginPage() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [emailHint, setEmailHint] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   const codeRefs = [
     useRef<HTMLInputElement>(null),
@@ -30,7 +34,6 @@ export function LoginPage() {
     useRef<HTMLInputElement>(null),
   ];
 
-  // Countdown timer for resend
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
@@ -62,11 +65,52 @@ export function LoginPage() {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+    setError('');
+    try {
+      const resp = await fetch('/api/auth/demo-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setError(data.error || 'Demo login failed.'); return; }
+      setStep('success');
+      setTimeout(() => {
+        login(data.token, data.profile, false);
+      }, 800);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (emailLoading) return;
+    setEmailLoading(true);
+    setError('');
+    try {
+      const resp = await fetch('/api/auth/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.replace(/\D/g, ''), delivery: 'email' }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setError(data.error || 'Failed to send to email.'); return; }
+      setEmailHint(data.emailHint || '');
+      setEmailSent(true);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
   const handleCodeChange = (index: number, val: string) => {
     if (!/^\d*$/.test(val)) return;
     const newCode = [...code];
     if (val.length > 1) {
-      // Handle paste
       const digits = val.replace(/\D/g, '').slice(0, 6);
       const arr = digits.split('').concat(Array(6).fill('')).slice(0, 6);
       setCode(arr);
@@ -114,6 +158,8 @@ export function LoginPage() {
     if (countdown > 0) return;
     setError('');
     setCode(['', '', '', '', '', '']);
+    setEmailSent(false);
+    setEmailHint('');
     setLoading(true);
     try {
       const resp = await fetch('/api/auth/request-otp', {
@@ -201,6 +247,26 @@ export function LoginPage() {
                   </button>
                 </form>
 
+                {/* Divider */}
+                <div className="divider text-xs text-base-content/30 my-0">or</div>
+
+                {/* Demo Access button */}
+                <button
+                  onClick={handleDemoLogin}
+                  disabled={demoLoading}
+                  className="btn btn-outline w-full gap-2 border-base-300 text-base-content/70 hover:bg-base-200 hover:border-base-300 hover:text-base-content"
+                >
+                  {demoLoading ? (
+                    <span className="loading loading-spinner loading-sm" />
+                  ) : (
+                    <Eye size={16} />
+                  )}
+                  Demo / View Only Access
+                </button>
+                <p className="text-center text-xs text-base-content/40 -mt-3">
+                  Client-facing preview · read only
+                </p>
+
                 <p className="text-center text-xs text-base-content/40">
                   Only authorized TC staff can log in
                 </p>
@@ -215,7 +281,9 @@ export function LoginPage() {
                   <div>
                     <h2 className="font-semibold text-base-content">Enter your code</h2>
                     <p className="text-xs text-base-content/50">
-                      Sent to ({phone.slice(0, 3)}) {phone.slice(3, 6)}-{phone.slice(6, 10)}
+                      {emailSent
+                        ? `Sent to ${emailHint}`
+                        : `Sent via SMS to (${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6, 10)}`}
                     </p>
                   </div>
                 </div>
@@ -256,7 +324,7 @@ export function LoginPage() {
                   <div className="flex items-center justify-between text-xs text-base-content/50">
                     <button
                       type="button"
-                      onClick={() => { setStep('phone'); setCode(['','','','','','']); setError(''); }}
+                      onClick={() => { setStep('phone'); setCode(['','','','','','']); setError(''); setEmailSent(false); setEmailHint(''); }}
                       className="link link-hover"
                     >
                       ← Change number
@@ -268,9 +336,31 @@ export function LoginPage() {
                       className="flex items-center gap-1 link link-hover disabled:no-underline disabled:cursor-not-allowed"
                     >
                       <RefreshCw size={11} />
-                      {countdown > 0 ? `Resend in ${countdown}s` : 'Resend code'}
+                      {countdown > 0 ? `Resend in ${countdown}s` : 'Resend via SMS'}
                     </button>
                   </div>
+
+                  {/* Email delivery option */}
+                  {!emailSent ? (
+                    <button
+                      type="button"
+                      onClick={handleSendEmail}
+                      disabled={emailLoading}
+                      className="btn btn-ghost btn-sm gap-2 text-base-content/60 border border-base-200 hover:bg-base-200"
+                    >
+                      {emailLoading ? (
+                        <span className="loading loading-spinner loading-xs" />
+                      ) : (
+                        <Mail size={14} />
+                      )}
+                      Send to my email instead
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-success bg-success/10 rounded-lg px-3 py-2 border border-success/20">
+                      <Mail size={13} />
+                      <span>Code also sent to <strong>{emailHint}</strong></span>
+                    </div>
+                  )}
                 </form>
               </>
             )}
