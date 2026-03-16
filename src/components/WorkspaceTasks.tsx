@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckSquare, Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, User, Calendar, MoreVertical } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, DealMilestone, AppUser } from '../types';
 import { generateId } from '../utils/helpers';
@@ -51,6 +51,12 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
   const [completedDate, setCompletedDate] = useState(today());
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [taskMenuId, setTaskMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = () => setTaskMenuId(null);
+    if (taskMenuId) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [taskMenuId]);
 
   const updateTasks = (updated: DealTask[]) => {
     onUpdate({
@@ -173,8 +179,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
               {menuOpen && (
                 <div
                   className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[160px] py-1"
-                  onMouseLeave={() => setTaskMenuId(null)}
-                >
+                                  >
                   {!task.completedAt && (
                     <button
                       className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"

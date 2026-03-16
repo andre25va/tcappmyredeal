@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ClipboardCheck, Plus, Trash2, GripVertical, Star, User,
   ChevronRight, CheckCircle2, AlertCircle, Info, Pencil, Check, X,
@@ -634,6 +634,12 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDeleteMenuId, setConfirmDeleteMenuId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handler = () => setOpenMenuId(null);
+    if (openMenuId) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openMenuId]);
+
   // Migrate legacy templates (agentClientId → agentClientIds)
   const migratedTemplates = React.useMemo(() => {
     return templates.map(t => {
@@ -818,8 +824,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
                     {openMenuId === tpl.id && (
                       <div
                         className="absolute right-0 top-7 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[130px]"
-                        onMouseLeave={() => setOpenMenuId(null)}
-                      >
+                                              >
                         <button
                           onClick={e => { e.stopPropagation(); setSelectedId(tpl.id); setOpenMenuId(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-xs text-black hover:bg-gray-50"

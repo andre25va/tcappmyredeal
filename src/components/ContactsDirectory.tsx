@@ -253,6 +253,12 @@ export const ContactsDirectory: React.FC<Props> = ({ directory, onUpdate, mlsEnt
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handler = () => setRowMenuId(null);
+    if (rowMenuId) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [rowMenuId]);
+
   // Handle external trigger from topbar quick-add
   useEffect(() => {
     if (triggerAdd === 'agent-client') {
