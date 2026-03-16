@@ -1,10 +1,59 @@
-{
-  "type": "file",
-  "name": "conversations.ts",
-  "path": "api/sms/conversations.ts",
-  "size": 2070,
-  "sha": "90f2b2fcc6e87c33c7b6b80362436e97c3f1b59c",
-  "content": "import type { VercelRequest, VercelResponse } from '@vercel/node';\nimport { createClient } from '@supabase/supabase-js';\n\nconst supabase = createClient(\n  process.env.SUPABASE_URL!,\n  process.env.SUPABASE_ANON_KEY!\n);\n\nexport default async function handler(req: VercelRequest, res: VercelResponse) {\n  const { method, query } = req;\n\n  try {\n    if (method === 'GET') {\n      const { conversation_id, deal_id } = query as Record<string, string>;\n\n      if (conversation_id) {\n        // Get messages for a specific conversation\n        const { data: messages, error } = await supabase\n          .from('messages')\n          .select('*, contacts(first_name, last_name, phone, role)')\n          .eq('conversation_id', conversation_id)\n          .order('sent_at', { ascending: true });\n        if (error) throw error;\n\n        // Mark as read\n        await supabase\n          .from('conversations')\n          .update({ unread_count: 0 })\n          .eq('id', conversation_id);\n\n        return res.json({ messages });\n      }\n\n      // List all conversations (with optional deal filter)\n      let q = supabase\n        .from('conversations')\n        .select('*, deals(property_address, city, state, pipeline_stage)')\n        .order('last_message_at', { ascending: false });\n\n      if (deal_id) q = q.eq('deal_id', deal_id);\n\n      const { data: conversations, error } = await q;\n      if (error) throw error;\n\n      return res.json({ conversations });\n    }\n\n    if (method === 'DELETE') {\n      const { conversation_id } = req.body as { conversation_id: string };\n      if (!conversation_id) return res.status(400).json({ error: 'conversation_id required' });\n\n      await supabase.from('messages').delete().eq('conversation_id', conversation_id);\n      await supabase.from('conversations').delete().eq('id', conversation_id);\n      return res.json({ success: true });\n    }\n\n    return res.status(405).json({ error: 'Method not allowed' });\n  } catch (err: any) {\n    console.error('Conversations error:', err);\n    return res.status(500).json({ error: err.message });\n  }\n}\n",
-  "encoding": "base64",
-  "downloadUrl": "https://raw.githubusercontent.com/andre25va/tcappmyredeal/feature/phase5-inbox/api/sms/conversations.ts"
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const { method, query } = req;
+
+  try {
+    if (method === 'GET') {
+      const { conversation_id, deal_id } = query as Record<string, string>;
+
+      if (conversation_id) {
+        const { data: messages, error } = await supabase
+          .from('messages')
+          .select('*, contacts(first_name, last_name, phone, role)')
+          .eq('conversation_id', conversation_id)
+          .order('sent_at', { ascending: true });
+        if (error) throw error;
+
+        await supabase
+          .from('conversations')
+          .update({ unread_count: 0 })
+          .eq('id', conversation_id);
+
+        return res.json({ messages });
+      }
+
+      let q = supabase
+        .from('conversations')
+        .select('*, deals(property_address, city, state, pipeline_stage)')
+        .order('last_message_at', { ascending: false });
+
+      if (deal_id) q = q.eq('deal_id', deal_id);
+
+      const { data: conversations, error } = await q;
+      if (error) throw error;
+
+      return res.json({ conversations });
+    }
+
+    if (method === 'DELETE') {
+      const { conversation_id } = req.body as { conversation_id: string };
+      if (!conversation_id) return res.status(400).json({ error: 'conversation_id required' });
+
+      await supabase.from('messages').delete().eq('conversation_id', conversation_id);
+      await supabase.from('conversations').delete().eq('id', conversation_id);
+      return res.json({ success: true });
+    }
+
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (err: any) {
+    console.error('Conversations error:', err);
+    return res.status(500).json({ error: err.message });
+  }
 }

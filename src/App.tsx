@@ -1,10 +1,435 @@
-{
-  "type": "file",
-  "name": "App.tsx",
-  "path": "src/App.tsx",
-  "size": 18509,
-  "sha": "32fad709222325656af4c562c1f2ed557bf664d4",
-  "content": "import React, { useState, useEffect, useRef, useMemo } from 'react';\n\nimport { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';\nimport {\n  loadDeals, saveDeals, saveSingleDeal,\n  loadDirectory, saveDirectory,\n  loadMls, saveMls,\n  loadCompliance, saveCompliance,\n  loadUsers, saveUsers,\n  loadEmailTemplates, saveEmailTemplates,\n  loadMasterItems, saveMasterItems,\n} from './utils/supabaseDb';\nimport { generateId } from './utils/helpers';\nimport { Sidebar, MobileMenuButton, View } from './components/Sidebar';\nimport { DealList } from './components/DealList';\nimport { DealWorkspace } from './components/DealWorkspace';\nimport { AddDealModal } from './components/AddDealModal';\nimport { HomeDashboard } from './components/HomeDashboard';\nimport { ContactsDirectory } from './components/ContactsDirectory';\nimport { MLSDirectory } from './components/MLSDirectory';\nimport { ComplianceManager } from './components/ComplianceManager';\nimport { SettingsView } from './components/SettingsView';\nimport { Topbar } from './components/Topbar';\nimport { AIChat } from './components/AIChat';\nimport { Inbox } from './components/Inbox';\n\n// One-time localStorage wipe so old cached data never overrides Supabase\nconst LS_CLEARED_KEY = 'tc-supabase-v2-cleared';\nif (!sessionStorage.getItem(LS_CLEARED_KEY)) {\n  localStorage.clear();\n  sessionStorage.setItem(LS_CLEARED_KEY, '1');\n}\n\nexport default function App() {\n\n  const [view, setView]                     = useState<View>('dashboard');\n  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);\n  const [mobileOpen, setMobileOpen]         = useState(false);\n\n  const [deals, setDeals]                   = useState<Deal[]>([]);\n  const [selectedId, setSelectedId]         = useState<string | null>(null);\n  const [txPanel, setTxPanel]               = useState<'list' | 'workspace'>('list');\n  const [txContainerWide, setTxContainerWide] = useState(false);\n  const txContainerRef                      = useRef<HTMLDivElement>(null);\n  const [showAdd, setShowAdd]               = useState(false);\n  const [loading, setLoading]               = useState(true);\n  const [loadError, setLoadError]           = useState<string | null>(null);\n  const [amberFilter, setAmberFilter]       = useState(false);\n  const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);\n  const [inboxUnread, setInboxUnread]       = useState(0);\n\n  const [directory, setDirectory]               = useState<DirectoryContact[]>([]);\n  const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);\n  const [complianceTemplates, setComplianceTemplates] = useState<ComplianceTemplate[]>([]);\n  const [users, setUsers]                       = useState<AppUser[]>([]);\n  const [emailTemplates, setEmailTemplates]     = useState<EmailTemplate[]>([]);\n  const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);\n  const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);\n\n  // ── Load deals ──────────────────────────────────────────────────────────────\n  useEffect(() => {\n    const init = async () => {\n      try {\n        const data = await loadDeals();\n        setDeals(data);\n        const isMobile = window.innerWidth < 768;\n        if (!isMobile && data.length > 0) setSelectedId(data[0].id);\n      } catch (err) {\n        console.error('Failed to load deals:', err);\n        setLoadError('Unable to connect to database. Please check your connection and refresh.');\n      } finally {\n        setLoading(false);\n      }\n    };\n    init();\n  }, []);\n\n  // Track actual width of transactions container for split-panel logic\n  useEffect(() => {\n    const el = txContainerRef.current;\n    if (!el) return;\n    const ro = new ResizeObserver(entries => {\n      const w = entries[0]?.contentRect.width ?? 0;\n      setTxContainerWide(w >= 640);\n    });\n    ro.observe(el);\n    return () => ro.disconnect();\n  }, [view]);\n\n  // ── Load directory ───────────────────────────────────────────────────────────\n  useEffect(() => {\n    loadDirectory()\n      .then(data => setDirectory(data))\n      .catch(err => { console.error('Failed to load directory:', err); setDirectory([]); });\n  }, []);\n\n  // ── Load MLS ─────────────────────────────────────────────────────────────────\n  useEffect(() => {\n    loadMls()\n      .then(data => setMlsEntries(data))\n      .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });\n  }, []);\n\n  // ── Load compliance templates ────────────────────────────────────────────────\n  useEffect(() => {\n    loadCompliance()\n      .then(data => setComplianceTemplates(data))\n      .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });\n  }, []);\n\n  const persistCompliance = (updated: ComplianceTemplate[]) => {\n    setComplianceTemplates(updated);\n    saveCompliance(updated).catch(console.error);\n  };\n\n  // ── Load users ───────────────────────────────────────────────────────────────\n  useEffect(() => {\n    loadUsers()\n      .then(data => setUsers(data))\n      .catch(err => { console.error('Failed to load users:', err); setUsers([]); });\n  }, []);\n\n  const persistUsers = (updated: AppUser[]) => {\n    setUsers(updated);\n    saveUsers(updated).catch(console.error);\n  };\n\n  // ── Load email templates ─────────────────────────────────────────────────────\n  useEffect(() => {\n    loadEmailTemplates()\n      .then(data => setEmailTemplates(data))\n      .catch(err => { console.error('Failed to load email templates:', err); setEmailTemplates([]); });\n  }, []);\n\n  const persistEmailTemplates = async (updated: EmailTemplate[]) => {\n    setEmailTemplates(updated);\n    saveEmailTemplates(updated).catch(console.error);\n  };\n\n  // ── Load compliance master items ─────────────────────────────────────────────\n  useEffect(() => {\n    loadMasterItems('compliance')\n      .then(data => setComplianceMasterItems(data as ComplianceMasterItem[]))\n      .catch(err => { console.error('Failed to load compliance master:', err); setComplianceMasterItems([]); });\n  }, []);\n\n  const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {\n    setComplianceMasterItems(updated);\n    saveMasterItems('compliance', updated).catch(console.error);\n  };\n\n  // ── Load DD master items ─────────────────────────────────────────────────────\n  useEffect(() => {\n    loadMasterItems('dd')\n      .then(data => setDdMasterItems(data as DDMasterItem[]))\n      .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });\n  }, []);\n\n  const persistDdMasterItems = (updated: DDMasterItem[]) => {\n    setDdMasterItems(updated);\n    saveMasterItems('dd', updated).catch(console.error);\n  };\n\n  // ── Poll inbox unread count ──────────────────────────────────────────────────\n  useEffect(() => {\n    const fetchUnread = async () => {\n      try {\n        const resp = await fetch('/api/sms/conversations');\n        if (resp.ok) {\n          const data = await resp.json();\n          const total = (data.conversations || []).reduce((a: number, c: any) => a + (c.unread_count || 0), 0);\n          setInboxUnread(total);\n        }\n      } catch { /* silent */ }\n    };\n    fetchUnread();\n    const t = setInterval(fetchUnread, 60000);\n    return () => clearInterval(t);\n  }, []);\n\n  // ── Persist helpers ──────────────────────────────────────────────────────────\n  const persistDeals = (updated: Deal[]) => {\n    setDeals(updated);\n    saveDeals(updated).catch(console.error);\n  };\n\n  const persistDirectory = (updated: DirectoryContact[]) => {\n    setDirectory(updated);\n    saveDirectory(updated).catch(console.error);\n  };\n\n  const persistMls = (updated: MlsEntry[]) => {\n    setMlsEntries(updated);\n    saveMls(updated).catch(console.error);\n  };\n\n  useEffect(() => {\n    if (deals.length === 0) {\n      if (selectedId !== null) setSelectedId(null);\n      return;\n    }\n    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);\n    if (!stillExists) {\n      setSelectedId(deals[0].id);\n    }\n  }, [deals, selectedId]);\n\n  const storageMode = useMemo(() => 'Supabase Cloud Database', []);\n\n  const handleUpdate = (deal: Deal) => {\n    setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));\n    saveSingleDeal(deal).catch(console.error);\n  };\n\n  const handleAdd = (deal: Deal) => {\n    const withId = { ...deal, id: generateId() };\n    const updated = [withId, ...deals];\n    setDeals(updated);\n    saveSingleDeal(withId).catch(console.error);\n    setSelectedId(withId.id);\n    setTxPanel('workspace');\n    setShowAdd(false);\n    setView('transactions');\n  };\n\n  const handleSelectDeal = (id: string) => {\n    setSelectedId(id);\n    setTxPanel('workspace');\n    setView('transactions');\n  };\n\n  const selected = deals.find(d => d.id === selectedId) ?? null;\n\n  const totalPending = deals.reduce((a, d) =>\n    a + d.documentRequests.filter(r => r.status === 'pending').length, 0);\n\n  if (loading) {\n    return (\n      <div data-theme=\"light\" className=\"flex flex-col items-center justify-center h-screen bg-base-100 gap-3\">\n        <span className=\"loading loading-spinner loading-lg text-primary\" />\n        <p className=\"text-sm text-base-content/50\">Loading from Supabase...</p>\n      </div>\n    );\n  }\n\n  if (loadError) {\n    return (\n      <div data-theme=\"light\" className=\"flex flex-col items-center justify-center h-screen bg-base-100 gap-4 p-8\">\n        <span className=\"text-5xl\">⚠️</span>\n        <h2 className=\"text-xl font-bold text-base-content\">Database Connection Error</h2>\n        <p className=\"text-sm text-base-content/60 text-center max-w-sm\">{loadError}</p>\n        <button className=\"btn btn-primary\" onClick={() => window.location.reload()}>\n          Retry\n        </button>\n      </div>\n    );\n  }\n\n  return (\n    <div data-theme=\"light\" className=\"h-screen flex bg-base-100 overflow-hidden\">\n      {/* Left sidebar */}\n      <Sidebar\n        onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}\n        onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}\n        onAddDeal={() => setShowAdd(true)}\n        dealCount={deals.length}\n        pendingAlerts={totalPending}\n        onAmberClick={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}\n        view={view}\n        onSetView={(v) => { if (v === 'transactions') { setSelectedId(null); setTxPanel('list'); } setView(v); }}\n        collapsed={sidebarCollapsed}\n        onToggleCollapse={() => setSidebarCollapsed(c => !c)}\n        mobileOpen={mobileOpen}\n        onCloseMobile={() => setMobileOpen(false)}\n        inboxUnread={inboxUnread}\n      />\n\n      {/* Main content */}\n      <div className=\"flex flex-col flex-1 min-w-0 overflow-hidden\">\n        {/* Desktop top bar */}\n        <div className=\"hidden md:block flex-none\">\n          <Topbar\n            onAddDeal={() => setShowAdd(true)}\n            onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}\n            onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}\n            dealCount={deals.filter(d => d.milestone !== 'archived').length}\n            pendingAlerts={totalPending}\n            onSelectDeal={handleSelectDeal}\n            onSetView={(v) => setView(v as any)}\n          />\n        </div>\n        {/* Mobile top bar */}\n        <div className=\"md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3\">\n          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />\n          <span className=\"font-bold text-sm text-base-content flex-1\">\n            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : 'Settings'}\n          </span>\n          <button onClick={() => setShowAdd(true)} className=\"btn btn-primary btn-xs gap-1\">\n            + New Deal\n          </button>\n        </div>\n\n        {/* View content */}\n        <div className=\"flex flex-1 min-h-0 overflow-hidden\">\n          {view === 'dashboard' && (\n            <div className=\"flex-1 overflow-auto\">\n              <HomeDashboard\n                deals={deals}\n                onSelectDeal={handleSelectDeal}\n                onGoToDeals={() => { setSelectedId(null); setTxPanel('list'); setView('transactions'); }}\n                onGoToAlerts={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}\n              />\n            </div>\n          )}\n\n          {view === 'transactions' && (\n            <div ref={txContainerRef} className=\"flex flex-1 min-w-0 min-h-0 overflow-hidden\">\n              {(txContainerWide || txPanel === 'list') && (\n                <div className={txContainerWide ? 'flex-none' : 'flex-1'}>\n                  <DealList\n                    deals={deals}\n                    selectedId={selectedId}\n                    onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}\n                    amberFilter={amberFilter}\n                    onClearAmberFilter={() => setAmberFilter(false)}\n                    directory={directory}\n                  />\n                </div>\n              )}\n\n              {(txContainerWide || txPanel === 'workspace') && (\n                <div className=\"flex-1 min-w-0 overflow-hidden flex flex-col\">\n                  {!txContainerWide && (\n                    <button\n                      className=\"flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-base-200 border-b border-base-300 hover:bg-base-300 text-base-content\"\n                      onClick={() => { setSelectedId(null); setTxPanel('list'); }}\n                    >\n                      ← Back to Deals\n                    </button>\n                  )}\n                  <div className=\"flex-1 min-h-0 overflow-hidden\">\n                    {selected\n                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} directory={directory} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />\n                      : (\n                        <div className=\"flex flex-col items-center justify-center h-full text-base-content/30 gap-3\">\n                          <span className=\"text-5xl\">📋</span>\n                          <p className=\"text-sm\">Select a deal from the list</p>\n                        </div>\n                      )\n                    }\n                  </div>\n                </div>\n              )}\n            </div>\n          )}\n\n          {view === 'contacts' && (\n            <div className=\"flex-1 overflow-auto\">\n              <ContactsDirectory\n                directory={directory}\n                onUpdate={persistDirectory}\n                mlsEntries={mlsEntries}\n                triggerAdd={quickAddRole}\n                onTriggerHandled={() => setQuickAddRole(null)}\n              />\n            </div>\n          )}\n\n          {view === 'mls' && (\n            <div className=\"flex-1 overflow-auto\">\n              <MLSDirectory\n                mls={mlsEntries}\n                onUpdate={persistMls}\n              />\n            </div>\n          )}\n\n          {view === 'compliance' && (\n            <div className=\"flex-1 overflow-hidden\">\n              <ComplianceManager\n                templates={complianceTemplates}\n                onSave={persistCompliance}\n                agentClients={directory.filter(c => c.role === 'agent-client')}\n                deals={deals.map(d => ({ agentClientId: d.agentClientId }))}\n                masterItems={complianceMasterItems}\n              />\n            </div>\n          )}\n\n          {view === 'inbox' && (\n            <div className=\"flex-1 overflow-hidden\">\n              <Inbox onSelectDeal={handleSelectDeal} />\n            </div>\n          )}\n\n          {view === 'settings' && (\n            <div className=\"flex-1 overflow-hidden\">\n              <SettingsView\n                users={users}\n                onSaveUsers={persistUsers}\n                deals={deals}\n                directory={directory}\n                mlsEntries={mlsEntries}\n                complianceTemplates={complianceTemplates}\n                storageMode={storageMode}\n                emailTemplates={emailTemplates}\n                onSaveEmailTemplates={persistEmailTemplates}\n                complianceMasterItems={complianceMasterItems}\n                onSaveComplianceMasterItems={persistComplianceMasterItems}\n                ddMasterItems={ddMasterItems}\n                onSaveDdMasterItems={persistDdMasterItems}\n              />\n            </div>\n          )}\n        </div>\n      </div>\n\n      {showAdd && (\n        <AddDealModal\n          onAdd={handleAdd}\n          onClose={() => setShowAdd(false)}\n          complianceTemplates={complianceTemplates}\n          agentClients={directory.filter(c => c.role === 'agent-client')}\n          ddMasterItems={ddMasterItems}\n        />\n      )}\n\n      {/* AI Chat — floating widget available on all views */}\n      <AIChat\n        onNavigateToDeal={(id) => { handleSelectDeal(id); }}\n        onSetView={(v) => setView(v as any)}\n      />\n    </div>\n  );\n}\n",
-  "encoding": "base64",
-  "downloadUrl": "https://raw.githubusercontent.com/andre25va/tcappmyredeal/feature/phase5-inbox/src/App.tsx"
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+
+import { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
+import {
+  loadDeals, saveDeals, saveSingleDeal,
+  loadDirectory, saveDirectory,
+  loadMls, saveMls,
+  loadCompliance, saveCompliance,
+  loadUsers, saveUsers,
+  loadEmailTemplates, saveEmailTemplates,
+  loadMasterItems, saveMasterItems,
+} from './utils/supabaseDb';
+import { generateId } from './utils/helpers';
+import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
+import { DealList } from './components/DealList';
+import { DealWorkspace } from './components/DealWorkspace';
+import { AddDealModal } from './components/AddDealModal';
+import { HomeDashboard } from './components/HomeDashboard';
+import { ContactsDirectory } from './components/ContactsDirectory';
+import { MLSDirectory } from './components/MLSDirectory';
+import { ComplianceManager } from './components/ComplianceManager';
+import { SettingsView } from './components/SettingsView';
+import { Topbar } from './components/Topbar';
+import { AIChat } from './components/AIChat';
+import { Inbox } from './components/Inbox';
+
+// One-time localStorage wipe so old cached data never overrides Supabase
+const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
+if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
+  localStorage.clear();
+  sessionStorage.setItem(LS_CLEARED_KEY, '1');
+}
+
+export default function App() {
+
+  const [view, setView]                     = useState<View>('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen]         = useState(false);
+
+  const [deals, setDeals]                   = useState<Deal[]>([]);
+  const [selectedId, setSelectedId]         = useState<string | null>(null);
+  const [txPanel, setTxPanel]               = useState<'list' | 'workspace'>('list');
+  const [txContainerWide, setTxContainerWide] = useState(false);
+  const txContainerRef                      = useRef<HTMLDivElement>(null);
+  const [showAdd, setShowAdd]               = useState(false);
+  const [loading, setLoading]               = useState(true);
+  const [loadError, setLoadError]           = useState<string | null>(null);
+  const [amberFilter, setAmberFilter]       = useState(false);
+  const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
+  const [inboxUnread, setInboxUnread]       = useState(0);
+
+  const [directory, setDirectory]               = useState<DirectoryContact[]>([]);
+  const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
+  const [complianceTemplates, setComplianceTemplates] = useState<ComplianceTemplate[]>([]);
+  const [users, setUsers]                       = useState<AppUser[]>([]);
+  const [emailTemplates, setEmailTemplates]     = useState<EmailTemplate[]>([]);
+  const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);
+  const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
+
+  // ── Load deals ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const data = await loadDeals();
+        setDeals(data);
+        const isMobile = window.innerWidth < 768;
+        if (!isMobile && data.length > 0) setSelectedId(data[0].id);
+      } catch (err) {
+        console.error('Failed to load deals:', err);
+        setLoadError('Unable to connect to database. Please check your connection and refresh.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  // Track actual width of transactions container for split-panel logic
+  useEffect(() => {
+    const el = txContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setTxContainerWide(w >= 640);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view]);
+
+  // ── Load directory ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    loadDirectory()
+      .then(data => setDirectory(data))
+      .catch(err => { console.error('Failed to load directory:', err); setDirectory([]); });
+  }, []);
+
+  // ── Load MLS ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    loadMls()
+      .then(data => setMlsEntries(data))
+      .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });
+  }, []);
+
+  // ── Load compliance templates ────────────────────────────────────────────────
+  useEffect(() => {
+    loadCompliance()
+      .then(data => setComplianceTemplates(data))
+      .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });
+  }, []);
+
+  const persistCompliance = (updated: ComplianceTemplate[]) => {
+    setComplianceTemplates(updated);
+    saveCompliance(updated).catch(console.error);
+  };
+
+  // ── Load users ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    loadUsers()
+      .then(data => setUsers(data))
+      .catch(err => { console.error('Failed to load users:', err); setUsers([]); });
+  }, []);
+
+  const persistUsers = (updated: AppUser[]) => {
+    setUsers(updated);
+    saveUsers(updated).catch(console.error);
+  };
+
+  // ── Load email templates ─────────────────────────────────────────────────────
+  useEffect(() => {
+    loadEmailTemplates()
+      .then(data => setEmailTemplates(data))
+      .catch(err => { console.error('Failed to load email templates:', err); setEmailTemplates([]); });
+  }, []);
+
+  const persistEmailTemplates = async (updated: EmailTemplate[]) => {
+    setEmailTemplates(updated);
+    saveEmailTemplates(updated).catch(console.error);
+  };
+
+  // ── Load compliance master items ─────────────────────────────────────────────
+  useEffect(() => {
+    loadMasterItems('compliance')
+      .then(data => setComplianceMasterItems(data as ComplianceMasterItem[]))
+      .catch(err => { console.error('Failed to load compliance master:', err); setComplianceMasterItems([]); });
+  }, []);
+
+  const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
+    setComplianceMasterItems(updated);
+    saveMasterItems('compliance', updated).catch(console.error);
+  };
+
+  // ── Load DD master items ─────────────────────────────────────────────────────
+  useEffect(() => {
+    loadMasterItems('dd')
+      .then(data => setDdMasterItems(data as DDMasterItem[]))
+      .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });
+  }, []);
+
+  const persistDdMasterItems = (updated: DDMasterItem[]) => {
+    setDdMasterItems(updated);
+    saveMasterItems('dd', updated).catch(console.error);
+  };
+
+  // ── Poll inbox unread count ──────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const resp = await fetch('/api/sms/conversations');
+        if (resp.ok) {
+          const data = await resp.json();
+          const total = (data.conversations || []).reduce((a: number, c: any) => a + (c.unread_count || 0), 0);
+          setInboxUnread(total);
+        }
+      } catch { /* silent */ }
+    };
+    fetchUnread();
+    const t = setInterval(fetchUnread, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── Persist helpers ──────────────────────────────────────────────────────────
+  const persistDeals = (updated: Deal[]) => {
+    setDeals(updated);
+    saveDeals(updated).catch(console.error);
+  };
+
+  const persistDirectory = (updated: DirectoryContact[]) => {
+    setDirectory(updated);
+    saveDirectory(updated).catch(console.error);
+  };
+
+  const persistMls = (updated: MlsEntry[]) => {
+    setMlsEntries(updated);
+    saveMls(updated).catch(console.error);
+  };
+
+  useEffect(() => {
+    if (deals.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
+    if (!stillExists) {
+      setSelectedId(deals[0].id);
+    }
+  }, [deals, selectedId]);
+
+  const storageMode = useMemo(() => 'Supabase Cloud Database', []);
+
+  const handleUpdate = (deal: Deal) => {
+    setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
+    saveSingleDeal(deal).catch(console.error);
+  };
+
+  const handleAdd = (deal: Deal) => {
+    const withId = { ...deal, id: generateId() };
+    const updated = [withId, ...deals];
+    setDeals(updated);
+    saveSingleDeal(withId).catch(console.error);
+    setSelectedId(withId.id);
+    setTxPanel('workspace');
+    setShowAdd(false);
+    setView('transactions');
+  };
+
+  const handleSelectDeal = (id: string) => {
+    setSelectedId(id);
+    setTxPanel('workspace');
+    setView('transactions');
+  };
+
+  const selected = deals.find(d => d.id === selectedId) ?? null;
+
+  const totalPending = deals.reduce((a, d) =>
+    a + d.documentRequests.filter(r => r.status === 'pending').length, 0);
+
+  if (loading) {
+    return (
+      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-3">
+        <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-sm text-base-content/50">Loading from Supabase...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-4 p-8">
+        <span className="text-5xl">⚠️</span>
+        <h2 className="text-xl font-bold text-base-content">Database Connection Error</h2>
+        <p className="text-sm text-base-content/60 text-center max-w-sm">{loadError}</p>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div data-theme="light" className="h-screen flex bg-base-100 overflow-hidden">
+      {/* Left sidebar */}
+      <Sidebar
+        onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}
+        onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
+        onAddDeal={() => setShowAdd(true)}
+        dealCount={deals.length}
+        pendingAlerts={totalPending}
+        onAmberClick={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
+        view={view}
+        onSetView={(v) => { if (v === 'transactions') { setSelectedId(null); setTxPanel('list'); } setView(v); }}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(c => !c)}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
+        inboxUnread={inboxUnread}
+      />
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Desktop top bar */}
+        <div className="hidden md:block flex-none">
+          <Topbar
+            onAddDeal={() => setShowAdd(true)}
+            onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}
+            onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
+            dealCount={deals.filter(d => d.milestone !== 'archived').length}
+            pendingAlerts={totalPending}
+            onSelectDeal={handleSelectDeal}
+            onSetView={(v) => setView(v as any)}
+          />
+        </div>
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3">
+          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
+          <span className="font-bold text-sm text-base-content flex-1">
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : 'Settings'}
+          </span>
+          <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
+            + New Deal
+          </button>
+        </div>
+
+        {/* View content */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {view === 'dashboard' && (
+            <div className="flex-1 overflow-auto">
+              <HomeDashboard
+                deals={deals}
+                onSelectDeal={handleSelectDeal}
+                onGoToDeals={() => { setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
+                onGoToAlerts={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
+              />
+            </div>
+          )}
+
+          {view === 'transactions' && (
+            <div ref={txContainerRef} className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+              {(txContainerWide || txPanel === 'list') && (
+                <div className={txContainerWide ? 'flex-none' : 'flex-1'}>
+                  <DealList
+                    deals={deals}
+                    selectedId={selectedId}
+                    onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                    amberFilter={amberFilter}
+                    onClearAmberFilter={() => setAmberFilter(false)}
+                    directory={directory}
+                  />
+                </div>
+              )}
+
+              {(txContainerWide || txPanel === 'workspace') && (
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+                  {!txContainerWide && (
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-base-200 border-b border-base-300 hover:bg-base-300 text-base-content"
+                      onClick={() => { setSelectedId(null); setTxPanel('list'); }}
+                    >
+                      ← Back to Deals
+                    </button>
+                  )}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {selected
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} directory={directory} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />
+                      : (
+                        <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
+                          <span className="text-5xl">📋</span>
+                          <p className="text-sm">Select a deal from the list</p>
+                        </div>
+                      )
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {view === 'contacts' && (
+            <div className="flex-1 overflow-auto">
+              <ContactsDirectory
+                directory={directory}
+                onUpdate={persistDirectory}
+                mlsEntries={mlsEntries}
+                triggerAdd={quickAddRole}
+                onTriggerHandled={() => setQuickAddRole(null)}
+              />
+            </div>
+          )}
+
+          {view === 'mls' && (
+            <div className="flex-1 overflow-auto">
+              <MLSDirectory
+                mls={mlsEntries}
+                onUpdate={persistMls}
+              />
+            </div>
+          )}
+
+          {view === 'compliance' && (
+            <div className="flex-1 overflow-hidden">
+              <ComplianceManager
+                templates={complianceTemplates}
+                onSave={persistCompliance}
+                agentClients={directory.filter(c => c.role === 'agent-client')}
+                deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
+                masterItems={complianceMasterItems}
+              />
+            </div>
+          )}
+
+          {view === 'inbox' && (
+            <div className="flex-1 overflow-hidden">
+              <Inbox onSelectDeal={handleSelectDeal} />
+            </div>
+          )}
+
+          {view === 'settings' && (
+            <div className="flex-1 overflow-hidden">
+              <SettingsView
+                users={users}
+                onSaveUsers={persistUsers}
+                deals={deals}
+                directory={directory}
+                mlsEntries={mlsEntries}
+                complianceTemplates={complianceTemplates}
+                storageMode={storageMode}
+                emailTemplates={emailTemplates}
+                onSaveEmailTemplates={persistEmailTemplates}
+                complianceMasterItems={complianceMasterItems}
+                onSaveComplianceMasterItems={persistComplianceMasterItems}
+                ddMasterItems={ddMasterItems}
+                onSaveDdMasterItems={persistDdMasterItems}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showAdd && (
+        <AddDealModal
+          onAdd={handleAdd}
+          onClose={() => setShowAdd(false)}
+          complianceTemplates={complianceTemplates}
+          agentClients={directory.filter(c => c.role === 'agent-client')}
+          ddMasterItems={ddMasterItems}
+        />
+      )}
+
+      {/* AI Chat — floating widget available on all views */}
+      <AIChat
+        onNavigateToDeal={(id) => { handleSelectDeal(id); }}
+        onSetView={(v) => setView(v as any)}
+      />
+    </div>
+  );
 }

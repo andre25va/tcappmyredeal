@@ -75,8 +75,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('id', convId);
     }
 
-    const results: any[] = [];
-    const errors: any[] = [];
+    const results = [];
+    const errors = [];
 
     for (const recipient of recipients) {
       const phone = recipient.phone.replace(/\D/g, '');
@@ -84,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         const twilioResp = await sendTwilioSms(e164, body);
+
         const { data: msg } = await supabase.from('messages').insert({
           conversation_id: convId,
           deal_id: deal_id || null,
@@ -97,6 +98,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           external_message_id: twilioResp.sid,
           sent_at: new Date().toISOString(),
         }).select().single();
+
         results.push({ contact_id: recipient.contact_id, name: recipient.name, message_id: msg?.id });
       } catch (err: any) {
         errors.push({ contact_id: recipient.contact_id, name: recipient.name, error: err.message });
