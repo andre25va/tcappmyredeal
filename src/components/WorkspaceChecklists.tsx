@@ -5,7 +5,7 @@ import {
   Star, AlertCircle, Home, Eye, EyeOff, Pencil, Check, X, Lock, ChevronRight,
   MoreVertical, StickyNote, User, RotateCcw, GripVertical,
 } from 'lucide-react';
-import { Deal, ChecklistItem, AppUser, DirectoryContact } from '../types';
+import { Deal, ComplianceTemplate, ChecklistItem, AppUser, DirectoryContact } from '../types';
 import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -600,7 +600,7 @@ const ComplianceSection: React.FC<{
 // ─── Compliance Tab Panel ─────────────────────────────────────────────────────
 const ComplianceTabPanel: React.FC<{
   deal: Deal;
-  complianceTemplates: any[];
+  complianceTemplates: ComplianceTemplate[];
   directory: DirectoryContact[];
   showCompleted: boolean;
   onToggle: (id: string) => void;
@@ -616,16 +616,16 @@ const ComplianceTabPanel: React.FC<{
   const [confirmLoad, setConfirmLoad] = useState<{ tplId: string; name: string } | null>(null);
 
   // Determine current template — manual override OR auto-wired from agent client
-  const autoTpl = (complianceTemplates ?? []).find((t: any) =>
+  const autoTpl = (complianceTemplates ?? []).find((t) =>
     (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(deal.agentClientId ?? '')
   );
   const currentTplId = deal.complianceTemplateId ?? autoTpl?.id ?? '';
-  const currentTpl = (complianceTemplates ?? []).find((t: any) => t.id === currentTplId);
+  const currentTpl = (complianceTemplates ?? []).find((t) => t.id === currentTplId);
   const agentClient = directory?.find(c => c.id === deal.agentClientId);
 
   const handleSelectTemplate = (tplId: string) => {
     if (!tplId) return;
-    const tpl = (complianceTemplates ?? []).find((t: any) => t.id === tplId);
+    const tpl = (complianceTemplates ?? []).find((t) => t.id === tplId);
     if (!tpl) return;
     if (deal.complianceChecklist.length > 0) {
       setConfirmLoad({ tplId, name: tpl.name });
@@ -653,7 +653,7 @@ const ComplianceTabPanel: React.FC<{
             onChange={e => handleSelectTemplate(e.target.value)}
           >
             <option value="">— Select a template —</option>
-            {(complianceTemplates ?? []).map((t: any) => (
+            {(complianceTemplates ?? []).map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
@@ -1234,9 +1234,9 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
           onNote={noteComp}
           onRename={renameComp}
           onLoadTemplate={(tplId: string) => {
-            const tpl = (complianceTemplates ?? []).find((t: any) => t.id === tplId);
+            const tpl = (complianceTemplates ?? []).find((t) => t.id === tplId);
             if (!tpl) return;
-            const loadedItems: ChecklistItem[] = tpl.items.map((i: any) => ({
+            const loadedItems: ChecklistItem[] = tpl.items.map((i: { title: string; required?: boolean }) => ({
               id: generateId(),
               title: i.title,
               completed: false,

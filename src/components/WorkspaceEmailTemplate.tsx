@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mail, Copy, CheckCircle2, Send, User, MessageSquare, Reply, Check } from 'lucide-react';
-import { Deal, EmailTemplate, ConfirmationButton } from '../types';
+import { Deal, ComplianceTemplate, EmailTemplate, ConfirmationButton } from '../types';
 import { roleLabel, formatDate, formatCurrency, formatPhone } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 
 interface Props {
   deal: Deal;
   emailTemplates: EmailTemplate[];
-  complianceTemplates?: any[];
+  complianceTemplates?: ComplianceTemplate[];
 }
 
 function fallbackCopy(text: string): boolean {
@@ -38,7 +38,7 @@ function addBusinessDays(dateStr: string, days: number): string {
 }
 
 // Replace {{merge}} tags in a string with deal data
-function populateTemplate(text: string, deal: Deal, complianceTemplates?: any[]): string {
+function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
   const agentLines: string[] = [];
@@ -87,7 +87,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: any[])
   const buyersSide = buyerLines.join('\n');
 
   // Inspection deadline: contractDate + inspectionPeriodDays from compliance template
-  const complianceTpl = (complianceTemplates ?? []).find((t: any) =>
+  const complianceTpl = (complianceTemplates ?? []).find((t) =>
     (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(deal.agentClientId ?? '')
   );
   const inspDays: number = complianceTpl?.inspectionPeriodDays ?? 0;

@@ -1,5 +1,15 @@
 import { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser } from '../types';
 
+// Extend Window to include optional Tasklet bridge
+declare global {
+  interface Window {
+    tasklet?: {
+      readFileFromDisk: (path: string) => Promise<string | null>;
+      writeFileToDisk: (path: string, content: string) => Promise<void>;
+    };
+  }
+}
+
 const STORAGE_VERSION = 1;
 
 type PersistedEnvelope<T> = {
@@ -34,14 +44,16 @@ export async function readPersistedData<T>(path: string, migrate: Migrator<T>): 
   let raw: string | null = null;
 
   if (hasTaskletStorage()) {
-    raw = await window.tasklet.readFileFromDisk(path);
+    raw = await window.tasklet!.readFileFromDisk(path);
   } else {
-    raw = window.localStorage.getItem(localStorageKey(path));
-    if (raw == null) {
+    const stored = window.localStorage.getItem(localStorageKey(path));
+    if (stored == null) {
       throw new Error(`Missing local storage entry for ${path}`);
     }
+    raw = stored;
   }
 
+  if (raw == null) throw new Error(`No data at ${path}`);
   return migrate(unwrapEnvelope<T>(raw));
 }
 
@@ -49,7 +61,7 @@ export async function writePersistedData<T>(path: string, data: T): Promise<void
   const payload = JSON.stringify({ version: STORAGE_VERSION, data } satisfies PersistedEnvelope<T>);
 
   if (hasTaskletStorage()) {
-    await window.tasklet.writeFileToDisk(path, payload);
+    await window.tasklet!.writeFileToDisk(path, payload);
     return;
   }
 

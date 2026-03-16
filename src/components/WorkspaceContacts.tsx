@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, MoreVertical, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save } from 'lucide-react';
-import { formatPhone } from '../utils/helpers';
+import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save } from 'lucide-react';
 import { Deal, Contact, ContactRole, DirectoryContact, AdditionalPerson } from '../types';
-import { roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
+import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; directory?: DirectoryContact[]; }
@@ -354,6 +353,174 @@ const ContactCard: React.FC<{ contact: Contact; dc?: DirectoryContact; onClick: 
   </button>
 );
 
+interface SideSectionProps {
+  title: string;
+  accent: string;
+  contacts: Contact[];
+  side: 'buy' | 'sell';
+  showAddMenu: 'buy' | 'sell' | null;
+  setShowAddMenu: (v: 'buy' | 'sell' | null) => void;
+  pickerConfig: { side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null;
+  setPickerConfig: (v: { side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null) => void;
+  existingDirIds: string[];
+  directory: DirectoryContact[];
+  addFromDirectory: (dc: DirectoryContact, side: 'buy' | 'sell' | 'both') => void;
+  deal: Deal;
+  onUpdate: (d: Deal) => void;
+  setPopupContactId: (id: string | null) => void;
+}
+
+const SideSection: React.FC<SideSectionProps> = ({
+  title, accent, contacts, side,
+  showAddMenu, setShowAddMenu,
+  pickerConfig, setPickerConfig,
+  existingDirIds, directory,
+  addFromDirectory, deal, onUpdate,
+  setPopupContactId,
+}) => {
+  const agentClient = contacts.find(c => c.role === 'agent-client');
+  const subContacts = contacts.filter(c => c.role !== 'agent-client');
+  const hasAgentClient = !!agentClient;
+
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) {
+        if (showAddMenu === side) setShowAddMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [side, showAddMenu, setShowAddMenu]);
+
+  const openMenu = () => { setShowAddMenu(showAddMenu === side ? null : side); setPickerConfig(null); };
+  const openPicker = (type: 'agent-client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
+
+  return (
+    <div className="flex-1 min-w-0">
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${side === 'buy' ? 'bg-blue-500' : 'bg-green-500'}`} />
+          <h3 className={`font-bold text-sm ${accent}`}>{title}</h3>
+          <span className="text-xs text-gray-400 font-normal">({contacts.length})</span>
+        </div>
+        <div className="relative" ref={menuWrapRef}>
+          <button
+            onClick={openMenu}
+            className="btn btn-xs btn-outline gap-1 border-gray-300 text-gray-600 hover:bg-gray-50"
+          >
+            <Plus size={11} /> Add <ChevronDown size={10} />
+          </button>
+
+          {showAddMenu === side && (
+            <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden w-48">
+              <div className="px-3 py-1.5 border-b border-gray-100">
+                <p className="text-xs text-gray-400 font-medium">Add to {side === 'buy' ? 'Buy' : 'Sell'} Side</p>
+              </div>
+              <button
+                onClick={() => openPicker('agent-client')}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors text-left"
+              >
+                <div className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center flex-none">
+                  <UserCheck size={12} className="text-red-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-black">Add Agent Client</p>
+                  <p className="text-xs text-gray-400">Our client (red dot)</p>
+                </div>
+              </button>
+              {hasAgentClient && (
+                <button
+                  onClick={() => openPicker('team')}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center flex-none">
+                    <Users size={12} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-black">Add Team Member</p>
+                    <p className="text-xs text-gray-400">TC, showing agent…</p>
+                  </div>
+                </button>
+              )}
+              <button
+                onClick={() => openPicker('contact')}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-green-50 transition-colors text-left"
+              >
+                <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center flex-none">
+                  <User size={12} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-black">Add Contact</p>
+                  <p className="text-xs text-gray-400">End Client, Lender, Title…</p>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {pickerConfig?.side === side && (
+            <DirectoryPicker
+              directory={directory}
+              existingIds={existingDirIds}
+              defaultSide={side}
+              pickerType={pickerConfig.type}
+              onAdd={addFromDirectory}
+              onClose={() => setPickerConfig(null)}
+            />
+          )}
+        </div>
+      </div>
+
+      {contacts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-3 border border-dashed border-gray-200 rounded-lg">
+          <p className="text-xs text-gray-400">No contacts yet</p>
+          <button onClick={() => setShowAddMenu(side)} className="text-xs text-primary mt-0.5 hover:underline">+ Add</button>
+        </div>
+      ) : (
+        <div>
+          {agentClient && (
+            <AgentClientRow
+              contact={agentClient}
+              onClick={() => setPopupContactId(agentClient.id)}
+              onUpdateContact={(updated) => {
+                onUpdate({
+                  ...deal,
+                  contacts: deal.contacts.map(c => c.id === updated.id ? updated : c),
+                  updatedAt: new Date().toISOString(),
+                });
+              }}
+            />
+          )}
+          {agentClient ? (
+            <div className="mt-0.5">
+              {subContacts.map((c, i) => (
+                <SubContactRow
+                  key={c.id}
+                  contact={c}
+                  isLast={i === subContacts.length - 1}
+                  onClick={() => setPopupContactId(c.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {subContacts.map(c => (
+                <ContactCard
+                  key={c.id}
+                  contact={c}
+                  dc={directory.find(d => d.id === c.directoryId)}
+                  onClick={() => setPopupContactId(c.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory = [] }) => {
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null>(null);
@@ -406,159 +573,6 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
   const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
   const popupDc = popupContact?.directoryId ? directory.find(d => d.id === popupContact.directoryId) : undefined;
 
-  const SideSection: React.FC<{ title: string; accent: string; contacts: Contact[]; side: 'buy' | 'sell' }> = ({ title, accent, contacts, side }) => {
-    // Separate agent client from sub-contacts
-    const agentClient = contacts.find(c => c.role === 'agent-client');
-    const subContacts = contacts.filter(c => c.role !== 'agent-client');
-    const hasAgentClient = !!agentClient;
-
-    // Each side gets its own ref for click-outside
-    const menuWrapRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-      const handler = (e: MouseEvent) => {
-        if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) {
-          if (showAddMenu === side) setShowAddMenu(null);
-        }
-      };
-      document.addEventListener('mousedown', handler);
-      return () => document.removeEventListener('mousedown', handler);
-    }, [side, showAddMenu]);
-
-    const openMenu = () => { setShowAddMenu(showAddMenu === side ? null : side); setPickerConfig(null); };
-    const openPicker = (type: 'agent-client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
-
-    return (
-      <div className="flex-1 min-w-0">
-        {/* Section header */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${side === 'buy' ? 'bg-blue-500' : 'bg-green-500'}`} />
-            <h3 className={`font-bold text-sm ${accent}`}>{title}</h3>
-            <span className="text-xs text-gray-400 font-normal">({contacts.length})</span>
-          </div>
-          <div className="relative" ref={menuWrapRef}>
-            <button
-              onClick={openMenu}
-              className="btn btn-xs btn-outline gap-1 border-gray-300 text-gray-600 hover:bg-gray-50"
-            >
-              <Plus size={11} /> Add <ChevronDown size={10} />
-            </button>
-
-            {/* Sub-menu dropdown — always 3 options */}
-            {showAddMenu === side && (
-              <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden w-48">
-                <div className="px-3 py-1.5 border-b border-gray-100">
-                  <p className="text-xs text-gray-400 font-medium">Add to {side === 'buy' ? 'Buy' : 'Sell'} Side</p>
-                </div>
-                {/* Add Agent Client */}
-                <button
-                  onClick={() => openPicker('agent-client')}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors text-left"
-                >
-                  <div className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center flex-none">
-                    <UserCheck size={12} className="text-red-500" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-black">Add Agent Client</p>
-                    <p className="text-xs text-gray-400">Our client (red dot)</p>
-                  </div>
-                </button>
-                {/* Add Team — only if agent client exists */}
-                {hasAgentClient && (
-                  <button
-                    onClick={() => openPicker('team')}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center flex-none">
-                      <Users size={12} className="text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-black">Add Team Member</p>
-                      <p className="text-xs text-gray-400">TC, showing agent…</p>
-                    </div>
-                  </button>
-                )}
-                {/* Add Contact */}
-                <button
-                  onClick={() => openPicker('contact')}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-green-50 transition-colors text-left"
-                >
-                  <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center flex-none">
-                    <User size={12} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-black">Add Contact</p>
-                    <p className="text-xs text-gray-400">End Client, Lender, Title…</p>
-                  </div>
-                </button>
-              </div>
-            )}
-
-            {/* Directory picker (filtered by type) */}
-            {pickerConfig?.side === side && (
-              <DirectoryPicker
-                directory={directory}
-                existingIds={existingDirIds}
-                defaultSide={side}
-                pickerType={pickerConfig.type}
-                onAdd={addFromDirectory}
-                onClose={() => setPickerConfig(null)}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Contacts */}
-        {contacts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-3 border border-dashed border-gray-200 rounded-lg">
-            <p className="text-xs text-gray-400">No contacts yet</p>
-            <button onClick={() => setShowAddMenu(side)} className="text-xs text-primary mt-0.5 hover:underline">+ Add</button>
-          </div>
-        ) : (
-          <div>
-            {/* Agent Client — primary */}
-            {agentClient && (
-              <AgentClientRow
-                contact={agentClient}
-                onClick={() => setPopupContactId(agentClient.id)}
-                onUpdateContact={(updated) => {
-                  onUpdate({
-                    ...deal,
-                    contacts: deal.contacts.map(c => c.id === updated.id ? updated : c),
-                    updatedAt: new Date().toISOString(),
-                  });
-                }}
-              />
-            )}
-            {/* Sub-contacts — indented under agent client if present, flat if not */}
-            {agentClient ? (
-              <div className="mt-0.5">
-                {subContacts.map((c, i) => (
-                  <SubContactRow
-                    key={c.id}
-                    contact={c}
-                    isLast={i === subContacts.length - 1}
-                    onClick={() => setPopupContactId(c.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {subContacts.map(c => (
-                  <ContactCard
-                    key={c.id}
-                    contact={c}
-                    dc={directory.find(d => d.id === c.directoryId)}
-                    onClick={() => setPopupContactId(c.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div className="p-5 space-y-5">
@@ -588,10 +602,24 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
       {/* Buy Side / Sell Side — stacked */}
       <div className="flex flex-col gap-3">
         <div className="border border-blue-100 rounded-xl p-3 bg-blue-50/30">
-          <SideSection title="Buy Side" accent="text-blue-600" contacts={buySide} side="buy" />
+          <SideSection
+            title="Buy Side" accent="text-blue-600" contacts={buySide} side="buy"
+            showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
+            pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
+            existingDirIds={existingDirIds} directory={directory}
+            addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
+            setPopupContactId={setPopupContactId}
+          />
         </div>
         <div className="border border-green-100 rounded-xl p-3 bg-green-50/30">
-          <SideSection title="Sell Side" accent="text-green-600" contacts={sellSide} side="sell" />
+          <SideSection
+            title="Sell Side" accent="text-green-600" contacts={sellSide} side="sell"
+            showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
+            pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
+            existingDirIds={existingDirIds} directory={directory}
+            addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
+            setPopupContactId={setPopupContactId}
+          />
         </div>
       </div>
 

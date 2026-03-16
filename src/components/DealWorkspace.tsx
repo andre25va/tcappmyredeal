@@ -3,7 +3,7 @@ import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
   Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, StickyNote,
 } from 'lucide-react';
-import { Deal, DirectoryContact, AppUser, EmailTemplate } from '../types';
+import { Deal, DirectoryContact, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
@@ -53,7 +53,7 @@ interface Props {
   directory?: DirectoryContact[];
   users?: AppUser[];
   emailTemplates?: EmailTemplate[];
-  complianceTemplates?: any[];
+  complianceTemplates?: ComplianceTemplate[];
 }
 
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directory = [], users = [], emailTemplates = [], complianceTemplates = [] }) => {
