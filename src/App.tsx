@@ -3,14 +3,15 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import { generateSampleData, generateDirectoryContacts } from './utils/sampleData';
 import {
-  readPersistedData,
-  writePersistedData,
-  migrateDeals,
-  migrateDirectory,
-  migrateMls,
-  migrateCompliance,
-  migrateUsers,
-} from './utils/storage';
+  loadDeals, saveDeals, saveSingleDeal,
+  loadDirectory, saveDirectory,
+  loadMls, saveMls,
+  loadCompliance, saveCompliance,
+  loadUsers, saveUsers,
+  loadEmailTemplates, saveEmailTemplates,
+  loadMasterItems, saveMasterItems,
+} from './utils/supabaseDb';
+import { migrateDeals, migrateDirectory, migrateMls, migrateCompliance, migrateUsers } from './utils/storage';
 import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
@@ -22,15 +23,6 @@ import { MLSDirectory } from './components/MLSDirectory';
 import { ComplianceManager } from './components/ComplianceManager';
 import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
-
-const DEALS_PATH           = '/agent/home/apps/tc-dashboard/deals.json';
-const DIR_PATH             = '/agent/home/apps/tc-dashboard/directory.json';
-const MLS_PATH             = '/agent/home/apps/tc-dashboard/mls.json';
-const COMPLIANCE_PATH      = '/agent/home/apps/tc-dashboard/compliance.json';
-const USERS_PATH           = '/agent/home/apps/tc-dashboard/users.json';
-const EMAIL_TEMPLATES_PATH        = '/agent/home/apps/tc-dashboard/emailTemplates.json';
-const COMPLIANCE_MASTER_PATH      = '/agent/home/apps/tc-dashboard/complianceMaster.json';
-const DD_MASTER_PATH              = '/agent/home/apps/tc-dashboard/ddMaster.json';
 
 export default function App() {
 
@@ -56,31 +48,27 @@ export default function App() {
   const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);
   const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
 
-  const loadCollection = async <T,>(
-    path: string,
-    migrate: (input: unknown) => T,
-    fallback: T,
-    apply: (value: T) => void,
-  ) => {
-    try {
-      const data = await readPersistedData(path, migrate);
-      apply(data);
-      return data;
-    } catch {
-      apply(fallback);
-      writePersistedData(path, fallback).catch(console.error);
-      return fallback;
-    }
-  };
-
-  // Load deals
+  // ── Load deals ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection(DEALS_PATH, migrateDeals, generateSampleData(), (data) => {
-      setDeals(data);
-      // Only auto-select first deal on desktop (md+), not on mobile
-      const isMobile = window.innerWidth < 768;
-      if (!isMobile) setSelectedId(current => current ?? data[0]?.id ?? null);
-    }).finally(() => setLoading(false));
+    const init = async () => {
+      try {
+        let data = await loadDeals();
+        if (!data || data.length === 0) {
+          data = migrateDeals(generateSampleData());
+          saveDeals(data).catch(console.error);
+        }
+        setDeals(data);
+        const isMobile = window.innerWidth < 768;
+        if (!isMobile) setSelectedId(current => current ?? data[0]?.id ?? null);
+      } catch (err) {
+        console.error('Failed to load deals:', err);
+        const fallback = migrateDeals(generateSampleData());
+        setDeals(fallback);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
   }, []);
 
   // Track actual width of transactions container for split-panel logic
@@ -93,96 +81,96 @@ export default function App() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [view]); // re-attach when switching to transactions view
+  }, [view]);
 
-  // Load contact directory
+  // ── Load directory ───────────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection(DIR_PATH, migrateDirectory, generateDirectoryContacts(), setDirectory);
+    loadDirectory()
+      .then(data => setDirectory(data.length ? data : migrateDirectory(generateDirectoryContacts())))
+      .catch(() => setDirectory(migrateDirectory(generateDirectoryContacts())));
   }, []);
 
-  // Load MLS entries
+  // ── Load MLS ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection(MLS_PATH, migrateMls, [], setMlsEntries);
+    loadMls()
+      .then(data => setMlsEntries(data))
+      .catch(() => setMlsEntries([]));
   }, []);
 
-  // Load compliance templates
+  // ── Load compliance templates ────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection(COMPLIANCE_PATH, migrateCompliance, [], setComplianceTemplates);
+    loadCompliance()
+      .then(data => setComplianceTemplates(data))
+      .catch(() => setComplianceTemplates([]));
   }, []);
 
   const persistCompliance = (updated: ComplianceTemplate[]) => {
     setComplianceTemplates(updated);
-    writePersistedData(COMPLIANCE_PATH, updated).catch(console.error);
+    saveCompliance(updated).catch(console.error);
   };
 
-  // Load users
+  // ── Load users ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection(USERS_PATH, migrateUsers, [], setUsers);
+    loadUsers()
+      .then(data => setUsers(data))
+      .catch(() => setUsers([]));
   }, []);
 
   const persistUsers = (updated: AppUser[]) => {
     setUsers(updated);
-    writePersistedData(USERS_PATH, updated).catch(console.error);
+    saveUsers(updated).catch(console.error);
   };
 
-  // Load email templates
+  // ── Load email templates ─────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection<EmailTemplate[]>(
-      EMAIL_TEMPLATES_PATH,
-      (input: unknown) => (Array.isArray(input) ? input : []) as EmailTemplate[],
-      [],
-      setEmailTemplates,
-    );
+    loadEmailTemplates()
+      .then(data => setEmailTemplates(data))
+      .catch(() => setEmailTemplates([]));
   }, []);
 
   const persistEmailTemplates = async (updated: EmailTemplate[]) => {
     setEmailTemplates(updated);
-    writePersistedData(EMAIL_TEMPLATES_PATH, updated).catch(console.error);
+    saveEmailTemplates(updated).catch(console.error);
   };
 
-  // Load compliance master checklist items
+  // ── Load compliance master items ─────────────────────────────────────────────
   useEffect(() => {
-    loadCollection<ComplianceMasterItem[]>(
-      COMPLIANCE_MASTER_PATH,
-      (input: unknown) => (Array.isArray(input) ? input : []) as ComplianceMasterItem[],
-      [],
-      setComplianceMasterItems,
-    );
+    loadMasterItems('compliance')
+      .then(data => setComplianceMasterItems(data as ComplianceMasterItem[]))
+      .catch(() => setComplianceMasterItems([]));
   }, []);
 
   const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
     setComplianceMasterItems(updated);
-    writePersistedData(COMPLIANCE_MASTER_PATH, updated).catch(console.error);
+    saveMasterItems('compliance', updated).catch(console.error);
   };
 
-  // Load DD master checklist items
+  // ── Load DD master items ─────────────────────────────────────────────────────
   useEffect(() => {
-    loadCollection<DDMasterItem[]>(
-      DD_MASTER_PATH,
-      (input: unknown) => (Array.isArray(input) ? input : []) as DDMasterItem[],
-      [],
-      setDdMasterItems,
-    );
+    loadMasterItems('dd')
+      .then(data => setDdMasterItems(data as DDMasterItem[]))
+      .catch(() => setDdMasterItems([]));
   }, []);
 
   const persistDdMasterItems = (updated: DDMasterItem[]) => {
     setDdMasterItems(updated);
-    writePersistedData(DD_MASTER_PATH, updated).catch(console.error);
+    saveMasterItems('dd', updated).catch(console.error);
   };
 
+  // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistDeals = (updated: Deal[]) => {
     setDeals(updated);
-    writePersistedData(DEALS_PATH, updated).catch(console.error);
+    saveDeals(updated).catch(console.error);
   };
 
   const persistDirectory = (updated: DirectoryContact[]) => {
     setDirectory(updated);
-    writePersistedData(DIR_PATH, updated).catch(console.error);
+    saveDirectory(updated).catch(console.error);
   };
 
   const persistMls = (updated: MlsEntry[]) => {
     setMlsEntries(updated);
-    writePersistedData(MLS_PATH, updated).catch(console.error);
+    saveMls(updated).catch(console.error);
   };
 
   useEffect(() => {
@@ -190,23 +178,24 @@ export default function App() {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
-
     const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
     if (!stillExists) {
       setSelectedId(deals[0].id);
     }
   }, [deals, selectedId]);
 
-  const storageMode = useMemo(
-    () => 'Browser local storage',
-    [],
-  );
+  const storageMode = useMemo(() => 'Supabase Cloud Database', []);
 
-  const handleUpdate = (deal: Deal) => persistDeals(deals.map(d => d.id === deal.id ? deal : d));
+  const handleUpdate = (deal: Deal) => {
+    setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
+    saveSingleDeal(deal).catch(console.error);
+  };
 
   const handleAdd = (deal: Deal) => {
     const withId = { ...deal, id: generateId() };
-    persistDeals([withId, ...deals]);
+    const updated = [withId, ...deals];
+    setDeals(updated);
+    saveSingleDeal(withId).catch(console.error);
     setSelectedId(withId.id);
     setTxPanel('workspace');
     setShowAdd(false);
@@ -289,7 +278,6 @@ export default function App() {
 
           {view === 'transactions' && (
             <div ref={txContainerRef} className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
-              {/* Deal List panel — always visible when wide, or when txPanel='list' on narrow */}
               {(txContainerWide || txPanel === 'list') && (
                 <div className={txContainerWide ? 'flex-none' : 'flex-1'}>
                   <DealList
@@ -303,10 +291,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Workspace panel — always visible when wide, or when txPanel='workspace' on narrow */}
               {(txContainerWide || txPanel === 'workspace') && (
                 <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
-                  {/* Back button — only on narrow screens */}
                   {!txContainerWide && (
                     <button
                       className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-base-200 border-b border-base-300 hover:bg-base-300 text-base-content"
@@ -398,4 +384,3 @@ export default function App() {
     </div>
   );
 }
-
