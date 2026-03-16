@@ -13,11 +13,8 @@ const FROM_WA = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
 
 async function sendTwilioMessage(to: string, body: string, channel: 'sms' | 'whatsapp') {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
-
-  // Format To/From based on channel
   const toFormatted = channel === 'whatsapp' ? `whatsapp:${to}` : to;
   const fromFormatted = channel === 'whatsapp' ? FROM_WA : FROM_SMS;
-
   const params = new URLSearchParams({ To: toFormatted, From: fromFormatted, Body: body });
   const resp = await fetch(url, {
     method: 'POST',
@@ -35,13 +32,17 @@ async function sendTwilioMessage(to: string, body: string, channel: 'sms' | 'wha
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { conversation_id, deal_id, recipients, body, type = 'direct', channel = 'sms' } = req.body as {
+  const {
+    conversation_id, deal_id, recipients, body, type = 'direct',
+    channel = 'sms', need_reply = false,
+  } = req.body as {
     conversation_id?: string;
     deal_id?: string;
     recipients: Array<{ contact_id: string; name: string; phone: string }>;
     body: string;
     type?: 'direct' | 'broadcast' | 'group';
     channel?: 'sms' | 'whatsapp';
+    need_reply?: boolean;
   };
 
   if (!recipients?.length || !body) {
@@ -50,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let convId = conversation_id;
+    const now = new Date().toISOString();
 
     if (!convId) {
       const convName = type === 'direct'
@@ -64,9 +66,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           type,
           channel,
           participants: recipients,
-          last_message_at: new Date().toISOString(),
+          last_message_at: now,
           last_message_preview: body.substring(0, 80),
           unread_count: 0,
+          waiting_for_reply: need_reply,
+          waiting_since: need_reply ? now : null,
         })
         .select()
         .single();
@@ -76,10 +80,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await supabase
         .from('conversations')
         .update({
-          last_message_at: new Date().toISOString(),
+          last_message_at: now,
           last_message_preview: body.substring(0, 80),
+          ...(need_reply ? { waiting_for_reply: true, waiting_since: now } : {}),
         })
         .eq('id', convId);
+    }
+
+    // Track in reply_tracking table if need_reply
+    if (need_reply && convId) {
+      const recipientName = recipients.map(r => r.name).join(', ');
+      await supabase.from('reply_tracking').insert({
+        channel,
+        conversation_id: convId,
+        contact_name: recipientName,
+        subject: body.substring(0, 80),
+        flagged_at: now,
+        is_active: true,
+      });
     }
 
     const results = [];
@@ -103,7 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           from_number: channel === 'whatsapp' ? FROM_WA : FROM_SMS,
           to_number: e164,
           external_message_id: twilioResp.sid,
-          sent_at: new Date().toISOString(),
+          sent_at: now,
+          need_reply,
         }).select().single();
 
         results.push({ contact_id: recipient.contact_id, name: recipient.name, message_id: msg?.id });

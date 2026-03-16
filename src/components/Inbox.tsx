@@ -24,6 +24,8 @@ interface Conversation {
   last_message_at: string | null;
   last_message_preview: string | null;
   unread_count: number;
+  waiting_for_reply?: boolean;
+  waiting_since?: string | null;
   deals?: { property_address: string; city: string; state: string; pipeline_stage: string } | null;
 }
 
@@ -37,6 +39,7 @@ interface Message {
   from_number: string | null;
   to_number: string | null;
   sent_at: string;
+  need_reply?: boolean;
   auto_created_task_id: string | null;
   contacts?: { first_name: string; last_name: string; phone: string; role: string } | null;
 }
@@ -59,6 +62,7 @@ interface EmailThread {
   isUnread: boolean;
   hasAttachment?: boolean;
   labelIds: string[];
+  waitingForReply?: boolean;
 }
 
 interface EmailMessage {
@@ -95,6 +99,7 @@ interface Deal {
 
 interface InboxProps {
   onSelectDeal?: (id: string) => void;
+  onWaitingCountChange?: (count: number) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -146,6 +151,15 @@ function getFileIcon(contentType: string): string {
   if (contentType.includes('sheet') || contentType.includes('excel') || contentType.includes('csv')) return '📊';
   if (contentType.includes('zip') || contentType.includes('compressed')) return '🗜️';
   return '📎';
+}
+
+function waitingDuration(since: string): string {
+  const diff = Date.now() - new Date(since).getTime();
+  const hrs = Math.floor(diff / 3600000);
+  if (hrs < 1) return 'just sent';
+  if (hrs < 24) return `${hrs}h waiting`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d waiting`;
 }
 
 function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' }) {
@@ -226,7 +240,6 @@ function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
           sandbox="allow-same-origin"
           title="Email content"
           onLoad={(e) => {
-            // Auto-resize iframe to content
             try {
               const iframe = e.currentTarget;
               const height = iframe.contentDocument?.body?.scrollHeight;
@@ -255,9 +268,29 @@ function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
   );
 }
 
+// ── Need Reply Checkbox ───────────────────────────────────────────────────────
+
+function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 cursor-pointer group select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="checkbox checkbox-xs"
+        style={checked ? { accentColor: '#f59e0b' } : {}}
+      />
+      <span className={`text-[11px] font-medium transition-colors ${checked ? 'text-amber-600' : 'text-base-content/50 group-hover:text-base-content/70'}`}>
+        Need reply
+      </span>
+      {checked && <Clock size={11} className="text-amber-500 animate-pulse" />}
+    </label>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
+export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange }) => {
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -265,9 +298,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [msgLoading, setMsgLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [needReply, setNeedReply] = useState(false);
 
   // Email state
   const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
+  const [emailReplyFlags, setEmailReplyFlags] = useState<Record<string, boolean>>({});
   const [selectedEmailThread, setSelectedEmailThread] = useState<EmailThread | null>(null);
   const [emailMessages, setEmailMessages] = useState<EmailMessage[]>([]);
   const [emailLoading, setEmailLoading] = useState(false);
@@ -276,6 +311,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [emailSending, setEmailSending] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [emailNeedReply, setEmailNeedReply] = useState(false);
 
   // Compose email state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -285,9 +321,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [emailCc, setEmailCc] = useState('');
   const [emailComposeError, setEmailComposeError] = useState('');
   const [emailComposeSending, setEmailComposeSending] = useState(false);
+  const [composeNeedReply, setComposeNeedReply] = useState(false);
 
   // Common state
-  const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email'>('all');
+  const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email' | 'waiting'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [mobileShowThread, setMobileShowThread] = useState(false);
@@ -305,6 +342,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [composeSending, setComposeSending] = useState(false);
   const [composeError, setComposeError] = useState('');
   const [showWaSandboxInfo, setShowWaSandboxInfo] = useState(false);
+  const [smsNeedReply, setSmsNeedReply] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emailEndRef = useRef<HTMLDivElement>(null);
@@ -326,6 +364,26 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   }, []);
 
+  const loadEmailReplyFlags = useCallback(async () => {
+    try {
+      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(`${sbUrl}/rest/v1/reply_tracking?channel=eq.email&is_active=eq.true&select=email_thread_id`, {
+        headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+      });
+      if (resp.ok) {
+        const flags = await resp.json() as { email_thread_id: string }[];
+        const flagMap: Record<string, boolean> = {};
+        for (const f of flags) {
+          if (f.email_thread_id) flagMap[f.email_thread_id] = true;
+        }
+        setEmailReplyFlags(flagMap);
+      }
+    } catch (e) {
+      console.error('Failed to load email reply flags:', e);
+    }
+  }, []);
+
   const loadEmailThreads = useCallback(async () => {
     setEmailLoading(true);
     setEmailError('');
@@ -335,6 +393,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         const data = await resp.json();
         setEmailThreads(data.threads || []);
         setGmailConnected(true);
+        loadEmailReplyFlags();
       } else {
         const err = await resp.json();
         setGmailConnected(false);
@@ -346,7 +405,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     } finally {
       setEmailLoading(false);
     }
-  }, []);
+  }, [loadEmailReplyFlags]);
 
   useEffect(() => {
     loadConversations();
@@ -396,12 +455,14 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       setConversations(prev => prev.map(c =>
         c.id === selectedConv.id ? { ...c, unread_count: 0 } : c
       ));
+      setNeedReply(false);
     }
   }, [selectedConv, loadMessages]);
 
   useEffect(() => {
     if (selectedEmailThread) {
       loadEmailMessages(selectedEmailThread.id);
+      setEmailNeedReply(false);
     }
   }, [selectedEmailThread, loadEmailMessages]);
 
@@ -412,6 +473,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   useEffect(() => {
     emailEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [emailMessages]);
+
+  // Report waiting count to parent (for sidebar badge)
+  useEffect(() => {
+    const smsWaiting = conversations.filter(c => c.waiting_for_reply).length;
+    const emailWaiting = Object.keys(emailReplyFlags).length;
+    onWaitingCountChange?.(smsWaiting + emailWaiting);
+  }, [conversations, emailReplyFlags, onWaitingCountChange]);
 
   // ── SMS / WA Actions ─────────────────────────────────────────────────────────
 
@@ -442,10 +510,21 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           body: replyText,
           type: selectedConv.type,
           channel: selectedConv.channel,
+          need_reply: needReply,
         }),
       });
       if (resp.ok) {
         setReplyText('');
+        setNeedReply(false);
+        // Optimistically update waiting status
+        if (needReply) {
+          setConversations(prev => prev.map(c =>
+            c.id === selectedConv.id
+              ? { ...c, waiting_for_reply: true, waiting_since: new Date().toISOString() }
+              : c
+          ));
+          setSelectedConv(prev => prev ? { ...prev, waiting_for_reply: true, waiting_since: new Date().toISOString() } : prev);
+        }
         await loadMessages(selectedConv.id);
         await loadConversations();
       }
@@ -479,6 +558,32 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       });
       if (resp.ok) {
         setEmailReplyText('');
+
+        // Flag for reply tracking if needed
+        if (emailNeedReply) {
+          const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+          const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          await fetch(`${sbUrl}/rest/v1/reply_tracking`, {
+            method: 'POST',
+            headers: {
+              apikey: sbKey,
+              Authorization: `Bearer ${sbKey}`,
+              'Content-Type': 'application/json',
+              Prefer: 'return=minimal',
+            },
+            body: JSON.stringify({
+              channel: 'email',
+              email_thread_id: selectedEmailThread.id,
+              contact_name: parseFromName(selectedEmailThread.from),
+              subject: selectedEmailThread.subject,
+              flagged_at: new Date().toISOString(),
+              is_active: true,
+            }),
+          });
+          setEmailReplyFlags(prev => ({ ...prev, [selectedEmailThread.id]: true }));
+          setEmailNeedReply(false);
+        }
+
         await loadEmailMessages(selectedEmailThread.id);
       }
     } catch (e) {
@@ -502,8 +607,31 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         body: JSON.stringify({ to: emailTo, cc: emailCc, subject: emailSubject, body: emailBody }),
       });
       if (resp.ok) {
+        // Flag for reply tracking if needed
+        if (composeNeedReply) {
+          const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+          const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          // We don't know the thread id yet for new emails, so we store by subject+to
+          await fetch(`${sbUrl}/rest/v1/reply_tracking`, {
+            method: 'POST',
+            headers: {
+              apikey: sbKey,
+              Authorization: `Bearer ${sbKey}`,
+              'Content-Type': 'application/json',
+              Prefer: 'return=minimal',
+            },
+            body: JSON.stringify({
+              channel: 'email',
+              contact_name: emailTo,
+              subject: emailSubject,
+              flagged_at: new Date().toISOString(),
+              is_active: true,
+            }),
+          });
+        }
         setShowEmailCompose(false);
         setEmailTo(''); setEmailSubject(''); setEmailBody(''); setEmailCc('');
+        setComposeNeedReply(false);
         await loadEmailThreads();
       } else {
         const err = await resp.json();
@@ -514,6 +642,26 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     } finally {
       setEmailComposeSending(false);
     }
+  };
+
+  const clearEmailWaiting = async (threadId: string) => {
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    await fetch(`${sbUrl}/rest/v1/reply_tracking?email_thread_id=eq.${threadId}&is_active=eq.true`, {
+      method: 'PATCH',
+      headers: {
+        apikey: sbKey,
+        Authorization: `Bearer ${sbKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ is_active: false, cleared_at: new Date().toISOString() }),
+    });
+    setEmailReplyFlags(prev => {
+      const next = { ...prev };
+      delete next[threadId];
+      return next;
+    });
   };
 
   const loadComposeData = async () => {
@@ -540,6 +688,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       setShowEmailCompose(true);
       setEmailTo(''); setEmailSubject(''); setEmailBody(''); setEmailCc('');
       setEmailComposeError('');
+      setComposeNeedReply(false);
       return;
     }
     setShowCompose(true);
@@ -551,6 +700,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     setContactSearch('');
     setComposeError('');
     setShowWaSandboxInfo(false);
+    setSmsNeedReply(false);
     loadComposeData();
   };
 
@@ -575,11 +725,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           body: composeBody,
           type: selectedRecipients.length === 1 ? 'direct' : groupType,
           channel: composeChannel,
+          need_reply: smsNeedReply,
         }),
       });
       if (resp.ok) {
         const data = await resp.json();
         setShowCompose(false);
+        setSmsNeedReply(false);
         await loadConversations();
         const newConv = conversations.find(c => c.id === data.conversation_id);
         if (newConv) setSelectedConv(newConv);
@@ -598,6 +750,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
   const filteredConvs = conversations.filter(c => {
     if (tab === 'email') return false;
+    if (tab === 'waiting') return c.waiting_for_reply === true;
     if (tab !== 'all' && c.channel !== tab) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -608,7 +761,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     );
   });
 
-  const filteredEmails = emailThreads.filter(t => {
+  const filteredEmails = (tab === 'waiting'
+    ? emailThreads.filter(t => emailReplyFlags[t.id])
+    : emailThreads
+  ).filter(t => {
     if (!search) return true;
     const q = search.toLowerCase();
     return t.subject.toLowerCase().includes(q) || t.from.toLowerCase().includes(q) || t.snippet.toLowerCase().includes(q);
@@ -617,6 +773,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const totalUnread = conversations.reduce((a, c) => a + (c.unread_count || 0), 0);
   const waCount = conversations.filter(c => c.channel === 'whatsapp' && c.unread_count > 0).length;
   const emailUnread = emailThreads.filter(t => t.isUnread).length;
+  const smsWaiting = conversations.filter(c => c.waiting_for_reply).length;
+  const emailWaiting = Object.keys(emailReplyFlags).length;
+  const totalWaiting = smsWaiting + emailWaiting;
 
   const filteredContacts = composeContacts.filter(c => {
     if (!contactSearch) return true;
@@ -632,6 +791,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   };
 
   // ── Conversation List Panel ──────────────────────────────────────────────────
+
+  const showEmailList = tab === 'email' || tab === 'waiting';
 
   const ConversationList = (
     <div className={`flex flex-col h-full border-r border-base-300 bg-base-100 ${mobileShowThread ? 'hidden md:flex' : 'flex'} md:w-80 w-full flex-none`}>
@@ -650,18 +811,21 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       </div>
 
       <div className="flex border-b border-base-300 bg-base-200 px-2 gap-1 py-1.5 overflow-x-auto">
-        {(['all', 'sms', 'whatsapp', 'email'] as const).map(t => (
+        {(['all', 'sms', 'whatsapp', 'email', 'waiting'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${tab === t ? 'bg-primary text-white' : 'text-base-content/60 hover:bg-base-300'}`}
           >
-            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : t === 'whatsapp' ? '💬 WhatsApp' : '✉️ Email'}
+            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : t === 'whatsapp' ? '💬 WhatsApp' : t === 'email' ? '✉️ Email' : '⏳ Waiting'}
             {t === 'whatsapp' && waCount > 0 && (
               <span className="ml-1 bg-green-500 text-white text-[9px] font-bold rounded-full px-1">{waCount}</span>
             )}
             {t === 'email' && emailUnread > 0 && (
               <span className="ml-1 bg-primary text-white text-[9px] font-bold rounded-full px-1">{emailUnread}</span>
+            )}
+            {t === 'waiting' && totalWaiting > 0 && (
+              <span className="ml-1 bg-amber-500 text-white text-[9px] font-bold rounded-full px-1">{totalWaiting}</span>
             )}
           </button>
         ))}
@@ -672,14 +836,25 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
           <input
             className="input input-bordered input-xs w-full pl-7 bg-base-100 text-sm"
-            placeholder={tab === 'email' ? 'Search emails...' : 'Search conversations...'}
+            placeholder={tab === 'email' ? 'Search emails...' : tab === 'waiting' ? 'Search waiting...' : 'Search conversations...'}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {tab === 'email' ? (
+      {/* Waiting banner */}
+      {tab === 'waiting' && totalWaiting === 0 && (
+        <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
+          <Clock size={32} />
+          <div>
+            <p className="text-sm font-medium">No pending replies</p>
+            <p className="text-xs mt-1">Check "Need reply" when sending to track responses</p>
+          </div>
+        </div>
+      )}
+
+      {(tab === 'email' || (tab === 'waiting' && emailWaiting > 0)) && (
         <div className="flex-1 overflow-y-auto">
           {emailLoading ? (
             <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
@@ -706,21 +881,27 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             filteredEmails.map(thread => {
               const active = selectedEmailThread?.id === thread.id;
               const senderName = parseFromName(thread.from);
+              const isWaiting = emailReplyFlags[thread.id];
               return (
                 <button
                   key={thread.id}
                   onClick={() => handleSelectEmailThread(thread)}
-                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''} ${isWaiting ? 'bg-amber-50/50' : ''}`}
                 >
                   <div className="flex items-start gap-2.5">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${thread.isUnread ? 'bg-green-100 text-green-700' : 'bg-base-200 text-base-content/50'}`}>
-                      {senderName.charAt(0).toUpperCase()}
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${thread.isUnread ? 'bg-green-100 text-green-700' : isWaiting ? 'bg-amber-100 text-amber-700' : 'bg-base-200 text-base-content/50'}`}>
+                      {isWaiting ? <Clock size={16} /> : senderName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 mb-0.5">
                         <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'font-bold text-base-content' : 'font-medium text-base-content/75'}`}>
                           {senderName}
                         </span>
+                        {isWaiting && (
+                          <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
+                            <Clock size={8} /> waiting
+                          </span>
+                        )}
                         {thread.hasAttachment && <Paperclip size={11} className="text-base-content/30 flex-none" />}
                         {thread.isUnread && (
                           <span className="bg-primary text-white text-[9px] font-bold rounded-full w-2 h-2 flex-none" />
@@ -740,14 +921,16 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             })
           )}
         </div>
-      ) : (
+      )}
+
+      {tab !== 'email' && (
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
               <Loader2 size={16} className="animate-spin" />
               <span className="text-sm">Loading...</span>
             </div>
-          ) : filteredConvs.length === 0 ? (
+          ) : filteredConvs.length === 0 && tab !== 'waiting' ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
               <MessageCircle size={32} />
               <div>
@@ -762,10 +945,17 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                 <button
                   key={conv.id}
                   onClick={() => handleSelectConv(conv)}
-                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''} ${conv.waiting_for_reply ? 'bg-amber-50/40' : ''}`}
                 >
                   <div className="flex items-start gap-2.5">
-                    <ChannelAvatar channel={conv.channel} name={conv.name} />
+                    <div className={`relative`}>
+                      <ChannelAvatar channel={conv.channel} name={conv.name} />
+                      {conv.waiting_for_reply && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
+                          <Clock size={9} className="text-white" />
+                        </span>
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 mb-0.5">
                         <span className={`text-sm font-semibold truncate flex-1 ${conv.unread_count > 0 ? 'text-base-content' : 'text-base-content/80'}`}>
@@ -773,6 +963,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                         </span>
                         {typeIcon(conv.type)}
                         <ChannelBadge channel={conv.channel} />
+                        {conv.waiting_for_reply && (
+                          <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
+                            <Clock size={8} />
+                            {conv.waiting_since ? waitingDuration(conv.waiting_since) : 'waiting'}
+                          </span>
+                        )}
                         {conv.unread_count > 0 && (
                           <span className="bg-primary text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center flex-none">
                             {conv.unread_count > 9 ? '9+' : conv.unread_count}
@@ -810,6 +1006,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
   // ── Email Thread Panel ───────────────────────────────────────────────────────
 
+  const isCurrentEmailWaiting = selectedEmailThread ? emailReplyFlags[selectedEmailThread.id] : false;
+
   const EmailThreadPanel = selectedEmailThread && (
     <>
       <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
@@ -823,9 +1021,23 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm truncate">{selectedEmailThread.subject}</span>
             <span className="badge badge-xs badge-success">EMAIL</span>
+            {isCurrentEmailWaiting && (
+              <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
+                <Clock size={8} /> waiting
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-base-content/50 truncate">{parseFromName(selectedEmailThread.from)}</p>
         </div>
+        {isCurrentEmailWaiting && (
+          <button
+            onClick={() => clearEmailWaiting(selectedEmailThread.id)}
+            className="btn btn-xs btn-ghost text-amber-600 gap-1"
+            title="Mark as replied"
+          >
+            <CheckCheck size={12} /> Got reply
+          </button>
+        )}
         <button
           onClick={() => { setShowEmailCompose(true); setEmailTo(selectedEmailThread.from); setEmailSubject(`Re: ${selectedEmailThread.subject}`); setEmailBody(''); setEmailComposeError(''); }}
           className="btn btn-ghost btn-xs gap-1"
@@ -864,7 +1076,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                   </div>
                 )}
                 <div className="rounded-xl border border-base-300 bg-base-100 shadow-sm overflow-hidden">
-                  {/* Email meta bar */}
                   <div className="flex items-center gap-3 px-4 py-2.5 bg-base-200 border-b border-base-300">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${isMe ? 'bg-primary text-primary-content' : 'bg-green-100 text-green-700'}`}>
                       {senderName.charAt(0).toUpperCase()}
@@ -880,9 +1091,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                       {msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  {/* Email body - HTML or plain text */}
                   <EmailBodyRenderer msg={msg} />
-                  {/* Attachments */}
                   {msg.attachments && msg.attachments.length > 0 && (
                     <AttachmentChips attachments={msg.attachments} />
                   )}
@@ -906,13 +1115,16 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             }}
             rows={1}
           />
-          <button
-            onClick={handleEmailReply}
-            disabled={!emailReplyText.trim() || emailSending}
-            className="btn btn-sm btn-success px-3 self-end rounded-xl"
-          >
-            {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <NeedReplyCheckbox checked={emailNeedReply} onChange={setEmailNeedReply} />
+            <button
+              onClick={handleEmailReply}
+              disabled={!emailReplyText.trim() || emailSending}
+              className={`btn btn-sm px-3 rounded-xl ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
+            >
+              {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
         </div>
         <p className="text-[10px] text-base-content/30 mt-1.5 text-center">✉️ Replying from tc@myredeal.com · Ctrl+Enter to send</p>
       </div>
@@ -934,6 +1146,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             <ChannelBadge channel={selectedConv.channel} />
             {selectedConv.type !== 'direct' && (
               <span className="badge badge-xs badge-ghost">{selectedConv.type}</span>
+            )}
+            {selectedConv.waiting_for_reply && (
+              <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
+                <Clock size={8} />
+                {selectedConv.waiting_since ? waitingDuration(selectedConv.waiting_since) : 'waiting'}
+              </span>
             )}
           </div>
           {selectedConv.deals && (
@@ -997,6 +1215,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                       {isOut && (
                         <CheckCheck size={11} className={msg.status === 'delivered' ? 'text-primary' : 'text-base-content/30'} />
                       )}
+                      {isOut && msg.need_reply && (
+                        <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
+                          <Clock size={8} /> need reply
+                        </span>
+                      )}
                       {msg.auto_created_task_id && (
                         <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">task created</span>
                       )}
@@ -1022,14 +1245,17 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             }}
             rows={1}
           />
-          <button
-            onClick={handleSendReply}
-            disabled={!replyText.trim() || sending}
-            className="btn btn-sm px-3 self-end rounded-xl text-white"
-            style={selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
-          >
-            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
+            <button
+              onClick={handleSendReply}
+              disabled={!replyText.trim() || sending}
+              className={`btn btn-sm px-3 rounded-xl text-white ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
+              style={!needReply && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
+            >
+              {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
         </div>
         <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
           {selectedConv.channel === 'whatsapp'
@@ -1095,13 +1321,16 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           )}
         </div>
         <div className="px-5 py-4 border-t border-base-300 flex items-center justify-between gap-3">
-          <p className="text-xs text-base-content/40">✉️ Sending from tc@myredeal.com</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-base-content/40">✉️ From tc@myredeal.com</p>
+            <NeedReplyCheckbox checked={composeNeedReply} onChange={setComposeNeedReply} />
+          </div>
           <div className="flex gap-2">
             <button onClick={() => setShowEmailCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
             <button
               onClick={handleComposeEmail}
               disabled={!emailTo.trim() || !emailSubject.trim() || !emailBody.trim() || emailComposeSending}
-              className="btn btn-sm btn-success gap-2 rounded-xl"
+              className={`btn btn-sm gap-2 rounded-xl ${composeNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
             >
               {emailComposeSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
               {emailComposeSending ? 'Sending...' : 'Send Email'}
@@ -1286,12 +1515,15 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           )}
         </div>
         <div className="px-5 py-4 border-t border-base-300 flex items-center justify-between gap-3">
-          <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            <NeedReplyCheckbox checked={smsNeedReply} onChange={setSmsNeedReply} />
+          </div>
           <button
             onClick={handleComposeSend}
             disabled={!selectedRecipients.length || !composeBody.trim() || composeSending}
-            className="btn btn-sm gap-2 rounded-xl text-white"
-            style={composeChannel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
+            className={`btn btn-sm gap-2 rounded-xl text-white ${smsNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
+            style={!smsNeedReply && composeChannel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
           >
             {composeSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             {composeSending ? 'Sending...' : `Send${selectedRecipients.length > 1 ? ` to ${selectedRecipients.length}` : ''} via ${composeChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}

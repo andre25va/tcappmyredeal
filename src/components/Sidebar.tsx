@@ -3,7 +3,7 @@ import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   ClipboardList, Settings, FileText, UserPlus, MessageSquare,
-  CheckSquare,
+  CheckSquare, Clock,
 } from 'lucide-react';
 
 export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks';
@@ -23,11 +23,17 @@ interface SidebarProps {
   onCloseMobile: () => void;
   inboxUnread: number;
   tasksPending?: number;
+  waitingCount?: number;
 }
 
-const NAV_ITEMS = (dealCount: number, inboxUnread: number, tasksPending: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
+const NAV_ITEMS = (
+  dealCount: number,
+  inboxUnread: number,
+  tasksPending: number,
+  waitingCount: number
+): { id: View; label: string; icon: React.ReactNode; badge?: number; waitingBadge?: number }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
-  { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined },
+  { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined, waitingBadge: waitingCount > 0 ? waitingCount : undefined },
   { id: 'tasks',        label: 'Comm Tasks',   icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
@@ -38,9 +44,10 @@ const NAV_ITEMS = (dealCount: number, inboxUnread: number, tasksPending: number)
 
 function SidebarInner({
   onAddDeal, onAddAgentClient, onAddContact, dealCount, pendingAlerts, onAmberClick,
-  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay, inboxUnread, tasksPending = 0,
+  view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay,
+  inboxUnread, tasksPending = 0, waitingCount = 0,
 }: SidebarProps & { isMobileOverlay: boolean }) {
-  const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending);
+  const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending, waitingCount);
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
 
@@ -117,22 +124,34 @@ function SidebarInner({
             >
               <span className="flex-none relative">
                 {item.icon}
-                {collapsed && !isMobileOverlay && item.badge !== undefined && item.badge > 0 && (
+                {collapsed && !isMobileOverlay && (item.badge !== undefined || item.waitingBadge !== undefined) && (
                   <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-primary text-primary-content rounded-full text-[8px] font-bold flex items-center justify-center leading-none">
-                    {item.badge > 9 ? '9+' : item.badge}
+                    {((item.badge || 0) + (item.waitingBadge || 0)) > 9 ? '9+' : (item.badge || 0) + (item.waitingBadge || 0)}
                   </span>
                 )}
               </span>
               {(!collapsed || isMobileOverlay) && (
                 <>
                   <span className="flex-1 leading-none">{item.label}</span>
-                  {item.badge !== undefined && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
-                      active ? 'bg-white/20 text-white' : 'bg-base-content/10 text-base-content/60'
-                    }`}>
-                      {item.badge}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {/* ⏳ Waiting for reply badge */}
+                    {item.waitingBadge !== undefined && item.waitingBadge > 0 && (
+                      <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+                        active ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-100 text-amber-700'
+                      }`} title="Waiting for reply">
+                        <Clock size={9} />
+                        {item.waitingBadge}
+                      </span>
+                    )}
+                    {/* Unread badge */}
+                    {item.badge !== undefined && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
+                        active ? 'bg-white/20 text-white' : 'bg-base-content/10 text-base-content/60'
+                      }`}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 </>
               )}
             </button>
