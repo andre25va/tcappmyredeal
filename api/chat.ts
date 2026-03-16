@@ -364,7 +364,7 @@ async function executeTool(
         const today = new Date().toISOString().slice(0, 10);
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id, deals(property_address, city, state)')
+          .select('id, title, due_date, priority, category, status, deal_id, deals(id, property_address, city, state)')
           .lt('due_date', today)
           .neq('status', 'completed')
           .order('due_date', { ascending: true });
@@ -379,6 +379,7 @@ async function executeTool(
           address: t.deals?.property_address,
           city: t.deals?.city,
           state: t.deals?.state,
+          deal_id: t.deal_id,
           daysOverdue: Math.ceil((Date.now() - new Date(t.due_date).getTime()) / 86400000),
         }));
 
@@ -392,7 +393,7 @@ async function executeTool(
         const today = new Date().toISOString().slice(0, 10);
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id, deals(property_address, city, state)')
+          .select('id, title, due_date, priority, category, status, deal_id, deals(id, property_address, city, state)')
           .eq('due_date', today)
           .neq('status', 'completed');
 
@@ -405,6 +406,7 @@ async function executeTool(
           address: t.deals?.property_address,
           city: t.deals?.city,
           state: t.deals?.state,
+          deal_id: t.deal_id,
         }));
 
         if (dueToday.length === 0) {
@@ -448,6 +450,7 @@ async function executeTool(
           dealAddress: match.property_address || match.deal_data?.address,
           city: match.city,
           state: match.state,
+          deal_id: match.id,
         });
       }
 
@@ -620,6 +623,9 @@ export default async function handler(req: any, res: any) {
     let navigateTo: { type: 'deal'; dealId: string; address: string; city?: string; state?: string } |
                     { type: 'view'; view: string; label: string } | null = null;
 
+    // Track task tool results for auto-navigation post-processing
+    const taskToolResults: string[] = [];
+
     let response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
@@ -651,7 +657,7 @@ export default async function handler(req: any, res: any) {
         try { fnArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { fnArgs = {}; }
         const result = await executeTool(fnName, fnArgs, supabase, openaiKey);
 
-        // Capture navigation actions
+        // Capture explicit navigation actions
         if (fnName === 'navigate_to_deal' || fnName === 'navigate_to_view') {
           try {
             const parsed = JSON.parse(result);
@@ -663,6 +669,11 @@ export default async function handler(req: any, res: any) {
               }
             }
           } catch (e) {}
+        }
+
+        // Collect task tool results for auto-navigation
+        if (fnName === 'get_tasks_due_today' || fnName === 'get_overdue_tasks') {
+          taskToolResults.push(result);
         }
 
         fullMessages.push({ role: 'tool', tool_call_id: toolCall.id, content: result } as any);
@@ -684,6 +695,49 @@ export default async function handler(req: any, res: any) {
       data = await response.json();
       if (data.error) { console.error('OpenAI error round ' + rounds + ':', data.error); break; }
       message = data.choices?.[0]?.message;
+    }
+
+    // ── Auto-inject navigation for task queries ──────────────────────────────
+    // If AI didn't explicitly navigate but returned tasks, smart-navigate based on context:
+    // - All tasks from one deal → show button to open that deal
+    // - Tasks from multiple deals → show button to open Transactions view
+    if (!navigateTo && taskToolResults.length > 0) {
+      try {
+        const allTaskItems: any[] = [];
+        for (const result of taskToolResults) {
+          const parsed = JSON.parse(result);
+          const items = parsed.tasks || parsed.overdue || [];
+          allTaskItems.push(...items);
+        }
+
+        if (allTaskItems.length > 0) {
+          const uniqueDealIds = [...new Set(allTaskItems.map((t: any) => t.deal_id).filter(Boolean))] as string[];
+
+          if (uniqueDealIds.length === 1) {
+            // All tasks from same deal — look it up and navigate there
+            const { data: dealRow } = await supabase
+              .from('deals')
+              .select('id, property_address, city, state, deal_data')
+              .eq('id', uniqueDealIds[0])
+              .single();
+            if (dealRow) {
+              const d = (dealRow as any).deal_data || {};
+              navigateTo = {
+                type: 'deal',
+                dealId: (dealRow as any).id,
+                address: (dealRow as any).property_address || d.address,
+                city: (dealRow as any).city || d.city,
+                state: (dealRow as any).state || d.state,
+              };
+            }
+          } else if (uniqueDealIds.length > 1) {
+            // Tasks span multiple deals — navigate to Transactions view
+            navigateTo = { type: 'view', view: 'transactions', label: 'All Transactions' };
+          }
+        }
+      } catch (e) {
+        // Auto-nav failed silently — no button, no crash
+      }
     }
 
     const reply = message?.content || 'I encountered an issue processing your request. Please try again.';
