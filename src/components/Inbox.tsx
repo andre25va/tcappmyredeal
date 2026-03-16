@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare, Send, Plus, Search, X, Users, Phone,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
-  Briefcase, MessageCircle, Mail, Loader2, Hash
+  Briefcase, MessageCircle, Mail, Loader2, Hash, Info
 } from 'lucide-react';
 
 interface Participant {
@@ -16,7 +16,7 @@ interface Conversation {
   name: string;
   deal_id: string | null;
   type: 'direct' | 'broadcast' | 'group';
-  channel: 'sms' | 'email';
+  channel: 'sms' | 'email' | 'whatsapp';
   participants: Participant[];
   last_message_at: string | null;
   last_message_preview: string | null;
@@ -28,7 +28,7 @@ interface Message {
   id: string;
   conversation_id: string;
   direction: 'inbound' | 'outbound';
-  channel: 'sms' | 'email';
+  channel: 'sms' | 'email' | 'whatsapp';
   body: string;
   status: string;
   from_number: string | null;
@@ -75,11 +75,34 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' }) {
+  if (channel === 'whatsapp') return (
+    <span className="badge badge-xs text-white font-bold" style={{ backgroundColor: '#25D366' }}>WA</span>
+  );
+  if (channel === 'sms') return <span className="badge badge-xs badge-info">SMS</span>;
+  return <span className="badge badge-xs badge-success">EMAIL</span>;
+}
+
+function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp'; name: string }) {
+  const letter = name.charAt(0).toUpperCase();
+  if (channel === 'whatsapp') return (
+    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold text-white" style={{ backgroundColor: '#25D366' }}>
+      {letter}
+    </div>
+  );
+  if (channel === 'sms') return (
+    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold bg-blue-100 text-blue-600">{letter}</div>
+  );
+  return (
+    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold bg-green-100 text-green-600">{letter}</div>
+  );
+}
+
 export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [tab, setTab] = useState<'all' | 'sms' | 'email'>('all');
+  const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -96,10 +119,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [selectedRecipients, setSelectedRecipients] = useState<DBContact[]>([]);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [composeBody, setComposeBody] = useState('');
+  const [composeChannel, setComposeChannel] = useState<'sms' | 'whatsapp'>('sms');
   const [groupType, setGroupType] = useState<'direct' | 'broadcast' | 'group'>('direct');
   const [contactSearch, setContactSearch] = useState('');
   const [composeSending, setComposeSending] = useState(false);
   const [composeError, setComposeError] = useState('');
+  const [showWaSandboxInfo, setShowWaSandboxInfo] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -139,7 +164,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   useEffect(() => {
     if (selectedConv) {
       loadMessages(selectedConv.id);
-      // Update unread in local state
       setConversations(prev => prev.map(c =>
         c.id === selectedConv.id ? { ...c, unread_count: 0 } : c
       ));
@@ -168,6 +192,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           recipients: selectedConv.participants,
           body: replyText,
           type: selectedConv.type,
+          channel: selectedConv.channel,
         }),
       });
       if (resp.ok) {
@@ -182,7 +207,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   };
 
-  // Load contacts + deals for compose modal
   const loadComposeData = async () => {
     try {
       const sbUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -207,9 +231,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     setSelectedRecipients([]);
     setSelectedDeal(null);
     setComposeBody('');
+    setComposeChannel('sms');
     setGroupType('direct');
     setContactSearch('');
     setComposeError('');
+    setShowWaSandboxInfo(false);
     loadComposeData();
   };
 
@@ -233,13 +259,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           })),
           body: composeBody,
           type: selectedRecipients.length === 1 ? 'direct' : groupType,
+          channel: composeChannel,
         }),
       });
       if (resp.ok) {
         const data = await resp.json();
         setShowCompose(false);
         await loadConversations();
-        // Auto-open the new conversation
         const newConv = conversations.find(c => c.id === data.conversation_id);
         if (newConv) setSelectedConv(newConv);
       } else {
@@ -265,6 +291,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   });
 
   const totalUnread = conversations.reduce((a, c) => a + (c.unread_count || 0), 0);
+  const waCount = conversations.filter(c => c.channel === 'whatsapp' && c.unread_count > 0).length;
 
   const filteredContacts = composeContacts.filter(c => {
     if (!contactSearch) return true;
@@ -298,14 +325,17 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-base-300 bg-base-200 px-2 gap-1 py-1.5">
-        {(['all', 'sms', 'email'] as const).map(t => (
+      <div className="flex border-b border-base-300 bg-base-200 px-2 gap-1 py-1.5 overflow-x-auto">
+        {(['all', 'sms', 'whatsapp', 'email'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${tab === t ? 'bg-primary text-white' : 'text-base-content/60 hover:bg-base-300'}`}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${tab === t ? 'bg-primary text-white' : 'text-base-content/60 hover:bg-base-300'}`}
           >
-            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : '✉️ Email'}
+            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : t === 'whatsapp' ? '💬 WhatsApp' : '✉️ Email'}
+            {t === 'whatsapp' && waCount > 0 && (
+              <span className="ml-1 bg-green-500 text-white text-[9px] font-bold rounded-full px-1">{waCount}</span>
+            )}
           </button>
         ))}
       </div>
@@ -335,7 +365,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             <MessageCircle size={32} />
             <div>
               <p className="text-sm font-medium">No conversations yet</p>
-              <p className="text-xs mt-1">Click "New" to send your first SMS</p>
+              <p className="text-xs mt-1">Click "New" to send your first message</p>
             </div>
           </div>
         ) : (
@@ -348,16 +378,14 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                 className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
               >
                 <div className="flex items-start gap-2.5">
-                  {/* Avatar */}
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${conv.channel === 'sms' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                    {conv.name.charAt(0).toUpperCase()}
-                  </div>
+                  <ChannelAvatar channel={conv.channel} name={conv.name} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 mb-0.5">
                       <span className={`text-sm font-semibold truncate flex-1 ${conv.unread_count > 0 ? 'text-base-content' : 'text-base-content/80'}`}>
                         {conv.name}
                       </span>
                       {typeIcon(conv.type)}
+                      <ChannelBadge channel={conv.channel} />
                       {conv.unread_count > 0 && (
                         <span className="bg-primary text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center flex-none">
                           {conv.unread_count > 9 ? '9+' : conv.unread_count}
@@ -410,15 +438,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
               <ChevronLeft size={16} />
             </button>
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${selectedConv.channel === 'sms' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-              {selectedConv.name.charAt(0).toUpperCase()}
-            </div>
+            <ChannelAvatar channel={selectedConv.channel} name={selectedConv.name} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm">{selectedConv.name}</span>
-                <span className={`badge badge-xs ${selectedConv.channel === 'sms' ? 'badge-info' : 'badge-success'}`}>
-                  {selectedConv.channel.toUpperCase()}
-                </span>
+                <ChannelBadge channel={selectedConv.channel} />
                 {selectedConv.type !== 'direct' && (
                   <span className="badge badge-xs badge-ghost">{selectedConv.type}</span>
                 )}
@@ -471,9 +495,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                       <div className={`max-w-[75%] ${isOut ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
                         <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                           isOut
-                            ? 'bg-primary text-primary-content rounded-br-sm'
+                            ? selectedConv.channel === 'whatsapp'
+                              ? 'text-white rounded-br-sm'
+                              : 'bg-primary text-primary-content rounded-br-sm'
                             : 'bg-base-200 text-base-content rounded-bl-sm'
-                        }`}>
+                        }`}
+                        style={isOut && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366' } : undefined}
+                        >
                           {msg.body}
                         </div>
                         <div className={`flex items-center gap-1.5 px-1 ${isOut ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -510,13 +538,18 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
               <button
                 onClick={handleSendReply}
                 disabled={!replyText.trim() || sending}
-                className="btn btn-primary btn-sm px-3 self-end rounded-xl"
+                className="btn btn-sm px-3 self-end rounded-xl text-white"
+                style={selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
               >
                 {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               </button>
             </div>
             <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
-              {selectedConv.channel === 'sms' ? '📱 Sending via SMS from (464) 733-3257' : '✉️ Email thread'}
+              {selectedConv.channel === 'whatsapp'
+                ? '💬 Sending via WhatsApp'
+                : selectedConv.channel === 'sms'
+                ? '📱 Sending via SMS from (464) 733-3257'
+                : '✉️ Email thread'}
               {selectedConv.type === 'broadcast' && ' · Broadcast (recipients can\'t see each other)'}
               {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
             </p>
@@ -543,12 +576,54 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          {/* Channel Toggle */}
+          <div>
+            <label className="text-xs font-semibold text-base-content/60 mb-2 block">SEND VIA</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { setComposeChannel('sms'); setShowWaSandboxInfo(false); }}
+                className={`p-3 rounded-xl border-2 text-left transition-all ${composeChannel === 'sms' ? 'border-blue-400 bg-blue-50' : 'border-base-300 hover:border-base-400'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📱</span>
+                  <div>
+                    <div className="text-xs font-bold">SMS</div>
+                    <div className="text-[10px] text-base-content/50">(464) 733-3257</div>
+                  </div>
+                </div>
+              </button>
+              <button
+                onClick={() => { setComposeChannel('whatsapp'); setShowWaSandboxInfo(true); }}
+                className={`p-3 rounded-xl border-2 text-left transition-all ${composeChannel === 'whatsapp' ? 'border-green-400 bg-green-50' : 'border-base-300 hover:border-base-400'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💬</span>
+                  <div>
+                    <div className="text-xs font-bold">WhatsApp</div>
+                    <div className="text-[10px] text-base-content/50">Sandbox</div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* WhatsApp Sandbox Instructions */}
+            {showWaSandboxInfo && composeChannel === 'whatsapp' && (
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-xl text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold text-green-800">
+                  <Info size={12} /> WhatsApp Sandbox — Recipient must opt in first
+                </div>
+                <p className="text-green-700">Ask them to text <strong>"join &lt;your-keyword&gt;"</strong> to <strong>+1 (415) 523-8886</strong></p>
+                <p className="text-green-600 text-[10px]">Find your keyword at: twilio.com/console → Messaging → Try it out → WhatsApp</p>
+              </div>
+            )}
+          </div>
+
           {/* Recipients */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-1.5 block">
               TO: RECIPIENTS {selectedRecipients.length > 0 && `(${selectedRecipients.length} selected)`}
             </label>
-            {/* Selected recipients */}
             {selectedRecipients.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {selectedRecipients.map(c => (
@@ -633,7 +708,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             </div>
           )}
 
-          {/* Link to Deal (optional) */}
+          {/* Link to Deal */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-1.5 block">LINK TO DEAL (OPTIONAL)</label>
             <select
@@ -662,9 +737,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
               onChange={e => setComposeBody(e.target.value)}
             />
             <div className="flex justify-between items-center mt-1">
-              <span className="text-[10px] text-base-content/35">📱 Sending from (464) 733-3257</span>
+              <span className="text-[10px] text-base-content/35">
+                {composeChannel === 'whatsapp' ? '💬 Sending via WhatsApp Sandbox' : '📱 Sending from (464) 733-3257'}
+              </span>
               <span className={`text-[10px] ${composeBody.length > 160 ? 'text-warning' : 'text-base-content/35'}`}>
-                {composeBody.length} chars {composeBody.length > 160 && '(2 SMS segments)'}
+                {composeBody.length} chars {composeBody.length > 160 && composeChannel === 'sms' && '(2 SMS segments)'}
               </span>
             </div>
           </div>
@@ -683,10 +760,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           <button
             onClick={handleComposeSend}
             disabled={!selectedRecipients.length || !composeBody.trim() || composeSending}
-            className="btn btn-primary btn-sm gap-2 rounded-xl"
+            className="btn btn-sm gap-2 rounded-xl text-white"
+            style={composeChannel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
           >
             {composeSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-            {composeSending ? 'Sending...' : `Send${selectedRecipients.length > 1 ? ` to ${selectedRecipients.length}` : ''}`}
+            {composeSending ? 'Sending...' : `Send${selectedRecipients.length > 1 ? ` to ${selectedRecipients.length}` : ''} via ${composeChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
           </button>
         </div>
       </div>

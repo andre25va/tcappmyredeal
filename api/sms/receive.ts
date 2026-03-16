@@ -18,7 +18,7 @@ async function classifyMessage(contactName: string, dealAddress: string | null, 
       messages: [
         {
           role: 'system',
-          content: `You are a TC (Transaction Coordinator) assistant. Analyze inbound SMS messages from clients and determine:
+          content: `You are a TC (Transaction Coordinator) assistant. Analyze inbound messages from clients and determine:
 1. Does this message contain a REQUEST or ACTION needed? (yes/no)
 2. If yes, write a concise task title (under 60 chars) for the TC to act on.
 3. Suggest priority: high/normal/low
@@ -40,12 +40,19 @@ Respond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priorit
   }
 }
 
-async function sendTwilioReply(to: string, body: string) {
+async function sendTwilioReply(to: string, body: string, isWhatsApp: boolean) {
   const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
   const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
   const FROM_NUMBER = process.env.TWILIO_PHONE_NUMBER!;
+  // For WhatsApp: use sandbox number or approved WA number
+  const WA_FROM = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
+
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
-  const params = new URLSearchParams({ To: to, From: FROM_NUMBER, Body: body });
+
+  const toFormatted = isWhatsApp ? `whatsapp:${to}` : to;
+  const fromFormatted = isWhatsApp ? WA_FROM : FROM_NUMBER;
+
+  const params = new URLSearchParams({ To: toFormatted, From: fromFormatted, Body: body });
   await fetch(url, {
     method: 'POST',
     headers: {
@@ -57,14 +64,18 @@ async function sendTwilioReply(to: string, body: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Twilio sends POST with form-encoded body
   if (req.method !== 'POST') return res.status(405).send('Method not allowed');
 
   const { From, Body, MessageSid } = req.body as { From: string; Body: string; MessageSid: string };
 
   try {
-    // 1. Match inbound number to a contact
-    const fromClean = From.replace(/\D/g, '');
+    // Detect channel — WhatsApp messages arrive as "whatsapp:+1xxxxxxxxxx"
+    const isWhatsApp = From && From.startsWith('whatsapp:');
+    const fromPhone = isWhatsApp ? From.replace('whatsapp:', '') : From;
+    const channel: 'sms' | 'whatsapp' = isWhatsApp ? 'whatsapp' : 'sms';
+
+    // 1. Match inbound number to a contact (normalize to digits for comparison)
+    const fromClean = fromPhone.replace(/\D/g, '');
     const { data: contacts } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, phone')
@@ -81,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const contactName = matchedContact
       ? `${matchedContact.first_name} ${matchedContact.last_name}`
-      : From;
+      : fromPhone;
 
     // 2. Find related deal
     let relatedDeal: any = null;
@@ -92,7 +103,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .eq('status', 'active')
         .limit(10);
 
-      // Try to match contact to a deal via deal_data JSONB
       for (const deal of deals || []) {
         const { data: fullDeal } = await supabase
           .from('deals')
@@ -107,18 +117,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 3. Find or create conversation
+    // 3. Find or create conversation (match by channel + contact)
     let conversation: any = null;
     if (matchedContact) {
       const { data: existing } = await supabase
         .from('conversations')
         .select('*')
-        .eq('channel', 'sms')
+        .eq('channel', channel)
         .eq('type', 'direct')
         .contains('participants', JSON.stringify([{ contact_id: matchedContact.id }]))
         .order('last_message_at', { ascending: false })
         .limit(1);
       conversation = existing?.[0];
+    }
+
+    if (!conversation) {
+      // Also try matching by phone number in participants
+      const { data: byPhone } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('channel', channel)
+        .eq('type', 'direct')
+        .order('last_message_at', { ascending: false })
+        .limit(20);
+
+      for (const conv of byPhone || []) {
+        const participants = conv.participants as any[];
+        if (participants?.some((p: any) => p.phone?.replace(/\D/g, '').endsWith(fromClean.slice(-10)))) {
+          conversation = conv;
+          break;
+        }
+      }
     }
 
     if (!conversation) {
@@ -128,10 +157,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: contactName,
           deal_id: relatedDeal?.id || null,
           type: 'direct',
-          channel: 'sms',
+          channel,
           participants: matchedContact
-            ? [{ contact_id: matchedContact.id, name: contactName, phone: From }]
-            : [{ contact_id: null, name: contactName, phone: From }],
+            ? [{ contact_id: matchedContact.id, name: contactName, phone: fromPhone }]
+            : [{ contact_id: null, name: contactName, phone: fromPhone }],
           last_message_at: new Date().toISOString(),
           last_message_preview: Body.substring(0, 80),
           unread_count: 1,
@@ -156,10 +185,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       deal_id: relatedDeal?.id || null,
       contact_id: matchedContact?.id || null,
       direction: 'inbound',
-      channel: 'sms',
+      channel,
       body: Body,
       status: 'received',
-      from_number: From,
+      from_number: fromPhone,
       to_number: process.env.TWILIO_PHONE_NUMBER,
       external_message_id: MessageSid,
       sent_at: new Date().toISOString(),
@@ -175,7 +204,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .insert({
           deal_id: relatedDeal.id,
           title: ai.task_title || `Reply to ${contactName}: "${Body.substring(0, 40)}..."`,
-          description: `Inbound SMS from ${contactName} (${From}): "${Body}"`,
+          description: `Inbound ${channel.toUpperCase()} from ${contactName} (${fromPhone}): "${Body}"`,
           category: 'Communication',
           status: 'pending',
           priority: ai.priority || 'normal',
@@ -186,21 +215,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdTaskId = task?.id || null;
     }
 
-    // 6. Auto-reply to client
+    // 6. Auto-reply to client (same channel they used)
     const autoReply = ai.auto_reply || 'Thanks for reaching out! We\'ll get back to you shortly. 🏠';
-    await sendTwilioReply(From, autoReply);
+    await sendTwilioReply(fromPhone, autoReply, isWhatsApp);
 
     // Save auto-reply message
+    const WA_FROM = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
     await supabase.from('messages').insert({
       conversation_id: conversation?.id || null,
       deal_id: relatedDeal?.id || null,
       contact_id: matchedContact?.id || null,
       direction: 'outbound',
-      channel: 'sms',
+      channel,
       body: autoReply,
       status: 'sent',
-      from_number: process.env.TWILIO_PHONE_NUMBER,
-      to_number: From,
+      from_number: isWhatsApp ? WA_FROM : process.env.TWILIO_PHONE_NUMBER,
+      to_number: fromPhone,
       auto_created_task_id: createdTaskId,
       sent_at: new Date().toISOString(),
     });
@@ -209,7 +239,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Type', 'text/xml');
     return res.send('<Response></Response>');
   } catch (err: any) {
-    console.error('SMS receive error:', err);
+    console.error('Message receive error:', err);
     res.setHeader('Content-Type', 'text/xml');
     return res.send('<Response></Response>');
   }

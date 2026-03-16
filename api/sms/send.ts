@@ -8,11 +8,17 @@ const supabase = createClient(
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
-const FROM_NUMBER = process.env.TWILIO_PHONE_NUMBER!;
+const FROM_SMS = process.env.TWILIO_PHONE_NUMBER!;
+const FROM_WA = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
 
-async function sendTwilioSms(to: string, body: string) {
+async function sendTwilioMessage(to: string, body: string, channel: 'sms' | 'whatsapp') {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`;
-  const params = new URLSearchParams({ To: to, From: FROM_NUMBER, Body: body });
+
+  // Format To/From based on channel
+  const toFormatted = channel === 'whatsapp' ? `whatsapp:${to}` : to;
+  const fromFormatted = channel === 'whatsapp' ? FROM_WA : FROM_SMS;
+
+  const params = new URLSearchParams({ To: toFormatted, From: fromFormatted, Body: body });
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
@@ -29,12 +35,13 @@ async function sendTwilioSms(to: string, body: string) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { conversation_id, deal_id, recipients, body, type = 'direct' } = req.body as {
+  const { conversation_id, deal_id, recipients, body, type = 'direct', channel = 'sms' } = req.body as {
     conversation_id?: string;
     deal_id?: string;
     recipients: Array<{ contact_id: string; name: string; phone: string }>;
     body: string;
     type?: 'direct' | 'broadcast' | 'group';
+    channel?: 'sms' | 'whatsapp';
   };
 
   if (!recipients?.length || !body) {
@@ -55,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: convName,
           deal_id: deal_id || null,
           type,
-          channel: 'sms',
+          channel,
           participants: recipients,
           last_message_at: new Date().toISOString(),
           last_message_preview: body.substring(0, 80),
@@ -83,17 +90,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const e164 = phone.startsWith('1') ? `+${phone}` : `+1${phone}`;
 
       try {
-        const twilioResp = await sendTwilioSms(e164, body);
+        const twilioResp = await sendTwilioMessage(e164, body, channel);
 
         const { data: msg } = await supabase.from('messages').insert({
           conversation_id: convId,
           deal_id: deal_id || null,
           contact_id: recipient.contact_id,
           direction: 'outbound',
-          channel: 'sms',
+          channel,
           body,
           status: 'sent',
-          from_number: FROM_NUMBER,
+          from_number: channel === 'whatsapp' ? FROM_WA : FROM_SMS,
           to_number: e164,
           external_message_id: twilioResp.sid,
           sent_at: new Date().toISOString(),
@@ -107,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.json({ conversation_id: convId, sent: results, errors });
   } catch (err: any) {
-    console.error('SMS send error:', err);
+    console.error('Message send error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
