@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 import { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
-import { generateSampleData, generateDirectoryContacts } from './utils/sampleData';
 import {
   loadDeals, saveDeals, saveSingleDeal,
   loadDirectory, saveDirectory,
@@ -11,7 +10,6 @@ import {
   loadEmailTemplates, saveEmailTemplates,
   loadMasterItems, saveMasterItems,
 } from './utils/supabaseDb';
-import { migrateDeals, migrateDirectory, migrateMls, migrateCompliance, migrateUsers } from './utils/storage';
 import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
@@ -24,6 +22,13 @@ import { ComplianceManager } from './components/ComplianceManager';
 import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
+
+// One-time localStorage wipe so old cached data never overrides Supabase
+const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
+if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
+  localStorage.clear();
+  sessionStorage.setItem(LS_CLEARED_KEY, '1');
+}
 
 export default function App() {
 
@@ -38,6 +43,7 @@ export default function App() {
   const txContainerRef                      = useRef<HTMLDivElement>(null);
   const [showAdd, setShowAdd]               = useState(false);
   const [loading, setLoading]               = useState(true);
+  const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
 
@@ -53,18 +59,13 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        let data = await loadDeals();
-        if (!data || data.length === 0) {
-          data = migrateDeals(generateSampleData());
-          saveDeals(data).catch(console.error);
-        }
+        const data = await loadDeals();
         setDeals(data);
         const isMobile = window.innerWidth < 768;
-        if (!isMobile) setSelectedId(current => current ?? data[0]?.id ?? null);
+        if (!isMobile && data.length > 0) setSelectedId(data[0].id);
       } catch (err) {
         console.error('Failed to load deals:', err);
-        const fallback = migrateDeals(generateSampleData());
-        setDeals(fallback);
+        setLoadError('Unable to connect to database. Please check your connection and refresh.');
       } finally {
         setLoading(false);
       }
@@ -87,22 +88,22 @@ export default function App() {
   // ── Load directory ───────────────────────────────────────────────────────────
   useEffect(() => {
     loadDirectory()
-      .then(data => setDirectory(data.length ? data : migrateDirectory(generateDirectoryContacts())))
-      .catch(() => setDirectory(migrateDirectory(generateDirectoryContacts())));
+      .then(data => setDirectory(data))
+      .catch(err => { console.error('Failed to load directory:', err); setDirectory([]); });
   }, []);
 
   // ── Load MLS ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadMls()
       .then(data => setMlsEntries(data))
-      .catch(() => setMlsEntries([]));
+      .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });
   }, []);
 
   // ── Load compliance templates ────────────────────────────────────────────────
   useEffect(() => {
     loadCompliance()
       .then(data => setComplianceTemplates(data))
-      .catch(() => setComplianceTemplates([]));
+      .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });
   }, []);
 
   const persistCompliance = (updated: ComplianceTemplate[]) => {
@@ -114,7 +115,7 @@ export default function App() {
   useEffect(() => {
     loadUsers()
       .then(data => setUsers(data))
-      .catch(() => setUsers([]));
+      .catch(err => { console.error('Failed to load users:', err); setUsers([]); });
   }, []);
 
   const persistUsers = (updated: AppUser[]) => {
@@ -126,7 +127,7 @@ export default function App() {
   useEffect(() => {
     loadEmailTemplates()
       .then(data => setEmailTemplates(data))
-      .catch(() => setEmailTemplates([]));
+      .catch(err => { console.error('Failed to load email templates:', err); setEmailTemplates([]); });
   }, []);
 
   const persistEmailTemplates = async (updated: EmailTemplate[]) => {
@@ -138,7 +139,7 @@ export default function App() {
   useEffect(() => {
     loadMasterItems('compliance')
       .then(data => setComplianceMasterItems(data as ComplianceMasterItem[]))
-      .catch(() => setComplianceMasterItems([]));
+      .catch(err => { console.error('Failed to load compliance master:', err); setComplianceMasterItems([]); });
   }, []);
 
   const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
@@ -150,7 +151,7 @@ export default function App() {
   useEffect(() => {
     loadMasterItems('dd')
       .then(data => setDdMasterItems(data as DDMasterItem[]))
-      .catch(() => setDdMasterItems([]));
+      .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });
   }, []);
 
   const persistDdMasterItems = (updated: DDMasterItem[]) => {
@@ -216,8 +217,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div data-theme="light" className="flex items-center justify-center h-screen bg-base-100">
+      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-3">
         <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-sm text-base-content/50">Loading from Supabase...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-4 p-8">
+        <span className="text-5xl">⚠️</span>
+        <h2 className="text-xl font-bold text-base-content">Database Connection Error</h2>
+        <p className="text-sm text-base-content/60 text-center max-w-sm">{loadError}</p>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          Retry
+        </button>
       </div>
     );
   }

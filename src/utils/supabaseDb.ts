@@ -1,7 +1,6 @@
 /**
  * supabaseDb.ts
- * Drop-in replacement for storage.ts — persists all app data in Supabase.
- * Falls back to localStorage when Supabase is unavailable (e.g. no env vars).
+ * Single source of truth — all data lives in Supabase. No localStorage fallbacks.
  */
 
 import { supabase } from '../lib/supabase';
@@ -16,40 +15,9 @@ import {
   DDMasterItem,
 } from '../types';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function isSupabaseReady(): boolean {
-  return !!(
-    import.meta.env.VITE_SUPABASE_URL &&
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-  );
-}
-
-const LS_KEY = (k: string) => `tc-dashboard:${k}`;
-
-function lsRead<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(LS_KEY(key));
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && 'data' in parsed) {
-      return (parsed as { data: T }).data;
-    }
-    return parsed as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function lsWrite<T>(key: string, data: T): void {
-  localStorage.setItem(LS_KEY(key), JSON.stringify({ version: 1, data }));
-}
-
 // ─── DEALS ───────────────────────────────────────────────────────────────────
 
 export async function loadDeals(): Promise<Deal[]> {
-  if (!isSupabaseReady()) return lsRead<Deal[]>('deals.json', []);
-
   const { data, error } = await supabase
     .from('deals')
     .select('deal_data')
@@ -61,13 +29,7 @@ export async function loadDeals(): Promise<Deal[]> {
 }
 
 export async function saveDeals(deals: Deal[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('deals.json', deals);
-    return;
-  }
-
   if (deals.length === 0) {
-    // Delete everything if array is empty
     await supabase.from('deals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     return;
   }
@@ -107,15 +69,6 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
 }
 
 export async function saveSingleDeal(deal: Deal): Promise<void> {
-  if (!isSupabaseReady()) {
-    const existing = lsRead<Deal[]>('deals.json', []);
-    const updated = existing.some((d) => d.id === deal.id)
-      ? existing.map((d) => (d.id === deal.id ? deal : d))
-      : [deal, ...existing];
-    lsWrite('deals.json', updated);
-    return;
-  }
-
   const { error } = await supabase.from('deals').upsert(
     {
       id: deal.id,
@@ -140,11 +93,6 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
 }
 
 export async function deleteDeal(id: string): Promise<void> {
-  if (!isSupabaseReady()) {
-    const existing = lsRead<Deal[]>('deals.json', []);
-    lsWrite('deals.json', existing.filter((d) => d.id !== id));
-    return;
-  }
   const { error } = await supabase.from('deals').delete().eq('id', id);
   if (error) throw error;
 }
@@ -152,8 +100,6 @@ export async function deleteDeal(id: string): Promise<void> {
 // ─── DIRECTORY CONTACTS ───────────────────────────────────────────────────────
 
 export async function loadDirectory(): Promise<DirectoryContact[]> {
-  if (!isSupabaseReady()) return lsRead<DirectoryContact[]>('directory.json', []);
-
   const { data, error } = await supabase
     .from('directory_contacts')
     .select('data')
@@ -164,11 +110,6 @@ export async function loadDirectory(): Promise<DirectoryContact[]> {
 }
 
 export async function saveDirectory(contacts: DirectoryContact[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('directory.json', contacts);
-    return;
-  }
-
   if (contacts.length === 0) {
     await supabase.from('directory_contacts').delete().neq('id', '');
     return;
@@ -202,8 +143,6 @@ export async function saveDirectory(contacts: DirectoryContact[]): Promise<void>
 // ─── MLS ENTRIES ─────────────────────────────────────────────────────────────
 
 export async function loadMls(): Promise<MlsEntry[]> {
-  if (!isSupabaseReady()) return lsRead<MlsEntry[]>('mls.json', []);
-
   const { data, error } = await supabase
     .from('mls_entries')
     .select('id, name, url, state, notes, documents, created_at')
@@ -222,11 +161,6 @@ export async function loadMls(): Promise<MlsEntry[]> {
 }
 
 export async function saveMls(entries: MlsEntry[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('mls.json', entries);
-    return;
-  }
-
   if (entries.length === 0) {
     await supabase.from('mls_entries').delete().neq('id', '');
     return;
@@ -258,8 +192,6 @@ export async function saveMls(entries: MlsEntry[]): Promise<void> {
 // ─── COMPLIANCE TEMPLATES ─────────────────────────────────────────────────────
 
 export async function loadCompliance(): Promise<ComplianceTemplate[]> {
-  if (!isSupabaseReady()) return lsRead<ComplianceTemplate[]>('compliance.json', []);
-
   const { data, error } = await supabase
     .from('app_compliance_templates')
     .select('data')
@@ -270,11 +202,6 @@ export async function loadCompliance(): Promise<ComplianceTemplate[]> {
 }
 
 export async function saveCompliance(templates: ComplianceTemplate[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('compliance.json', templates);
-    return;
-  }
-
   if (templates.length === 0) {
     await supabase.from('app_compliance_templates').delete().neq('id', '');
     return;
@@ -305,8 +232,6 @@ export async function saveCompliance(templates: ComplianceTemplate[]): Promise<v
 // ─── APP USERS ────────────────────────────────────────────────────────────────
 
 export async function loadUsers(): Promise<AppUser[]> {
-  if (!isSupabaseReady()) return lsRead<AppUser[]>('users.json', []);
-
   const { data, error } = await supabase
     .from('app_users')
     .select('id, name, email, role, active, created_at')
@@ -324,11 +249,6 @@ export async function loadUsers(): Promise<AppUser[]> {
 }
 
 export async function saveUsers(users: AppUser[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('users.json', users);
-    return;
-  }
-
   if (users.length === 0) {
     await supabase.from('app_users').delete().neq('id', '');
     return;
@@ -358,8 +278,6 @@ export async function saveUsers(users: AppUser[]): Promise<void> {
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
 
 export async function loadEmailTemplates(): Promise<EmailTemplate[]> {
-  if (!isSupabaseReady()) return lsRead<EmailTemplate[]>('emailTemplates.json', []);
-
   const { data, error } = await supabase
     .from('email_templates')
     .select('id, name, subject, body, buttons, is_default, created_at, updated_at')
@@ -379,11 +297,6 @@ export async function loadEmailTemplates(): Promise<EmailTemplate[]> {
 }
 
 export async function saveEmailTemplates(templates: EmailTemplate[]): Promise<void> {
-  if (!isSupabaseReady()) {
-    lsWrite('emailTemplates.json', templates);
-    return;
-  }
-
   if (templates.length === 0) {
     await supabase.from('email_templates').delete().neq('id', '');
     return;
@@ -417,9 +330,6 @@ export async function saveEmailTemplates(templates: EmailTemplate[]): Promise<vo
 export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
   ComplianceMasterItem[] | DDMasterItem[]
 > {
-  const lsKey = type === 'compliance' ? 'complianceMaster.json' : 'ddMaster.json';
-  if (!isSupabaseReady()) return lsRead(lsKey, []);
-
   const { data, error } = await supabase
     .from('master_items')
     .select('id, title, required, order_index')
@@ -448,13 +358,6 @@ export async function saveMasterItems(
   type: 'compliance' | 'dd',
   items: ComplianceMasterItem[] | DDMasterItem[],
 ): Promise<void> {
-  const lsKey = type === 'compliance' ? 'complianceMaster.json' : 'ddMaster.json';
-  if (!isSupabaseReady()) {
-    lsWrite(lsKey, items);
-    return;
-  }
-
-  // Delete all items of this type then re-insert (simple approach for master lists)
   await supabase.from('master_items').delete().eq('type', type);
 
   if (items.length === 0) return;
@@ -481,8 +384,6 @@ export async function logActivity(params: {
   performedBy?: string;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  if (!isSupabaseReady()) return;
-
   await supabase.from('activity_log').insert({
     deal_id: params.dealId ?? null,
     action: params.action,
