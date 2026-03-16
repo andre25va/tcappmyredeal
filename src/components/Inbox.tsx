@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare, Send, Plus, Search, X, Users, Phone,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
-  Briefcase, MessageCircle, Mail, Loader2, Hash, Info
+  Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
+  Reply, Forward, ExternalLink, Inbox as InboxIcon
 } from 'lucide-react';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface Participant {
   contact_id: string | null;
@@ -38,6 +41,31 @@ interface Message {
   contacts?: { first_name: string; last_name: string; phone: string; role: string } | null;
 }
 
+interface EmailThread {
+  id: string;
+  subject: string;
+  from: string;
+  to: string;
+  snippet: string;
+  internalDate: string;
+  messageCount: number;
+  isUnread: boolean;
+  labelIds: string[];
+}
+
+interface EmailMessage {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  to: string;
+  cc: string;
+  date: string;
+  internalDate: string;
+  body: string;
+  snippet: string;
+}
+
 interface DBContact {
   id: string;
   first_name: string;
@@ -59,6 +87,8 @@ interface InboxProps {
   onSelectDeal?: (id: string) => void;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -71,8 +101,26 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+function timeAgoMs(ms: string | number) {
+  return timeAgo(new Date(Number(ms)).toISOString());
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatEmailDate(ms: string | number) {
+  const d = new Date(Number(ms));
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (d.getFullYear() === today.getFullYear()) return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+function parseFromName(from: string): string {
+  const match = from.match(/^(.+?)\s*</);
+  if (match) return match[1].trim().replace(/^"|"$/g, '');
+  return from.replace(/<.*>/, '').trim() || from;
 }
 
 function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' }) {
@@ -98,22 +146,45 @@ function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp
   );
 }
 
+// ── Main Component ────────────────────────────────────────────────────────────
+
 export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
+  // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+
+  // Email state
+  const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
+  const [selectedEmailThread, setSelectedEmailThread] = useState<EmailThread | null>(null);
+  const [emailMessages, setEmailMessages] = useState<EmailMessage[]>([]);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailMsgLoading, setEmailMsgLoading] = useState(false);
+  const [emailReplyText, setEmailReplyText] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+
+  // Compose email state
+  const [showEmailCompose, setShowEmailCompose] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailComposeError, setEmailComposeError] = useState('');
+  const [emailComposeSending, setEmailComposeSending] = useState(false);
+
+  // Common state
   const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [msgLoading, setMsgLoading] = useState(false);
-  const [showCompose, setShowCompose] = useState(false);
   const [mobileShowThread, setMobileShowThread] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [sending, setSending] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const refreshRef = useRef<NodeJS.Timeout>();
 
-  // Compose modal state
+  // Compose SMS/WA state
+  const [showCompose, setShowCompose] = useState(false);
   const [composeContacts, setComposeContacts] = useState<DBContact[]>([]);
   const [composeDeals, setComposeDeals] = useState<Deal[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<DBContact[]>([]);
@@ -125,6 +196,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   const [composeSending, setComposeSending] = useState(false);
   const [composeError, setComposeError] = useState('');
   const [showWaSandboxInfo, setShowWaSandboxInfo] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const emailEndRef = useRef<HTMLDivElement>(null);
+  const refreshRef = useRef<NodeJS.Timeout>();
+
+  // ── Loaders ─────────────────────────────────────────────────────────────────
 
   const loadConversations = useCallback(async () => {
     try {
@@ -140,11 +217,40 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   }, []);
 
+  const loadEmailThreads = useCallback(async () => {
+    setEmailLoading(true);
+    setEmailError('');
+    try {
+      const resp = await fetch('/api/email/threads?max_results=30');
+      if (resp.ok) {
+        const data = await resp.json();
+        setEmailThreads(data.threads || []);
+        setGmailConnected(true);
+      } else {
+        const err = await resp.json();
+        setGmailConnected(false);
+        setEmailError(err.error || 'Failed to load email');
+      }
+    } catch (e: any) {
+      setGmailConnected(false);
+      setEmailError(e.message || 'Failed to connect to Gmail');
+    } finally {
+      setEmailLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadConversations();
     refreshRef.current = setInterval(loadConversations, 30000);
     return () => clearInterval(refreshRef.current);
   }, [loadConversations]);
+
+  // Load emails when Email tab is selected
+  useEffect(() => {
+    if (tab === 'email' && gmailConnected === null) {
+      loadEmailThreads();
+    }
+  }, [tab, gmailConnected, loadEmailThreads]);
 
   const loadMessages = useCallback(async (convId: string) => {
     setMsgLoading(true);
@@ -161,6 +267,21 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   }, []);
 
+  const loadEmailMessages = useCallback(async (threadId: string) => {
+    setEmailMsgLoading(true);
+    try {
+      const resp = await fetch(`/api/email/threads?thread_id=${threadId}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setEmailMessages(data.messages || []);
+      }
+    } catch (e) {
+      console.error('Failed to load email messages:', e);
+    } finally {
+      setEmailMsgLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedConv) {
       loadMessages(selectedConv.id);
@@ -171,12 +292,33 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   }, [selectedConv, loadMessages]);
 
   useEffect(() => {
+    if (selectedEmailThread) {
+      loadEmailMessages(selectedEmailThread.id);
+    }
+  }, [selectedEmailThread, loadEmailMessages]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    emailEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [emailMessages]);
+
+  // ── SMS / WA Actions ─────────────────────────────────────────────────────────
+
   const handleSelectConv = (conv: Conversation) => {
     setSelectedConv(conv);
+    setSelectedEmailThread(null);
     setMobileShowThread(true);
+  };
+
+  const handleSelectEmailThread = (thread: EmailThread) => {
+    setSelectedEmailThread(thread);
+    setSelectedConv(null);
+    setMobileShowThread(true);
+    // Mark as read locally
+    setEmailThreads(prev => prev.map(t => t.id === thread.id ? { ...t, isUnread: false } : t));
   };
 
   const handleSendReply = async () => {
@@ -207,6 +349,72 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   };
 
+  // ── Email Reply ──────────────────────────────────────────────────────────────
+
+  const handleEmailReply = async () => {
+    if (!emailReplyText.trim() || !selectedEmailThread || emailSending) return;
+    setEmailSending(true);
+    try {
+      const lastMsg = emailMessages[emailMessages.length - 1];
+      const replyTo = lastMsg?.from || selectedEmailThread.from;
+      const subj = selectedEmailThread.subject.startsWith('Re:')
+        ? selectedEmailThread.subject
+        : `Re: ${selectedEmailThread.subject}`;
+
+      const resp = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: replyTo,
+          subject: subj,
+          body: emailReplyText,
+          thread_id: selectedEmailThread.id,
+          in_reply_to: lastMsg?.id,
+        }),
+      });
+      if (resp.ok) {
+        setEmailReplyText('');
+        await loadEmailMessages(selectedEmailThread.id);
+      }
+    } catch (e) {
+      console.error('Email reply failed:', e);
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  // ── Compose Email ────────────────────────────────────────────────────────────
+
+  const handleComposeEmail = async () => {
+    if (!emailTo.trim() || !emailSubject.trim() || !emailBody.trim()) {
+      setEmailComposeError('Please fill in To, Subject, and Message.');
+      return;
+    }
+    setEmailComposeSending(true);
+    setEmailComposeError('');
+    try {
+      const resp = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: emailTo, cc: emailCc, subject: emailSubject, body: emailBody }),
+      });
+      if (resp.ok) {
+        setShowEmailCompose(false);
+        setEmailTo(''); setEmailSubject(''); setEmailBody(''); setEmailCc('');
+        await loadEmailThreads();
+      } else {
+        const err = await resp.json();
+        setEmailComposeError(err.error || 'Failed to send email');
+      }
+    } catch (e: any) {
+      setEmailComposeError(e.message || 'Failed to send');
+    } finally {
+      setEmailComposeSending(false);
+    }
+  };
+
+  // ── SMS Compose ──────────────────────────────────────────────────────────────
+
   const loadComposeData = async () => {
     try {
       const sbUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -227,6 +435,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   };
 
   const openCompose = () => {
+    if (tab === 'email') {
+      setShowEmailCompose(true);
+      setEmailTo(''); setEmailSubject(''); setEmailBody(''); setEmailCc('');
+      setEmailComposeError('');
+      return;
+    }
     setShowCompose(true);
     setSelectedRecipients([]);
     setSelectedDeal(null);
@@ -279,7 +493,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     }
   };
 
-  const filtered = conversations.filter(c => {
+  // ── Filtered Lists ───────────────────────────────────────────────────────────
+
+  const filteredConvs = conversations.filter(c => {
+    if (tab === 'email') return false;
     if (tab !== 'all' && c.channel !== tab) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -290,8 +507,15 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
     );
   });
 
+  const filteredEmails = emailThreads.filter(t => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return t.subject.toLowerCase().includes(q) || t.from.toLowerCase().includes(q) || t.snippet.toLowerCase().includes(q);
+  });
+
   const totalUnread = conversations.reduce((a, c) => a + (c.unread_count || 0), 0);
   const waCount = conversations.filter(c => c.channel === 'whatsapp' && c.unread_count > 0).length;
+  const emailUnread = emailThreads.filter(t => t.isUnread).length;
 
   const filteredContacts = composeContacts.filter(c => {
     if (!contactSearch) return true;
@@ -307,6 +531,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
   };
 
   // ── Conversation List Panel ──────────────────────────────────────────────────
+
   const ConversationList = (
     <div className={`flex flex-col h-full border-r border-base-300 bg-base-100 ${mobileShowThread ? 'hidden md:flex' : 'flex'} md:w-80 w-full flex-none`}>
       {/* Header */}
@@ -316,7 +541,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
         {totalUnread > 0 && (
           <span className="badge badge-primary badge-sm">{totalUnread}</span>
         )}
-        <button onClick={loadConversations} className="btn btn-ghost btn-xs btn-square" title="Refresh">
+        <button onClick={tab === 'email' ? loadEmailThreads : loadConversations} className="btn btn-ghost btn-xs btn-square" title="Refresh">
           <RefreshCw size={13} />
         </button>
         <button onClick={openCompose} className="btn btn-primary btn-xs gap-1 rounded-lg">
@@ -336,6 +561,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             {t === 'whatsapp' && waCount > 0 && (
               <span className="ml-1 bg-green-500 text-white text-[9px] font-bold rounded-full px-1">{waCount}</span>
             )}
+            {t === 'email' && emailUnread > 0 && (
+              <span className="ml-1 bg-primary text-white text-[9px] font-bold rounded-full px-1">{emailUnread}</span>
+            )}
           </button>
         ))}
       </div>
@@ -346,84 +574,395 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
           <input
             className="input input-bordered input-xs w-full pl-7 bg-base-100 text-sm"
-            placeholder="Search conversations..."
+            placeholder={tab === 'email' ? 'Search emails...' : 'Search conversations...'}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Loading...</span>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
-            <MessageCircle size={32} />
-            <div>
-              <p className="text-sm font-medium">No conversations yet</p>
-              <p className="text-xs mt-1">Click "New" to send your first message</p>
+      {/* Email List */}
+      {tab === 'email' ? (
+        <div className="flex-1 overflow-y-auto">
+          {emailLoading ? (
+            <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Loading Gmail...</span>
             </div>
-          </div>
-        ) : (
-          filtered.map(conv => {
-            const active = selectedConv?.id === conv.id;
-            return (
-              <button
-                key={conv.id}
-                onClick={() => handleSelectConv(conv)}
-                className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <ChannelAvatar channel={conv.channel} name={conv.name} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <span className={`text-sm font-semibold truncate flex-1 ${conv.unread_count > 0 ? 'text-base-content' : 'text-base-content/80'}`}>
-                        {conv.name}
-                      </span>
-                      {typeIcon(conv.type)}
-                      <ChannelBadge channel={conv.channel} />
-                      {conv.unread_count > 0 && (
-                        <span className="bg-primary text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center flex-none">
-                          {conv.unread_count > 9 ? '9+' : conv.unread_count}
-                        </span>
-                      )}
+          ) : gmailConnected === false ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-3 px-4 text-center">
+              <Mail size={32} className="text-base-content/20" />
+              <div>
+                <p className="text-sm font-semibold text-base-content/50">Gmail not connected</p>
+                <p className="text-xs text-base-content/35 mt-1">Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN to Vercel env vars</p>
+              </div>
+              <button onClick={loadEmailThreads} className="btn btn-xs btn-outline gap-1">
+                <RefreshCw size={11} /> Retry
+              </button>
+            </div>
+          ) : filteredEmails.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
+              <InboxIcon size={32} />
+              <p className="text-sm font-medium">No emails found</p>
+            </div>
+          ) : (
+            filteredEmails.map(thread => {
+              const active = selectedEmailThread?.id === thread.id;
+              const senderName = parseFromName(thread.from);
+              return (
+                <button
+                  key={thread.id}
+                  onClick={() => handleSelectEmailThread(thread)}
+                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${thread.isUnread ? 'bg-green-100 text-green-700' : 'bg-base-200 text-base-content/50'}`}>
+                      {senderName.charAt(0).toUpperCase()}
                     </div>
-                    {conv.deals && (
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 mb-0.5">
-                        <Briefcase size={10} className="text-base-content/40 flex-none" />
-                        <span className="text-[10px] text-base-content/50 truncate">
-                          {conv.deals.property_address}
+                        <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'font-bold text-base-content' : 'font-medium text-base-content/75'}`}>
+                          {senderName}
+                        </span>
+                        {thread.isUnread && (
+                          <span className="bg-primary text-white text-[9px] font-bold rounded-full w-2 h-2 flex-none" />
+                        )}
+                        <span className="text-[10px] text-base-content/35 flex-none">
+                          {formatEmailDate(thread.internalDate)}
                         </span>
                       </div>
-                    )}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-xs truncate ${conv.unread_count > 0 ? 'text-base-content/70 font-medium' : 'text-base-content/45'}`}>
-                        {conv.last_message_preview || 'No messages yet'}
-                      </span>
-                      {conv.last_message_at && (
-                        <span className="text-[10px] text-base-content/35 flex-none">
-                          {timeAgo(conv.last_message_at)}
+                      <p className={`text-xs truncate mb-0.5 ${thread.isUnread ? 'text-base-content font-semibold' : 'text-base-content/65'}`}>
+                        {thread.subject}
+                      </p>
+                      <p className="text-xs text-base-content/40 truncate">{thread.snippet}</p>
+                      {thread.messageCount > 1 && (
+                        <span className="text-[10px] text-base-content/30">{thread.messageCount} messages</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        /* SMS / WA List */
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Loading...</span>
+            </div>
+          ) : filteredConvs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
+              <MessageCircle size={32} />
+              <div>
+                <p className="text-sm font-medium">No conversations yet</p>
+                <p className="text-xs mt-1">Click "New" to send your first message</p>
+              </div>
+            </div>
+          ) : (
+            filteredConvs.map(conv => {
+              const active = selectedConv?.id === conv.id;
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => handleSelectConv(conv)}
+                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <ChannelAvatar channel={conv.channel} name={conv.name} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className={`text-sm font-semibold truncate flex-1 ${conv.unread_count > 0 ? 'text-base-content' : 'text-base-content/80'}`}>
+                          {conv.name}
                         </span>
+                        {typeIcon(conv.type)}
+                        <ChannelBadge channel={conv.channel} />
+                        {conv.unread_count > 0 && (
+                          <span className="bg-primary text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center flex-none">
+                            {conv.unread_count > 9 ? '9+' : conv.unread_count}
+                          </span>
+                        )}
+                      </div>
+                      {conv.deals && (
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <Briefcase size={10} className="text-base-content/40 flex-none" />
+                          <span className="text-[10px] text-base-content/50 truncate">
+                            {conv.deals.property_address}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-xs truncate ${conv.unread_count > 0 ? 'text-base-content/70 font-medium' : 'text-base-content/45'}`}>
+                          {conv.last_message_preview || 'No messages yet'}
+                        </span>
+                        {conv.last_message_at && (
+                          <span className="text-[10px] text-base-content/35 flex-none">
+                            {timeAgo(conv.last_message_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Email Thread Panel ───────────────────────────────────────────────────────
+
+  const EmailThreadPanel = selectedEmailThread && (
+    <>
+      {/* Email Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
+        <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
+          <ChevronLeft size={16} />
+        </button>
+        <div className="w-9 h-9 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-sm font-bold flex-none">
+          {parseFromName(selectedEmailThread.from).charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm truncate">{selectedEmailThread.subject}</span>
+            <span className="badge badge-xs badge-success">EMAIL</span>
+          </div>
+          <p className="text-[11px] text-base-content/50 truncate">{parseFromName(selectedEmailThread.from)}</p>
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => { setShowEmailCompose(true); setEmailTo(selectedEmailThread.from); setEmailSubject(`Re: ${selectedEmailThread.subject}`); setEmailBody(''); setEmailComposeError(''); }}
+            className="btn btn-ghost btn-xs gap-1"
+            title="New email in thread"
+          >
+            <Reply size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* Email Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {emailMsgLoading ? (
+          <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm">Loading messages...</span>
+          </div>
+        ) : emailMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-24 text-base-content/30 gap-2">
+            <Mail size={24} />
+            <p className="text-sm">No messages loaded</p>
+          </div>
+        ) : (
+          emailMessages.map((msg, idx) => {
+            const isMe = msg.from.includes('tc@myredeal.com');
+            const senderName = parseFromName(msg.from);
+            const prevMsg = idx > 0 ? emailMessages[idx - 1] : null;
+            const msgDate = new Date(Number(msg.internalDate));
+            const prevDate = prevMsg ? new Date(Number(prevMsg.internalDate)) : null;
+            const showDate = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+            return (
+              <React.Fragment key={msg.id}>
+                {showDate && (
+                  <div className="flex items-center justify-center my-2">
+                    <span className="text-[10px] bg-base-200 text-base-content/40 px-3 py-1 rounded-full">
+                      {msgDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                )}
+                <div className={`rounded-xl border border-base-300 bg-base-100 shadow-sm overflow-hidden`}>
+                  {/* Email meta bar */}
+                  <div className="flex items-center gap-3 px-4 py-2.5 bg-base-200 border-b border-base-300">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${isMe ? 'bg-primary text-primary-content' : 'bg-green-100 text-green-700'}`}>
+                      {senderName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold">{isMe ? 'You' : senderName}</span>
+                        <span className="text-[10px] text-base-content/40">→ {msg.to}</span>
+                      </div>
+                      {msg.cc && <p className="text-[10px] text-base-content/35">cc: {msg.cc}</p>}
+                    </div>
+                    <span className="text-[10px] text-base-content/35 flex-none">
+                      {new Date(Number(msg.internalDate)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  {/* Email body */}
+                  <div className="px-4 py-3">
+                    <pre className="text-sm text-base-content/80 whitespace-pre-wrap font-sans leading-relaxed max-h-64 overflow-y-auto">
+                      {msg.body || msg.snippet}
+                    </pre>
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          })
+        )}
+        <div ref={emailEndRef} />
+      </div>
+
+      {/* Email Reply Bar */}
+      <div className="px-4 py-3 border-t border-base-300 bg-base-200">
+        <div className="flex gap-2 items-end">
+          <textarea
+            className="textarea textarea-bordered flex-1 min-h-[44px] max-h-32 resize-none text-sm bg-base-100"
+            placeholder={`Reply to ${parseFromName(selectedEmailThread.from)}...`}
+            value={emailReplyText}
+            onChange={e => setEmailReplyText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleEmailReply(); }
+            }}
+            rows={1}
+          />
+          <button
+            onClick={handleEmailReply}
+            disabled={!emailReplyText.trim() || emailSending}
+            className="btn btn-sm btn-success px-3 self-end rounded-xl"
+          >
+            {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        </div>
+        <p className="text-[10px] text-base-content/30 mt-1.5 text-center">✉️ Replying from tc@myredeal.com · Ctrl+Enter to send</p>
+      </div>
+    </>
+  );
+
+  // ── SMS Thread Panel ─────────────────────────────────────────────────────────
+
+  const SmsThreadPanel = selectedConv && (
+    <>
+      {/* Thread Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
+        <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
+          <ChevronLeft size={16} />
+        </button>
+        <ChannelAvatar channel={selectedConv.channel} name={selectedConv.name} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm">{selectedConv.name}</span>
+            <ChannelBadge channel={selectedConv.channel} />
+            {selectedConv.type !== 'direct' && (
+              <span className="badge badge-xs badge-ghost">{selectedConv.type}</span>
+            )}
+          </div>
+          {selectedConv.deals && (
+            <button
+              onClick={() => onSelectDeal?.(selectedConv.deal_id!)}
+              className="text-[11px] text-primary hover:underline text-left"
+            >
+              📍 {selectedConv.deals.property_address}, {selectedConv.deals.city}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {selectedConv.participants.map((p, i) => (
+            <div key={i} title={p.name} className="w-7 h-7 bg-base-300 rounded-full flex items-center justify-center text-[10px] font-bold text-base-content/60">
+              {p.name.charAt(0).toUpperCase()}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {msgLoading ? (
+          <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm">Loading messages...</span>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-24 text-base-content/30 gap-2">
+            <MessageCircle size={24} />
+            <p className="text-sm">No messages yet. Send the first one!</p>
+          </div>
+        ) : (
+          messages.map((msg, idx) => {
+            const isOut = msg.direction === 'outbound';
+            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+            const showDate = !prevMsg || new Date(msg.sent_at).toDateString() !== new Date(prevMsg.sent_at).toDateString();
+            return (
+              <React.Fragment key={msg.id}>
+                {showDate && (
+                  <div className="flex items-center justify-center my-3">
+                    <span className="text-[10px] bg-base-200 text-base-content/40 px-3 py-1 rounded-full">
+                      {new Date(msg.sent_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                )}
+                <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[75%] ${isOut ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      isOut
+                        ? selectedConv.channel === 'whatsapp'
+                          ? 'text-white rounded-br-sm'
+                          : 'bg-primary text-primary-content rounded-br-sm'
+                        : 'bg-base-200 text-base-content rounded-bl-sm'
+                    }`}
+                    style={isOut && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366' } : undefined}
+                    >
+                      {msg.body}
+                    </div>
+                    <div className={`flex items-center gap-1.5 px-1 ${isOut ? 'flex-row-reverse' : 'flex-row'}`}>
+                      <span className="text-[10px] text-base-content/35">{formatTime(msg.sent_at)}</span>
+                      {isOut && (
+                        <CheckCheck size={11} className={msg.status === 'delivered' ? 'text-primary' : 'text-base-content/30'} />
+                      )}
+                      {msg.auto_created_task_id && (
+                        <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">task created</span>
                       )}
                     </div>
                   </div>
                 </div>
-              </button>
+              </React.Fragment>
             );
           })
         )}
+        <div ref={messagesEndRef} />
       </div>
-    </div>
+
+      {/* Reply Bar */}
+      <div className="px-4 py-3 border-t border-base-300 bg-base-200">
+        <div className="flex gap-2 items-end">
+          <textarea
+            className="textarea textarea-bordered flex-1 min-h-[44px] max-h-32 resize-none text-sm bg-base-100"
+            placeholder={`Message ${selectedConv.name}...`}
+            value={replyText}
+            onChange={e => setReplyText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); }
+            }}
+            rows={1}
+          />
+          <button
+            onClick={handleSendReply}
+            disabled={!replyText.trim() || sending}
+            className="btn btn-sm px-3 self-end rounded-xl text-white"
+            style={selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
+          >
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        </div>
+        <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
+          {selectedConv.channel === 'whatsapp'
+            ? '💬 Sending via WhatsApp'
+            : selectedConv.channel === 'sms'
+            ? '📱 Sending via SMS from (464) 733-3257'
+            : '✉️ Email thread'}
+          {selectedConv.type === 'broadcast' && ' · Broadcast (recipients can\'t see each other)'}
+          {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
+        </p>
+      </div>
+    </>
   );
 
   // ── Thread Panel ─────────────────────────────────────────────────────────────
+
   const ThreadPanel = (
-    <div className={`flex flex-col flex-1 min-w-0 h-full bg-base-100 ${!mobileShowThread && !selectedConv ? 'hidden md:flex' : 'flex'}`}>
-      {!selectedConv ? (
+    <div className={`flex flex-col flex-1 min-w-0 h-full bg-base-100 ${!mobileShowThread && !selectedConv && !selectedEmailThread ? 'hidden md:flex' : 'flex'}`}>
+      {!selectedConv && !selectedEmailThread ? (
         <div className="flex flex-col items-center justify-center h-full text-base-content/25 gap-4">
           <MessageSquare size={48} />
           <div className="text-center">
@@ -431,152 +970,78 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             <p className="text-sm mt-1">or click New to start one</p>
           </div>
         </div>
-      ) : (
-        <>
-          {/* Thread Header */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 bg-base-200">
-            <button className="md:hidden btn btn-ghost btn-xs btn-square" onClick={() => setMobileShowThread(false)}>
-              <ChevronLeft size={16} />
-            </button>
-            <ChannelAvatar channel={selectedConv.channel} name={selectedConv.name} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">{selectedConv.name}</span>
-                <ChannelBadge channel={selectedConv.channel} />
-                {selectedConv.type !== 'direct' && (
-                  <span className="badge badge-xs badge-ghost">{selectedConv.type}</span>
-                )}
-              </div>
-              {selectedConv.deals && (
-                <button
-                  onClick={() => onSelectDeal?.(selectedConv.deal_id!)}
-                  className="text-[11px] text-primary hover:underline text-left"
-                >
-                  📍 {selectedConv.deals.property_address}, {selectedConv.deals.city}
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {selectedConv.participants.map((p, i) => (
-                <div key={i} title={p.name} className="w-7 h-7 bg-base-300 rounded-full flex items-center justify-center text-[10px] font-bold text-base-content/60">
-                  {p.name.charAt(0).toUpperCase()}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {msgLoading ? (
-              <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
-                <Loader2 size={16} className="animate-spin" />
-                <span className="text-sm">Loading messages...</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-24 text-base-content/30 gap-2">
-                <MessageCircle size={24} />
-                <p className="text-sm">No messages yet. Send the first one!</p>
-              </div>
-            ) : (
-              messages.map((msg, idx) => {
-                const isOut = msg.direction === 'outbound';
-                const prevMsg = idx > 0 ? messages[idx - 1] : null;
-                const showDate = !prevMsg || new Date(msg.sent_at).toDateString() !== new Date(prevMsg.sent_at).toDateString();
-                return (
-                  <React.Fragment key={msg.id}>
-                    {showDate && (
-                      <div className="flex items-center justify-center my-3">
-                        <span className="text-[10px] bg-base-200 text-base-content/40 px-3 py-1 rounded-full">
-                          {new Date(msg.sent_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                    )}
-                    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[75%] ${isOut ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                        <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                          isOut
-                            ? selectedConv.channel === 'whatsapp'
-                              ? 'text-white rounded-br-sm'
-                              : 'bg-primary text-primary-content rounded-br-sm'
-                            : 'bg-base-200 text-base-content rounded-bl-sm'
-                        }`}
-                        style={isOut && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366' } : undefined}
-                        >
-                          {msg.body}
-                        </div>
-                        <div className={`flex items-center gap-1.5 px-1 ${isOut ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <span className="text-[10px] text-base-content/35">{formatTime(msg.sent_at)}</span>
-                          {isOut && (
-                            <CheckCheck size={11} className={msg.status === 'delivered' ? 'text-primary' : 'text-base-content/30'} />
-                          )}
-                          {msg.auto_created_task_id && (
-                            <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">task created</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </React.Fragment>
-                );
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Reply Bar */}
-          <div className="px-4 py-3 border-t border-base-300 bg-base-200">
-            <div className="flex gap-2 items-end">
-              <textarea
-                className="textarea textarea-bordered flex-1 min-h-[44px] max-h-32 resize-none text-sm bg-base-100"
-                placeholder={`Message ${selectedConv.name}...`}
-                value={replyText}
-                onChange={e => setReplyText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); }
-                }}
-                rows={1}
-              />
-              <button
-                onClick={handleSendReply}
-                disabled={!replyText.trim() || sending}
-                className="btn btn-sm px-3 self-end rounded-xl text-white"
-                style={selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
-              >
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </button>
-            </div>
-            <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
-              {selectedConv.channel === 'whatsapp'
-                ? '💬 Sending via WhatsApp'
-                : selectedConv.channel === 'sms'
-                ? '📱 Sending via SMS from (464) 733-3257'
-                : '✉️ Email thread'}
-              {selectedConv.type === 'broadcast' && ' · Broadcast (recipients can\'t see each other)'}
-              {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
-            </p>
-          </div>
-        </>
-      )}
+      ) : selectedEmailThread ? EmailThreadPanel : SmsThreadPanel}
     </div>
   );
 
-  // ── Compose Modal ────────────────────────────────────────────────────────────
+  // ── Email Compose Modal ──────────────────────────────────────────────────────
+
+  const EmailComposeModal = showEmailCompose && (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={() => setShowEmailCompose(false)} />
+      <div className="relative z-10 bg-base-100 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg md:w-full flex flex-col max-h-[90vh]">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-base-300">
+          <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+            <Mail size={15} className="text-green-600" />
+          </div>
+          <span className="font-bold flex-1">New Email</span>
+          <button onClick={() => setShowEmailCompose(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-base-content/60 mb-1 block">TO</label>
+            <input className="input input-bordered input-sm w-full" placeholder="recipient@example.com" value={emailTo} onChange={e => setEmailTo(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-base-content/60 mb-1 block">CC (optional)</label>
+            <input className="input input-bordered input-sm w-full" placeholder="cc@example.com" value={emailCc} onChange={e => setEmailCc(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-base-content/60 mb-1 block">SUBJECT</label>
+            <input className="input input-bordered input-sm w-full" placeholder="Subject..." value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-base-content/60 mb-1 block">MESSAGE</label>
+            <textarea className="textarea textarea-bordered w-full text-sm resize-none" rows={6} placeholder="Type your email..." value={emailBody} onChange={e => setEmailBody(e.target.value)} />
+          </div>
+          {emailComposeError && (
+            <div className="flex items-center gap-2 text-error text-xs bg-error/10 px-3 py-2.5 rounded-xl">
+              <AlertCircle size={13} />{emailComposeError}
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-base-300 flex items-center justify-between gap-3">
+          <p className="text-xs text-base-content/40">✉️ Sending from tc@myredeal.com</p>
+          <div className="flex gap-2">
+            <button onClick={() => setShowEmailCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            <button
+              onClick={handleComposeEmail}
+              disabled={!emailTo.trim() || !emailSubject.trim() || !emailBody.trim() || emailComposeSending}
+              className="btn btn-sm btn-success gap-2 rounded-xl"
+            >
+              {emailComposeSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+              {emailComposeSending ? 'Sending...' : 'Send Email'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── SMS Compose Modal ────────────────────────────────────────────────────────
+
   const ComposeModal = showCompose && (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={() => setShowCompose(false)} />
       <div className="relative z-10 bg-base-100 rounded-t-2xl md:rounded-2xl shadow-2xl w-full md:max-w-lg md:w-full flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-base-300">
           <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
             <MessageSquare size={15} className="text-primary" />
           </div>
           <span className="font-bold flex-1">New Message</span>
-          <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-xs btn-square">
-            <X size={14} />
-          </button>
+          <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-
           {/* Channel Toggle */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-2 block">SEND VIA</label>
@@ -606,15 +1071,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                 </div>
               </button>
             </div>
-
-            {/* WhatsApp Sandbox Instructions */}
             {showWaSandboxInfo && composeChannel === 'whatsapp' && (
               <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-xl text-xs space-y-1">
                 <div className="flex items-center gap-1.5 font-semibold text-green-800">
                   <Info size={12} /> WhatsApp Sandbox — Recipient must opt in first
                 </div>
-                <p className="text-green-700">Ask them to text <strong>"join &lt;your-keyword&gt;"</strong> to <strong>+1 (415) 523-8886</strong></p>
-                <p className="text-green-600 text-[10px]">Find your keyword at: twilio.com/console → Messaging → Try it out → WhatsApp</p>
+                <p className="text-green-700">Ask them to text <strong>"join return-word"</strong> to <strong>+1 (415) 523-8886</strong></p>
               </div>
             )}
           </div>
@@ -629,9 +1091,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                 {selectedRecipients.map(c => (
                   <span key={c.id} className="flex items-center gap-1 bg-primary/10 text-primary text-xs px-2.5 py-1 rounded-full font-medium">
                     {c.first_name} {c.last_name}
-                    <button onClick={() => setSelectedRecipients(prev => prev.filter(r => r.id !== c.id))}>
-                      <X size={10} />
-                    </button>
+                    <button onClick={() => setSelectedRecipients(prev => prev.filter(r => r.id !== c.id))}><X size={10} /></button>
                   </span>
                 ))}
               </div>
@@ -653,11 +1113,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
                     <button
                       key={c.id}
                       onClick={() => {
-                        if (selected) {
-                          setSelectedRecipients(prev => prev.filter(r => r.id !== c.id));
-                        } else {
-                          setSelectedRecipients(prev => [...prev, c]);
-                        }
+                        if (selected) setSelectedRecipients(prev => prev.filter(r => r.id !== c.id));
+                        else setSelectedRecipients(prev => [...prev, c]);
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-base-200 transition-colors border-b border-base-100 last:border-0 ${selected ? 'bg-primary/5' : ''}`}
                     >
@@ -679,7 +1136,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             )}
           </div>
 
-          {/* Group type (only show if >1 recipient) */}
           {selectedRecipients.length > 1 && (
             <div>
               <label className="text-xs font-semibold text-base-content/60 mb-2 block">GROUP TYPE</label>
@@ -708,16 +1164,12 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             </div>
           )}
 
-          {/* Link to Deal */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-1.5 block">LINK TO DEAL (OPTIONAL)</label>
             <select
               className="select select-bordered select-sm w-full text-sm"
               value={selectedDeal?.id || ''}
-              onChange={e => {
-                const d = composeDeals.find(x => x.id === e.target.value);
-                setSelectedDeal(d || null);
-              }}
+              onChange={e => setSelectedDeal(composeDeals.find(x => x.id === e.target.value) || null)}
             >
               <option value="">-- No deal --</option>
               {composeDeals.map(d => (
@@ -726,7 +1178,6 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
             </select>
           </div>
 
-          {/* Message */}
           <div>
             <label className="text-xs font-semibold text-base-content/60 mb-1.5 block">MESSAGE</label>
             <textarea
@@ -748,13 +1199,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
 
           {composeError && (
             <div className="flex items-center gap-2 text-error text-xs bg-error/10 px-3 py-2.5 rounded-xl">
-              <AlertCircle size={13} />
-              {composeError}
+              <AlertCircle size={13} />{composeError}
             </div>
           )}
         </div>
-
-        {/* Modal Footer */}
         <div className="px-5 py-4 border-t border-base-300 flex items-center justify-between gap-3">
           <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
           <button
@@ -776,6 +1224,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal }) => {
       {ConversationList}
       {ThreadPanel}
       {ComposeModal}
+      {EmailComposeModal}
     </div>
   );
 };
