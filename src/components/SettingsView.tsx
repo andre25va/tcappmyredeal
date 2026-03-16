@@ -577,7 +577,7 @@ function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
       </div>
 
       {/* Items table */}
-      <div className="border border-base-300 rounded-xl overflow-hidden">
+      <div className="border border-base-300 rounded-xl overflow-visible">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-base-300">
@@ -651,7 +651,7 @@ function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
                       </button>
                       {openMenuId === item.id && (
                         <div
-                          className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-36 py-1 text-sm"
+                          className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[200] min-w-36 py-1 text-sm"
                           onMouseDown={e => e.stopPropagation()}
                         >
                           <button
@@ -774,7 +774,7 @@ function ComplianceChecklistTab({ items, onSave }: ComplianceChecklistTabProps) 
       </div>
 
       {/* Items table */}
-      <div className="border border-base-300 rounded-xl overflow-hidden">
+      <div className="border border-base-300 rounded-xl overflow-visible">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-base-300">
@@ -838,7 +838,7 @@ function ComplianceChecklistTab({ items, onSave }: ComplianceChecklistTabProps) 
                       </button>
                       {openMenuId === item.id && (
                         <div
-                          className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-36 py-1 text-sm"
+                          className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[200] min-w-36 py-1 text-sm"
                           onMouseDown={e => e.stopPropagation()}
                         >
                           <button
