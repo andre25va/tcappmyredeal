@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 type Step = 'phone' | 'otp' | 'success';
 
+const DEMO_PHONE = '7085069000';
+
 function formatPhoneDisplay(raw: string) {
   const d = raw.replace(/\D/g, '');
   if (d.length === 0) return '';
@@ -42,9 +44,11 @@ export function LoginPage() {
 
   const phoneDigits = phone.replace(/\D/g, '');
   const phoneReady = phoneDigits.length === 10;
+  const isDemo = phoneDigits === DEMO_PHONE;
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDemo) { handleDemoLogin(); return; }
     setError('');
     if (!phoneReady) { setError('Enter a valid 10-digit phone number.'); return; }
 
@@ -90,7 +94,6 @@ export function LoginPage() {
     }
   };
 
-  // Called from EITHER the phone step or OTP step
   const handleSendEmail = async () => {
     if (emailLoading) return;
     if (!phoneReady) { setError('Enter your phone number first so we can find your account.'); return; }
@@ -187,7 +190,6 @@ export function LoginPage() {
     }
   };
 
-  // Auto-verify when all 6 digits entered
   useEffect(() => {
     if (step === 'otp' && code.join('').length === 6 && !loading) {
       handleVerify();
@@ -200,7 +202,7 @@ export function LoginPage() {
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-4"
     >
       <div className="w-full max-w-sm">
-        {/* Logo card */}
+        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg mb-4">
             <Building2 size={32} className="text-primary-content" />
@@ -243,54 +245,56 @@ export function LoginPage() {
                     <div className="alert alert-error py-2 px-3 text-sm">{error}</div>
                   )}
 
-                  {/* SMS button */}
-                  <button
-                    type="submit"
-                    className="btn btn-primary w-full gap-2"
-                    disabled={loading || !phoneReady}
-                  >
-                    {loading ? (
-                      <span className="loading loading-spinner loading-sm" />
-                    ) : (
-                      <><Phone size={15} /> Send code via SMS</>
-                    )}
-                  </button>
-
-                  {/* Email button — always visible, greys out until phone filled */}
-                  <button
-                    type="button"
-                    onClick={handleSendEmail}
-                    disabled={emailLoading || !phoneReady}
-                    className="btn btn-outline w-full gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary disabled:opacity-40"
-                  >
-                    {emailLoading ? (
-                      <span className="loading loading-spinner loading-sm" />
-                    ) : (
-                      <Mail size={15} />
-                    )}
-                    Send code to my email
-                  </button>
-                </form>
-
-                {/* Divider */}
-                <div className="divider text-xs text-base-content/30 my-0">or</div>
-
-                {/* Demo Access button */}
-                <button
-                  onClick={handleDemoLogin}
-                  disabled={demoLoading}
-                  className="btn btn-outline w-full gap-2 border-base-300 text-base-content/70 hover:bg-base-200 hover:border-base-300 hover:text-base-content"
-                >
-                  {demoLoading ? (
-                    <span className="loading loading-spinner loading-sm" />
+                  {/* Demo number detected — show instant access button only */}
+                  {isDemo ? (
+                    <>
+                      <button
+                        type="submit"
+                        className="btn btn-accent w-full gap-2"
+                        disabled={demoLoading}
+                      >
+                        {demoLoading ? (
+                          <span className="loading loading-spinner loading-sm" />
+                        ) : (
+                          <><Eye size={16} /> Access Demo View</>
+                        )}
+                      </button>
+                      <p className="text-center text-xs text-base-content/40 -mt-2">
+                        Read-only demo account · no code needed
+                      </p>
+                    </>
                   ) : (
-                    <Eye size={16} />
+                    <>
+                      {/* SMS button */}
+                      <button
+                        type="submit"
+                        className="btn btn-primary w-full gap-2"
+                        disabled={loading || !phoneReady}
+                      >
+                        {loading ? (
+                          <span className="loading loading-spinner loading-sm" />
+                        ) : (
+                          <><Phone size={15} /> Send code via SMS</>
+                        )}
+                      </button>
+
+                      {/* Email button */}
+                      <button
+                        type="button"
+                        onClick={handleSendEmail}
+                        disabled={emailLoading || !phoneReady}
+                        className="btn btn-outline w-full gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary disabled:opacity-40"
+                      >
+                        {emailLoading ? (
+                          <span className="loading loading-spinner loading-sm" />
+                        ) : (
+                          <Mail size={15} />
+                        )}
+                        Send code to my email
+                      </button>
+                    </>
                   )}
-                  Demo / View Only Access
-                </button>
-                <p className="text-center text-xs text-base-content/40 -mt-3">
-                  Client-facing preview · read only
-                </p>
+                </form>
 
                 <p className="text-center text-xs text-base-content/40">
                   Only authorized TC staff can log in
@@ -365,7 +369,6 @@ export function LoginPage() {
                     </button>
                   </div>
 
-                  {/* Email delivery option on OTP screen */}
                   {!emailSent ? (
                     <button
                       type="button"
