@@ -40,21 +40,25 @@ export function LoginPage() {
     return () => clearTimeout(t);
   }, [countdown]);
 
+  const phoneDigits = phone.replace(/\D/g, '');
+  const phoneReady = phoneDigits.length === 10;
+
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length < 10) { setError('Enter a valid 10-digit phone number.'); return; }
+    if (!phoneReady) { setError('Enter a valid 10-digit phone number.'); return; }
 
     setLoading(true);
     try {
       const resp = await fetch('/api/auth/request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: digits }),
+        body: JSON.stringify({ phone: phoneDigits }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Failed to send code.'); return; }
+      setEmailSent(false);
+      setEmailHint('');
       setStep('otp');
       setCountdown(60);
       setTimeout(() => codeRefs[0].current?.focus(), 100);
@@ -86,20 +90,25 @@ export function LoginPage() {
     }
   };
 
+  // Called from EITHER the phone step or OTP step
   const handleSendEmail = async () => {
     if (emailLoading) return;
+    if (!phoneReady) { setError('Enter your phone number first so we can find your account.'); return; }
     setEmailLoading(true);
     setError('');
     try {
       const resp = await fetch('/api/auth/request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.replace(/\D/g, ''), delivery: 'email' }),
+        body: JSON.stringify({ phone: phoneDigits, delivery: 'email' }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Failed to send to email.'); return; }
       setEmailHint(data.emailHint || '');
       setEmailSent(true);
+      setStep('otp');
+      setCountdown(60);
+      setTimeout(() => codeRefs[0].current?.focus(), 100);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -139,7 +148,7 @@ export function LoginPage() {
       const resp = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.replace(/\D/g, ''), code: fullCode }),
+        body: JSON.stringify({ phone: phoneDigits, code: fullCode }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Verification failed.'); return; }
@@ -165,7 +174,7 @@ export function LoginPage() {
       const resp = await fetch('/api/auth/request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.replace(/\D/g, '') }),
+        body: JSON.stringify({ phone: phoneDigits }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Failed to resend.'); return; }
@@ -210,7 +219,7 @@ export function LoginPage() {
                   <Phone size={18} className="text-primary flex-none" />
                   <div>
                     <h2 className="font-semibold text-base-content">Sign in</h2>
-                    <p className="text-xs text-base-content/50">We'll text you a code to verify</p>
+                    <p className="text-xs text-base-content/50">Enter your number to receive a code</p>
                   </div>
                 </div>
 
@@ -234,16 +243,32 @@ export function LoginPage() {
                     <div className="alert alert-error py-2 px-3 text-sm">{error}</div>
                   )}
 
+                  {/* SMS button */}
                   <button
                     type="submit"
                     className="btn btn-primary w-full gap-2"
-                    disabled={loading || phone.replace(/\D/g, '').length < 10}
+                    disabled={loading || !phoneReady}
                   >
                     {loading ? (
                       <span className="loading loading-spinner loading-sm" />
                     ) : (
-                      <>Send code <ArrowRight size={16} /></>
+                      <><Phone size={15} /> Send code via SMS</>
                     )}
+                  </button>
+
+                  {/* Email button — always visible, greys out until phone filled */}
+                  <button
+                    type="button"
+                    onClick={handleSendEmail}
+                    disabled={emailLoading || !phoneReady}
+                    className="btn btn-outline w-full gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary disabled:opacity-40"
+                  >
+                    {emailLoading ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      <Mail size={15} />
+                    )}
+                    Send code to my email
                   </button>
                 </form>
 
@@ -282,8 +307,8 @@ export function LoginPage() {
                     <h2 className="font-semibold text-base-content">Enter your code</h2>
                     <p className="text-xs text-base-content/50">
                       {emailSent
-                        ? `Sent to ${emailHint}`
-                        : `Sent via SMS to (${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6, 10)}`}
+                        ? `📧 Sent to ${emailHint}`
+                        : `📱 Sent via SMS to (${phoneDigits.slice(0,3)}) ${phoneDigits.slice(3,6)}-${phoneDigits.slice(6,10)}`}
                     </p>
                   </div>
                 </div>
@@ -340,7 +365,7 @@ export function LoginPage() {
                     </button>
                   </div>
 
-                  {/* Email delivery option */}
+                  {/* Email delivery option on OTP screen */}
                   {!emailSent ? (
                     <button
                       type="button"
