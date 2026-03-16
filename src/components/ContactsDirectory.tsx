@@ -556,12 +556,30 @@ export const ContactsDirectory: React.FC<Props> = ({ directory, onUpdate, mlsEnt
                           {/* Actions */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => openEdit(c)} className="btn btn-ghost btn-xs btn-square" title="Edit">
-                                <Pencil size={13} />
-                              </button>
-                              <button onClick={() => setDeleteId(c.id)} className="btn btn-ghost btn-xs btn-square text-error" title="Delete">
-                                <Trash2 size={13} />
-                              </button>
+                              <div className="relative">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setRowMenuId(rowMenuId === c.id ? null : c.id); }}
+                                  className="btn btn-ghost btn-xs btn-square"
+                                >
+                                  <MoreVertical size={15} />
+                                </button>
+                                {rowMenuId === c.id && (
+                                  <div className="absolute right-0 top-7 z-50 bg-white border border-gray-200 rounded-xl shadow-xl w-36 py-1">
+                                    <button
+                                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50"
+                                      onClick={() => { openEdit(c); setRowMenuId(null); }}
+                                    >
+                                      <Pencil size={13} /> Edit Contact
+                                    </button>
+                                    <button
+                                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                      onClick={() => { setDeleteId(c.id); setRowMenuId(null); }}
+                                    >
+                                      <Trash2 size={13} /> Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -915,6 +933,7 @@ const ContactCard: React.FC<{
   onDelete: () => void;
 }> = ({ contact: c, mlsEntries, onEdit, onDelete }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const assignedMls = mlsEntries.filter(m => (c.mlsIds ?? []).includes(m.id));
 
   return (
