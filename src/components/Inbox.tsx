@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users, Phone,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, Forward, ExternalLink, Inbox as InboxIcon, Paperclip, Download, FileText
+  Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip, Download, FileText
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -1038,12 +1038,64 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             <CheckCheck size={12} /> Got reply
           </button>
         )}
+        {/* Reply */}
         <button
-          onClick={() => { setShowEmailCompose(true); setEmailTo(selectedEmailThread.from); setEmailSubject(`Re: ${selectedEmailThread.subject}`); setEmailBody(''); setEmailComposeError(''); }}
+          onClick={() => {
+            setShowEmailCompose(true);
+            setEmailTo(selectedEmailThread.from);
+            setEmailCc('');
+            setEmailSubject(selectedEmailThread.subject.startsWith('Re:') ? selectedEmailThread.subject : `Re: ${selectedEmailThread.subject}`);
+            setEmailBody('');
+            setEmailComposeError('');
+          }}
           className="btn btn-ghost btn-xs gap-1"
           title="Reply"
         >
           <Reply size={13} />
+        </button>
+
+        {/* Reply All */}
+        <button
+          onClick={() => {
+            setShowEmailCompose(true);
+            setEmailTo(selectedEmailThread.from);
+            // CC everyone else: original To recipients minus our own address
+            const originalTo = selectedEmailThread.to || '';
+            const ccList = originalTo
+              .split(',')
+              .map((e: string) => e.trim())
+              .filter((e: string) => e && !e.toLowerCase().includes('tc@myredeal.com'))
+              .join(', ');
+            setEmailCc(ccList);
+            setEmailSubject(selectedEmailThread.subject.startsWith('Re:') ? selectedEmailThread.subject : `Re: ${selectedEmailThread.subject}`);
+            setEmailBody('');
+            setEmailComposeError('');
+          }}
+          className="btn btn-ghost btn-xs gap-1"
+          title="Reply All"
+        >
+          <ReplyAll size={13} />
+        </button>
+
+        {/* Forward */}
+        <button
+          onClick={() => {
+            setShowEmailCompose(true);
+            setEmailTo('');
+            setEmailCc('');
+            setEmailSubject(selectedEmailThread.subject.startsWith('Fwd:') ? selectedEmailThread.subject : `Fwd: ${selectedEmailThread.subject}`);
+            // Build quoted forward body from last loaded message
+            const lastMsg = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
+            const quotedBody = lastMsg
+              ? `\n\n---------- Forwarded message ----------\nFrom: ${lastMsg.from}\nDate: ${new Date(Number(lastMsg.internalDate)).toLocaleString()}\nSubject: ${lastMsg.subject}\nTo: ${lastMsg.to}\n\n${lastMsg.body || selectedEmailThread.snippet || ''}`
+              : `\n\n---------- Forwarded message ----------\nFrom: ${selectedEmailThread.from}\nSubject: ${selectedEmailThread.subject}\n\n${selectedEmailThread.snippet || ''}`;
+            setEmailBody(quotedBody);
+            setEmailComposeError('');
+          }}
+          className="btn btn-ghost btn-xs gap-1"
+          title="Forward"
+        >
+          <Forward size={13} />
         </button>
       </div>
 
