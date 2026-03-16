@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+button, .btn, .badge, .tab, .menu a {
+  max-width: 100%;
+}
+
+.truncate-safe {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
