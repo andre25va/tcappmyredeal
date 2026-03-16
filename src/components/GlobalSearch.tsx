@@ -7,24 +7,29 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// Map full state names to abbreviations (and vice versa)
+// Map full state names / cities to abbreviations (and vice versa)
 const STATE_SYNONYMS: Record<string, string[]> = {
-  'kansas': ['KS', 'kansas', 'ks'],
-  'ks': ['KS', 'kansas', 'ks'],
-  'missouri': ['MO', 'missouri', 'mo'],
-  'mo': ['MO', 'missouri', 'mo'],
-  'overland park': ['overland park', 'Overland Park'],
-  'leawood': ['leawood', 'Leawood'],
-  'topeka': ['topeka', 'Topeka'],
-  'kansas city': ['kansas city', 'Kansas City', 'KC'],
-  'kc': ['Kansas City', 'kansas city', 'KC'],
+  'kansas': ['ks', 'kansas'],
+  'ks': ['ks', 'kansas'],
+  'missouri': ['mo', 'missouri'],
+  'mo': ['mo', 'missouri'],
+  'overland park': ['overland park'],
+  'leawood': ['leawood'],
+  'topeka': ['topeka'],
+  'kansas city': ['kansas city', 'kc'],
+  'kc': ['kc', 'kansas city'],
 };
 
 function expandTerms(term: string): string[] {
   const lower = term.toLowerCase().trim();
   const synonyms = STATE_SYNONYMS[lower];
-  if (synonyms) return [...new Set([lower, ...synonyms.map(s => s.toLowerCase())])]; 
+  if (synonyms) return [...new Set([lower, ...synonyms])];
   return [lower];
+}
+
+function formatStage(stage: string): string {
+  if (!stage) return 'Active';
+  return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 interface SearchResult {
@@ -77,39 +82,47 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
     if (!q.trim() || q.trim().length < 2) { setResults([]); setOpen(false); return; }
     setLoading(true);
     const term = q.trim().toLowerCase();
-    const terms = expandTerms(term); // includes synonyms like KS for kansas
+    const terms = expandTerms(term);
     const collected: SearchResult[] = [];
 
     try {
-      // ── Deals: fetch all (small dataset) and filter client-side ──
-      // This ensures JSONB fields + state abbreviations are all searchable
-      const { data: deals } = await supabase
+      // ── Deals: fetch all columns needed, filter client-side ──────
+      const { data: deals, error: dealErr } = await supabase
         .from('deals')
-        .select('id, property_address, milestone, closing_date, deal_data')
-        .limit(100);
+        .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
+        .limit(200);
+
+      if (dealErr) console.error('Deal search error:', dealErr);
 
       (deals ?? []).forEach((d: any) => {
         const extra = d.deal_data ?? {};
-        const addr = (d.property_address || extra.propertyAddress || '').toLowerCase();
         const haystack = [
-          addr,
+          (d.property_address || '').toLowerCase(),
+          (d.city || '').toLowerCase(),
+          (d.state || '').toLowerCase(),
+          (d.pipeline_stage || '').toLowerCase(),
           (extra.buyerName || '').toLowerCase(),
           (extra.sellerName || '').toLowerCase(),
-          (extra.milestone || d.milestone || '').toLowerCase(),
           (extra.listingAgentName || '').toLowerCase(),
           (extra.buyerAgentName || '').toLowerCase(),
           (extra.lenderName || '').toLowerCase(),
+          (extra.titleCompanyName || '').toLowerCase(),
           JSON.stringify(extra).toLowerCase(),
         ].join(' ');
 
         const matches = terms.some(t => haystack.includes(t));
         if (matches) {
-          const displayAddr = d.property_address || extra.propertyAddress || 'Unknown address';
+          const displayAddr = [
+            d.property_address,
+            d.city,
+            d.state,
+          ].filter(Boolean).join(', ');
+
           collected.push({
             id: d.id,
             type: 'deal',
-            title: displayAddr,
-            subtitle: d.milestone ?? extra.milestone ?? 'Active',
+            title: displayAddr || 'Unknown address',
+            subtitle: formatStage(d.pipeline_stage),
             icon: iconFor('deal'),
             meta: d.closing_date
               ? `Closes ${new Date(d.closing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
