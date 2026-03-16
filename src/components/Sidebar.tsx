@@ -28,7 +28,7 @@ interface SidebarProps {
 const NAV_ITEMS = (dealCount: number, inboxUnread: number, tasksPending: number): { id: View; label: string; icon: React.ReactNode; badge?: number }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
   { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined },
-  { id: 'tasks',        label: 'Tasks',        icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
+  { id: 'tasks',        label: 'Comm Tasks',   icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
   { id: 'mls',          label: 'MLS',          icon: <Globe size={18} /> },
@@ -56,7 +56,6 @@ function SidebarInner({
     <div className={`flex flex-col h-full bg-base-200 border-r border-base-300 select-none transition-all duration-200 ${collapsed && !isMobileOverlay ? 'w-14' : 'w-52'}`}>
       {/* Logo */}
       {collapsed && !isMobileOverlay ? (
-        /* Collapsed header: just the expand toggle, centered */
         <div className="flex flex-col items-center h-auto border-b border-base-300 flex-none py-2 gap-1">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-sm">
             <Building2 size={15} className="text-primary-content" />
@@ -70,7 +69,6 @@ function SidebarInner({
           </button>
         </div>
       ) : (
-        /* Expanded header: logo + name + collapse toggle */
         <div className="flex items-center h-14 border-b border-base-300 flex-none px-2 gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-none shadow-sm">
             <Building2 size={15} className="text-primary-content" />
@@ -79,7 +77,6 @@ function SidebarInner({
             <div className="font-bold text-sm text-base-content leading-tight truncate">TC Command</div>
             <div className="text-[10px] text-base-content/45 leading-tight truncate">Transaction Coordinator</div>
           </div>
-          {/* Collapse toggle — desktop only */}
           {!isMobileOverlay && (
             <button
               onClick={onToggleCollapse}
@@ -89,7 +86,6 @@ function SidebarInner({
               <ChevronLeft size={15} />
             </button>
           )}
-          {/* Close button for mobile overlay */}
           {isMobileOverlay && (
             <button onClick={onCloseMobile} className="btn btn-ghost btn-xs btn-square ml-auto">
               <X size={14} />
@@ -98,14 +94,12 @@ function SidebarInner({
         </div>
       )}
 
-      {/* Section label */}
       {(!collapsed || isMobileOverlay) && (
         <div className="px-4 pt-4 pb-1">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-base-content/35">Menu</span>
         </div>
       )}
 
-      {/* Nav */}
       <nav className={`flex-1 flex flex-col gap-0.5 ${collapsed && !isMobileOverlay ? 'px-1 pt-3' : 'px-2 pt-1'}`}>
         {navItems.map(item => {
           const active = view === item.id;
@@ -146,11 +140,7 @@ function SidebarInner({
         })}
       </nav>
 
-
-
-      {/* Bottom */}
       <div className={`pb-4 pt-3 flex flex-col gap-2 border-t border-base-300 ${collapsed && !isMobileOverlay ? 'px-1 items-center' : 'px-3'}`}>
-        {/* Amber alerts */}
         {pendingAlerts > 0 && (
           collapsed && !isMobileOverlay ? (
             <button
@@ -179,7 +169,6 @@ function SidebarInner({
           )
         )}
 
-        {/* Create New dropdown */}
         <div ref={createRef} className="relative">
           {collapsed && !isMobileOverlay ? (
             <button
@@ -224,8 +213,6 @@ function SidebarInner({
             </div>
           )}
         </div>
-
-
       </div>
     </div>
   );
@@ -234,17 +221,13 @@ function SidebarInner({
 export const Sidebar: React.FC<SidebarProps> = (props) => {
   return (
     <>
-      {/* Desktop sidebar */}
       <div className="hidden md:flex h-full flex-none">
         <SidebarInner {...props} isMobileOverlay={false} />
       </div>
 
-      {/* Mobile overlay */}
       {props.mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50" onClick={props.onCloseMobile} />
-          {/* Drawer */}
           <div className="relative z-10 h-full">
             <SidebarInner {...props} collapsed={false} isMobileOverlay={true} />
           </div>
@@ -254,7 +237,6 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
   );
 };
 
-/** Hamburger button shown on mobile in the top bar area */
 export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts: number }> = ({ onClick, pendingAlerts }) => (
   <button
     onClick={onClick}
