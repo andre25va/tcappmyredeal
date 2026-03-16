@@ -23,6 +23,7 @@ import { MLSDirectory } from './components/MLSDirectory';
 import { ComplianceManager } from './components/ComplianceManager';
 import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
+import { AIChat } from './components/AIChat';
 
 export default function App() {
 
@@ -381,6 +382,9 @@ export default function App() {
           ddMasterItems={ddMasterItems}
         />
       )}
+
+      {/* AI Chat — floating widget available on all views */}
+      <AIChat />
     </div>
   );
 }
