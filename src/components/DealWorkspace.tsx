@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
 import { DealCommTimeline } from './DealCommTimeline';
+import { DealTimeline } from './DealTimeline';
 import { dealToRecord } from '../ai/dealConverter';
 import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
@@ -49,7 +50,7 @@ import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline';
 
 interface Props {
   deal: Deal;
@@ -85,6 +86,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
+    { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
@@ -214,6 +216,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
+        {tab === 'timeline'   && <DealTimeline deal={deal} />}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
         {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
         {tab === 'ai-emails' && (

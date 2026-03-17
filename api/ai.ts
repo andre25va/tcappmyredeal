@@ -266,6 +266,50 @@ const dealHealthAISchema = {
   required: ['riskSummary', 'recommendations', 'nextMilestone', 'estimatedDaysToClose', 'topRisk', 'overallAssessment'],
 };
 
+// ── Timeline Schema (Tier 2) ─────────────────────────────────────────────────
+
+const timelineSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          date: { type: 'string' },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          category: { type: 'string', enum: ['contract', 'inspection', 'appraisal', 'title', 'lender', 'closing', 'compliance', 'task', 'communication', 'milestone'] },
+          importance: { type: 'string', enum: ['high', 'medium', 'low'] },
+          source: { type: 'string' },
+        },
+        required: ['date', 'title', 'description', 'category', 'importance', 'source'],
+      },
+    },
+    summary: { type: 'string' },
+    nextKeyDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    nextKeyDateLabel: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  },
+  required: ['events', 'summary', 'nextKeyDate', 'nextKeyDateLabel'],
+};
+
+// ── Follow-Up Schema (Tier 2) ────────────────────────────────────────────────
+
+const followUpSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    subject: { type: 'string' },
+    body: { type: 'string' },
+    toRole: { type: 'string' },
+    urgency: { type: 'string', enum: ['routine', 'important', 'urgent'] },
+    notes: { type: 'string' },
+  },
+  required: ['subject', 'body', 'toRole', 'urgency', 'notes'],
+};
+
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 
@@ -698,6 +742,94 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
 }
 
 
+// ── Build Timeline Handler (Tier 2) ──────────────────────────────────────────
+
+async function handleBuildTimeline(apiKey: string, body: any) {
+  const { deal } = body;
+  if (!deal) throw new Error('Missing deal data');
+
+  const systemPrompt = `You are building a chronological timeline of key events for a real estate transaction. Analyze the provided deal data (tasks, activity log, checklists, emails) and produce a clean timeline of important events.
+
+Rules:
+- Return events sorted by date ascending (oldest first).
+- Use MM/DD/YYYY date format for all dates.
+- Be factual — only include events supported by the data.
+- Assign appropriate categories and importance levels.
+- Source should indicate where the data came from (e.g., "activity log", "task", "checklist", "contract data").
+- Include a 1-2 sentence summary of the deal's timeline.
+- If there's an upcoming key date (closing, inspection deadline, etc.), populate nextKeyDate and nextKeyDateLabel.
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  const dealContext = {
+    id: deal.id,
+    propertyAddress: deal.propertyAddress,
+    stage: deal.stage,
+    milestone: deal.milestone,
+    closingDate: deal.closingDate,
+    contractDate: deal.contractDate,
+    contractPrice: deal.contractPrice,
+    transactionType: deal.transactionType,
+    agentName: deal.agentName,
+    tasks: (deal.tasks || []).slice(0, 30),
+    activityLog: (deal.activityLog || []).slice(0, 40),
+    complianceItems: deal.complianceItems || [],
+    dueDiligenceItems: deal.dueDiligenceItems || [],
+    checklists: deal.checklists || [],
+    reminders: deal.reminders || [],
+    documentRequests: deal.documentRequests || [],
+  };
+
+  const userContent = `DEAL DATA:\n${JSON.stringify(dealContext, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, timelineSchema, 'deal_timeline', 'gpt-4o-mini');
+}
+
+
+// ── Generate Follow-Up Handler (Tier 2) ──────────────────────────────────────
+
+async function handleGenerateFollowUp(apiKey: string, body: any) {
+  const { deal, followUpType, customPrompt } = body;
+  if (!deal) throw new Error('Missing deal data');
+  if (!followUpType) throw new Error('Missing followUpType');
+
+  const systemPrompt = `You are drafting a professional follow-up email for a real estate transaction coordinator. Based on the deal context and the requested follow-up type, generate a ready-to-send email. Be professional, concise, and specific to this deal. Include relevant deal details (address, dates, names) in the email.
+
+Rules:
+- Use MM/DD/YYYY date format for all dates in the email body.
+- The body should be the full email text (greeting through sign-off).
+- toRole should describe who the email is addressed to (e.g., "Lender", "Title Company", "Listing Agent").
+- Set urgency based on how time-sensitive the follow-up is.
+- notes should contain any tips or context for the TC about this email.
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  const dealContext = {
+    propertyAddress: deal.propertyAddress,
+    city: deal.city,
+    state: deal.state,
+    zipCode: deal.zipCode,
+    mlsNumber: deal.mlsNumber,
+    closingDate: deal.closingDate,
+    contractDate: deal.contractDate,
+    contractPrice: deal.contractPrice,
+    stage: deal.stage,
+    milestone: deal.milestone,
+    transactionType: deal.transactionType,
+    agentName: deal.agentName,
+    buyerAgent: deal.buyerAgent,
+    sellerAgent: deal.sellerAgent,
+    tasks: (deal.tasks || []).filter((t: any) => !t.completedAt).slice(0, 10),
+    complianceItems: deal.complianceItems || [],
+    documentRequests: deal.documentRequests || [],
+  };
+
+  const userContent = `DEAL CONTEXT:\n${JSON.stringify(dealContext, null, 2)}\n\nFOLLOW-UP TYPE: ${followUpType}\n${customPrompt ? `CUSTOM INSTRUCTIONS: ${customPrompt}` : ''}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, followUpSchema, 'follow_up_draft', 'gpt-4o-mini');
+}
+
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -744,6 +876,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'deal-health-ai':
         result = await handleDealHealthAI(apiKey, req.body);
+        break;
+      case 'build-timeline':
+        result = await handleBuildTimeline(apiKey, req.body);
+        break;
+      case 'generate-followup':
+        result = await handleGenerateFollowUp(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

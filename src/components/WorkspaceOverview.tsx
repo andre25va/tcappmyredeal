@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
 import { DealHealthCard } from './DealHealthCard';
 import { EmailSummaryCard } from './EmailSummaryCard';
+import { CompliancePreCheck } from './CompliancePreCheck';
+import { DraftFollowUp } from './DraftFollowUp';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
@@ -523,6 +525,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
       {/* ─── Email Summary ─── */}
       <EmailSummaryCard deal={deal} onGoToEmails={onGoToEmails} />
+
+      {/* ─── Compliance Pre-Check ─── */}
+      <CompliancePreCheck deal={deal} />
+
+      {/* ─── Draft Follow-Up ─── */}
+      <DraftFollowUp deal={deal} onSwitchToEmail={onGoToEmails} />
 
       {/* ─── Milestone Stepper ─── */}
       <MilestoneStepper deal={deal} onUpdate={onUpdate} />
