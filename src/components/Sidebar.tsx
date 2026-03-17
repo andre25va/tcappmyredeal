@@ -55,6 +55,7 @@ function SidebarInner({
 }: SidebarProps & { isMobileOverlay: boolean }) {
   const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending, waitingCount);
   const [createOpen, setCreateOpen] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
   const { profile, logout } = useAuth();
 
@@ -259,7 +260,7 @@ function SidebarInner({
               </div>
               {/* Sign out */}
               <button
-                onClick={logout}
+                onClick={() => setLogoutConfirm(true)}
                 title="Sign out"
                 className="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-error hover:bg-error/10"
               >
@@ -284,7 +285,7 @@ function SidebarInner({
               </div>
               {/* Sign out button */}
               <button
-                onClick={logout}
+                onClick={() => setLogoutConfirm(true)}
                 title="Sign out"
                 className="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-error hover:bg-error/10 flex-none"
               >
@@ -294,6 +295,38 @@ function SidebarInner({
           )}
         </div>
       </div>
+
+      {/* ── Logout confirmation modal ── */}
+      {logoutConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
+          <div className="bg-base-100 rounded-2xl shadow-2xl p-6 w-72 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center flex-none">
+                <LogOut size={18} className="text-error" />
+              </div>
+              <div>
+                <div className="font-semibold text-base-content text-sm">Sign out?</div>
+                <div className="text-xs text-base-content/50 mt-0.5">You'll need to log in again to access TC Command.</div>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setLogoutConfirm(false)}
+                className="btn btn-ghost btn-sm rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setLogoutConfirm(false); logout(); }}
+                className="btn btn-error btn-sm rounded-xl gap-1.5"
+              >
+                <LogOut size={13} />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
