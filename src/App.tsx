@@ -15,6 +15,7 @@ import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
 import { DealWorkspace } from './components/DealWorkspace';
 import { AddDealModal } from './components/AddDealModal';
+import { GuidedDealWizard } from './components/GuidedDealWizard';
 import { HomeDashboard } from './components/HomeDashboard';
 import { ContactsDirectory } from './components/ContactsDirectory';
 import { MLSDirectory } from './components/MLSDirectory';
@@ -519,7 +520,7 @@ function AppInner() {
       </div>
 
       {showAdd && (
-        <AddDealModal
+        <GuidedDealWizard
           onAdd={handleAdd}
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
