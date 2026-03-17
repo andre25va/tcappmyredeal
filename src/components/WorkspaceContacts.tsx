@@ -515,14 +515,16 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       side: effectiveSide,
     };
     const isClientSideFlag = !!cr.isClient || pickerConfig?.type === 'client';
-    const newParticipant = {
-      id: crypto.randomUUID(),
+    const newParticipant: import('../types').DealParticipant = {
+      id: crypto.randomUUID() as import('../types').DealParticipant['id'],
       contactId: cr.id,
       dealId: deal.id,
       side: dealSide,
       dealRole,
       isPrimary: false,
       isClientSide: isClientSideFlag,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     onUpdate({
       ...deal,
