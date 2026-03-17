@@ -10,6 +10,7 @@ import {
   loadContactsFull, saveContactRecord, deleteContactRecord,
   upsertContactLicense, deleteContactLicenseRecord,
   upsertContactMls, deleteContactMlsRecord,
+  createClientAccountForContact, removeClientAccountForContact,
 } from '../utils/supabaseDb';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
@@ -118,6 +119,9 @@ interface EditForm {
   company: string;
   timezone: string;
   notes: string;
+  isClient: boolean;
+  originalIsClient: boolean;
+  clientAccountId?: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -154,6 +158,9 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     company: '',
     timezone: '',
     notes: '',
+    isClient: false,
+    originalIsClient: false,
+    clientAccountId: undefined,
     licenses: [],
     mlsMemberships: [],
   };
@@ -170,6 +177,9 @@ function contactToForm(c: ContactRecord): EditForm {
     company: c.company,
     timezone: c.timezone,
     notes: c.notes,
+    isClient: c.isClient,
+    originalIsClient: c.isClient,
+    clientAccountId: c.clientAccountId,
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -372,6 +382,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     if (!form.firstName.trim()) return;
     setSaving(true);
     try {
+      const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+
       // 1. Save contact record
       await saveContactRecord({
         id: form.id,
@@ -387,11 +399,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
       // 2. Handle licenses (only for agents)
       if (form.contactType === 'agent') {
-        // Delete removed licenses
         for (const id of deletedLicenseIds) {
           await deleteContactLicenseRecord(id);
         }
-        // Upsert current licenses
         for (const lic of form.licenses) {
           await upsertContactLicense({
             id: lic.isNew ? undefined : lic.id,
@@ -404,11 +414,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
           });
         }
 
-        // Delete removed MLS
         for (const id of deletedMlsIds) {
           await deleteContactMlsRecord(id);
         }
-        // Upsert current MLS
         for (const mls of form.mlsMemberships) {
           await upsertContactMls({
             id: mls.isNew ? undefined : mls.id,
@@ -420,6 +428,17 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             stateCode: mls.stateCode || undefined,
             status: mls.status || 'active',
           });
+        }
+      }
+
+      // 3. Handle client account toggle (agents only)
+      if (form.contactType === 'agent') {
+        if (form.isClient && !form.originalIsClient) {
+          // Promote to client
+          await createClientAccountForContact(form.id, fullName);
+        } else if (!form.isClient && form.originalIsClient && form.clientAccountId) {
+          // Demote from client
+          await removeClientAccountForContact(form.id, form.clientAccountId);
         }
       }
 
@@ -641,6 +660,31 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <textarea className="textarea textarea-bordered textarea-sm w-full" rows={2} value={form.notes} onChange={e => updateField('notes', e.target.value)} />
                 </div>
               </div>
+
+              {/* Client Account Toggle (agents only) */}
+              {form.contactType === 'agent' && (
+                <div className={`rounded-lg border p-3 ${form.isClient ? 'bg-amber-50 border-amber-200' : 'bg-base-100 border-base-300'}`}>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm checkbox-warning"
+                      checked={form.isClient}
+                      onChange={e => updateField('isClient', e.target.checked)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Star size={16} className={form.isClient ? 'text-amber-500 fill-amber-500' : 'text-base-content/30'} />
+                      <div>
+                        <span className="text-sm font-semibold">{form.isClient ? 'Client Agent' : 'Not a Client'}</span>
+                        <p className="text-xs text-base-content/50">
+                          {form.isClient
+                            ? 'This agent is your client — you coordinate their deals.'
+                            : 'Toggle on if this agent is one of your TC clients.'}
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               {/* Licenses (agents only) */}
               {form.contactType === 'agent' && (

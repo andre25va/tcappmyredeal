@@ -56,7 +56,6 @@ async function loadDealParticipants(dealIds: string[]): Promise<Record<string, D
 
   const byDeal: Record<string, DealParticipant[]> = {};
   for (const row of data ?? []) {
-    // Supabase FK joins return single object (not array) for to-one relations
     const c = row.contacts as unknown as Record<string, string> | null;
     const o = row.organizations as unknown as Record<string, string> | null;
     const p: DealParticipant = {
@@ -83,10 +82,6 @@ async function loadDealParticipants(dealIds: string[]): Promise<Record<string, D
   return byDeal;
 }
 
-/**
- * Build legacy Contact[] from DealParticipant[] for backward compatibility.
- * Components that still read deal.contacts will get data from participants.
- */
 function participantsToLegacyContacts(participants: DealParticipant[]): Contact[] {
   return participants
     .filter((p) => p.contactId)
@@ -126,9 +121,6 @@ function mapSideToLegacy(side: string): 'buy' | 'sell' | 'both' {
   return 'both';
 }
 
-/**
- * Build legacy AgentContact from participants
- */
 function findAgentFromParticipants(
   participants: DealParticipant[],
   side: 'listing' | 'buyer',
@@ -163,7 +155,6 @@ export async function loadDeals(): Promise<Deal[]> {
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
-  // Load participants for all deals in one query
   const dealIds = data.map((r) => r.id);
   const participantsByDeal = await loadDealParticipants(dealIds);
 
@@ -174,8 +165,6 @@ export async function loadDeals(): Promise<Deal[]> {
 
     const deal: Deal = {
       id: row.id,
-
-      // Property info — relational columns are source of truth
       propertyAddress: row.property_address || (dd.address as string) || '',
       city: row.city || (dd.city as string) || '',
       state: row.state || (dd.state as string) || '',
@@ -184,42 +173,29 @@ export async function loadDeals(): Promise<Deal[]> {
       listPrice: (dd.listPrice as number) ?? 0,
       contractPrice: row.purchase_price ?? (dd.contractPrice as number) ?? 0,
       propertyType: ((dd.propertyType as string) || 'single-family') as PropertyType,
-
-      // Status
       status: (row.status || (dd.status as string) || 'contract') as DealStatus,
       milestone: (row.pipeline_stage || (dd.milestone as string) || 'contract-received') as DealMilestone,
       transactionType: (row.transaction_type || row.deal_type || (dd.transactionSide as string) || 'buyer') as TransactionType,
       riskLevel: row.risk_level || 'normal',
-
-      // Dates
       contractDate: row.contract_date || (dd.contractDate as string) || '',
       closingDate: row.closing_date || (dd.closingDate as string) || '',
-
-      // Phase 4 relational
       primaryClientAccountId: row.primary_client_account_id ?? undefined,
       assignedTcUserId: row.assigned_tc_user_id ?? undefined,
       assignedComplianceUserId: row.assigned_compliance_user_id ?? undefined,
       participants,
-
-      // Legacy agent fields (populated from participants) — required strings
       agentId: (clientAgent?.isOurClient ? participants.find((p) => p.isClientSide && p.dealRole === 'lead_agent')?.contactId : (dd.agentId as string)) || '',
       agentName: clientAgent?.name || (dd.agentName as string) || '',
       agentClientId: (dd.agentClientId as string) ?? undefined,
       complianceTemplateId: (dd.complianceTemplateId as string) ?? undefined,
       buyerAgent: findAgentFromParticipants(participants, 'buyer') ?? (dd.buyerAgent as AgentContact) ?? undefined,
       sellerAgent: findAgentFromParticipants(participants, 'listing') ?? (dd.sellerAgent as AgentContact) ?? undefined,
-
-      // Legacy contacts array (built from participants)
       contacts: participantsToLegacyContacts(participants),
-
-      // Embedded arrays (still from deal_data JSONB during transition)
       dueDiligenceChecklist: (dd.dueDiligenceChecklist as ChecklistItem[]) ?? [],
       complianceChecklist: (dd.complianceChecklist as ChecklistItem[]) ?? [],
       documentRequests: (dd.documentRequests as DocumentRequest[]) ?? [],
       reminders: (dd.reminders as Reminder[]) ?? [],
       activityLog: (dd.activityLog as ActivityEntry[]) ?? [],
       tasks: (dd.tasks as DealTask[]) ?? [],
-
       notes: row.notes || (dd.notes as string) || '',
       archiveReason: (dd.archiveReason as string) ?? undefined,
       createdAt: row.created_at || (dd.createdAt as string) || new Date().toISOString(),
@@ -254,7 +230,7 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     risk_level: deal.riskLevel || 'normal',
     assigned_tc_user_id: deal.assignedTcUserId ?? null,
     assigned_compliance_user_id: deal.assignedComplianceUserId ?? null,
-    deal_data: dealToJsonBackup(deal), // JSONB backup during transition
+    deal_data: dealToJsonBackup(deal),
     updated_at: new Date().toISOString(),
   }));
 
@@ -263,7 +239,6 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
   });
   if (upsertError) throw upsertError;
 
-  // Delete removed deals
   const newIds = deals.map((d) => d.id);
   const { data: existing } = await supabase.from('deals').select('id');
   const toDelete = (existing ?? [])
@@ -303,21 +278,15 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
   if (error) throw error;
 }
 
-/**
- * Build JSONB backup that preserves the old format for deal_data.
- * This keeps api/chat.ts and other server-side consumers working during migration.
- */
 function dealToJsonBackup(deal: Deal): Record<string, unknown> {
   return {
     ...deal,
-    // Ensure old field names are present in JSONB for backward compat
     address: deal.propertyAddress || '',
     transactionSide: deal.transactionType || 'buyer',
   };
 }
 
 export async function deleteDeal(id: string): Promise<void> {
-  // Also delete participants (CASCADE handles this)
   const { error } = await supabase.from('deals').delete().eq('id', id);
   if (error) throw error;
 }
@@ -404,6 +373,37 @@ export async function loadClientAccounts(): Promise<ClientAccount[]> {
   });
 }
 
+export async function createClientAccountForContact(contactId: string, fullName: string): Promise<string> {
+  const accountId = crypto.randomUUID();
+  const { error: accErr } = await supabase.from('client_accounts').insert({
+    id: accountId,
+    account_name: fullName,
+    account_type: 'individual_agent',
+    primary_contact_id: contactId,
+    status: 'active',
+  });
+  if (accErr) throw accErr;
+
+  const { error: memErr } = await supabase.from('client_account_members').insert({
+    client_account_id: accountId,
+    contact_id: contactId,
+    relationship_role: 'primary_client',
+    is_primary: true,
+    is_active: true,
+  });
+  if (memErr) throw memErr;
+
+  return accountId;
+}
+
+export async function removeClientAccountForContact(contactId: string, clientAccountId: string): Promise<void> {
+  await supabase.from('client_account_members').delete()
+    .eq('contact_id', contactId)
+    .eq('client_account_id', clientAccountId);
+  const { error } = await supabase.from('client_accounts').delete().eq('id', clientAccountId);
+  if (error) throw error;
+}
+
 // ─── CONTACT LICENSES ───────────────────────────────────────────────────────
 
 export async function loadContactLicenses(contactId: string): Promise<ContactLicense[]> {
@@ -434,8 +434,6 @@ export async function loadContactLicenses(contactId: string): Promise<ContactLic
 }
 
 // ─── DIRECTORY CONTACTS ─────────────────────────────────────────────────────
-// Phase 4A: Reads from contacts table + joins, but returns DirectoryContact shape
-// for backward compatibility with ContactsDirectory.tsx
 
 export async function loadDirectory(): Promise<DirectoryContact[]> {
   const { data, error } = await supabase
@@ -448,7 +446,6 @@ export async function loadDirectory(): Promise<DirectoryContact[]> {
 
   if (error) throw error;
 
-  // Also load all licenses and org memberships for directory view
   const contactIds = (data ?? []).map((r) => r.id);
 
   const [licenseRes, orgMemberRes] = await Promise.all([
@@ -460,21 +457,18 @@ export async function loadDirectory(): Promise<DirectoryContact[]> {
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  // Build license lookup: contactId → state_code[]
   const licensesByContact: Record<string, string[]> = {};
   for (const lic of licenseRes.data ?? []) {
     if (!licensesByContact[lic.contact_id]) licensesByContact[lic.contact_id] = [];
     licensesByContact[lic.contact_id].push(lic.state_code);
   }
 
-  // Build org lookup: contactId → org name
   const orgByContact: Record<string, string> = {};
   for (const om of orgMemberRes.data ?? []) {
     const o = om.organizations as unknown as Record<string, string> | null;
     if (o?.name) orgByContact[om.contact_id] = o.name;
   }
 
-  // Also check client_accounts for clientId
   const { data: clientMembers } = await supabase
     .from('client_account_members')
     .select('contact_id, client_account_id')
@@ -494,7 +488,7 @@ export async function loadDirectory(): Promise<DirectoryContact[]> {
     role: row.contact_type || 'other',
     company: orgByContact[row.id] || row.company || undefined,
     states: licensesByContact[row.id] || undefined,
-    mlsIds: undefined, // Will be populated when MLS memberships have data
+    mlsIds: undefined,
     clientId: clientByContact[row.id] || undefined,
     isTeam: false,
     notes: undefined,
@@ -504,11 +498,9 @@ export async function loadDirectory(): Promise<DirectoryContact[]> {
 
 export async function saveDirectory(contacts: DirectoryContact[]): Promise<void> {
   if (contacts.length === 0) {
-    // Don't delete all contacts — they're referenced by participants
     return;
   }
 
-  // Upsert into contacts table (relational)
   const rows = contacts.map((c) => {
     const nameParts = c.name.split(' ');
     const firstName = nameParts[0] || '';
@@ -529,7 +521,6 @@ export async function saveDirectory(contacts: DirectoryContact[]): Promise<void>
   const { error } = await supabase.from('contacts').upsert(rows, { onConflict: 'id' });
   if (error) throw error;
 
-  // Also write to directory_contacts for backward compat during migration
   const legacyRows = contacts.map((c) => ({
     id: c.id,
     name: c.name,
@@ -778,7 +769,7 @@ export async function saveMasterItems(
   if (error) throw error;
 }
 
-// ─── ACTIVITY LOG (write-only for automation) ────────────────────────────────
+// ─── ACTIVITY LOG ────────────────────────────────────────────────────────────
 
 export async function logActivity(params: {
   dealId?: string;
@@ -810,7 +801,6 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
 
   const ids = data.map(r => r.id);
 
-  // Parallel load all relations
   const [licRes, mlsRes, orgRes, clientRes] = await Promise.all([
     supabase.from('contact_licenses').select('*').in('contact_id', ids),
     supabase.from('contact_mls_memberships').select('*').in('contact_id', ids),
@@ -818,7 +808,6 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     supabase.from('client_account_members').select('contact_id, client_account_id').in('contact_id', ids),
   ]);
 
-  // Index by contact_id
   const licByContact: Record<string, any[]> = {};
   for (const l of licRes.data ?? []) {
     if (!licByContact[l.contact_id]) licByContact[l.contact_id] = [];
@@ -931,10 +920,28 @@ export async function saveContactRecord(contact: {
 }
 
 export async function deleteContactRecord(id: string): Promise<void> {
-  // Delete related data first
   await supabase.from('contact_licenses').delete().eq('contact_id', id);
   await supabase.from('contact_mls_memberships').delete().eq('contact_id', id);
   await supabase.from('organization_members').delete().eq('contact_id', id);
+  // Also clean up client account if exists
+  const { data: memberships } = await supabase
+    .from('client_account_members')
+    .select('client_account_id')
+    .eq('contact_id', id);
+  if (memberships && memberships.length > 0) {
+    const accountIds = memberships.map(m => m.client_account_id);
+    await supabase.from('client_account_members').delete().eq('contact_id', id);
+    // Only delete accounts where this was the only member
+    for (const accId of accountIds) {
+      const { count } = await supabase
+        .from('client_account_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_account_id', accId);
+      if (count === 0) {
+        await supabase.from('client_accounts').delete().eq('id', accId);
+      }
+    }
+  }
   const { error } = await supabase.from('contacts').delete().eq('id', id);
   if (error) throw error;
 }
