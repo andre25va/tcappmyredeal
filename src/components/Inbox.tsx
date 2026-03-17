@@ -281,7 +281,7 @@ function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: 
         style={checked ? { accentColor: '#f59e0b' } : {}}
       />
       <span className={`text-[11px] font-medium transition-colors ${checked ? 'text-amber-600' : 'text-base-content/50 group-hover:text-base-content/70'}`}>
-        Need reply
+        Reply need
       </span>
       {checked && <Clock size={11} className="text-amber-500 animate-pulse" />}
     </label>
@@ -1167,18 +1167,18 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             }}
             rows={1}
           />
-          <div className="flex flex-col items-end gap-1.5">
-            <NeedReplyCheckbox checked={emailNeedReply} onChange={setEmailNeedReply} />
-            <button
-              onClick={handleEmailReply}
-              disabled={!emailReplyText.trim() || emailSending}
-              className={`btn btn-sm px-3 rounded-xl ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
-            >
-              {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            </button>
-          </div>
+          <button
+            onClick={handleEmailReply}
+            disabled={!emailReplyText.trim() || emailSending}
+            className={`btn btn-sm px-3 rounded-xl ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
+          >
+            {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
         </div>
-        <p className="text-[10px] text-base-content/30 mt-1.5 text-center">✉️ Replying from tc@myredeal.com · Ctrl+Enter to send</p>
+        <div className="flex items-center justify-between mt-2 px-1">
+          <NeedReplyCheckbox checked={emailNeedReply} onChange={setEmailNeedReply} />
+          <p className="text-[10px] text-base-content/30">✉️ Replying from tc@myredeal.com · Ctrl+Enter to send</p>
+        </div>
       </div>
     </>
   );
@@ -1269,7 +1269,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       )}
                       {isOut && msg.need_reply && (
                         <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
-                          <Clock size={8} /> need reply
+                          <Clock size={8} /> reply need
                         </span>
                       )}
                       {msg.auto_created_task_id && (
@@ -1297,25 +1297,25 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             }}
             rows={1}
           />
-          <div className="flex flex-col items-end gap-1.5">
-            <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
-            <button
-              onClick={handleSendReply}
-              disabled={!replyText.trim() || sending}
-              className={`btn btn-sm px-3 rounded-xl text-white ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
-              style={!needReply && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
-            >
-              {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            </button>
-          </div>
+          <button
+            onClick={handleSendReply}
+            disabled={!replyText.trim() || sending}
+            className={`btn btn-sm px-3 rounded-xl text-white ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
+            style={!needReply && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
+          >
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
         </div>
-        <p className="text-[10px] text-base-content/30 mt-1.5 text-center">
-          {selectedConv.channel === 'whatsapp'
-            ? '💬 Sending via WhatsApp'
-            : '📱 Sending via SMS from (464) 733-3257'}
-          {selectedConv.type === 'broadcast' && ' · Broadcast'}
-          {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
-        </p>
+        <div className="flex items-center justify-between mt-2 px-1">
+          <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
+          <p className="text-[10px] text-base-content/30">
+            {selectedConv.channel === 'whatsapp'
+              ? '💬 Sending via WhatsApp'
+              : '📱 Sending via SMS from (464) 733-3257'}
+            {selectedConv.type === 'broadcast' && ' · Broadcast'}
+            {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
+          </p>
+        </div>
       </div>
     </>
   );
