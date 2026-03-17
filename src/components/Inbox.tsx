@@ -101,6 +101,9 @@ interface Deal {
 interface InboxProps {
   onSelectDeal?: (id: string) => void;
   onWaitingCountChange?: (count: number) => void;
+  initialConversationId?: string;
+  initialChannel?: 'sms' | 'email' | 'whatsapp';
+  onInitHandled?: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -304,7 +307,7 @@ function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange }) => {
+export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, onInitHandled }) => {
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -466,6 +469,29 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       setEmailNeedReply(false);
     }
   }, [selectedEmailThread, loadEmailMessages]);
+
+  // Auto-select conversation from notification click
+  useEffect(() => {
+    if (!initialConversationId) return;
+    // If conversations are loaded, find and select it
+    if (conversations.length > 0) {
+      const target = conversations.find(c => c.id === initialConversationId);
+      if (target) {
+        setSelectedConv(target);
+        setTab('all'); // switch to all tab so conversation is visible
+        onInitHandled?.();
+      }
+    }
+  }, [initialConversationId, conversations]);
+
+  // Auto-switch to email tab from notification click
+  useEffect(() => {
+    if (!initialChannel) return;
+    if (initialChannel === 'email') {
+      setTab('email');
+      onInitHandled?.();
+    }
+  }, [initialChannel]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
