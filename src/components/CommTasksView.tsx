@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CheckSquare, Plus, MessageSquare, Mail, Phone, X, Check,
-  Clock, AlertTriangle, ChevronDown, Filter, Search, RefreshCw,
+  CheckSquare, Plus, X, Check,
+  Clock, AlertTriangle, Search, RefreshCw,
   User, Building2, Send, Edit2, Trash2, ArrowRight, Loader2,
   MessageCircle, Smartphone, AtSign,
 } from 'lucide-react';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { CheckSquare, Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, User, Calendar, MoreVertical } from 'lucide-react';
-import { Deal, DealTask, TaskPriority, DealMilestone, AppUser } from '../types';
+import { CheckSquare, Plus, Trash2, Check, ChevronDown, User, Calendar, MoreVertical } from 'lucide-react';
+import { Deal, DealTask, TaskPriority, AppUser } from '../types';
 import { generateId } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';

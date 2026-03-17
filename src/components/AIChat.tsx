@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PropertyEmailModal } from './PropertyEmailModal';
-import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard, Building2 } from 'lucide-react';
+import { X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard, Building2 } from 'lucide-react';
 
 interface ChatMessage {
   id: string;

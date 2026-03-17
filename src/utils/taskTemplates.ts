@@ -7,12 +7,6 @@ const addDaysFromToday = (n: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
-const addDaysFrom = (base: string, n: number): string => {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
 interface TaskTemplate {
   title: string;
   dueDaysFromToday: number;

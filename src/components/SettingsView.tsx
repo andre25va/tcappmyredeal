@@ -33,12 +33,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
   staff: 'Staff',
 };
 
-const ROLE_COLORS: Record<UserRole, string> = {
-  admin:  'badge-error',
-  tc:     'badge-primary',
-  staff:  'badge-neutral',
-};
-
 // ── CSV helpers ──────────────────────────────────────────────────────────────
 function toCSV(headers: string[], rows: (string | number | boolean | undefined | null)[][]): string {
   const escape = (v: string | number | boolean | undefined | null) => {
@@ -1419,7 +1413,6 @@ export const SettingsView: React.FC<Props> = ({
   const [editUser, setEditUser]   = useState<AppUser | undefined>();
   const [deleteId, setDeleteId]   = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<string | null>(null);
-  const [userMenuId, setUserMenuId] = useState<string | null>(null);
 
   const flash = (key: string) => {
     setDownloaded(key);
@@ -1433,8 +1426,6 @@ export const SettingsView: React.FC<Props> = ({
     setShowForm(false); setEditUser(undefined);
   };
 
-  const toggleActive = (id: string) =>
-    onSaveUsers(users.map(u => u.id === id ? { ...u, active: !u.active } : u));
 
   const confirmDelete = (id: string) => {
     onSaveUsers(users.filter(u => u.id !== id));
@@ -1534,8 +1525,6 @@ export const SettingsView: React.FC<Props> = ({
     },
   ];
 
-  const activeUsers   = users.filter(u => u.active).length;
-  const inactiveUsers = users.filter(u => !u.active).length;
 
   return (
     <div className="flex flex-col h-full bg-base-100">

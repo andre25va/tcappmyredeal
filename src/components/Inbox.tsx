@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  MessageSquare, Send, Plus, Search, X, Users, Phone,
+  MessageSquare, Send, Plus, Search, X, Users,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip, Download, FileText
+  Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────

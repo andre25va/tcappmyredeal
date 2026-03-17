@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
-  ScrollText, Plus, FileText, CheckSquare, Users, AlertTriangle, CheckCircle2,
+  Plus, FileText, CheckSquare, Users, AlertTriangle, CheckCircle2,
   Bell, Pencil, MessageSquare, ArrowRightLeft
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
-import { formatDateTime, generateId } from '../utils/helpers';
+import { generateId } from '../utils/helpers';
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; }
 

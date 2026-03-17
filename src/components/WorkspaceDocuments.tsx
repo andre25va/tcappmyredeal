@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Plus, FileText, X, ChevronDown, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Plus, FileText, X, Info } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus } from '../types';
-import { docTypeConfig, generateId, formatDateTime, propertyTypeLabel } from '../utils/helpers';
+import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; }
 

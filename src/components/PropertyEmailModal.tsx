@@ -3,7 +3,6 @@ import {
   X, Mail, Paperclip, ChevronDown, ChevronRight,
   Download, FileText, Image, Film, File, Loader2,
   AlertCircle, Inbox, Search, Cpu, Shield, MessageSquare,
-  SlidersHorizontal, ChevronUp,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -164,8 +163,8 @@ function EmailRow({ email, showClassification }: { email: PropertyEmail; showCla
     }
   }, [expanded, email.bodyHtml]);
 
-  const fromName = email.from.replace(/<.*>/, '').trim() || email.from;
   const cls = email.classification;
+  const fromName = email.from || 'Unknown';
 
   return (
     <div className="border border-base-300 rounded-xl overflow-hidden">
@@ -284,7 +283,6 @@ function ThreadGroup({ emails, showClassification }: { emails: PropertyEmail[]; 
   if (emails.length === 1) return <EmailRow email={emails[0]} showClassification={showClassification} />;
 
   const latest = emails[0];
-  const fromName = latest.from.replace(/<.*>/, '').trim() || latest.from;
 
   return (
     <div className="border border-primary/20 rounded-xl overflow-hidden bg-primary/5">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Pencil, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
+import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
-import { Deal, DealStatus, PropertyType, ActivityEntry, AgentContact, DirectoryContact, DealMilestone, DealTask, ActivityType, Reminder } from '../types';
+import { Deal, DealStatus, PropertyType, AgentContact, DirectoryContact, DealMilestone, ActivityType, Reminder } from '../types';
 import { generateTasksForMilestone, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
 import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Printer, MapPin, DollarSign, Calendar, Home, Users, AlertTriangle, CheckSquare, FileText, StickyNote, User } from 'lucide-react';
+import { X, Printer, MapPin, DollarSign, Calendar, Users, AlertTriangle, CheckSquare, FileText, StickyNote, User } from 'lucide-react';
 import { Deal, Contact } from '../types';
 import { formatPhone, roleLabel } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';

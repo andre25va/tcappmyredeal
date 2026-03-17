@@ -58,7 +58,6 @@ function AppInner() {
   const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
-  const [inboxNav, setInboxNav]             = useState<{ channel?: string; phone?: string; email?: string } | null>(null);
 
   const [directory, setDirectory]               = useState<DirectoryContact[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -222,11 +221,6 @@ function AppInner() {
   if (!profile) return <LoginPage />;
 
   // ── Persist helpers ──────────────────────────────────────────────────────────
-  const persistDeals = (updated: Deal[]) => {
-    setDeals(updated);
-    saveDeals(updated).catch(console.error);
-  };
-
   const persistDirectory = (updated: DirectoryContact[]) => {
     setDirectory(updated);
     saveDirectory(updated).catch(console.error);
@@ -459,7 +453,6 @@ function AppInner() {
             <div className="flex-1 overflow-hidden">
               <CommTasksView
                 onOpenInbox={(channel, phone, email) => {
-                  setInboxNav({ channel, phone, email });
                   setView('inbox');
                 }}
                 onSelectDeal={handleSelectDeal}

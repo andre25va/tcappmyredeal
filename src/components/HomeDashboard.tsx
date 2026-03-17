@@ -23,11 +23,6 @@ const STATUS_META: Record<DealStatus, { label: string; color: string; bg: string
   terminated:     { label: 'Terminated',      color: 'text-red-400',    bg: 'bg-red-500',     order: 5 },
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  agent: 'badge-primary', buyer: 'badge-info', seller: 'badge-warning',
-  lender: 'badge-accent', title: 'badge-secondary', attorney: 'badge-error',
-  inspector: 'badge-ghost', tc: 'badge-neutral', other: 'badge-ghost',
-};
 
 function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max === 0 ? 0 : Math.round((value / max) * 100);
@@ -208,12 +203,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     'single-family': 'Single Family', 'multi-family': 'Multi-Family',
     condo: 'Condo', townhouse: 'Townhouse', land: 'Land', commercial: 'Commercial',
   };
-
-  const urgencyPcts = stats.allPending.length === 0 ? [0, 0, 0] : [
-    Math.round(stats.highAlerts.length / stats.allPending.length * 100),
-    Math.round(stats.medAlerts.length / stats.allPending.length * 100),
-    100 - Math.round(stats.highAlerts.length / stats.allPending.length * 100) - Math.round(stats.medAlerts.length / stats.allPending.length * 100),
-  ];
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-base-100">

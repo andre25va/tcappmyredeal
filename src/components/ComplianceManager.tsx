@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ClipboardCheck, Plus, Trash2, GripVertical, Star, User,
   ChevronRight, CheckCircle2, AlertCircle, Info, Pencil, Check, X,
-  UserPlus, UserMinus, FileText, Calendar, MapPin, Copy, MoreVertical, Eye
+  UserPlus, FileText, Calendar, MapPin, Copy, MoreVertical, Eye
 } from 'lucide-react';
 
 const US_STATES: { abbr: string; name: string }[] = [

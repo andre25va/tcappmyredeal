@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import {
   Plus, Pencil, Trash2, X, Save, Globe, MapPin,
-  FileText, ChevronRight, ArrowLeft, Link, StickyNote,
-  FilePlus, CheckCircle2, Circle, Tag, MoreVertical,
+  FileText, ArrowLeft, Link, StickyNote,
+  FilePlus, CheckCircle2, Circle, MoreVertical,
 } from 'lucide-react';
 import { MlsEntry, MlsDocument } from '../types';
 import { generateId } from '../utils/helpers';
