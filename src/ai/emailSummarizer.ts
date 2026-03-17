@@ -1,4 +1,4 @@
-import { EmailThreadGroup, EmailSummary, RawEmail } from "./types";
+import type { EmailThreadGroup, EmailSummary, RawEmail } from "./types";
 
 export function groupEmailsByThread(emails: RawEmail[]): EmailThreadGroup[] {
   const map = new Map<string, RawEmail[]>();
@@ -17,7 +17,8 @@ export function groupEmailsByThread(emails: RawEmail[]): EmailThreadGroup[] {
   });
 }
 
-export function summarizeThread(group: EmailThreadGroup): EmailSummary {
+/** Fast local keyword-based summary (no API call, used as fallback) */
+export function summarizeThreadLocal(group: EmailThreadGroup): EmailSummary {
   const keyUpdates: string[] = [];
   const actionItems: string[] = [];
   const riskFlags: string[] = [];
@@ -75,3 +76,6 @@ export function summarizeThread(group: EmailThreadGroup): EmailSummary {
 
   return { summary, keyUpdates, actionItems, riskFlags };
 }
+
+// Keep backward-compatible export name
+export const summarizeThread = summarizeThreadLocal;

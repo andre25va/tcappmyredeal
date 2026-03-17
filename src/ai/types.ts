@@ -1,4 +1,4 @@
-// AI Feature Types — Phase 1A
+// AI Feature Types — Phase 2
 // Isolated from main app types to keep AI concerns separate.
 
 export type DealRecord = {
@@ -83,6 +83,7 @@ export type SuggestedTask = {
   description?: string;
   dueDate?: string;
   priority: "low" | "medium" | "high";
+  suggestedOwnerRole?: "agent" | "tc" | "admin" | "lender" | "title" | "compliance";
 };
 
 export type DealHealthSnapshot = {
@@ -91,5 +92,13 @@ export type DealHealthSnapshot = {
   missingItems: string[];
   overdueTasks: string[];
   staleWarnings: string[];
+  summary: string;
+};
+
+export type CompliancePrecheckResult = {
+  status: "pass" | "watch" | "fail";
+  missingItems: string[];
+  inconsistentItems: string[];
+  notes: string[];
   summary: string;
 };
