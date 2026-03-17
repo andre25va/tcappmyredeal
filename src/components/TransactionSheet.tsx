@@ -134,7 +134,7 @@ export const TransactionSheet: React.FC<Props> = ({ deal, onClose }) => {
               <div>
                 <div className="flex items-center gap-2">
                   <MapPin size={16} className="text-primary flex-none" />
-                  <h2 className="text-xl font-bold text-black">{deal.address}</h2>
+                  <h2 className="text-xl font-bold text-black">{deal.propertyAddress}</h2>
                 </div>
                 <p className="text-sm text-gray-500 ml-6 mt-0.5">
                   {[deal.city, deal.state, deal.zipCode].filter(Boolean).join(', ')}
@@ -148,13 +148,13 @@ export const TransactionSheet: React.FC<Props> = ({ deal, onClose }) => {
                   {PROP_TYPE_LABELS[deal.propertyType] || deal.propertyType}
                 </span>
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                  deal.transactionSide === 'buyer'
+                  deal.transactionType === 'buyer'
                     ? 'bg-blue-100 text-blue-700'
-                    : deal.transactionSide === 'seller'
+                    : deal.transactionType === 'seller'
                     ? 'bg-green-100 text-green-700'
                     : 'bg-purple-100 text-purple-700'
                 }`}>
-                  {deal.transactionSide === 'buyer' ? 'Buyer Side' : deal.transactionSide === 'seller' ? 'Seller Side' : 'Both Sides'}
+                  {deal.transactionType === 'buyer' ? 'Buyer Side' : deal.transactionType === 'seller' ? 'Seller Side' : 'Both Sides'}
                 </span>
                 <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
                   {MILESTONE_LABELS[deal.milestone ?? 'contract-received']}

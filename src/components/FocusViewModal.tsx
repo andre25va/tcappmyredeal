@@ -87,9 +87,9 @@ const ContactCard: React.FC<{ contact: Contact; copied: string | null; onCopy: (
 
 export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
   const { copied, copy } = useCopy();
-  const side = deal.transactionSide ?? 'buyer';
+  const side = deal.transactionType ?? 'buyer';
 
-  const fullAddress = `${deal.address}, ${deal.city}, ${deal.state} ${deal.zipCode}`;
+  const fullAddress = `${deal.propertyAddress}, ${deal.city}, ${deal.state} ${deal.zipCode}`;
   const mlsRaw = deal.mlsNumber ?? '';
 
   const ourSideLetter = side === 'buyer' ? 'buy' : 'sell';
@@ -142,7 +142,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
             </div>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="font-bold text-base text-base-content leading-tight">{deal.address}</p>
+                <p className="font-bold text-base text-base-content leading-tight">{deal.propertyAddress}</p>
                 <p className="text-xs text-base-content/60 mt-0.5">{deal.city}, {deal.state} {deal.zipCode}</p>
               </div>
               <CopyBtn text={fullAddress} copyKey="address" copied={copied} onCopy={copy} />

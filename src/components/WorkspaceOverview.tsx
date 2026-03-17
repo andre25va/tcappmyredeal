@@ -427,7 +427,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
     propertyType: deal.propertyType,
     mlsNumber: deal.mlsNumber,
     agentName: deal.agentName,
-    address: deal.address,
+    propertyAddress: deal.propertyAddress,
     city: deal.city,
     state: deal.state,
     zipCode: deal.zipCode,
@@ -446,7 +446,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
       propertyType: deal.propertyType,
       mlsNumber: deal.mlsNumber,
       agentName: deal.agentName,
-      address: deal.address,
+      propertyAddress: deal.propertyAddress,
       city: deal.city,
       state: deal.state,
       zipCode: deal.zipCode,
@@ -471,7 +471,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
       propertyType: fields.propertyType as PropertyType,
       mlsNumber: fields.mlsNumber,
       agentName: fields.agentName,
-      address: fields.address,
+      propertyAddress: fields.propertyAddress,
       city: fields.city,
       state: fields.state,
       zipCode: fields.zipCode,
@@ -509,7 +509,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
 
   const buyerIsClient = deal.buyerAgent?.isOurClient;
   const sellerIsClient = deal.sellerAgent?.isOurClient;
-  const showBuyerFirst = buyerIsClient || (!sellerIsClient && deal.transactionSide !== 'seller');
+  const showBuyerFirst = buyerIsClient || (!sellerIsClient && deal.transactionType !== 'seller');
   const agentPanels = showBuyerFirst
     ? [{ label: 'Buyer Agent', agent: deal.buyerAgent, accent: 'text-info' }, { label: 'Seller Agent', agent: deal.sellerAgent, accent: 'text-success' }]
     : [{ label: 'Seller Agent', agent: deal.sellerAgent, accent: 'text-success' }, { label: 'Buyer Agent', agent: deal.buyerAgent, accent: 'text-info' }];
@@ -693,7 +693,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
             <div className="flex items-center justify-between px-6 py-4 border-b border-base-300 flex-none">
               <div>
                 <h2 className="font-bold text-base-content text-lg">Edit Deal</h2>
-                <p className="text-xs text-base-content/50 mt-0.5">{deal.address}</p>
+                <p className="text-xs text-base-content/50 mt-0.5">{deal.propertyAddress}</p>
               </div>
               <button onClick={handleCancel} className="btn btn-ghost btn-sm btn-square">
                 <X size={16} />
@@ -709,8 +709,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
                     <label className="text-xs text-base-content/50 mb-1 block">Street Address</label>
-                    <input className="input input-bordered input-sm w-full" value={fields.address}
-                      onChange={e => setFields(p => ({ ...p, address: e.target.value }))} />
+                    <input className="input input-bordered input-sm w-full" value={fields.propertyAddress}
+                      onChange={e => setFields(p => ({ ...p, propertyAddress: e.target.value }))} />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">City</label>

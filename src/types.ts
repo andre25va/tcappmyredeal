@@ -387,9 +387,7 @@ export interface Deal {
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
-  /** @deprecated Use propertyAddress instead. Kept required for backward compat. */
-  address: string;
-  city: string;
+city: string;
   state: string;
   zipCode: string;
   mlsNumber: string;
@@ -401,9 +399,7 @@ export interface Deal {
   status: DealStatus;
   milestone: DealMilestone;
   transactionType: TransactionType;    // Phase 4: canonical (was transactionSide)
-  /** @deprecated Use transactionType instead. Kept required for backward compat. */
-  transactionSide: TransactionSide;
-  riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
+riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
 
   // ── Dates ──────────────────────────────────────────────────────────────────
   contractDate: string;

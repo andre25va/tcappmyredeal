@@ -61,14 +61,14 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
 
   // Build Sellers Side block
   const sellers = deal.contacts.filter(c => c.role === 'seller');
-  const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionSide === 'seller');
+  const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
   const sellerLines: string[] = ['Sellers Side', ''];
   if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
   if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}`);
   else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
-  const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionSide !== 'buyer' ? allAttorneys.slice(0, 1) : []);
+  const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
   if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
   else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
   const sellersSide = sellerLines.join('\n');
@@ -80,7 +80,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   else buyerLines.push('  •   Buyers - [Buyer Name]');
   if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.phone ? `  ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? `  ${deal.buyerAgent.email}` : ''}`);
   else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
-  const bAtty = deal.transactionSide === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
+  const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
   if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
   else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
@@ -101,7 +101,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
       : '[Set inspection period in Compliance template]';
 
   return text
-    .replace(/\{\{address\}\}/g, deal.address)
+    .replace(/\{\{address\}\}/g, deal.propertyAddress)
     .replace(/\{\{city\}\}/g, deal.city)
     .replace(/\{\{state\}\}/g, deal.state)
     .replace(/\{\{zipCode\}\}/g, deal.zipCode)

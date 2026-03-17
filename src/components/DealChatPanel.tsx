@@ -145,7 +145,7 @@ export const DealChatPanel: React.FC<Props> = ({ deal, onUpdate }) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-sm text-base-content leading-tight">Deal Assistant</div>
-          <div className="text-[10px] text-base-content/50 truncate">{deal.address}</div>
+          <div className="text-[10px] text-base-content/50 truncate">{deal.propertyAddress}</div>
         </div>
         {messages.length > 0 && (
           <button onClick={() => setMessages([])} className="btn btn-ghost btn-xs btn-square" title="Clear chat">

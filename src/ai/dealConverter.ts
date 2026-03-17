@@ -3,7 +3,7 @@ import { DealRecord } from "./types";
 import { buildAddressVariants } from "./address";
 
 export function dealToRecord(deal: Deal): DealRecord {
-  const fullAddress = [deal.address, deal.city, deal.state, deal.zipCode]
+  const fullAddress = [deal.propertyAddress, deal.city, deal.state, deal.zipCode]
     .filter(Boolean)
     .join(", ");
 

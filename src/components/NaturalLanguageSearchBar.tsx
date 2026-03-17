@@ -87,7 +87,7 @@ function chipLabel(key: string, value: unknown): string | null {
       return null;
     case 'staleDaysGreaterThan':
       return typeof value === 'number' ? `Stale > ${value} days` : null;
-    case 'transactionSide':
+    case 'transactionType':
       if (Array.isArray(value) && value.length > 0)
         return `Side: ${(value as string[]).join(', ')}`;
       return null;
@@ -313,10 +313,10 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
         if (q.closingDateRange.end && cd > q.closingDateRange.end) return false;
       }
 
-      // transactionSide
-      if (q.transactionSide && q.transactionSide.length > 0) {
-        const side = (extra.transactionSide || '').toLowerCase();
-        if (!q.transactionSide.some(s => side.includes(s))) return false;
+      // transactionType
+      if (q.transactionType && q.transactionType.length > 0) {
+        const side = (extra.transactionType || '').toLowerCase();
+        if (!q.transactionType.some(s => side.includes(s))) return false;
       }
 
       // textSearch

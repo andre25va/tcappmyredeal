@@ -78,7 +78,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
 
     // Amber alerts
     const allPending = deals.flatMap(d =>
-      d.documentRequests.filter(r => r.status === 'pending').map(r => ({ ...r, dealId: d.id, dealAddress: d.address }))
+      d.documentRequests.filter(r => r.status === 'pending').map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
     );
     const highAlerts = allPending.filter(r => r.urgency === 'high');
     const medAlerts = allPending.filter(r => r.urgency === 'medium');
@@ -130,12 +130,12 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     const todayStr = now.toISOString().slice(0, 10);
     const todayReminders = deals.flatMap(d =>
       d.reminders.filter(r => !r.completed && r.dueDate <= todayStr)
-        .map(r => ({ ...r, dealId: d.id, dealAddress: d.address }))
+        .map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
     );
 
     // Recent activity across all deals
     const recentActivity = deals
-      .flatMap(d => d.activityLog.map(a => ({ ...a, dealId: d.id, dealAddress: d.address, dealState: d.state })))
+      .flatMap(d => d.activityLog.map(a => ({ ...a, dealId: d.id, dealAddress: d.propertyAddress, dealState: d.state })))
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 8);
 
@@ -249,7 +249,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             icon={<Calendar size={16} />}
             label="Closing This Week"
             value={stats.closingThisWeek.length}
-            sub={stats.closingThisWeek.length > 0 ? `Next: ${stats.closingThisWeek[0]?.address?.split(' ').slice(0,3).join(' ')}` : 'None this week'}
+            sub={stats.closingThisWeek.length > 0 ? `Next: ${stats.closingThisWeek[0]?.propertyAddress?.split(' ').slice(0,3).join(' ')}` : 'None this week'}
             color="text-black"
             onClick={onGoToDeals}
           />
@@ -487,7 +487,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                           <span className="text-[8px] text-base-content/40 leading-none">days</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold truncate">{deal.address}, {deal.city}, {deal.state}</p>
+                          <p className="text-xs font-semibold truncate">{deal.propertyAddress}, {deal.city}, {deal.state}</p>
                           <p className="text-[10px] text-base-content/50">{deal.agentName} · {formatCurrency(deal.contractPrice)}</p>
                         </div>
                         <div className="text-right shrink-0">

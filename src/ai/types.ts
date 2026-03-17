@@ -140,7 +140,7 @@ export interface DealSearchQuery {
   participantRoleMissing?: string[];
   dealType?: string[];
   staleDaysGreaterThan?: number | null;
-  transactionSide?: string[];
+  transactionType?: string[];
   textSearch?: string | null;
   hasAmberAlerts?: boolean;
 }

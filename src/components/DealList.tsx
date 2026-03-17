@@ -52,8 +52,9 @@ const renderDealCard = (
   styles: typeof sideStylesConst,
 ) => {
   const isArchived = deal.milestone === 'archived';
-  const side      = deal.transactionSide ?? 'buyer';
-  const sideStyle = styles[side];
+  const side      = deal.transactionType ?? 'buyer';
+  const sideKey   = (side === 'buyer' || side === 'seller') ? side : 'buyer';
+  const sideStyle = styles[sideKey];
   const countdown = closingCountdown(deal.closingDate);
   const pending   = pendingDocCount(deal.documentRequests);
   const ddProg    = checklistProgress(deal.dueDiligenceChecklist);
@@ -71,7 +72,7 @@ const renderDealCard = (
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-base-content truncate">{deal.address}</p>
+          <p className="font-semibold text-sm text-base-content truncate">{deal.propertyAddress}</p>
           <p className="text-xs text-base-content/50 truncate">{deal.city}, {deal.state} {deal.zipCode}</p>
         </div>
         <div className="flex items-center gap-1 flex-none">
@@ -182,14 +183,14 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
     const agentClient = d.agentClientId ? directory.find(c => c.id === d.agentClientId) : undefined;
     const matchSearch =
       !q ||
-      d.address.toLowerCase().includes(q) ||
+      d.propertyAddress.toLowerCase().includes(q) ||
       d.agentName.toLowerCase().includes(q) ||
       d.mlsNumber.toLowerCase().includes(q) ||
       d.city.toLowerCase().includes(q) ||
       (agentClient?.clientId ?? '').toLowerCase().includes(q) ||
       (agentClient?.name ?? '').toLowerCase().includes(q);
     const matchStatus = filter === 'all' || d.status === filter;
-    const matchSide   = sideFilter === 'all' || d.transactionSide === sideFilter;
+    const matchSide   = sideFilter === 'all' || d.transactionType === sideFilter;
     const matchAmber  = !amberFilter || pendingDocCount(d.documentRequests) > 0;
     return matchSearch && matchStatus && matchSide && matchAmber;
   });
@@ -326,11 +327,11 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
           <div className="flex items-center justify-center gap-3 text-xs text-base-content/30">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-              {deals.filter(d => d.transactionSide === 'buyer').length} Buyer
+              {deals.filter(d => d.transactionType === 'buyer').length} Buyer
             </span>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-              {deals.filter(d => d.transactionSide === 'seller').length} Seller
+              {deals.filter(d => d.transactionType === 'seller').length} Seller
             </span>
             <span>{filtered.length} shown</span>
           </div>

@@ -45,7 +45,7 @@ interface DirectoryContact {
 
 interface Deal {
   id: string;
-  address?: string;
+  propertyAddress?: string;
   deal_data?: any;
 }
 
@@ -157,7 +157,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
         contact_phone: selectedContact?.phone,
         contact_email: selectedContact?.email,
         deal_id: selectedDeal?.id,
-        deal_address: selectedDeal?.address || selectedDeal?.deal_data?.address,
+        deal_address: selectedDeal?.propertyAddress || selectedDeal?.deal_data?.address,
         due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
         source: 'manual',
         status: 'pending',
@@ -282,7 +282,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
               <option value="">— No deal —</option>
               {deals.map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.address || d.deal_data?.address || `Deal ${d.id.slice(0, 8)}`}
+                  {d.propertyAddress || d.deal_data?.propertyAddress || `Deal ${d.id.slice(0, 8)}`}
                 </option>
               ))}
             </select>
@@ -555,7 +555,7 @@ export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps)
           .order('created_at', { ascending: false });
         if (dealData) setDeals(dealData.map(d => ({
           id: d.id,
-          address: d.deal_data?.address || d.deal_data?.propertyAddress,
+          propertyAddress: d.deal_data?.propertyAddress,
           deal_data: d.deal_data,
         })));
       } finally {

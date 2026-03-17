@@ -174,7 +174,6 @@ export async function loadDeals(): Promise<Deal[]> {
 
       // Property info — relational columns are source of truth
       propertyAddress: row.property_address || (dd.address as string) || '',
-      address: row.property_address || (dd.address as string) || '', // legacy alias
       city: row.city || (dd.city as string) || '',
       state: row.state || (dd.state as string) || '',
       zipCode: row.zip || (dd.zipCode as string) || '',
@@ -187,8 +186,6 @@ export async function loadDeals(): Promise<Deal[]> {
       status: (row.status || (dd.status as string) || 'contract') as DealStatus,
       milestone: (row.pipeline_stage || (dd.milestone as string) || 'contract-received') as DealMilestone,
       transactionType: (row.transaction_type || row.deal_type || (dd.transactionSide as string) || 'buyer') as TransactionType,
-      transactionSide: ((row.deal_type || (dd.transactionSide as string) || 'buyer') === 'dual' ? 'buyer' : (row.deal_type || (dd.transactionSide as string) || 'buyer')) as TransactionSide,
-
       riskLevel: row.risk_level || 'normal',
 
       // Dates
@@ -237,12 +234,12 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
 
   const rows = deals.map((deal) => ({
     id: deal.id,
-    property_address: deal.propertyAddress || deal.address || '',
+    property_address: deal.propertyAddress || '',
     city: deal.city ?? null,
     state: deal.state ?? null,
     zip: deal.zipCode ?? null,
     mls_number: deal.mlsNumber ?? null,
-    deal_type: deal.transactionType || deal.transactionSide || 'buyer',
+    deal_type: deal.transactionType || 'buyer',
     status: deal.status ?? 'contract',
     pipeline_stage: deal.milestone ?? 'contract-received',
     contract_date: deal.contractDate || null,
@@ -250,7 +247,7 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     purchase_price: deal.contractPrice ?? null,
     notes: deal.notes ?? null,
     primary_client_account_id: deal.primaryClientAccountId ?? null,
-    transaction_type: deal.transactionType || deal.transactionSide || 'buyer',
+    transaction_type: deal.transactionType || 'buyer',
     risk_level: deal.riskLevel || 'normal',
     assigned_tc_user_id: deal.assignedTcUserId ?? null,
     assigned_compliance_user_id: deal.assignedComplianceUserId ?? null,
@@ -278,12 +275,12 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
   const { error } = await supabase.from('deals').upsert(
     {
       id: deal.id,
-      property_address: deal.propertyAddress || deal.address || '',
+      property_address: deal.propertyAddress || '',
       city: deal.city ?? null,
       state: deal.state ?? null,
       zip: deal.zipCode ?? null,
       mls_number: deal.mlsNumber ?? null,
-      deal_type: deal.transactionType || deal.transactionSide || 'buyer',
+      deal_type: deal.transactionType || 'buyer',
       status: deal.status ?? 'contract',
       pipeline_stage: deal.milestone ?? 'contract-received',
       contract_date: deal.contractDate || null,
@@ -291,7 +288,7 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       purchase_price: deal.contractPrice ?? null,
       notes: deal.notes ?? null,
       primary_client_account_id: deal.primaryClientAccountId ?? null,
-      transaction_type: deal.transactionType || deal.transactionSide || 'buyer',
+      transaction_type: deal.transactionType || 'buyer',
       risk_level: deal.riskLevel || 'normal',
       assigned_tc_user_id: deal.assignedTcUserId ?? null,
       assigned_compliance_user_id: deal.assignedComplianceUserId ?? null,
@@ -311,8 +308,8 @@ function dealToJsonBackup(deal: Deal): Record<string, unknown> {
   return {
     ...deal,
     // Ensure old field names are present in JSONB for backward compat
-    address: deal.propertyAddress || deal.address || '',
-    transactionSide: deal.transactionType || deal.transactionSide || 'buyer',
+    address: deal.propertyAddress || '',
+    transactionSide: deal.transactionType || 'buyer',
   };
 }
 
@@ -365,7 +362,7 @@ export async function loadOrganizations(): Promise<Organization[]> {
     organizationType: row.organization_type,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
-    address: row.address ?? undefined,
+    propertyAddress: row.address ?? row.propertyAddress ?? undefined,
     isActive: row.is_active,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

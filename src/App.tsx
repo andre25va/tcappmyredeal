@@ -259,7 +259,7 @@ function AppInner() {
   const handleUpdate = (deal: Deal) => {
     setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
     saveSingleDeal(deal).catch(console.error);
-    logAction('update', 'deal', deal.id, deal.address);
+    logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
   const handleAdd = (deal: Deal) => {
@@ -271,7 +271,7 @@ function AppInner() {
     setTxPanel('workspace');
     setShowAdd(false);
     setView('transactions');
-    logAction('create', 'deal', withId.id, withId.address);
+    logAction('create', 'deal', withId.id, withId.propertyAddress);
   };
 
   const handleSelectDeal = (id: string) => {

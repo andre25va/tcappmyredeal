@@ -3,7 +3,7 @@ import type { Deal } from '../types';
 export interface DealContextPacket {
   deal: {
     id: string;
-    address: string;
+    propertyAddress: string;
     city: string;
     state: string;
     zipCode: string;
@@ -13,7 +13,7 @@ export interface DealContextPacket {
     contractDate: string;
     closingDate: string;
     contractPrice: number;
-    transactionSide: string;
+    transactionType: string;
     propertyType: string;
     agentName: string;
     notes: string;
@@ -61,7 +61,7 @@ export function buildDealContext(deal: Deal): DealContextPacket {
   return {
     deal: {
       id: deal.id,
-      address: deal.address,
+      propertyAddress: deal.propertyAddress,
       city: deal.city,
       state: deal.state,
       zipCode: deal.zipCode,
@@ -71,7 +71,7 @@ export function buildDealContext(deal: Deal): DealContextPacket {
       contractDate: deal.contractDate,
       closingDate: deal.closingDate,
       contractPrice: deal.contractPrice,
-      transactionSide: deal.transactionSide,
+      transactionType: deal.transactionType,
       propertyType: deal.propertyType,
       agentName: deal.agentName,
       notes: deal.notes || '',

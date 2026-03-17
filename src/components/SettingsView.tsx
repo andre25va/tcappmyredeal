@@ -1438,7 +1438,7 @@ export const SettingsView: React.FC<Props> = ({
       'Property Type', 'List Price', 'Contract Price', 'Contract Date', 'Closing Date',
       'Agent Name', 'Notes', 'Created'];
     const rows = deals.map(d => [
-      d.address, d.city, d.state, d.zipCode, d.mlsNumber, d.status, d.transactionSide,
+      d.propertyAddress, d.city, d.state, d.zipCode, d.mlsNumber, d.status, d.transactionType,
       d.propertyType, d.listPrice, d.contractPrice, d.contractDate, d.closingDate,
       d.agentName, d.notes, d.createdAt,
     ]);

@@ -1269,7 +1269,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
             <div>
               <h2 className="font-bold text-base text-black">Due Diligence Checklist</h2>
               <p className="text-xs text-gray-500 mt-0.5 font-medium">
-                📍 {deal.address}{deal.city ? `, ${deal.city}` : ''}{deal.state ? `, ${deal.state}` : ''}
+                📍 {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? `, ${deal.state}` : ''}
               </p>
               <div className="flex gap-3 mt-2 text-xs">
                 <span className="text-success font-semibold">✓ {modalTotalDone} complete</span>

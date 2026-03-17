@@ -206,7 +206,7 @@ export const VoiceUpdatePanel: React.FC<Props> = ({ deal, onUpdate }) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-sm text-base-content leading-tight">Voice Update</div>
-          <div className="text-[10px] text-base-content/50 truncate">{deal.address}</div>
+          <div className="text-[10px] text-base-content/50 truncate">{deal.propertyAddress}</div>
         </div>
         {state !== 'idle' && (
           <button onClick={resetAll} className="btn btn-ghost btn-xs gap-1">

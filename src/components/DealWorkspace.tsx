@@ -108,10 +108,10 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
               {/* Street address + copy button */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <MapPin size={14} className="text-primary flex-none" />
-                <span className="font-bold text-base text-black leading-tight">{deal.address}</span>
+                <span className="font-bold text-base text-black leading-tight">{deal.propertyAddress}</span>
                 <button
                   onClick={() => {
-                    const fullAddr = [deal.address, deal.city, deal.state, deal.zipCode].filter(Boolean).join(', ');
+                    const fullAddr = [deal.propertyAddress, deal.city, deal.state, deal.zipCode].filter(Boolean).join(', ');
                     copyToClipboard(fullAddr, () => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
                   }}
                   title="Copy address"
