@@ -129,3 +129,25 @@ export type DealChatResponse = {
   suggestedActions: DealChatAction[];
   warnings: string[];
 };
+
+// ── Phase 3B: Natural Language Search ─────────────────────────────────────────
+
+export interface DealSearchQuery {
+  stage?: string[];
+  closingDateRange?: { start: string | null; end: string | null };
+  missingCompliance?: boolean;
+  overdueTasks?: boolean;
+  participantRoleMissing?: string[];
+  dealType?: string[];
+  staleDaysGreaterThan?: number | null;
+  transactionSide?: string[];
+  textSearch?: string | null;
+  hasAmberAlerts?: boolean;
+}
+
+export interface SearchInterpretationResponse {
+  interpretedQuery: DealSearchQuery;
+  explanation: string;
+  assumptions: string[];
+  warnings: string[];
+}

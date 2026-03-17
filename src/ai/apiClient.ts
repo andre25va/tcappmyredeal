@@ -11,6 +11,7 @@ import type {
   SuggestedTask,
   CompliancePrecheckResult,
   DealChatResponse,
+  SearchInterpretationResponse,
 } from "./types";
 import type { DealContextPacket } from "./chatContextBuilder";
 
@@ -75,4 +76,11 @@ export async function dealChatQuery(
   history: Array<{ role: string; content: string }>
 ): Promise<DealChatResponse> {
   return post<DealChatResponse>('deal-chat', { question, context, history });
+}
+
+/** Interpret a natural-language search query into structured filters */
+export async function interpretSearchAI(
+  query: string
+): Promise<SearchInterpretationResponse> {
+  return post<SearchInterpretationResponse>('interpret-search', { query });
 }

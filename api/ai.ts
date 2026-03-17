@@ -135,6 +135,47 @@ const dealChatSchema = {
   required: ['answer', 'confidence', 'factsUsed', 'suggestedActions', 'warnings'],
 };
 
+const searchInterpretationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    interpretedQuery: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        stage: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        closingDateRange: {
+          anyOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                start: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                end: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              required: ['start', 'end'],
+            },
+            { type: 'null' },
+          ],
+        },
+        missingCompliance: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+        overdueTasks: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+        participantRoleMissing: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        dealType: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        staleDaysGreaterThan: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+        transactionSide: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        textSearch: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        hasAmberAlerts: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+      },
+      required: ['stage', 'closingDateRange', 'missingCompliance', 'overdueTasks', 'participantRoleMissing', 'dealType', 'staleDaysGreaterThan', 'transactionSide', 'textSearch', 'hasAmberAlerts'],
+    },
+    explanation: { type: 'string' },
+    assumptions: { type: 'array', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['interpretedQuery', 'explanation', 'assumptions', 'warnings'],
+};
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 async function handleClassifyEmail(apiKey: string, body: any) {
@@ -343,6 +384,43 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
   return parsed;
 }
 
+
+
+async function handleInterpretSearch(apiKey: string, body: any) {
+  const { query } = body;
+  if (!query) throw new Error('Missing query');
+
+  const systemPrompt = `You are a search query interpreter for a real estate transaction coordinator app.
+Convert the user's plain-English query into structured search filters.
+
+AVAILABLE FIELDS:
+- stage: array of deal stages. Valid values: "contract", "due-diligence", "clear-to-close", "closed", "terminated"
+- closingDateRange: { start: "YYYY-MM-DD" | null, end: "YYYY-MM-DD" | null }
+- missingCompliance: true if user asks about missing/incomplete compliance items
+- overdueTasks: true if user asks about overdue/late tasks
+- participantRoleMissing: array of missing roles. Valid: "lender", "title", "attorney", "inspector", "agent", "buyer", "seller"
+- dealType: array of property types. Valid: "single-family", "multi-family", "condo", "townhouse", "land", "commercial"
+- staleDaysGreaterThan: number of days with no activity
+- transactionSide: array of "buyer" or "seller"
+- textSearch: free text to match against address, agent name, or MLS number
+- hasAmberAlerts: true if user asks about pending alerts/document requests
+
+RULES:
+- Set fields to null if not mentioned in the query
+- Be conservative — only set filters the user clearly intended
+- "this week" means next 7 days from today
+- "this month" means the current calendar month
+- "stale" or "no activity" → staleDaysGreaterThan
+- "problem files" or "at risk" → missingCompliance=true AND/OR overdueTasks=true
+- If the query is just a name or address, use textSearch
+- Include assumptions about ambiguous terms
+- Include warnings if the query is vague
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  return callOpenAI(apiKey, systemPrompt, `Search query: "${query}"`, searchInterpretationSchema, 'search_interpretation');
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -377,6 +455,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'deal-chat':
         result = await handleDealChat(apiKey, req.body);
+        break;
+      case 'interpret-search':
+        result = await handleInterpretSearch(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Building2, Plus, AlertTriangle, FileText, UserPlus, Users } from 'lucide-react';
-import { GlobalSearch } from './GlobalSearch';
+import { NaturalLanguageSearchBar } from './NaturalLanguageSearchBar';
 
 interface TopbarProps {
   onAddDeal: () => void;
@@ -49,7 +49,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
       {/* Global Search */}
       <div className="flex-1 flex items-center gap-3 mr-4">
-        <GlobalSearch onSelectDeal={onSelectDeal} onSetView={onSetView} />
+        <NaturalLanguageSearchBar onSelectDeal={onSelectDeal} onSetView={onSetView} />
 
         {/* Status badges */}
         <span className="badge badge-primary badge-sm font-semibold hidden lg:inline-flex">{dealCount} Active</span>
