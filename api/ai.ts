@@ -311,6 +311,137 @@ const followUpSchema = {
 };
 
 
+
+// ── Pattern Detection Schema (Tier 3) ────────────────────────────────────────
+
+const patternsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    patterns: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          type: { type: 'string', enum: ['stall_risk', 'missing_item', 'communication_gap', 'timeline_anomaly', 'agent_pattern', 'compliance_trend'] },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          confidence: { type: 'number' },
+          suggestedAction: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+          dataPoints: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['id', 'type', 'title', 'description', 'confidence', 'suggestedAction', 'priority', 'dataPoints'],
+      },
+    },
+    insights: { type: 'string' },
+  },
+  required: ['patterns', 'insights'],
+};
+
+// ── Portfolio Report Schema (Tier 3) ─────────────────────────────────────────
+
+const portfolioReportSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    executiveSummary: { type: 'string' },
+    bottlenecks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          stage: { type: 'string' },
+          dealCount: { type: 'number' },
+          avgDaysStuck: { type: 'number' },
+          description: { type: 'string' },
+          recommendation: { type: 'string' },
+        },
+        required: ['stage', 'dealCount', 'avgDaysStuck', 'description', 'recommendation'],
+      },
+    },
+    agentPerformance: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          agentName: { type: 'string' },
+          activeDealCount: { type: 'number' },
+          avgDaysToClose: { type: 'number' },
+          taskCompletionRate: { type: 'number' },
+          riskLevel: { type: 'string', enum: ['low', 'medium', 'high'] },
+          notes: { type: 'string' },
+        },
+        required: ['agentName', 'activeDealCount', 'avgDaysToClose', 'taskCompletionRate', 'riskLevel', 'notes'],
+      },
+    },
+    complianceOverview: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        overallScore: { type: 'number' },
+        atRiskDeals: { type: 'number' },
+        commonGaps: { type: 'array', items: { type: 'string' } },
+        recommendation: { type: 'string' },
+      },
+      required: ['overallScore', 'atRiskDeals', 'commonGaps', 'recommendation'],
+    },
+    closingForecast: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          period: { type: 'string' },
+          expectedClosings: { type: 'number' },
+          totalVolume: { type: 'number' },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+        },
+        required: ['period', 'expectedClosings', 'totalVolume', 'confidence'],
+      },
+    },
+    actionItems: { type: 'array', items: { type: 'string' } },
+    generatedAt: { type: 'string' },
+  },
+  required: ['executiveSummary', 'bottlenecks', 'agentPerformance', 'complianceOverview', 'closingForecast', 'actionItems', 'generatedAt'],
+};
+
+// ── Rules Evaluation Schema (Tier 3) ─────────────────────────────────────────
+
+const rulesEvaluationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    triggeredRules: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ruleId: { type: 'string' },
+          ruleName: { type: 'string' },
+          dealId: { type: 'string' },
+          dealAddress: { type: 'string' },
+          triggerReason: { type: 'string' },
+          suggestedAction: { type: 'string' },
+          actionType: { type: 'string', enum: ['draft_email', 'create_task', 'flag_urgent', 'notify_tc', 'compliance_alert'] },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+          confidence: { type: 'number' },
+        },
+        required: ['ruleId', 'ruleName', 'dealId', 'dealAddress', 'triggerReason', 'suggestedAction', 'actionType', 'priority', 'confidence'],
+      },
+    },
+    summary: { type: 'string' },
+    rulesChecked: { type: 'number' },
+    dealsScanned: { type: 'number' },
+  },
+  required: ['triggeredRules', 'summary', 'rulesChecked', 'dealsScanned'],
+};
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 async function handleClassifyEmail(apiKey: string, body: any) {
@@ -830,6 +961,55 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
 }
 
 
+
+// ── Detect Patterns Handler (Tier 3) ─────────────────────────────────────────
+
+async function handleDetectPatterns(apiKey: string, body: any) {
+  const { deal, allDeals } = body;
+  if (!deal) throw new Error('Missing deal data');
+
+  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+  const systemPrompt = `You are detecting patterns across a TC's deal portfolio to surface proactive suggestions for a specific deal. Compare this deal against portfolio trends. Look for: stall risks (deals stuck too long at a stage), missing items that similar deals have, communication gaps, timeline anomalies, agent-specific patterns, compliance trends. Be specific and data-driven. Don't invent patterns — only flag what the data supports. Today's date: ${today}`;
+
+  const userContent = `CURRENT DEAL:\n${JSON.stringify(deal, null, 2)}\n\nALL DEALS SUMMARY:\n${JSON.stringify(allDeals || [], null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, patternsSchema, 'pattern_detection', 'gpt-4o-mini');
+}
+
+
+// ── Portfolio Report Handler (Tier 3) ────────────────────────────────────────
+
+async function handlePortfolioReport(apiKey: string, body: any) {
+  const { deals } = body;
+  if (!deals || !Array.isArray(deals)) throw new Error('Missing deals array');
+
+  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+  const systemPrompt = `You are generating an executive AI report for a real estate transaction coordinator's portfolio. Analyze the deals data and provide actionable insights. Use MM/DD/YYYY dates. Be specific with numbers. Today's date: ${today}`;
+
+  const userContent = `PORTFOLIO DATA (${deals.length} deals):\n${JSON.stringify(deals, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, portfolioReportSchema, 'portfolio_report', 'gpt-4o-mini');
+}
+
+
+// ── Evaluate Rules Handler (Tier 3) ──────────────────────────────────────────
+
+async function handleEvaluateRules(apiKey: string, body: any) {
+  const { deals, rules } = body;
+  if (!deals || !rules) throw new Error('Missing deals or rules');
+
+  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+  const systemPrompt = `You are evaluating automation rules against a real estate TC's deal portfolio. For each rule, check if any deals match the trigger condition. Only fire rules where conditions are clearly met — no false positives. Return all triggered rules with the matching deal info and suggested action. Be conservative. Today's date: ${today}`;
+
+  const userContent = `RULES:\n${JSON.stringify(rules, null, 2)}\n\nDEALS:\n${JSON.stringify(deals, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, rulesEvaluationSchema, 'rules_evaluation', 'gpt-4o-mini');
+}
+
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -882,6 +1062,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'generate-followup':
         result = await handleGenerateFollowUp(apiKey, req.body);
+        break;
+      case 'detect-patterns':
+        result = await handleDetectPatterns(apiKey, req.body);
+        break;
+      case 'portfolio-report':
+        result = await handlePortfolioReport(apiKey, req.body);
+        break;
+      case 'evaluate-rules':
+        result = await handleEvaluateRules(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

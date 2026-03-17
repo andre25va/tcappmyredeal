@@ -4,6 +4,7 @@ import { DealHealthCard } from './DealHealthCard';
 import { EmailSummaryCard } from './EmailSummaryCard';
 import { CompliancePreCheck } from './CompliancePreCheck';
 import { DraftFollowUp } from './DraftFollowUp';
+import { SmartSuggestions } from './SmartSuggestions';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
@@ -13,7 +14,7 @@ import {
   closingCountdown, generateId
 } from '../utils/helpers';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; allDeals?: any[]; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -409,7 +410,7 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails }) => {
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [] }) => {
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
@@ -531,6 +532,9 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
       {/* ─── Draft Follow-Up ─── */}
       <DraftFollowUp deal={deal} onSwitchToEmail={onGoToEmails} />
+
+      {/* ─── Smart Suggestions ─── */}
+      <SmartSuggestions deal={deal} allDeals={allDeals} />
 
       {/* ─── Milestone Stepper ─── */}
       <MilestoneStepper deal={deal} onUpdate={onUpdate} />

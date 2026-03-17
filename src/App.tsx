@@ -25,6 +25,7 @@ import { AIChat } from './components/AIChat';
 import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
+import { AIReports } from './components/AIReports';
 import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -375,7 +376,7 @@ function AppInner() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3">
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
           </span>
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
@@ -422,7 +423,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -486,6 +487,12 @@ function AppInner() {
           {view === 'voice' && (
             <div className="flex-1 overflow-hidden">
               <CommunicationsConsole onSelectDeal={handleSelectDeal} />
+            </div>
+          )}
+
+          {view === 'reports' && (
+            <div className="flex-1 overflow-auto">
+              <AIReports deals={deals} />
             </div>
           )}
 
