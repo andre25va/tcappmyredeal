@@ -184,7 +184,7 @@ export async function loadDeals(): Promise<Deal[]> {
       propertyType: ((dd.propertyType as string) || 'single-family') as PropertyType,
       status: (row.status || (dd.status as string) || 'contract') as DealStatus,
       milestone: (row.pipeline_stage || (dd.milestone as string) || 'contract-received') as DealMilestone,
-      transactionType: (row.transaction_type || row.deal_type || (dd.transactionSide as string) || 'buyer') as TransactionType,
+      transactionType: (row.transaction_type || row.deal_type || (dd.transactionType as string) || 'buyer') as TransactionType,
       riskLevel: row.risk_level || 'normal',
       contractDate: row.contract_date || (dd.contractDate as string) || '',
       closingDate: row.closing_date || (dd.closingDate as string) || '',
@@ -291,7 +291,7 @@ function dealToJsonBackup(deal: Deal): Record<string, unknown> {
   return {
     ...deal,
     address: deal.propertyAddress || '',
-    transactionSide: deal.transactionType || 'buyer',
+    transactionType: deal.transactionType || 'buyer',
   };
 }
 

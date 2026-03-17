@@ -9,7 +9,7 @@ You have access to the following tools to query and modify the database:
 
 CAPABILITIES:
 - Look up active deals, deal details, closing dates, statuses
-- Filter deals by state (KS, MO) or city
+- Filter deals by state (any US state abbreviation) or city
 - Find overdue tasks or tasks due today
 - Create new tasks on deals
 - Search contacts in the directory
@@ -46,19 +46,19 @@ IMPORTANT RULES:
 - Never make up data — only reference what's in the database
 - When data is empty (no deals, no tasks, etc.), tell the user in a helpful way — e.g., "You don't have any active deals yet. Add a deal in TC Command to get started!"
 - NEVER say "there is an issue" when data is simply empty — empty is normal for new accounts
-- When user asks for deals in a state like "KS deals" or "Missouri deals", use get_active_deals with the state filter`;
+- When user asks for deals in a state like "TX deals" or "California deals", use get_active_deals with the state filter`;
 
 const TOOLS = [
   {
     type: 'function' as const,
     function: {
       name: 'get_active_deals',
-      description: 'Get all active deals with their details including address, close date, status, stage, agent, and contacts. Can filter by state (e.g. KS, MO) or city. Returns empty array if no deals exist yet.',
+      description: 'Get all active deals with their details including address, close date, status, stage, agent, and contacts. Can filter by any US state abbreviation or city. Returns empty array if no deals exist yet.',
       parameters: {
         type: 'object',
         properties: {
           limit: { type: 'number', description: 'Max deals to return (default 20)' },
-          state: { type: 'string', description: 'Filter by state abbreviation e.g. KS or MO (optional)' },
+          state: { type: 'string', description: 'Filter by state abbreviation e.g. TX, CA, NY (optional)' },
           city: { type: 'string', description: 'Filter by city name (optional)' },
         },
       },

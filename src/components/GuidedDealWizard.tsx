@@ -3,7 +3,7 @@ import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2,
 } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionSide, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
 
 interface Props {
@@ -66,7 +66,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
     propertyType: 'single-family' as PropertyType,
-    transactionSide: 'buyer' as TransactionSide,
+    transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
     agentName: '', agentClientId: '',
@@ -158,7 +158,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       mlsNumber: form.mlsNumber.trim() || `MLS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
-      propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionSide as TransactionType,
+      propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionType as TransactionType,
       contractDate: form.contractDate, closingDate: form.closingDate,
       agentId: generateId(), agentName: form.agentName.trim(),
       agentClientId: form.agentClientId || undefined,
@@ -265,15 +265,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">City *</label>
-                  <input className="input input-bordered w-full" value={form.city} onChange={f('city')} placeholder="Kansas City" />
+                  <input className="input input-bordered w-full" value={form.city} onChange={f('city')} placeholder="Enter city" />
                 </div>
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">State</label>
-                  <input className="input input-bordered w-full" value={form.state} onChange={f('state')} placeholder="KS" maxLength={2} />
+                  <input className="input input-bordered w-full" value={form.state} onChange={f('state')} placeholder="ST" maxLength={2} />
                 </div>
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">ZIP</label>
-                  <input className="input input-bordered w-full" value={form.zipCode} onChange={f('zipCode')} placeholder="66101" />
+                  <input className="input input-bordered w-full" value={form.zipCode} onChange={f('zipCode')} placeholder="00000" />
                 </div>
               </div>
             </div>
@@ -313,9 +313,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               <h3 className="text-lg font-bold text-base-content">Which side of the transaction?</h3>
               <div className="flex gap-4">
                 <button
-                  onClick={() => setForm(p => ({ ...p, transactionSide: 'buyer' }))}
+                  onClick={() => setForm(p => ({ ...p, transactionType: 'buyer' }))}
                   className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-semibold transition-all ${
-                    form.transactionSide === 'buyer'
+                    form.transactionType === 'buyer'
                       ? 'bg-blue-500 border-blue-500 text-white'
                       : 'bg-blue-50 border-blue-200 text-blue-600 hover:border-blue-400'
                   }`}
@@ -324,9 +324,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <span className="text-lg">Buyer Side</span>
                 </button>
                 <button
-                  onClick={() => setForm(p => ({ ...p, transactionSide: 'seller' }))}
+                  onClick={() => setForm(p => ({ ...p, transactionType: 'seller' }))}
                   className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-semibold transition-all ${
-                    form.transactionSide === 'seller'
+                    form.transactionType === 'seller'
                       ? 'bg-green-500 border-green-500 text-white'
                       : 'bg-green-50 border-green-200 text-green-600 hover:border-green-400'
                   }`}
@@ -481,7 +481,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <span className="text-base-content/50">Type:</span>
                   <span className="font-medium">{propertyTypeLabel(form.propertyType)}</span>
                   <span className="text-base-content/50">Side:</span>
-                  <span className="font-medium capitalize">{form.transactionSide}</span>
+                  <span className="font-medium capitalize">{form.transactionType}</span>
                   {form.mlsNumber && <><span className="text-base-content/50">MLS#:</span><span className="font-medium">{form.mlsNumber}</span></>}
                   {form.listPrice && <><span className="text-base-content/50">List Price:</span><span className="font-medium">${Number(form.listPrice).toLocaleString()}</span></>}
                   {form.contractPrice && <><span className="text-base-content/50">Contract Price:</span><span className="font-medium">${Number(form.contractPrice).toLocaleString()}</span></>}

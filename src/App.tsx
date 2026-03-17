@@ -14,7 +14,6 @@ import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
 import { DealWorkspace } from './components/DealWorkspace';
-import { AddDealModal } from './components/AddDealModal';
 import { GuidedDealWizard } from './components/GuidedDealWizard';
 import { HomeDashboard } from './components/HomeDashboard';
 import { ContactsDirectory } from './components/ContactsDirectory';

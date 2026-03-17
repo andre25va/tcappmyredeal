@@ -498,7 +498,7 @@ export const AIReports: React.FC<Props> = ({ deals }) => {
                 <p className="text-xs text-base-content/60">{tr.triggerReason}</p>
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-xs text-primary font-medium">💡 {tr.suggestedAction}</p>
-                  <button className="btn btn-xs btn-ghost text-primary" onClick={() => console.log('Apply action:', tr)}>
+                  <button className="btn btn-xs btn-ghost text-primary" onClick={() => {}}>
                     Apply
                   </button>
                 </div>

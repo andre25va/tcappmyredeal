@@ -902,7 +902,7 @@ async function handleGuidedReview(apiKey: string, body: any) {
   const systemPrompt = `You are a transaction coordinator assistant reviewing new deal data before creation. Check for:
 - Missing required fields (address, city, agent name, closing date)
 - Unusual pricing (contract price > list price by large margin, or very low values)
-- State codes that don't match KS/MO market (flag as info if different state)
+- State code validation (flag as info if state seems unusual for the deal context)
 - Dates that are in the past (contract date in far past, closing date already passed)
 - Closing date before contract date
 - Missing MLS number (info level)
@@ -928,7 +928,7 @@ async function handleSuggestChecklist(apiKey: string, body: any) {
 
   const systemPrompt = `You are a real estate transaction coordinator expert. Based on the deal type and characteristics, suggest additional due diligence and compliance checklist items.
 
-Focus on Kansas/Missouri requirements but include general best practices. Consider:
+Focus on state-specific requirements for the deal's jurisdiction and include general best practices. Consider:
 - Property type: condo needs HOA items (docs, dues, restrictions, master insurance), multi-family needs rent rolls, lease reviews, unit inspections
 - Transaction side: buyer side needs inspection, appraisal, lender items; seller side needs disclosure, title, staging items
 - Financing type: financed deals need lender requirements (appraisal, loan commitment, clear to close from lender); cash deals skip lender items
