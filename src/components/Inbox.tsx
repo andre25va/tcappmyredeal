@@ -277,11 +277,11 @@ function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: 
         type="checkbox"
         checked={checked}
         onChange={e => onChange(e.target.checked)}
-        className="checkbox checkbox-xs"
-        style={checked ? { accentColor: '#f59e0b' } : {}}
+        className="checkbox checkbox-xs rounded-sm"
+        style={checked ? { accentColor: '#f59e0b', borderRadius: '3px' } : { borderRadius: '3px' }}
       />
       <span className={`text-[11px] font-medium transition-colors ${checked ? 'text-amber-600' : 'text-base-content/50 group-hover:text-base-content/70'}`}>
-        Reply need
+        Reply Needed
       </span>
       {checked && <Clock size={11} className="text-amber-500 animate-pulse" />}
     </label>
@@ -849,7 +849,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <Clock size={32} />
           <div>
             <p className="text-sm font-medium">No pending replies</p>
-            <p className="text-xs mt-1">Check "Need reply" when sending to track responses</p>
+            <p className="text-xs mt-1">Check "Reply Needed" when sending to track responses</p>
           </div>
         </div>
       )}
@@ -1269,7 +1269,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       )}
                       {isOut && msg.need_reply && (
                         <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
-                          <Clock size={8} /> reply need
+                          <Clock size={8} /> reply needed
                         </span>
                       )}
                       {msg.auto_created_task_id && (
