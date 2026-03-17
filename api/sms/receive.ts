@@ -71,19 +71,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const fromPhone = isWhatsApp ? From.replace('whatsapp:', '') : From;
     const channel: 'sms' | 'whatsapp' = isWhatsApp ? 'whatsapp' : 'sms';
     const fromClean = fromPhone.replace(/\D/g, '');
+    const fromE164 = fromClean.startsWith('1') ? `+${fromClean}` : `+1${fromClean}`;
 
-    // 1. Match contact
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('id, first_name, last_name, phone')
-      .not('phone', 'is', null);
-
+    // 1. Match contact — try contact_phone_channels first (trusted registry)
     let matchedContact: any = null;
-    for (const c of contacts || []) {
-      const cPhone = (c.phone || '').replace(/\D/g, '');
-      if (cPhone && fromClean.endsWith(cPhone) || cPhone.endsWith(fromClean.slice(-10))) {
-        matchedContact = c;
-        break;
+    const { data: phoneChannel } = await supabase
+      .from('contact_phone_channels')
+      .select('contact_id, contacts(id, first_name, last_name, phone)')
+      .eq('phone_e164', fromE164)
+      .eq('status', 'active')
+      .limit(1)
+      .single();
+
+    if (phoneChannel?.contacts) {
+      matchedContact = phoneChannel.contacts;
+    }
+
+    // Fall back to fuzzy phone match on contacts table
+    if (!matchedContact) {
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .not('phone', 'is', null);
+
+      for (const c of contacts || []) {
+        const cPhone = (c.phone || '').replace(/\D/g, '');
+        if (cPhone && (fromClean.endsWith(cPhone) || cPhone.endsWith(fromClean.slice(-10)))) {
+          matchedContact = c;
+          break;
+        }
       }
     }
 
@@ -91,28 +107,133 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `${matchedContact.first_name} ${matchedContact.last_name}`
       : fromPhone;
 
-    // 2. Find related deal
+    // 2. Find related deal via deal_participants join
     let relatedDeal: any = null;
     if (matchedContact) {
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, property_address, pipeline_stage')
-        .eq('status', 'active')
-        .limit(10);
-
-      for (const deal of deals || []) {
-        const { data: fullDeal } = await supabase
+      const { data: participants } = await supabase
+        .from('deal_participants')
+        .select('deal_id')
+        .eq('contact_id', matchedContact.id);
+      const relatedDealIds = (participants || []).map((p: any) => p.deal_id);
+      if (relatedDealIds.length > 0) {
+        const { data: deals } = await supabase
           .from('deals')
-          .select('deal_data')
-          .eq('id', deal.id)
-          .single();
-        const dd = fullDeal?.deal_data as any;
-        if (dd?.contacts?.some((c: any) => c.id === matchedContact.id || c.phone?.replace(/\D/g, '').endsWith(fromClean.slice(-10)))) {
-          relatedDeal = deal;
-          break;
-        }
+          .select('id, property_address, pipeline_stage, closing_date, city, state')
+          .in('id', relatedDealIds)
+          .eq('status', 'active')
+          .limit(1);
+        relatedDeal = deals?.[0] || null;
       }
     }
+
+    // ── SMS Commands ──────────────────────────────────────────────────────────
+    const bodyUpper = Body.trim().toUpperCase();
+
+    // HELP command
+    if (bodyUpper === 'HELP') {
+      await sendTwilioReply(fromPhone, '📋 TC Command:\n• OPEN FILES - list your active deals\n• STATUS <address> - get deal update\n• CALL ME - request a callback\n• Or just text us anything! 🏠', isWhatsApp);
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
+
+    // OPEN FILES command
+    if (bodyUpper === 'OPEN FILES') {
+      if (!matchedContact) {
+        await sendTwilioReply(fromPhone, "We don't recognize this number. Please text us your name and we'll get you set up! 🏠", isWhatsApp);
+      } else {
+        const { data: parts } = await supabase
+          .from('deal_participants').select('deal_id').eq('contact_id', matchedContact.id);
+        const dIds = (parts || []).map((p: any) => p.deal_id);
+        if (dIds.length > 0) {
+          const { data: deals } = await supabase
+            .from('deals')
+            .select('property_address, pipeline_stage, closing_date')
+            .in('id', dIds).eq('status', 'active');
+          if (deals && deals.length > 0) {
+            const list = deals.map((d: any, i: number) => {
+              const closing = d.closing_date ? new Date(d.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : 'TBD';
+              return `${i + 1}. ${d.property_address} (${d.pipeline_stage}) - Closing: ${closing}`;
+            }).join('\n');
+            await sendTwilioReply(fromPhone, `📂 Your active files:\n${list}\n\nReply STATUS <address> for details.`, isWhatsApp);
+          } else {
+            await sendTwilioReply(fromPhone, 'No active files found. Text us if you need help! 🏠', isWhatsApp);
+          }
+        } else {
+          await sendTwilioReply(fromPhone, 'No active files found. Text us if you need help! 🏠', isWhatsApp);
+        }
+      }
+      await supabase.from('communication_events').insert({
+        contact_id: matchedContact?.id || null,
+        channel: channel,
+        direction: 'inbound',
+        event_type: 'sms_command',
+        summary: 'OPEN FILES command',
+        source_ref: MessageSid,
+      });
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
+
+    // STATUS <address> command
+    if (bodyUpper.startsWith('STATUS ')) {
+      const searchQuery = Body.trim().substring(7).toLowerCase();
+      if (matchedContact) {
+        const { data: parts } = await supabase
+          .from('deal_participants').select('deal_id').eq('contact_id', matchedContact.id);
+        const dIds = (parts || []).map((p: any) => p.deal_id);
+        if (dIds.length > 0) {
+          const { data: deals } = await supabase
+            .from('deals')
+            .select('id, property_address, pipeline_stage, closing_date, city, state')
+            .in('id', dIds).eq('status', 'active');
+          const match = (deals || []).find((d: any) => d.property_address.toLowerCase().includes(searchQuery));
+          if (match) {
+            const closing = match.closing_date ? new Date(match.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : 'TBD';
+            const summary = `📋 ${match.property_address}\nStatus: ${match.pipeline_stage}\nClosing: ${closing}\nCity: ${match.city || ''}, ${match.state || ''}\n\nText us if you have questions! 🏠`;
+            await sendTwilioReply(fromPhone, summary, isWhatsApp);
+          } else {
+            await sendTwilioReply(fromPhone, `Couldn't find a deal matching "${Body.trim().substring(7)}". Try OPEN FILES to see your active deals.`, isWhatsApp);
+          }
+        }
+      } else {
+        await sendTwilioReply(fromPhone, "We don't recognize this number. Text us your name and we'll get you set up! 🏠", isWhatsApp);
+      }
+      await supabase.from('communication_events').insert({
+        contact_id: matchedContact?.id || null,
+        channel: channel,
+        direction: 'inbound',
+        event_type: 'sms_command',
+        summary: `STATUS command: ${searchQuery}`,
+        source_ref: MessageSid,
+      });
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
+
+    // CALL ME command
+    if (bodyUpper === 'CALL ME') {
+      await supabase.from('callback_requests').insert({
+        caller_contact_id: matchedContact?.id || null,
+        phone_e164: fromE164,
+        requested_by_channel: 'sms',
+        reason: 'Requested via SMS CALL ME command',
+        priority: 'normal',
+        status: 'open',
+      });
+      await supabase.from('communication_events').insert({
+        contact_id: matchedContact?.id || null,
+        channel: channel,
+        direction: 'inbound',
+        event_type: 'callback_request',
+        summary: 'CALL ME command - callback requested',
+        source_ref: MessageSid,
+      });
+      await sendTwilioReply(fromPhone, '✅ Callback requested! A team member will call you back shortly. 📞', isWhatsApp);
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
+
+    // ── End SMS Commands — continue to AI classification ──────────────────────
 
     // 3. Find or create conversation
     let conversation: any = null;

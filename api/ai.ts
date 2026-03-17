@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 
 // ── OpenAI Responses API with structured outputs ──────────────────────────────
 // All AI logic lives here. Browser code calls these endpoints via fetch().
@@ -206,6 +207,48 @@ const voiceInterpretationSchema = {
   },
   required: ['transcript', 'summary', 'suggestedActions', 'mentionedEntities', 'detectedDates', 'warnings'],
 };
+
+// ── Voice Recording Analysis Schema (Phase 5C) ───────────────────────────────
+
+const voiceRecordingAnalysisSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    summary: { type: 'string' },
+    callerIntent: {
+      type: 'string',
+      enum: ['deal_update', 'question', 'complaint', 'callback_request', 'document_request', 'general_inquiry', 'unknown'],
+    },
+    mentionedEntities: { type: 'array', items: { type: 'string' } },
+    mentionedDates: { type: 'array', items: { type: 'string' } },
+    mentionedAddresses: { type: 'array', items: { type: 'string' } },
+    sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative', 'urgent'] },
+    containsChangeRequest: { type: 'boolean' },
+    changeRequestDetails: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    suggestedFollowUp: { type: 'string' },
+    priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'] },
+    keyPoints: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['summary', 'callerIntent', 'mentionedEntities', 'mentionedDates', 'mentionedAddresses', 'sentiment', 'containsChangeRequest', 'changeRequestDetails', 'suggestedFollowUp', 'priority', 'keyPoints'],
+};
+
+const voiceAnalysisSystemPrompt = `You are analyzing a voice recording transcript from a caller to a real estate transaction coordination service (My ReDeal).
+
+Your job:
+1. Summarize what the caller said in 1-2 sentences.
+2. Determine the caller's intent (deal update, question, complaint, etc.)
+3. Extract any mentioned people, companies, dates, or property addresses.
+4. Assess sentiment and urgency.
+5. If the caller is requesting a change to their deal (closing date change, price change, etc.), set containsChangeRequest=true and describe the change.
+6. Suggest what the team should do next (suggestedFollowUp).
+7. Set priority based on urgency and content.
+8. Extract key points as bullet items.
+
+Rules:
+- Dates should be in MM/DD/YYYY format when possible.
+- Be concise and factual.
+- If the transcript is garbled or unclear, note that in the summary.
+- Do not invent information not in the transcript.`;
 
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -475,6 +518,135 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
   return result;
 }
 
+
+// ── Process Recording Handler (Phase 5C) ─────────────────────────────────────
+
+async function handleProcessRecording(apiKey: string, body: any) {
+  const { recordingSid, recordingUrl, callerContactId, dealId, phoneE164, callSid } = body;
+  if (!recordingSid || !recordingUrl) throw new Error('Missing recordingSid or recordingUrl');
+
+  const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+
+  // 1. Fetch recording MP3 from Twilio (authenticated)
+  const audioUrl = `${recordingUrl}.mp3`;
+  const audioResp = await fetch(audioUrl, {
+    headers: {
+      Authorization: 'Basic ' + Buffer.from(
+        `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+      ).toString('base64'),
+    },
+  });
+
+  if (!audioResp.ok) {
+    throw new Error(`Failed to fetch recording: ${audioResp.status} ${audioResp.statusText}`);
+  }
+
+  const audioBuffer = await audioResp.arrayBuffer();
+
+  // 2. Transcribe with Whisper API
+  const formData = new FormData();
+  formData.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), 'recording.mp3');
+  formData.append('model', 'whisper-1');
+  formData.append('language', 'en');
+  formData.append('response_format', 'text');
+
+  const whisperResp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+  });
+
+  if (!whisperResp.ok) {
+    throw new Error(`Whisper API error: ${whisperResp.status} ${whisperResp.statusText}`);
+  }
+
+  const transcript = (await whisperResp.text()).trim();
+
+  // 3. Analyze transcript with GPT-4o-mini
+  const analysisResp = await fetch(OPENAI_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      messages: [
+        { role: 'system', content: voiceAnalysisSystemPrompt },
+        { role: 'user', content: `TRANSCRIPT: "${transcript}"` },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'voice_recording_analysis', strict: true, schema: voiceRecordingAnalysisSchema },
+      },
+    }),
+  });
+
+  const analysisData = await analysisResp.json();
+  if (analysisData.error) throw new Error(analysisData.error.message || 'OpenAI analysis error');
+  const analysis = JSON.parse(analysisData.choices[0].message.content);
+
+  // 4. Save to voice_deal_updates table
+  const { data: voiceUpdate, error: insertErr } = await sb
+    .from('voice_deal_updates')
+    .insert({
+      deal_id: dealId || null,
+      contact_id: callerContactId || null,
+      recording_sid: recordingSid,
+      recording_url: recordingUrl,
+      transcript,
+      ai_analysis: analysis,
+      caller_intent: analysis.callerIntent,
+      sentiment: analysis.sentiment,
+      priority: analysis.priority,
+      phone_e164: phoneE164 || null,
+      call_sid: callSid || null,
+      status: 'pending_review',
+    })
+    .select()
+    .single();
+
+  if (insertErr) {
+    console.error('voice_deal_updates insert error:', insertErr);
+  }
+
+  // 5. Create communication event
+  await sb.from('communication_events').insert({
+    contact_id: callerContactId || null,
+    deal_id: dealId || null,
+    channel: 'voice',
+    direction: 'inbound',
+    event_type: 'voice_recording_processed',
+    summary: analysis.summary,
+    source_ref: callSid || recordingSid,
+    metadata: {
+      recordingSid,
+      transcript: transcript.substring(0, 500),
+      callerIntent: analysis.callerIntent,
+      sentiment: analysis.sentiment,
+      priority: analysis.priority,
+    },
+  });
+
+  // 6. If contains change request, create one
+  if (analysis.containsChangeRequest && analysis.changeRequestDetails) {
+    await sb.from('change_requests').insert({
+      deal_id: dealId || null,
+      contact_id: callerContactId || null,
+      source: 'voice_recording',
+      source_ref: recordingSid,
+      description: analysis.changeRequestDetails,
+      priority: analysis.priority,
+      status: 'open',
+    });
+  }
+
+  return {
+    transcript,
+    analysis,
+    voiceDealUpdateId: voiceUpdate?.id || null,
+  };
+}
+
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -515,6 +687,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'interpret-voice-update':
         result = await handleInterpretVoiceUpdate(apiKey, req.body);
+        break;
+      case 'process-recording':
+        result = await handleProcessRecording(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
