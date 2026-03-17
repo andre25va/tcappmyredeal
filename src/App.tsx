@@ -310,9 +310,27 @@ function AppInner() {
     setView(v);
   };
 
-  const handleNotificationNavigate = (view: string, conversationId?: string) => {
-    setView(view as View);
-    // If navigating to inbox with conversation, the Inbox component will handle selection
+  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
+  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
+
+  const handleNotificationNavigate = (navView: string, id?: string) => {
+    if (navView === 'inbox' && id) {
+      setInboxInitConvId(id);
+      setInboxInitChannel(undefined);
+      setView('inbox');
+    } else if (navView === 'inbox-email') {
+      setInboxInitConvId(undefined);
+      setInboxInitChannel('email');
+      setView('inbox');
+    } else if (navView === 'inbox') {
+      setInboxInitConvId(undefined);
+      setInboxInitChannel(undefined);
+      setView('inbox');
+    } else if (navView === 'transactions' && id) {
+      handleSelectDeal(id);
+    } else {
+      setView(navView as View);
+    }
   };
 
   const selected = deals.find(d => d.id === selectedId) ?? null;
@@ -481,7 +499,12 @@ function AppInner() {
 
           {view === 'inbox' && (
             <div className="flex-1 overflow-hidden">
-              <Inbox onSelectDeal={handleSelectDeal} />
+              <Inbox 
+                onSelectDeal={handleSelectDeal} 
+                initialConversationId={inboxInitConvId}
+                initialChannel={inboxInitChannel}
+                onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
+              />
             </div>
           )}
 

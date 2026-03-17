@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, MessageSquare, Mail, Phone, X } from 'lucide-react';
+import { Bell, MessageSquare, Mail, X } from 'lucide-react';
 
 interface Notification {
   id: string;
@@ -14,7 +14,7 @@ interface Notification {
 }
 
 interface NotificationBellProps {
-  onNavigate?: (view: string, conversationId?: string) => void;
+  onNavigate?: (view: string, id?: string) => void;
 }
 
 export function NotificationBell({ onNavigate }: NotificationBellProps) {
@@ -23,20 +23,23 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const getSupabase = async () => {
+    const { createClient } = await import('@supabase/supabase-js');
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key);
+  };
+
   const fetchNotifications = async () => {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!url || !key) return;
-      const supabase = createClient(url, key);
-
+      const supabase = await getSupabase();
+      if (!supabase) return;
       const { data } = await supabase
         .from('notifications')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-
       if (data) {
         setNotifications(data);
         setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
@@ -60,49 +63,44 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const markAsRead = async (id: string) => {
+  const deleteNotification = async (id: string) => {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!url || !key) return;
-      const supabase = createClient(url, key);
-      await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('id', id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch { /* silent */ }
-  };
-
-  const markAllRead = async () => {
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!url || !key) return;
-      const supabase = createClient(url, key);
-      await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('is_read', false);
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-      setUnreadCount(0);
+      const supabase = await getSupabase();
+      if (!supabase) return;
+      await supabase.from('notifications').delete().eq('id', id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      setUnreadCount(prev => {
+        const wasUnread = notifications.find(n => n.id === id && !n.is_read);
+        return wasUnread ? Math.max(0, prev - 1) : prev;
+      });
     } catch { /* silent */ }
   };
 
   const clearAll = async () => {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!url || !key) return;
-      const supabase = createClient(url, key);
-      const ids = notifications.filter(n => n.is_read).map(n => n.id);
+      const supabase = await getSupabase();
+      if (!supabase) return;
+      const ids = notifications.map(n => n.id);
       if (ids.length > 0) await supabase.from('notifications').delete().in('id', ids);
-      setNotifications(prev => prev.filter(n => !n.is_read));
+      setNotifications([]);
+      setUnreadCount(0);
     } catch { /* silent */ }
   };
 
   const handleClick = (n: Notification) => {
-    markAsRead(n.id);
-    if (n.conversation_id && onNavigate) onNavigate('inbox', n.conversation_id);
+    // Delete from notification center immediately
+    deleteNotification(n.id);
     setOpen(false);
+    // Route to correct section
+    if (n.conversation_id && onNavigate) {
+      onNavigate('inbox', n.conversation_id);
+    } else if (n.deal_id && onNavigate) {
+      onNavigate('transactions', n.deal_id);
+    } else if (n.type === 'email' && onNavigate) {
+      onNavigate('inbox-email');
+    } else if (onNavigate) {
+      onNavigate('inbox');
+    }
   };
 
   const getIcon = (type: string) => {
@@ -127,7 +125,6 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
 
   return (
     <div ref={panelRef} className="relative">
-      {/* Wrapper keeps badge outside btn-square so it doesn't get clipped */}
       <div className="relative inline-flex">
         <button
           onClick={() => { setOpen(!open); if (!open) fetchNotifications(); }}
@@ -148,18 +145,11 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
             <span className="font-semibold text-sm">Notifications</span>
-            <div className="flex gap-1">
-              {unreadCount > 0 && (
-                <button onClick={markAllRead} className="text-xs text-primary hover:underline">
-                  Mark all read
-                </button>
-              )}
-              {notifications.some(n => n.is_read) && (
-                <button onClick={clearAll} className="text-xs text-base-content/50 hover:text-error ml-2">
-                  Clear read
-                </button>
-              )}
-            </div>
+            {notifications.length > 0 && (
+              <button onClick={clearAll} className="text-xs text-base-content/50 hover:text-error">
+                Clear all
+              </button>
+            )}
           </div>
 
           {/* List */}
@@ -167,33 +157,38 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-base-content/40 text-sm">
                 <Bell size={24} className="mx-auto mb-2 opacity-30" />
-                No notifications yet
+                No notifications
               </div>
             ) : (
               notifications.map(n => (
-                <button
-                  key={n.id}
-                  onClick={() => handleClick(n)}
-                  className={`w-full text-left px-4 py-3 flex gap-3 items-start hover:bg-red-50 transition-colors border-b border-base-200 last:border-0 ${
-                    !n.is_read ? 'bg-red-50' : ''
-                  }`}
-                >
-                  <div className="mt-0.5">{getIcon(n.type)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm truncate ${!n.is_read ? 'font-semibold' : 'font-normal text-base-content/70'}`}>
-                        {n.title}
-                      </span>
-                      {!n.is_read && (
-                        <span className="w-2 h-2 rounded-full bg-red-500 flex-none" />
+                <div key={n.id} className={`flex gap-0 items-stretch border-b border-base-200 last:border-0 ${!n.is_read ? 'bg-red-50' : ''}`}>
+                  <button
+                    onClick={() => handleClick(n)}
+                    className="flex-1 text-left px-4 py-3 flex gap-3 items-start hover:bg-red-50 transition-colors"
+                  >
+                    <div className="mt-0.5">{getIcon(n.type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm truncate ${!n.is_read ? 'font-semibold' : 'font-normal text-base-content/70'}`}>
+                          {n.title}
+                        </span>
+                        {!n.is_read && <span className="w-2 h-2 rounded-full bg-red-500 flex-none" />}
+                      </div>
+                      {n.body && (
+                        <p className="text-xs text-base-content/50 truncate mt-0.5">{n.body}</p>
                       )}
+                      <span className="text-[10px] text-base-content/40 mt-1 block">{timeAgo(n.created_at)}</span>
                     </div>
-                    {n.body && (
-                      <p className="text-xs text-base-content/50 truncate mt-0.5">{n.body}</p>
-                    )}
-                    <span className="text-[10px] text-base-content/40 mt-1 block">{timeAgo(n.created_at)}</span>
-                  </div>
-                </button>
+                  </button>
+                  {/* Dismiss X button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                    className="px-2 hover:bg-base-200 text-base-content/30 hover:text-base-content/70 transition-colors"
+                    title="Dismiss"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               ))
             )}
           </div>
