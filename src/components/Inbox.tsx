@@ -63,6 +63,7 @@ interface EmailThread {
   hasAttachment?: boolean;
   labelIds: string[];
   waitingForReply?: boolean;
+  priority?: boolean;
 }
 
 interface EmailMessage {
@@ -325,6 +326,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [emailError, setEmailError] = useState('');
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [emailNeedReply, setEmailNeedReply] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(true);
+  const [othersOpen, setOthersOpen] = useState(true);
 
   // Compose email state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -890,8 +893,11 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
               <InboxIcon size={32} />
               <p className="text-sm font-medium">No emails found</p>
             </div>
-          ) : (
-            filteredEmails.map(thread => {
+          ) : (() => {
+            const priorityEmails = filteredEmails.filter(t => t.priority === true);
+            const otherEmails = filteredEmails.filter(t => t.priority !== true);
+
+            const renderEmailRow = (thread: EmailThread) => {
               const active = selectedEmailThread?.id === thread.id;
               const senderName = parseFromName(thread.from);
               const isWaiting = emailReplyFlags[thread.id];
@@ -931,7 +937,68 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                   </div>
                 </button>
               );
-            })
+            };
+
+            return (
+              <>
+                {/* Priority Section */}
+                <button
+                  onClick={() => setPriorityOpen(o => !o)}
+                  className="w-full flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-100 hover:bg-red-100/60 transition-colors sticky top-0 z-10"
+                >
+                  <span className="text-[10px] font-bold text-red-600 uppercase tracking-wide flex-1 text-left">
+                    🔴 Priority
+                  </span>
+                  {priorityEmails.length > 0 && (
+                    <span className="bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                      {priorityEmails.length}
+                    </span>
+                  )}
+                  <ChevronLeft
+                    size={13}
+                    className={`text-red-400 transition-transform ${priorityOpen ? '-rotate-90' : 'rotate-0'}`}
+                  />
+                </button>
+                {priorityOpen && (
+                  priorityEmails.length === 0 ? (
+                    <div className="px-4 py-3 text-xs text-base-content/35 italic border-b border-base-200">
+                      No priority emails right now ✓
+                    </div>
+                  ) : (
+                    priorityEmails.map(renderEmailRow)
+                  )
+                )}
+
+                {/* Others Section */}
+                <button
+                  onClick={() => setOthersOpen(o => !o)}
+                  className="w-full flex items-center gap-2 px-4 py-2 bg-base-200 border-b border-base-300 hover:bg-base-300/60 transition-colors sticky top-0 z-10"
+                >
+                  <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide flex-1 text-left">
+                    📂 Others
+                  </span>
+                  {otherEmails.length > 0 && (
+                    <span className="bg-base-content/20 text-base-content/60 text-[9px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                      {otherEmails.length}
+                    </span>
+                  )}
+                  <ChevronLeft
+                    size={13}
+                    className={`text-base-content/30 transition-transform ${othersOpen ? '-rotate-90' : 'rotate-0'}`}
+                  />
+                </button>
+                {othersOpen && (
+                  otherEmails.length === 0 ? (
+                    <div className="px-4 py-3 text-xs text-base-content/35 italic border-b border-base-200">
+                      No other emails
+                    </div>
+                  ) : (
+                    otherEmails.map(renderEmailRow)
+                  )
+                )}
+              </>
+            );
+          })()
           )}
         </div>
       )}

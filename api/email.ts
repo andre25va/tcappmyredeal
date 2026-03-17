@@ -74,6 +74,48 @@ function stripHtml(html: string): string {
     .replace(/\s{2,}/g, ' ').trim();
 }
 
+
+async function classifyEmailsWithAI(threads: any[]): Promise<Map<string, boolean>> {
+  const OPENAI_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_KEY || threads.length === 0) return new Map();
+  try {
+    const emailList = threads.map(t => ({
+      id: t.id,
+      subject: (t.subject || '(no subject)').substring(0, 80),
+      from: (t.from || '').substring(0, 60),
+      snippet: (t.snippet || '').substring(0, 120),
+    }));
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 600,
+        messages: [
+          {
+            role: 'system',
+            content: `You are an email triage assistant for a real estate transaction coordinator (TC).
+Classify each email as priority:true or priority:false.
+PRIORITY=true: closing deadlines, contract issues, inspection requests, lender/title/agent direct messages, docs needed, urgent requests, date changes, earnest money, appraisal, escrow, wire instructions, buyer/seller communications.
+PRIORITY=false: newsletters, marketing, automated system notifications, promotions, general FYI, subscription emails, app alerts.
+Return ONLY a valid JSON array with no markdown: [{"id":"...","priority":true},{"id":"...","priority":false}]`,
+          },
+          { role: 'user', content: JSON.stringify(emailList) },
+        ],
+      }),
+    });
+    if (!resp.ok) return new Map();
+    const result = await resp.json();
+    const text = (result.choices?.[0]?.message?.content || '[]').trim();
+    const jsonText = text.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed: { id: string; priority: boolean }[] = JSON.parse(jsonText);
+    const map = new Map<string, boolean>();
+    for (const item of parsed) map.set(item.id, !!item.priority);
+    return map;
+  } catch { return new Map(); }
+}
+
 async function handleThreads(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -138,7 +180,10 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
       }
     } finally { lock.release(); }
     await client.logout();
-    return res.status(200).json({ threads: threads.sort((a, b) => Number(b.internalDate) - Number(a.internalDate)) });
+    const sorted = threads.sort((a, b) => Number(b.internalDate) - Number(a.internalDate));
+    const priorityMap = await classifyEmailsWithAI(sorted);
+    for (const t of sorted) { t.priority = priorityMap.get(t.id) ?? false; }
+    return res.status(200).json({ threads: sorted });
   } catch (err: any) {
     console.error('IMAP error:', err);
     try { await client.logout(); } catch {}
