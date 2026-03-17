@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+const RESEND_API_KEY_AUTH = process.env.RESEND_API_KEY || '';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
-import nodemailer from 'nodemailer';
 import { randomUUID } from 'crypto';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
@@ -78,27 +78,34 @@ async function handleRequestOtp(req: VercelRequest, res: VercelResponse) {
     await supabase.from('otp_codes').insert({ phone: normalized, code, expires_at: expiresAt });
     if (delivery === 'email') {
       if (!allowedEntry?.email) return res.status(400).json({ error: 'No email address on file for this number.' });
-      const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com', port: 587, secure: false,
-        auth: { user: 'tc@myredeal.com', pass: process.env.GMAIL_APP_PASSWORD },
+      const resendResp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY_AUTH}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'TC Command <tc@myredeal.com>',
+          to: [allowedEntry.email],
+          subject: 'Your TC Command Login Code',
+          html: `<div style="font-family: sans-serif; max-width: 420px; margin: 0 auto; padding: 32px 24px;">
+            <div style="margin-bottom: 24px;">
+              <span style="font-size: 18px; font-weight: 700; color: #111827;">TC Command</span>
+            </div>
+            <p style="color: #374151; font-size: 15px; margin-bottom: 8px;">Your login verification code:</p>
+            <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0 24px;">
+              <span style="font-size: 40px; font-weight: 700; letter-spacing: 10px; color: #111827; font-family: monospace;">${code}</span>
+            </div>
+            <p style="color: #6b7280; font-size: 13px;">This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+            <p style="color: #9ca3af; font-size: 12px;">MyReDeal &middot; TC Command</p>
+          </div>`,
+        }),
       });
-      await transporter.sendMail({
-        from: 'TC Command <tc@myredeal.com>',
-        to: allowedEntry.email,
-        subject: 'Your TC Command Login Code',
-        html: `<div style="font-family: sans-serif; max-width: 420px; margin: 0 auto; padding: 32px 24px;">
-          <div style="margin-bottom: 24px;">
-            <span style="font-size: 18px; font-weight: 700; color: #111827;">TC Command</span>
-          </div>
-          <p style="color: #374151; font-size: 15px; margin-bottom: 8px;">Your login verification code:</p>
-          <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0 24px;">
-            <span style="font-size: 40px; font-weight: 700; letter-spacing: 10px; color: #111827; font-family: monospace;">${code}</span>
-          </div>
-          <p style="color: #6b7280; font-size: 13px;">This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-          <p style="color: #9ca3af; font-size: 12px;">MyReDeal &middot; TC Command</p>
-        </div>`,
-      });
+      if (!resendResp.ok) {
+        const resendErr = await resendResp.json() as { message?: string };
+        throw new Error(resendErr.message || 'Failed to send OTP email');
+      }
       return res.status(200).json({ success: true, message: 'Code sent to email!', emailHint: maskEmail(allowedEntry.email) });
     } else {
       const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);

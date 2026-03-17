@@ -14,14 +14,12 @@
     "lucide-react": "^0.469.0",
     "daisyui": "^4.12.23",
     "@supabase/supabase-js": "^2.47.0",
-    "nodemailer": "^6.9.16",
     "imapflow": "^1.0.169",
     "twilio": "^5.3.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@types/nodemailer": "^6.4.17",
     "@vitejs/plugin-react": "^4.3.4",
     "@vercel/node": "^3.2.26",
     "autoprefixer": "^10.4.20",
