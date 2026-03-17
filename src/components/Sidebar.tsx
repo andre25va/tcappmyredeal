@@ -34,12 +34,12 @@ const NAV_ITEMS = (
   tasksPending: number,
   waitingCount: number,
   voicePendingCount: number
-): { id: View; label: string; icon: React.ReactNode; badge?: number; waitingBadge?: number }[] => [
+): { id: View; label: string; icon: React.ReactNode; badge?: number; waitingBadge?: number; adminOnly?: boolean }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
   { id: 'reports',      label: 'AI Reports',   icon: <BarChart3 size={18} /> },
   { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined, waitingBadge: waitingCount > 0 ? waitingCount : undefined },
   { id: 'tasks',        label: 'Comm Tasks',   icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
-  { id: 'workflows',    label: 'Workflows',    icon: <Zap size={18} /> },
+  { id: 'workflows',    label: 'Workflows',    icon: <Zap size={18} />, adminOnly: true },
   { id: 'voice',        label: 'Voice',        icon: <Phone size={18} />, badge: voicePendingCount > 0 ? voicePendingCount : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
@@ -63,6 +63,8 @@ function SidebarInner({
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
   const { profile, logout } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -126,9 +128,17 @@ function SidebarInner({
       )}
 
       <nav className={`flex-1 flex flex-col gap-0.5 ${collapsed && !isMobileOverlay ? 'px-1 pt-3' : 'px-2 pt-1'}`}>
-        {navItems.map(item => {
+        {visibleNavItems.map((item, idx) => {
           const active = view === item.id;
+          const prevItem = visibleNavItems[idx - 1];
+          const showAdminDivider = item.adminOnly && !prevItem?.adminOnly && !collapsed;
           return (
+            <React.Fragment key={item.id}>
+              {showAdminDivider && (
+                <div className="px-3 pt-2 pb-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-base-content/30">Admin</span>
+                </div>
+              )}
             <button
               key={item.id}
               onClick={() => { onSetView(item.id); if (isMobileOverlay) onCloseMobile(); }}
@@ -171,6 +181,7 @@ function SidebarInner({
                 </>
               )}
             </button>
+            </React.Fragment>
           );
         })}
       </nav>

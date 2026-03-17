@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Zap, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Clock, AlertTriangle, RefreshCw,
-  Loader2,
+  Loader2, Plus, X, Save, ToggleLeft, ToggleRight, Info,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -32,6 +32,24 @@ interface WorkflowExecution {
   executed_at: string;
 }
 
+const TRIGGER_OPTIONS = [
+  { value: 'sms_inbound',    label: '📱 SMS Received',      desc: 'Fires when a client texts in' },
+  { value: 'email_inbound',  label: '📧 Email Received',    desc: 'Fires when an email arrives' },
+  { value: 'deal_milestone', label: '🏠 Deal Milestone',    desc: 'Fires when a deal stage changes' },
+  { value: 'deal_inactivity',label: '⏰ Deal Inactive',     desc: 'Fires when no activity for N days' },
+  { value: 'new_contact',    label: '👤 New Contact',       desc: 'Fires when a contact is created' },
+  { value: 'manual',         label: '▶️ Manual',            desc: 'Triggered manually by TC' },
+];
+
+const ACTION_OPTIONS = [
+  { value: 'create_comm_task',   label: '✅ Create Comm Task' },
+  { value: 'create_notification',label: '🔔 Create Notification' },
+  { value: 'send_sms',           label: '📱 Send SMS' },
+  { value: 'send_email',         label: '📧 Send Email' },
+  { value: 'flag_deal',          label: '🚩 Flag Deal' },
+  { value: 'create_deal',        label: '🏠 Create Draft Deal' },
+];
+
 const TRIGGER_LABELS: Record<string, string> = {
   sms_inbound: '📱 SMS Received',
   email_inbound: '📧 Email Received',
@@ -55,7 +73,182 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   skipped: <Clock size={14} className="text-gray-400" />,
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+// ── Create Workflow Modal ──────────────────────────────────────────────────────
+interface CreateModalProps {
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function CreateWorkflowModal({ onClose, onSaved }: CreateModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [triggerType, setTriggerType] = useState('sms_inbound');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [selectedActions, setSelectedActions] = useState<string[]>(['create_comm_task']);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const toggleAction = (val: string) => {
+    setSelectedActions(prev =>
+      prev.includes(val) ? prev.filter(a => a !== val) : [...prev, val]
+    );
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) { setError('Name is required'); return; }
+    if (selectedActions.length === 0) { setError('Select at least one action'); return; }
+    setSaving(true);
+    setError('');
+    const actions = selectedActions.map(type => ({ type }));
+    const { error: err } = await supabase.from('workflow_rules').insert({
+      name: name.trim(),
+      description: description.trim() || null,
+      trigger_type: triggerType,
+      is_active: true,
+      conditions: {},
+      actions,
+      ai_classification_prompt: aiPrompt.trim() || null,
+    });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved();
+    onClose();
+  };
+
+  const selectedTrigger = TRIGGER_OPTIONS.find(t => t.value === triggerType);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+              <Zap size={16} className="text-violet-600" />
+            </div>
+            <h2 className="font-bold text-gray-900">Create Workflow</h2>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost btn-sm btn-square">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-6 flex flex-col gap-5">
+          {/* Name */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Workflow Name *</label>
+            <input
+              className="input input-bordered w-full text-sm"
+              placeholder="e.g. Contract Email Detection"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+            <input
+              className="input input-bordered w-full text-sm"
+              placeholder="What does this workflow do?"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+            />
+          </div>
+
+          {/* Trigger */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Trigger</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TRIGGER_OPTIONS.map(t => (
+                <button
+                  key={t.value}
+                  onClick={() => setTriggerType(t.value)}
+                  className={`text-left p-3 rounded-xl border-2 transition-all ${
+                    triggerType === t.value
+                      ? 'border-violet-500 bg-violet-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-gray-800">{t.label}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* AI Prompt */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenAI Classification Prompt</label>
+              <div className="tooltip" data-tip="OpenAI reads the inbound message using this prompt to decide if this workflow should fire">
+                <Info size={12} className="text-gray-400" />
+              </div>
+            </div>
+            <textarea
+              className="textarea textarea-bordered w-full text-sm resize-none"
+              rows={3}
+              placeholder={`e.g. "Is this message a new real estate contract submission? Reply with JSON: { isMatch: boolean, confidence: number, extractedAddress: string | null }"`}
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Leave blank to skip AI — workflow fires for ALL {selectedTrigger?.label} events.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Actions (what happens when triggered) *</label>
+            <div className="grid grid-cols-2 gap-2">
+              {ACTION_OPTIONS.map(a => (
+                <label
+                  key={a.value}
+                  className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedActions.includes(a.value)
+                      ? 'border-violet-500 bg-violet-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={selectedActions.includes(a.value)}
+                    onChange={() => toggleAction(a.value)}
+                  />
+                  <span className="text-sm text-gray-800">{a.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-600">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 flex justify-end gap-2">
+          <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary btn-sm gap-2">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Create Workflow
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export function WorkflowsPage() {
   const [rules, setRules] = useState<WorkflowRule[]>([]);
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
@@ -64,6 +257,8 @@ export function WorkflowsPage() {
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     const [{ data: rulesData }, { data: execData }] = await Promise.all([
@@ -72,7 +267,7 @@ export function WorkflowsPage() {
         .from('workflow_executions')
         .select('*')
         .order('executed_at', { ascending: false })
-        .limit(50),
+        .limit(100),
     ]);
     setRules(rulesData || []);
     setExecutions(execData || []);
@@ -81,86 +276,116 @@ export function WorkflowsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const toggleRule = async (rule: WorkflowRule) => {
-    setToggling(rule.id);
-    await supabase
-      .from('workflow_rules')
-      .update({ is_active: !rule.is_active, updated_at: new Date().toISOString() })
-      .eq('id', rule.id);
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
-    setToggling(null);
-  };
-
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   };
 
+  const handleToggle = async (rule: WorkflowRule) => {
+    setToggling(rule.id);
+    await supabase
+      .from('workflow_rules')
+      .update({ is_active: !rule.is_active })
+      .eq('id', rule.id);
+    await loadData();
+    setToggling(null);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this workflow? This cannot be undone.')) return;
+    setDeleting(id);
+    await supabase.from('workflow_rules').delete().eq('id', id);
+    await loadData();
+    setDeleting(null);
+  };
+
   const activeCount = rules.filter(r => r.is_active).length;
-  const todayExecs = executions.filter(e => {
-    const d = new Date(e.executed_at);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  });
-  const successToday = todayExecs.filter(e => e.status === 'success').length;
+  const todayStr = new Date().toDateString();
+  const todayCount = executions.filter(e =>
+    new Date(e.executed_at).toDateString() === todayStr
+  ).length;
+
+  // Executions grouped by rule for the rules tab
+  const execByRule = executions.reduce<Record<string, WorkflowExecution[]>>((acc, e) => {
+    if (e.rule_id) { acc[e.rule_id] = [...(acc[e.rule_id] || []), e]; }
+    return acc;
+  }, {});
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin text-gray-400" size={32} />
+      <div className="flex items-center justify-center h-full">
+        <Loader2 size={24} className="animate-spin text-violet-500" />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
-      {/* ── Header ── */}
+    <div className="flex flex-col h-full bg-gray-50">
+      {showCreate && (
+        <CreateWorkflowModal
+          onClose={() => setShowCreate(false)}
+          onSaved={loadData}
+        />
+      )}
+
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Zap size={22} className="text-amber-500" />
-              Workflows
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              AI-powered automations — OpenAI detects events and triggers actions
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-violet-100 rounded-xl flex items-center justify-center">
+              <Zap size={18} className="text-violet-600" />
+            </div>
+            <div>
+              <h1 className="font-bold text-gray-900 text-lg leading-tight">Workflows</h1>
+              <p className="text-xs text-gray-400">AI-powered automations — Admin only</p>
+            </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="btn btn-ghost btn-sm btn-square"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="btn btn-primary btn-sm gap-2"
+            >
+              <Plus size={15} />
+              New Workflow
+            </button>
+          </div>
         </div>
 
         {/* Stats bar */}
-        <div className="flex gap-4 mt-4">
-          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm font-medium text-green-700">{activeCount} Active</span>
+        <div className="flex items-center gap-6 mt-4">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-400" />
+            <span className="text-xs text-gray-500">{activeCount} active</span>
           </div>
-          <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2">
-            <span className="text-sm text-gray-600">{rules.length - activeCount} Paused</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-gray-300" />
+            <span className="text-xs text-gray-500">{rules.length - activeCount} paused</span>
           </div>
-          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-            <CheckCircle2 size={14} className="text-blue-600" />
-            <span className="text-sm font-medium text-blue-700">{successToday} ran today</span>
+          <div className="flex items-center gap-1.5">
+            <Zap size={11} className="text-violet-400" />
+            <span className="text-xs text-gray-500">{todayCount} ran today</span>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mt-4 border-b border-gray-200">
+        <div className="flex gap-1 mt-4 border-b border-gray-100">
           {(['rules', 'log'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 tab === t
-                  ? 'bg-white border border-b-white border-gray-200 text-gray-900 -mb-px'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'border-violet-500 text-violet-600'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               {t === 'rules' ? `Rules (${rules.length})` : `Execution Log (${executions.length})`}
@@ -169,182 +394,186 @@ export function WorkflowsPage() {
         </div>
       </div>
 
-      {/* ── Content ── */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto p-6">
         {tab === 'rules' && (
-          <div className="space-y-3 max-w-3xl">
-            {rules.map(rule => (
-              <div
-                key={rule.id}
-                className={`bg-white rounded-xl border transition-all ${
-                  rule.is_active ? 'border-gray-200 shadow-sm' : 'border-gray-100 opacity-60'
-                }`}
-              >
-                <div className="flex items-center gap-3 p-4">
-                  {/* Toggle */}
-                  <button
-                    onClick={() => toggleRule(rule)}
-                    disabled={toggling === rule.id}
-                    className={`flex-none w-10 h-6 rounded-full transition-colors relative ${
-                      rule.is_active ? 'bg-green-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    {toggling === rule.id ? (
-                      <Loader2 size={12} className="animate-spin absolute inset-0 m-auto text-white" />
-                    ) : (
-                      <span
-                        className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                          rule.is_active ? 'translate-x-5' : 'translate-x-1'
-                        }`}
-                      />
-                    )}
-                  </button>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-900 text-sm">{rule.name}</span>
-                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                        {TRIGGER_LABELS[rule.trigger_type] || rule.trigger_type}
-                      </span>
-                      {rule.ai_classification_prompt && (
-                        <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
-                          🤖 AI
-                        </span>
+          <div className="flex flex-col gap-3">
+            {rules.length === 0 && (
+              <div className="text-center py-16">
+                <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Zap size={24} className="text-violet-300" />
+                </div>
+                <p className="font-semibold text-gray-500">No workflows yet</p>
+                <p className="text-sm text-gray-400 mt-1">Create your first automation above</p>
+              </div>
+            )}
+            {rules.map(rule => {
+              const ruleExecs = execByRule[rule.id] || [];
+              const isExpanded = expandedRule === rule.id;
+              const lastRun = ruleExecs[0];
+              return (
+                <div key={rule.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  {/* Rule header */}
+                  <div className="flex items-start gap-3 p-4">
+                    {/* Toggle */}
+                    <button
+                      onClick={() => handleToggle(rule)}
+                      disabled={toggling === rule.id}
+                      className="mt-0.5 flex-none"
+                      title={rule.is_active ? 'Pause workflow' : 'Activate workflow'}
+                    >
+                      {toggling === rule.id ? (
+                        <Loader2 size={22} className="animate-spin text-gray-300" />
+                      ) : rule.is_active ? (
+                        <ToggleRight size={22} className="text-violet-500" />
+                      ) : (
+                        <ToggleLeft size={22} className="text-gray-300" />
                       )}
+                    </button>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-900 text-sm">{rule.name}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          rule.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+                        }`}>
+                          {rule.is_active ? 'ACTIVE' : 'PAUSED'}
+                        </span>
+                        <span className="text-[10px] bg-violet-50 text-violet-600 font-medium px-2 py-0.5 rounded-full">
+                          {TRIGGER_LABELS[rule.trigger_type] || rule.trigger_type}
+                        </span>
+                      </div>
+                      {rule.description && (
+                        <p className="text-xs text-gray-400 mt-0.5">{rule.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-1.5">
+                        {lastRun ? (
+                          <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                            {STATUS_ICONS[lastRun.status]}
+                            Last ran {fmtTime(lastRun.executed_at)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-300">Never run</span>
+                        )}
+                        <span className="text-[11px] text-gray-300">•</span>
+                        <span className="text-[11px] text-gray-400">{ruleExecs.length} total runs</span>
+                      </div>
                     </div>
-                    {rule.description && (
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{rule.description}</p>
-                    )}
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 flex-none">
+                      <button
+                        onClick={() => setExpandedRule(isExpanded ? null : rule.id)}
+                        className="btn btn-ghost btn-xs btn-square"
+                        title="View details"
+                      >
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(rule.id)}
+                        disabled={deleting === rule.id}
+                        className="btn btn-ghost btn-xs btn-square text-red-400 hover:text-red-600 hover:bg-red-50"
+                        title="Delete workflow"
+                      >
+                        {deleting === rule.id ? <Loader2 size={12} className="animate-spin" /> : <X size={14} />}
+                      </button>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => setExpandedRule(expandedRule === rule.id ? null : rule.id)}
-                    className="flex-none p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    {expandedRule === rule.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-                </div>
-
-                {expandedRule === rule.id && (
-                  <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
-                    {/* Actions */}
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                        Actions
-                      </p>
-                      <div className="space-y-1">
-                        {(rule.actions as Array<{ type: string; title?: string; message?: string }>).map((a, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
-                            <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
-                              {i + 1}
-                            </span>
-                            <span>
-                              {a.type === 'create_comm_task' && `Create task: "${a.title}"`}
-                              {a.type === 'create_notification' && `Send notification: "${a.title}"`}
-                              {a.type === 'sms_reply' && `SMS reply: "${a.message}"`}
-                              {!['create_comm_task','create_notification','sms_reply'].includes(a.type) && a.type}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* AI Prompt preview */}
-                    {rule.ai_classification_prompt && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                          AI Classification Prompt
-                        </p>
-                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2 leading-relaxed line-clamp-3">
-                          {rule.ai_classification_prompt}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Recent executions for this rule */}
-                    {(() => {
-                      const ruleExecs = executions.filter(e => e.rule_id === rule.id).slice(0, 3);
-                      if (!ruleExecs.length) return null;
-                      return (
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Actions */}
                         <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Recent Runs
-                          </p>
-                          <div className="space-y-1">
-                            {ruleExecs.map(e => (
-                              <div key={e.id} className="flex items-center gap-2 text-xs">
-                                {STATUS_ICONS[e.status]}
-                                <span className="text-gray-500">
-                                  {new Date(e.executed_at).toLocaleString()}
-                                </span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_STYLES[e.status]}`}>
-                                  {e.status}
-                                </span>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Actions</p>
+                          <div className="flex flex-col gap-1.5">
+                            {rule.actions.map((a, i) => (
+                              <div key={i} className="flex items-center gap-1.5 text-xs text-gray-600 bg-white px-3 py-1.5 rounded-lg border border-gray-200">
+                                <CheckCircle2 size={12} className="text-violet-400 flex-none" />
+                                {ACTION_OPTIONS.find(o => o.value === a.type)?.label || a.type}
                               </div>
                             ))}
                           </div>
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ))}
+                        {/* AI Prompt */}
+                        {rule.ai_classification_prompt && (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">AI Prompt</p>
+                            <p className="text-[11px] text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2 leading-relaxed">
+                              {rule.ai_classification_prompt}
+                            </p>
+                          </div>
+                        )}
+                      </div>
 
-            <div className="text-center py-4">
-              <p className="text-xs text-gray-400">
-                Custom workflow rules can be added via the database.
-              </p>
-            </div>
+                      {/* Recent runs for this rule */}
+                      {ruleExecs.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recent Runs</p>
+                          <div className="flex flex-col gap-1.5">
+                            {ruleExecs.slice(0, 5).map(e => (
+                              <div key={e.id} className="flex items-center gap-2 text-[11px] text-gray-500 bg-white px-3 py-1.5 rounded-lg border border-gray-200">
+                                {STATUS_ICONS[e.status]}
+                                <span className={`font-medium px-1.5 py-0.5 rounded-full text-[10px] ${STATUS_STYLES[e.status]}`}>
+                                  {e.status}
+                                </span>
+                                <span className="flex-1 truncate">
+                                  {e.actions_taken?.join(', ') || 'No actions'}
+                                </span>
+                                <span className="text-gray-300 flex-none">{fmtTime(e.executed_at)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {tab === 'log' && (
-          <div className="max-w-3xl space-y-2">
-            {executions.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Clock size={32} className="mx-auto mb-2 opacity-40" />
-                <p>No workflow executions yet</p>
+          <div className="flex flex-col gap-2">
+            {executions.length === 0 && (
+              <div className="text-center py-16">
+                <Clock size={28} className="text-gray-200 mx-auto mb-3" />
+                <p className="text-gray-400 text-sm">No executions yet</p>
               </div>
-            ) : (
-              executions.map(exec => (
-                <div
-                  key={exec.id}
-                  className="bg-white rounded-xl border border-gray-200 p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-none mt-0.5">{STATUS_ICONS[exec.status]}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm text-gray-900">{exec.rule_name}</span>
-                        <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                          {TRIGGER_LABELS[exec.trigger_type] || exec.trigger_type}
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[exec.status]}`}>
-                          {exec.status}
-                        </span>
-                      </div>
-                      {exec.actions_taken.length > 0 && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Actions: {exec.actions_taken.join(' · ')}
-                        </p>
-                      )}
-                      {exec.ai_classification && Object.keys(exec.ai_classification).length > 0 && (
-                        <p className="text-xs text-purple-600 mt-1">
-                          🤖 {JSON.stringify(exec.ai_classification).substring(0, 120)}
-                        </p>
-                      )}
-                      {exec.error_message && (
-                        <p className="text-xs text-red-500 mt-1">{exec.error_message}</p>
-                      )}
-                    </div>
-                    <span className="flex-none text-xs text-gray-400">
-                      {new Date(exec.executed_at).toLocaleString()}
+            )}
+            {executions.map(e => (
+              <div key={e.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex items-start gap-3">
+                <div className="mt-0.5 flex-none">{STATUS_ICONS[e.status]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm text-gray-800">{e.rule_name}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_STYLES[e.status]}`}>
+                      {e.status.toUpperCase()}
+                    </span>
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                      {TRIGGER_LABELS[e.trigger_type] || e.trigger_type}
                     </span>
                   </div>
+                  {e.actions_taken?.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5">{e.actions_taken.join(' → ')}</p>
+                  )}
+                  {e.ai_classification && (
+                    <p className="text-[11px] text-gray-300 mt-0.5">
+                      AI: {JSON.stringify(e.ai_classification).slice(0, 80)}…
+                    </p>
+                  )}
+                  {e.error_message && (
+                    <p className="text-[11px] text-red-400 mt-0.5">{e.error_message}</p>
+                  )}
                 </div>
-              ))
-            )}
+                <span className="text-[11px] text-gray-300 flex-none mt-0.5 whitespace-nowrap">
+                  {fmtTime(e.executed_at)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
