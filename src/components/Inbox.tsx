@@ -1170,14 +1170,14 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <button
             onClick={handleEmailReply}
             disabled={!emailReplyText.trim() || emailSending}
-            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
+            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 transition-all ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'bg-success hover:bg-success/85 text-success-content border-success'}`}
           >
             {emailSending ? <Loader2 size={14} className="animate-spin" /> : <><Send size={14} /><span className="text-xs">Send</span></>}
           </button>
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
-          <NeedReplyCheckbox checked={emailNeedReply} onChange={setEmailNeedReply} />
           <p className="text-[10px] text-base-content/30">✉️ Replying from tc@myredeal.com · Ctrl+Enter to send</p>
+          <NeedReplyCheckbox checked={emailNeedReply} onChange={setEmailNeedReply} />
         </div>
       </div>
     </>
@@ -1300,14 +1300,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <button
             onClick={handleSendReply}
             disabled={!replyText.trim() || sending}
-            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : selectedConv.channel === 'whatsapp' ? 'text-white border-0' : 'btn-primary'}`}
+            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 transition-all ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : selectedConv.channel === 'whatsapp' ? 'text-white border-0 hover:opacity-90' : 'bg-primary hover:bg-primary/85 text-primary-content border-primary'}`}
             style={selectedConv.channel === 'whatsapp' && !needReply ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
           >
             {sending ? <Loader2 size={14} className="animate-spin" /> : <><Send size={14} /><span className="text-xs">Send</span></>}
           </button>
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
-          <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
           <p className="text-[10px] text-base-content/30">
             {selectedConv.channel === 'whatsapp'
               ? '💬 Sending via WhatsApp'
@@ -1315,6 +1314,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             {selectedConv.type === 'broadcast' && ' · Broadcast'}
             {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
           </p>
+          <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
         </div>
       </div>
     </>
