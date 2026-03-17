@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
@@ -63,6 +63,35 @@ interface Props {
   deals?: Deal[];
 }
 
+/** Derive representation from buyer/seller isOurClient flags */
+function getRepresentation(deal: Deal): { label: string; style: string; tooltip: string } | null {
+  const buyerClient = deal.buyerAgent?.isOurClient;
+  const sellerClient = deal.sellerAgent?.isOurClient;
+
+  if (buyerClient && sellerClient) {
+    return {
+      label: 'Representing Both Sides',
+      style: 'bg-violet-100 text-violet-700 border-violet-300',
+      tooltip: `Our clients: ${deal.buyerAgent?.name ?? 'Buyer Agent'} (buy) & ${deal.sellerAgent?.name ?? 'Seller Agent'} (sell)`,
+    };
+  }
+  if (buyerClient) {
+    return {
+      label: 'Representing Buyer',
+      style: 'bg-blue-50 text-blue-700 border-blue-300',
+      tooltip: `Our client: ${deal.buyerAgent?.name ?? 'Buyer Agent'}`,
+    };
+  }
+  if (sellerClient) {
+    return {
+      label: 'Representing Seller',
+      style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
+      tooltip: `Our client: ${deal.sellerAgent?.name ?? 'Seller Agent'}`,
+    };
+  }
+  return null;
+}
+
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [] }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState(false);
@@ -78,6 +107,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   useEffect(() => { setTab('overview'); }, [deal.id]);
   const pendingDocs = pendingDocCount(deal.documentRequests);
   const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate < new Date().toISOString().slice(0, 10)).length;
+
+  const representation = getRepresentation(deal);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview',   label: 'Overview',   icon: <LayoutDashboard size={13} /> },
@@ -147,6 +178,18 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                   </button>
                 )}
               </div>
+              {/* Representation badge */}
+              {representation && (
+                <div className="mt-1.5 ml-[22px]">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${representation.style}`}
+                    title={representation.tooltip}
+                  >
+                    <Shield size={10} className="flex-none" />
+                    {representation.label}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
