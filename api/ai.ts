@@ -180,11 +180,11 @@ const searchInterpretationSchema = {
         participantRoleMissing: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
         dealType: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
         staleDaysGreaterThan: { anyOf: [{ type: 'number' }, { type: 'null' }] },
-        transactionSide: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        transactionType: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
         textSearch: { anyOf: [{ type: 'string' }, { type: 'null' }] },
         hasAmberAlerts: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
       },
-      required: ['stage', 'closingDateRange', 'missingCompliance', 'overdueTasks', 'participantRoleMissing', 'dealType', 'staleDaysGreaterThan', 'transactionSide', 'textSearch', 'hasAmberAlerts'],
+      required: ['stage', 'closingDateRange', 'missingCompliance', 'overdueTasks', 'participantRoleMissing', 'dealType', 'staleDaysGreaterThan', 'transactionType', 'textSearch', 'hasAmberAlerts'],
     },
     explanation: { type: 'string' },
     assumptions: { type: 'array', items: { type: 'string' } },
@@ -420,7 +420,7 @@ AVAILABLE FIELDS:
 - participantRoleMissing: array of missing roles. Valid: "lender", "title", "attorney", "inspector", "agent", "buyer", "seller"
 - dealType: array of property types. Valid: "single-family", "multi-family", "condo", "townhouse", "land", "commercial"
 - staleDaysGreaterThan: number of days with no activity
-- transactionSide: array of "buyer" or "seller"
+- transactionType: array of "buyer" or "seller"
 - textSearch: free text to match against address, agent name, or MLS number
 - hasAmberAlerts: true if user asks about pending alerts/document requests
 

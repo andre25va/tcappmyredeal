@@ -246,7 +246,7 @@ async function executeTool(
 
         let query = supabase
           .from('deals')
-          .select('id, property_address, city, state, status, pipeline_stage, closing_date, purchase_price, deal_data, created_at')
+          .select('id, property_address, city, state, status, pipeline_stage, closing_date, purchase_price, transaction_type, agent_name, created_at')
           .order('closing_date', { ascending: true })
           .limit(limit);
 
@@ -264,18 +264,17 @@ async function executeTool(
           return JSON.stringify({ deals: [], message: `No deals found${filterMsg}. Add your first deal in TC Command to get started!` });
         }
         const deals = data.map((r: any) => {
-          const d = r.deal_data || {};
           return {
             id: r.id,
-            address: r.property_address || d.address || 'No address',
-            city: r.city || d.city,
-            state: r.state || d.state,
-            status: r.status || d.status,
-            stage: r.pipeline_stage || d.milestone,
-            closeDate: r.closing_date || d.closingDate,
-            purchasePrice: r.purchase_price || d.contractPrice,
-            agentName: d.agentName,
-            transactionSide: d.transactionSide,
+            address: r.property_address || 'No address',
+            city: r.city,
+            state: r.state,
+            status: r.status,
+            stage: r.pipeline_stage,
+            closeDate: r.closing_date,
+            purchasePrice: r.purchase_price,
+            agentName: r.agent_name,
+            transactionType: r.transaction_type,
           };
         });
         return JSON.stringify({ deals, total: deals.length });
@@ -285,33 +284,31 @@ async function executeTool(
         const search = (args.search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state, zip, mls_number, deal_type, status, pipeline_stage, contract_date, closing_date, purchase_price, earnest_money, notes, deal_data');
+          .select('id, property_address, city, state, zip, mls_number, deal_type, transaction_type, status, pipeline_stage, contract_date, closing_date, purchase_price, earnest_money, agent_name, notes');
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add deals in TC Command first.' });
         const match = data.find((r: any) => {
           return (r.property_address || '').toLowerCase().includes(search) ||
-                 (r.deal_data?.address || '').toLowerCase().includes(search) ||
                  (r.city || '').toLowerCase().includes(search) ||
                  r.id === search;
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.search}". Try a different address or check your deals list.` });
-        const d = match.deal_data || {};
         return JSON.stringify({
           id: match.id,
-          address: match.property_address || d.address,
-          city: match.city || d.city,
-          state: match.state || d.state,
-          zip: match.zip || d.zipCode,
-          mlsNumber: match.mls_number || d.mlsNumber,
-          status: match.status || d.status,
-          stage: match.pipeline_stage || d.milestone,
-          dealType: match.deal_type || d.transactionSide,
-          contractDate: match.contract_date || d.contractDate,
-          closingDate: match.closing_date || d.closingDate,
-          purchasePrice: match.purchase_price || d.contractPrice,
+          address: match.property_address,
+          city: match.city,
+          state: match.state,
+          zip: match.zip,
+          mlsNumber: match.mls_number,
+          status: match.status,
+          stage: match.pipeline_stage,
+          dealType: match.transaction_type,
+          contractDate: match.contract_date,
+          closingDate: match.closing_date,
+          purchasePrice: match.purchase_price,
           earnestMoney: match.earnest_money,
-          agentName: d.agentName,
-          notes: match.notes || d.notes,
+          agentName: match.agent_name,
+          notes: match.notes,
         });
       }
 
@@ -319,26 +316,24 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data');
+          .select('id, property_address, city, state, pipeline_stage, closing_date');
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add a deal first.' });
 
         const match = data.find((r: any) => {
           return (r.property_address || '').toLowerCase().includes(search) ||
-                 (r.deal_data?.address || '').toLowerCase().includes(search) ||
                  (r.city || '').toLowerCase().includes(search);
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.deal_search}". Check the address and try again.` });
 
-        const d = match.deal_data || {};
         return JSON.stringify({
           navigate: true,
           dealId: match.id,
-          address: match.property_address || d.address,
-          city: match.city || d.city,
-          state: match.state || d.state,
-          stage: match.pipeline_stage || d.milestone,
-          closingDate: match.closing_date || d.closingDate,
+          address: match.property_address,
+          city: match.city,
+          state: match.state,
+          stage: match.pipeline_stage,
+          closingDate: match.closing_date,
         });
       }
 
@@ -365,7 +360,7 @@ async function executeTool(
         const futureDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
         const { data, error } = await supabase
           .from('deals')
-          .select('property_address, city, state, status, pipeline_stage, closing_date, deal_data')
+          .select('property_address, city, state, status, pipeline_stage, closing_date')
           .gte('closing_date', today)
           .lte('closing_date', futureDate)
           .order('closing_date', { ascending: true });
@@ -374,17 +369,16 @@ async function executeTool(
           return JSON.stringify({ closing: [], message: `No deals closing in the next ${days} days.` });
         }
         const closing = data.map((r: any) => {
-          const d = r.deal_data || {};
-          const cd = r.closing_date || d.closingDate;
+          const cd = r.closing_date;
           const daysLeft = Math.ceil((new Date(cd).getTime() - Date.now()) / 86400000);
           return {
-            address: r.property_address || d.address,
+            address: r.property_address,
             city: r.city,
             state: r.state,
             closingDate: cd,
             daysLeft,
-            status: r.status || d.status,
-            stage: r.pipeline_stage || d.milestone,
+            status: r.status,
+            stage: r.pipeline_stage,
           };
         });
         return JSON.stringify({ closing, total: closing.length });
@@ -449,13 +443,12 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state, deal_data');
+          .select('id, property_address, city, state');
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals exist yet. Create a deal first, then add tasks to it.' });
 
         const match = data.find((r: any) => {
-          return (r.property_address || '').toLowerCase().includes(search) ||
-                 (r.deal_data?.address || '').toLowerCase().includes(search);
+          return (r.property_address || '').toLowerCase().includes(search)
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.deal_search}". Check the address and try again.` });
 
@@ -477,7 +470,7 @@ async function executeTool(
         return JSON.stringify({
           success: true,
           task: inserted,
-          dealAddress: match.property_address || match.deal_data?.address,
+          dealAddress: match.property_address || match.property_address,
           city: match.city,
           state: match.state,
           deal_id: match.id,
@@ -489,10 +482,6 @@ async function executeTool(
         const { data: contacts, error: cError } = await supabase
           .from('contacts')
           .select('first_name, last_name, email, phone, role, company');
-
-        const { data: dirContacts, error: dError } = await supabase
-          .from('directory_contacts')
-          .select('name, email, phone, role, company, data');
 
         const matches: any[] = [];
 
@@ -506,14 +495,6 @@ async function executeTool(
           });
         }
 
-        if (!dError && dirContacts) {
-          dirContacts.forEach((c: any) => {
-            if ((c.name || '').toLowerCase().includes(query) || (c.email || '').toLowerCase().includes(query) ||
-                (c.company || '').toLowerCase().includes(query) || (c.role || '').toLowerCase().includes(query)) {
-              matches.push({ name: c.name, email: c.email, phone: c.phone, role: c.role, company: c.company });
-            }
-          });
-        }
 
         if (matches.length === 0) {
           return JSON.stringify({ contacts: [], message: `No contacts found matching "${args.query}". Try a different search term or add contacts in your directory.` });
@@ -570,29 +551,27 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data } = await supabase
           .from('deals')
-          .select('property_address, city, state, zip, closing_date, purchase_price, status, pipeline_stage, deal_data');
+          .select('property_address, city, state, zip, closing_date, purchase_price, status, pipeline_stage');
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add a deal first.' });
         const match = data.find((r: any) => {
-          return (r.property_address || '').toLowerCase().includes(search) ||
-                 (r.deal_data?.address || '').toLowerCase().includes(search);
+          return (r.property_address || '').toLowerCase().includes(search)
         });
         if (!match) return JSON.stringify({ error: `No deal found matching "${args.deal_search}"` });
 
-        const d = match.deal_data || {};
         const recipient = args.recipient_role as string;
         const purpose = args.purpose as string;
-        const address = match.property_address || d.address;
-        const city = match.city || d.city;
-        const state = match.state || d.state;
-        const price = match.purchase_price || d.contractPrice;
-        const closingDate = match.closing_date || d.closingDate;
+        const address = match.property_address;
+        const city = match.city;
+        const state = match.state;
+        const price = match.purchase_price;
+        const closingDate = match.closing_date;
 
         const emailPrompt = `Draft a professional real estate transaction coordinator email.
 
 Deal: ${address}, ${city}, ${state}
 Contract Price: $${price ? Number(price).toLocaleString() : 'N/A'}
 Closing Date: ${closingDate || 'TBD'}
-Status: ${match.status || d.status} / ${match.pipeline_stage || d.milestone}
+Status: ${match.status} / ${match.pipeline_stage}
 
 Recipient: ${recipient}
 Purpose: ${purpose}
@@ -772,17 +751,16 @@ export default async function handler(req: any, res: any) {
             // All tasks from same deal — look it up and navigate there
             const { data: dealRow } = await supabase
               .from('deals')
-              .select('id, property_address, city, state, deal_data')
+              .select('id, property_address, city, state')
               .eq('id', uniqueDealIds[0])
               .single();
             if (dealRow) {
-              const d = (dealRow as any).deal_data || {};
               navigateTo = {
                 type: 'deal',
-                dealId: (dealRow as any).id,
-                address: (dealRow as any).property_address || d.address,
-                city: (dealRow as any).city || d.city,
-                state: (dealRow as any).state || d.state,
+                dealId: dealRow.id,
+                address: dealRow.property_address,
+                city: dealRow.city,
+                state: dealRow.state,
               };
             }
           } else if (uniqueDealIds.length > 1) {
