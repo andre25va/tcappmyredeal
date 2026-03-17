@@ -20,6 +20,9 @@ import {
   ClientAccount,
   ContactLicense,
   ContactMlsMembership,
+  ContactRecord,
+  ContactRole,
+  OrgMemberInfo,
   MlsEntry,
   ComplianceTemplate,
   AppUser,
@@ -793,4 +796,213 @@ export async function logActivity(params: {
     performed_by: params.performedBy ?? 'TC Command',
     metadata: params.metadata ?? {},
   });
+}
+
+// ── Contact Record CRUD (relational) ─────────────────────────────────────────
+
+export async function loadContactsFull(): Promise<ContactRecord[]> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .order('last_name', { ascending: true });
+  if (error) throw error;
+  if (!data || data.length === 0) return [];
+
+  const ids = data.map(r => r.id);
+
+  // Parallel load all relations
+  const [licRes, mlsRes, orgRes, clientRes] = await Promise.all([
+    supabase.from('contact_licenses').select('*').in('contact_id', ids),
+    supabase.from('contact_mls_memberships').select('*').in('contact_id', ids),
+    supabase.from('organization_members').select('*, organizations:organization_id ( name, organization_type )').in('contact_id', ids),
+    supabase.from('client_account_members').select('contact_id, client_account_id').in('contact_id', ids),
+  ]);
+
+  // Index by contact_id
+  const licByContact: Record<string, any[]> = {};
+  for (const l of licRes.data ?? []) {
+    if (!licByContact[l.contact_id]) licByContact[l.contact_id] = [];
+    licByContact[l.contact_id].push(l);
+  }
+
+  const mlsByContact: Record<string, any[]> = {};
+  for (const m of mlsRes.data ?? []) {
+    if (!mlsByContact[m.contact_id]) mlsByContact[m.contact_id] = [];
+    mlsByContact[m.contact_id].push(m);
+  }
+
+  const orgByContact: Record<string, any[]> = {};
+  for (const o of orgRes.data ?? []) {
+    if (!orgByContact[o.contact_id]) orgByContact[o.contact_id] = [];
+    orgByContact[o.contact_id].push(o);
+  }
+
+  const clientByContact: Record<string, string> = {};
+  for (const c of clientRes.data ?? []) {
+    clientByContact[c.contact_id] = c.client_account_id;
+  }
+
+  return data.map(row => ({
+    id: row.id,
+    firstName: row.first_name || '',
+    lastName: row.last_name || '',
+    fullName: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+    email: row.email || '',
+    phone: row.phone || '',
+    contactType: (row.contact_type || 'other') as ContactRole,
+    company: row.company || '',
+    timezone: row.timezone || '',
+    notes: row.notes || '',
+    isActive: row.is_active ?? true,
+    createdAt: row.created_at || new Date().toISOString(),
+    licenses: (licByContact[row.id] ?? []).map((l: any): ContactLicense => ({
+      id: l.id,
+      contactId: l.contact_id,
+      stateCode: l.state_code,
+      licenseType: l.license_type,
+      licenseNumber: l.license_number,
+      status: l.status,
+      brokerOrganizationId: l.broker_organization_id ?? undefined,
+      issueDate: l.issue_date ?? undefined,
+      expirationDate: l.expiration_date ?? undefined,
+      notes: l.notes ?? undefined,
+      createdAt: l.created_at || '',
+      updatedAt: l.updated_at || '',
+      brokerOrganizationName: undefined,
+    })),
+    mlsMemberships: (mlsByContact[row.id] ?? []).map((m: any): ContactMlsMembership => ({
+      id: m.id,
+      contactId: m.contact_id,
+      mlsName: m.mls_name,
+      mlsCode: m.mls_code ?? undefined,
+      mlsMemberNumber: m.mls_member_number ?? '',
+      officeMlsNumber: m.office_mls_number ?? undefined,
+      boardName: m.board_name ?? undefined,
+      stateCode: m.state_code ?? undefined,
+      status: m.status ?? 'active',
+      brokerOrganizationId: m.broker_organization_id ?? undefined,
+      startDate: m.start_date ?? undefined,
+      endDate: m.end_date ?? undefined,
+      notes: m.notes ?? undefined,
+      createdAt: m.created_at || '',
+      updatedAt: m.updated_at || '',
+    })),
+    organizations: (orgByContact[row.id] ?? []).map((o: any): OrgMemberInfo => {
+      const org = o.organizations as Record<string, string> | null;
+      return {
+        membershipId: o.id,
+        organizationId: o.organization_id,
+        organizationName: org?.name ?? '',
+        organizationType: org?.organization_type ?? '',
+        roleInOrganization: o.role_in_organization ?? '',
+      };
+    }),
+    isClient: !!clientByContact[row.id],
+    clientAccountId: clientByContact[row.id] ?? undefined,
+  }));
+}
+
+export async function saveContactRecord(contact: {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  contactType: string;
+  company: string;
+  timezone?: string;
+  notes?: string;
+}): Promise<void> {
+  const fullName = `${contact.firstName} ${contact.lastName}`.trim();
+  const { error } = await supabase.from('contacts').upsert({
+    id: contact.id,
+    first_name: contact.firstName,
+    last_name: contact.lastName,
+    full_name: fullName,
+    email: contact.email || null,
+    phone: contact.phone || null,
+    contact_type: contact.contactType,
+    company: contact.company || null,
+    timezone: contact.timezone || null,
+    notes: contact.notes || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function deleteContactRecord(id: string): Promise<void> {
+  // Delete related data first
+  await supabase.from('contact_licenses').delete().eq('contact_id', id);
+  await supabase.from('contact_mls_memberships').delete().eq('contact_id', id);
+  await supabase.from('organization_members').delete().eq('contact_id', id);
+  const { error } = await supabase.from('contacts').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function upsertContactLicense(license: {
+  id?: string;
+  contactId: string;
+  stateCode: string;
+  licenseType: string;
+  licenseNumber: string;
+  status: string;
+  brokerOrganizationId?: string;
+  issueDate?: string;
+  expirationDate?: string;
+}): Promise<string> {
+  const row = {
+    id: license.id || crypto.randomUUID(),
+    contact_id: license.contactId,
+    state_code: license.stateCode,
+    license_type: license.licenseType,
+    license_number: license.licenseNumber,
+    status: license.status,
+    broker_organization_id: license.brokerOrganizationId || null,
+    issue_date: license.issueDate || null,
+    expiration_date: license.expirationDate || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('contact_licenses').upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+  return row.id;
+}
+
+export async function deleteContactLicenseRecord(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_licenses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function upsertContactMls(mls: {
+  id?: string;
+  contactId: string;
+  mlsName: string;
+  mlsCode?: string;
+  mlsMemberNumber: string;
+  officeMlsNumber?: string;
+  boardName?: string;
+  stateCode?: string;
+  status?: string;
+  brokerOrganizationId?: string;
+}): Promise<string> {
+  const row = {
+    id: mls.id || crypto.randomUUID(),
+    contact_id: mls.contactId,
+    mls_name: mls.mlsName,
+    mls_code: mls.mlsCode || null,
+    mls_member_number: mls.mlsMemberNumber,
+    office_mls_number: mls.officeMlsNumber || null,
+    board_name: mls.boardName || null,
+    state_code: mls.stateCode || null,
+    status: mls.status || 'active',
+    broker_organization_id: mls.brokerOrganizationId || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('contact_mls_memberships').upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+  return row.id;
+}
+
+export async function deleteContactMlsRecord(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_mls_memberships').delete().eq('id', id);
+  if (error) throw error;
 }

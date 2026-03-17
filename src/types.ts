@@ -63,7 +63,7 @@ export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'clos
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'condo' | 'townhouse' | 'land' | 'commercial';
-export type ContactRole = 'agent' | 'agent-client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'tc' | 'other';
+export type ContactRole = 'agent' | 'agent-client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
 
 // ── New relational type aliases ──────────────────────────────────────────────
 export type ContactType = ContactRole; // alias for clarity during migration
@@ -325,6 +325,35 @@ export interface Contact {
   licenses?: ContactLicense[];
   mlsMemberships?: ContactMlsMembership[];
   clientAccountId?: string;
+}
+
+// ── Contact Record (enriched from relational tables) ────────────────────────
+export interface ContactRecord {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  contactType: ContactRole;
+  company: string;
+  timezone: string;
+  notes: string;
+  isActive: boolean;
+  createdAt: string;
+  licenses: ContactLicense[];
+  mlsMemberships: ContactMlsMembership[];
+  organizations: OrgMemberInfo[];
+  isClient: boolean;
+  clientAccountId?: string;
+}
+
+export interface OrgMemberInfo {
+  membershipId: string;
+  organizationId: string;
+  organizationName: string;
+  organizationType: string;
+  roleInOrganization: string;
 }
 
 export interface ChecklistItem {

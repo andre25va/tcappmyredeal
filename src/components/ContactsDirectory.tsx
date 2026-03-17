@@ -1,39 +1,20 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  Users, Plus, Search, Pencil, Trash2, Phone, Mail, MapPin,
-  X, Save, ChevronDown, Globe, Link, PlusCircle, Fingerprint, MoreVertical,
-  UserCheck, Star, Home, DollarSign, Award, Scale, ClipboardCheck, Clipboard,
-  MoreHorizontal, ArrowLeft, Building2,
+  Users, Plus, Search, Pencil, Trash2, Phone, Mail,
+  X, Save, Building2, Star,
+  Home, DollarSign, Scale, ClipboardCheck,
+  ArrowLeft, Shield, FileText,
 } from 'lucide-react';
-import { DirectoryContact, ContactRole, MlsEntry, AgentClientStateInfo } from '../types';
-import { generateId, formatPhoneLive, formatPhone, roleLabel } from '../utils/helpers';
+import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership } from '../types';
+import {
+  loadContactsFull, saveContactRecord, deleteContactRecord,
+  upsertContactLicense, deleteContactLicenseRecord,
+  upsertContactMls, deleteContactMlsRecord,
+} from '../utils/supabaseDb';
+import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
-const emptyStateInfo = (state: string): AgentClientStateInfo => ({
-  state,
-  closingType: '',
-  commissionType: '',
-  brokerEmail: '',
-  brokerPhone: '',
-  complianceEmail: '',
-  compliancePhone: '',
-  eSignatureApp: '',
-  links: [],
-});
-
-const generateClientId = (phone: string): string => {
-  const digits = phone.replace(/\D/g, '');
-  const last4 = digits.length >= 4 ? digits.slice(-4) : digits.padStart(4, '0');
-  return `AC-${last4}`;
-};
-
-interface Props {
-  directory: DirectoryContact[];
-  onUpdate: (updated: DirectoryContact[]) => void;
-  mlsEntries: MlsEntry[];
-  triggerAdd?: 'agent-client' | 'contact' | null;
-  onTriggerHandled?: () => void;
-}
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
@@ -43,893 +24,797 @@ const US_STATES = [
   'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC',
 ];
 
-const ROLES: { id: ContactRole | 'all'; label: string; color: string }[] = [
-  { id: 'all',          label: 'All',          color: 'badge-ghost' },
-  { id: 'agent',        label: 'Agent in Transaction', color: 'badge-primary' },
-  { id: 'agent-client', label: 'Agent Client', color: 'badge-purple' },
-  { id: 'buyer',        label: 'End Client',   color: 'badge-info' },
-  { id: 'lender',       label: 'Lender',       color: 'badge-accent' },
-  { id: 'title',        label: 'Title',        color: 'badge-secondary' },
-  { id: 'attorney',     label: 'Attorney',     color: 'badge-error' },
-  { id: 'inspector',    label: 'Inspector',    color: 'badge-neutral' },
-  { id: 'tc',           label: 'TC',           color: 'badge-neutral' },
-  { id: 'other',        label: 'Other',        color: 'badge-ghost' },
+const TIMEZONES = [
+  { value: '', label: 'Not set' },
+  { value: 'America/New_York', label: 'Eastern (ET)' },
+  { value: 'America/Chicago', label: 'Central (CT)' },
+  { value: 'America/Denver', label: 'Mountain (MT)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (PT)' },
+  { value: 'America/Anchorage', label: 'Alaska (AKT)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
 ];
 
-const ROLE_CARDS: {
-  id: ContactRole | 'all';
+type CategoryKey = 'agent' | 'lender' | 'title' | 'attorney' | 'inspector' | 'buyer_seller' | 'tc' | 'other';
+
+interface CategoryDef {
+  key: CategoryKey;
   label: string;
-  icon: React.ElementType;
+  roles: ContactRole[];
+  icon: React.ReactNode;
   bg: string;
   border: string;
-  iconColor: string;
-  countBg: string;
-}[] = [
-  { id: 'agent',        label: 'Agent in Transaction', icon: UserCheck,      bg: 'bg-blue-50',   border: 'border-blue-200',   iconColor: 'text-blue-600',   countBg: 'bg-blue-100 text-blue-700' },
-  { id: 'agent-client', label: 'Agent Client',         icon: Star,           bg: 'bg-purple-50', border: 'border-purple-200', iconColor: 'text-purple-600', countBg: 'bg-purple-100 text-purple-700' },
-  { id: 'buyer',        label: 'End Client',           icon: Home,           bg: 'bg-teal-50',   border: 'border-teal-200',   iconColor: 'text-teal-600',   countBg: 'bg-teal-100 text-teal-700' },
-  { id: 'lender',       label: 'Lender',               icon: DollarSign,     bg: 'bg-green-50',  border: 'border-green-200',  iconColor: 'text-green-600',  countBg: 'bg-green-100 text-green-700' },
-  { id: 'title',        label: 'Title',                icon: Award,          bg: 'bg-orange-50', border: 'border-orange-200', iconColor: 'text-orange-600', countBg: 'bg-orange-100 text-orange-700' },
-  { id: 'attorney',     label: 'Attorney',             icon: Scale,          bg: 'bg-red-50',    border: 'border-red-200',    iconColor: 'text-red-600',    countBg: 'bg-red-100 text-red-700' },
-  { id: 'inspector',    label: 'Inspector',            icon: ClipboardCheck, bg: 'bg-gray-50',   border: 'border-gray-200',   iconColor: 'text-gray-600',   countBg: 'bg-gray-100 text-gray-700' },
-  { id: 'tc',           label: 'TC',                   icon: Clipboard,      bg: 'bg-indigo-50', border: 'border-indigo-200', iconColor: 'text-indigo-600', countBg: 'bg-indigo-100 text-indigo-700' },
-  { id: 'other',        label: 'Other',                icon: MoreHorizontal, bg: 'bg-slate-50',  border: 'border-slate-200',  iconColor: 'text-slate-600',  countBg: 'bg-slate-100 text-slate-700' },
-];
-
-const ROLE_COLOR: Record<ContactRole, string> = {
-  agent: 'badge-primary', 'agent-client': 'badge-outline badge-purple',
-  buyer: 'badge-info', seller: 'badge-warning',
-  lender: 'badge-accent', title: 'badge-secondary', attorney: 'badge-error',
-  inspector: 'badge-neutral', tc: 'badge-neutral', other: 'badge-ghost',
-};
-
-const ROLE_BG: Record<ContactRole, string> = {
-  agent: 'bg-primary/10 border-primary/20',
-  'agent-client': 'bg-gray-100 border-gray-300',
-  buyer: 'bg-info/10 border-info/20',
-  seller: 'bg-warning/10 border-warning/20',
-  lender: 'bg-accent/10 border-accent/20',
-  title: 'bg-secondary/10 border-secondary/20',
-  attorney: 'bg-error/10 border-error/20',
-  inspector: 'bg-base-300/50 border-base-300',
-  tc: 'bg-base-300/50 border-base-300',
-  other: 'bg-base-300/50 border-base-300',
-};
-
-const TEAM_ROLE_OPTIONS = [
-  { value: 'tc',            label: 'Transaction Coordinator (TC)' },
-  { value: 'showing_agent', label: 'Showing Agent' },
-  { value: 'co_agent',      label: 'Co-Agent' },
-  { value: 'admin',         label: 'Admin / Office Manager' },
-  { value: 'buyers_agent',  label: "Buyer's Agent" },
-  { value: 'listing_agent', label: 'Listing Agent' },
-  { value: 'assistant',     label: 'Assistant' },
-];
-
-const emptyForm = (): Omit<DirectoryContact, 'id' | 'createdAt' | 'stateInfo' | 'clientId'> => ({
-  name: '', email: '', phone: '', role: 'agent', company: '', states: [], mlsIds: [],
-  isTeam: false, teamRoles: [], notes: '',
-});
-
-/* ── Multi-select dropdown component ───────────────────────────── */
-function MultiSelectDropdown({
-  label,
-  options,
-  selected,
-  onChange,
-  placeholder,
-  disabled,
-}: {
-  label?: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (vals: string[]) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch('');
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 50);
-    else setSearch('');
-  }, [open]);
-
-  const toggle = (val: string) => {
-    onChange(selected.includes(val) ? selected.filter(v => v !== val) : [...selected, val]);
-  };
-
-  const filtered = search
-    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen(o => !o)}
-        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg border text-sm bg-base-100 border-base-300 min-h-[2rem] ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/50 cursor-pointer'}`}
-      >
-        <span className="flex flex-wrap gap-1 flex-1 min-w-0">
-          {selected.length === 0 ? (
-            <span className="text-base-content/40 text-xs">{placeholder ?? 'Select…'}</span>
-          ) : (
-            selected.map(v => {
-              const opt = options.find(o => o.value === v);
-              return (
-                <span key={v} className="inline-flex items-center gap-1 bg-primary/15 text-primary text-xs font-medium px-1.5 py-0.5 rounded">
-                  {opt?.label ?? v}
-                  <span
-                    className="cursor-pointer hover:text-error"
-                    onMouseDown={e => { e.stopPropagation(); toggle(v); }}
-                  >×</span>
-                </span>
-              );
-            })
-          )}
-        </span>
-        <ChevronDown size={12} className={`flex-none ml-1 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-base-100 border border-base-300 rounded-xl shadow-xl">
-          {/* Search bar */}
-          <div className="p-2 border-b border-base-300">
-            <div className="relative">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
-              <input
-                ref={searchRef}
-                type="text"
-                className="input input-xs w-full pl-7 bg-base-200 border-0 rounded-lg"
-                placeholder="Search states…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Escape' && setOpen(false)}
-              />
-            </div>
-          </div>
-          {/* Options list */}
-          <div className="max-h-44 overflow-y-auto">
-            {filtered.map(opt => (
-              <label
-                key={opt.value}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-base-200 cursor-pointer text-xs"
-              >
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-xs checkbox-primary"
-                  checked={selected.includes(opt.value)}
-                  onChange={() => toggle(opt.value)}
-                />
-                {opt.label}
-              </label>
-            ))}
-            {filtered.length === 0 && (
-              <div className="px-3 py-3 text-xs text-base-content/40 text-center">No states match "{search}"</div>
-            )}
-          </div>
-          {/* Footer with count */}
-          {selected.length > 0 && (
-            <div className="px-3 py-1.5 border-t border-base-300 flex items-center justify-between">
-              <span className="text-xs text-base-content/50">{selected.length} selected</span>
-              <button
-                type="button"
-                className="text-xs text-error hover:underline"
-                onMouseDown={e => { e.stopPropagation(); onChange([]); }}
-              >Clear all</button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  text: string;
 }
 
-/* ── Main component ─────────────────────────────────────────────── */
-export const ContactsDirectory: React.FC<Props> = ({ directory, onUpdate, mlsEntries, triggerAdd, onTriggerHandled }) => {
+const CATEGORIES: CategoryDef[] = [
+  { key: 'agent', label: 'Agents', roles: ['agent'], icon: <Users size={22} />, bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600' },
+  { key: 'lender', label: 'Lenders', roles: ['lender'], icon: <DollarSign size={22} />, bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600' },
+  { key: 'title', label: 'Title', roles: ['title'], icon: <FileText size={22} />, bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600' },
+  { key: 'attorney', label: 'Attorneys', roles: ['attorney'], icon: <Scale size={22} />, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600' },
+  { key: 'inspector', label: 'Inspectors', roles: ['inspector'], icon: <ClipboardCheck size={22} />, bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-600' },
+  { key: 'buyer_seller', label: 'Buyers / Sellers', roles: ['buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
+  { key: 'tc', label: 'TCs', roles: ['tc'], icon: <Shield size={22} />, bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600' },
+  { key: 'other', label: 'Other', roles: ['appraiser', 'other'], icon: <Users size={22} />, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600' },
+];
+
+const ROLE_OPTIONS: { value: ContactRole; label: string }[] = [
+  { value: 'agent', label: 'Agent' },
+  { value: 'buyer', label: 'Buyer' },
+  { value: 'seller', label: 'Seller' },
+  { value: 'lender', label: 'Lender' },
+  { value: 'title', label: 'Title' },
+  { value: 'attorney', label: 'Attorney' },
+  { value: 'inspector', label: 'Inspector' },
+  { value: 'appraiser', label: 'Appraiser' },
+  { value: 'tc', label: 'TC' },
+  { value: 'other', label: 'Other' },
+];
+
+function roleColor(r: ContactRole): string {
+  const map: Record<string, string> = {
+    agent: 'bg-blue-100 text-blue-700',
+    lender: 'bg-green-100 text-green-700',
+    title: 'bg-orange-100 text-orange-700',
+    attorney: 'bg-red-100 text-red-700',
+    inspector: 'bg-gray-100 text-gray-700',
+    buyer: 'bg-teal-100 text-teal-700',
+    seller: 'bg-teal-100 text-teal-700',
+    tc: 'bg-indigo-100 text-indigo-700',
+    appraiser: 'bg-slate-100 text-slate-700',
+    other: 'bg-slate-100 text-slate-700',
+  };
+  return map[r] ?? 'bg-slate-100 text-slate-700';
+}
+
+function avatarBg(r: ContactRole): string {
+  const map: Record<string, string> = {
+    agent: 'bg-blue-200 text-blue-800',
+    lender: 'bg-green-200 text-green-800',
+    title: 'bg-orange-200 text-orange-800',
+    attorney: 'bg-red-200 text-red-800',
+    inspector: 'bg-gray-200 text-gray-800',
+    buyer: 'bg-teal-200 text-teal-800',
+    seller: 'bg-teal-200 text-teal-800',
+    tc: 'bg-indigo-200 text-indigo-800',
+    appraiser: 'bg-slate-200 text-slate-800',
+    other: 'bg-slate-200 text-slate-800',
+  };
+  return map[r] ?? 'bg-slate-200 text-slate-800';
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+}
+
+// ── Blank forms ──────────────────────────────────────────────────────────────
+
+interface EditForm {
+  id: string;
+  firstName: string;
+  lastName: string;
+  contactType: ContactRole;
+  email: string;
+  phone: string;
+  company: string;
+  timezone: string;
+  notes: string;
+  licenses: EditLicense[];
+  mlsMemberships: EditMls[];
+}
+
+interface EditLicense {
+  id: string;
+  isNew: boolean;
+  stateCode: string;
+  licenseType: string;
+  licenseNumber: string;
+  status: string;
+  expirationDate: string;
+}
+
+interface EditMls {
+  id: string;
+  isNew: boolean;
+  mlsName: string;
+  mlsCode: string;
+  mlsMemberNumber: string;
+  boardName: string;
+  stateCode: string;
+  status: string;
+}
+
+function blankForm(role: ContactRole = 'agent'): EditForm {
+  return {
+    id: crypto.randomUUID(),
+    firstName: '',
+    lastName: '',
+    contactType: role,
+    email: '',
+    phone: '',
+    company: '',
+    timezone: '',
+    notes: '',
+    licenses: [],
+    mlsMemberships: [],
+  };
+}
+
+function contactToForm(c: ContactRecord): EditForm {
+  return {
+    id: c.id,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    contactType: c.contactType,
+    email: c.email,
+    phone: c.phone,
+    company: c.company,
+    timezone: c.timezone,
+    notes: c.notes,
+    licenses: c.licenses.map(l => ({
+      id: l.id,
+      isNew: false,
+      stateCode: l.stateCode,
+      licenseType: l.licenseType,
+      licenseNumber: l.licenseNumber,
+      status: l.status,
+      expirationDate: l.expirationDate ?? '',
+    })),
+    mlsMemberships: c.mlsMemberships.map(m => ({
+      id: m.id,
+      isNew: false,
+      mlsName: m.mlsName,
+      mlsCode: m.mlsCode ?? '',
+      mlsMemberNumber: m.mlsMemberNumber,
+      boardName: m.boardName ?? '',
+      stateCode: m.stateCode ?? '',
+      status: m.status,
+    })),
+  };
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+interface Props {
+  triggerAdd?: 'agent' | 'contact' | null;
+  onTriggerHandled?: () => void;
+  onDirectoryChanged?: () => void;
+}
+
+export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged }: Props) {
+  const [contacts, setContacts] = useState<ContactRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<ContactRole | 'all'>('all');
-  const [contactView, setContactView] = useState<'cards' | 'table'>('cards');
-  const [tableRole, setTableRole] = useState<ContactRole | 'all'>('all');
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<DirectoryContact | null>(null);
-  const [form, setForm] = useState(emptyForm());
-  const [stateInfoMap, setStateInfoMap] = useState<AgentClientStateInfo[]>([]);
-  const [expandedStates, setExpandedStates] = useState<Set<string>>(new Set());
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(null);
 
-  useEffect(() => {
-    const handler = () => setRowMenuId(null);
-    if (rowMenuId) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [rowMenuId]);
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState<EditForm>(blankForm());
+  const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
+  const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  // Handle external trigger from topbar quick-add
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
+
+  // ── Load data ────────────────────────────────────────────────────────────────
+  const refresh = useCallback(async () => {
+    try {
+      const data = await loadContactsFull();
+      setContacts(data);
+    } catch (err) {
+      console.error('Failed to load contacts:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // ── Handle triggerAdd ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (triggerAdd === 'agent-client') {
-      openAdd('agent-client');
-      onTriggerHandled?.();
-    } else if (triggerAdd === 'contact') {
-      openAdd();
+    if (triggerAdd) {
+      const role: ContactRole = triggerAdd === 'agent' ? 'agent' : 'other';
+      setForm(blankForm(role));
+      setIsEditing(false);
+      setDeletedLicenseIds([]);
+      setDeletedMlsIds([]);
+      setModalOpen(true);
       onTriggerHandled?.();
     }
-  }, [triggerAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [triggerAdd, onTriggerHandled]);
 
-  // MLS options filtered by currently selected states in the form
-  const availableMls = useMemo(() => {
-    if (!form.states || form.states.length === 0) return mlsEntries;
-    return mlsEntries.filter(m => form.states!.includes(m.state));
-  }, [mlsEntries, form.states]);
-
-  const filtered = useMemo(() => {
-    const activeRole = contactView === 'table' ? tableRole : roleFilter;
-    return directory.filter(c => {
-      // 'buyer' filter matches buyer, seller, and end_client (all display as "End Client")
-      const matchRole = activeRole === 'all'
-        || c.role === activeRole
-        || (activeRole === 'buyer' && (c.role === 'seller' || c.role === ('end_client' as string)));
-      const q = search.toLowerCase();
-      const matchSearch = !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        (c.company ?? '').toLowerCase().includes(q) ||
-        (c.states ?? []).some(s => s.toLowerCase().includes(q)) ||
-        (c.clientId ?? '').toLowerCase().includes(q);
-      return matchRole && matchSearch;
-    });
-  }, [directory, search, roleFilter, tableRole, contactView]);
-
-  const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: directory.length };
-    for (const c of directory) counts[c.role] = (counts[c.role] ?? 0) + 1;
+  // ── Counts per category ──────────────────────────────────────────────────────
+  const categoryCounts = useMemo(() => {
+    const counts: Record<CategoryKey, number> = {
+      agent: 0, lender: 0, title: 0, attorney: 0,
+      inspector: 0, buyer_seller: 0, tc: 0, other: 0,
+    };
+    for (const c of contacts) {
+      const cat = CATEGORIES.find(cat => cat.roles.includes(c.contactType));
+      if (cat) counts[cat.key]++;
+      else counts.other++;
+    }
     return counts;
-  }, [directory]);
+  }, [contacts]);
 
-  const openAdd = (presetRole?: string) => {
-    setEditing(null);
-    setForm({ ...emptyForm(), role: (presetRole ?? 'buyer') as ContactRole });
-    setStateInfoMap([]);
-    setExpandedStates(new Set());
-    setShowModal(true);
-  };
-
-  const openEdit = (c: DirectoryContact) => {
-    setEditing(c);
-    setForm({
-      name: c.name, email: c.email, phone: c.phone, role: c.role,
-      company: c.company ?? '', states: c.states ?? [], mlsIds: c.mlsIds ?? [],
-      isTeam: c.isTeam ?? false, teamRoles: c.teamRoles ?? [], notes: c.notes ?? '',
-    });
-    setStateInfoMap(c.stateInfo ?? []);
-    setExpandedStates(new Set());
-    setShowModal(true);
-  };
-
-  const closeModal = () => { setShowModal(false); setEditing(null); setStateInfoMap([]); setExpandedStates(new Set()); };
-
-  const handleSave = () => {
-    if (!form.name.trim()) return;
-    const isAgentClient = form.role === 'agent-client';
-    const clientId = isAgentClient ? generateClientId(form.phone) : undefined;
-    const stateInfo = isAgentClient ? stateInfoMap : undefined;
-    if (editing) {
-      onUpdate(directory.map(c => c.id === editing.id ? { ...editing, ...form, stateInfo, clientId } : c));
-    } else {
-      const newC: DirectoryContact = { id: generateId(), ...form, stateInfo, clientId, createdAt: new Date().toISOString() };
-      onUpdate([newC, ...directory]);
+  // ── Filtered contacts (search + category) ──────────────────────────────────
+  const filtered = useMemo(() => {
+    let list = contacts;
+    if (activeCategory) {
+      const cat = CATEGORIES.find(c => c.key === activeCategory);
+      if (cat) list = list.filter(c => cat.roles.includes(c.contactType));
     }
-    closeModal();
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(c =>
+        c.fullName.toLowerCase().includes(q) ||
+        c.email.toLowerCase().includes(q) ||
+        c.phone.includes(q) ||
+        c.company.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [contacts, activeCategory, search]);
+
+  // ── Open modal ─────────────────────────────────────────────────────────────
+  const openAdd = () => {
+    setForm(blankForm());
+    setIsEditing(false);
+    setDeletedLicenseIds([]);
+    setDeletedMlsIds([]);
+    setModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    onUpdate(directory.filter(c => c.id !== id));
-    setDeleteId(null);
+  const openEdit = (c: ContactRecord) => {
+    setForm(contactToForm(c));
+    setIsEditing(true);
+    setDeletedLicenseIds([]);
+    setDeletedMlsIds([]);
+    setModalOpen(true);
   };
 
-  const setField = (key: keyof typeof form, val: any) => setForm(p => ({ ...p, [key]: val }));
-
-  // When states change, remove mlsIds that no longer match, sync stateInfoMap
-  const handleStatesChange = (states: string[]) => {
-    const validMls = mlsEntries.filter(m => states.includes(m.state)).map(m => m.id);
-    const filteredMlsIds = (form.mlsIds ?? []).filter(id => validMls.includes(id));
-    setForm(p => ({ ...p, states, mlsIds: filteredMlsIds }));
-    // Keep existing state info, add entries for new states, remove entries for removed states
-    setStateInfoMap(prev => {
-      const existing = new Map(prev.map(si => [si.state, si]));
-      return states.map(s => existing.get(s) ?? emptyStateInfo(s));
-    });
+  const closeModal = () => {
+    setModalOpen(false);
+    setSaving(false);
   };
 
-  // Update a single field in a state's profile
-  const updateStateInfo = (state: string, field: keyof Omit<AgentClientStateInfo, 'state' | 'links'>, value: string) => {
-    setStateInfoMap(prev => prev.map(si => si.state === state ? { ...si, [field]: value } : si));
+  // ── Form helpers ───────────────────────────────────────────────────────────
+  const updateField = <K extends keyof EditForm>(key: K, val: EditForm[K]) => {
+    setForm(prev => ({ ...prev, [key]: val }));
   };
 
-  const updateStateLink = (state: string, index: number, value: string) => {
-    setStateInfoMap(prev => prev.map(si => {
-      if (si.state !== state) return si;
-      const links = [...si.links];
-      links[index] = value;
-      return { ...si, links };
+  const addLicense = () => {
+    setForm(prev => ({
+      ...prev,
+      licenses: [...prev.licenses, {
+        id: crypto.randomUUID(),
+        isNew: true,
+        stateCode: '',
+        licenseType: 'salesperson',
+        licenseNumber: '',
+        status: 'active',
+        expirationDate: '',
+      }],
     }));
   };
 
-  const addStateLink = (state: string) => {
-    setStateInfoMap(prev => prev.map(si => si.state === state ? { ...si, links: [...si.links, ''] } : si));
-  };
-
-  const removeStateLink = (state: string, index: number) => {
-    setStateInfoMap(prev => prev.map(si => {
-      if (si.state !== state) return si;
-      return { ...si, links: si.links.filter((_, i) => i !== index) };
+  const updateLicense = (idx: number, patch: Partial<EditLicense>) => {
+    setForm(prev => ({
+      ...prev,
+      licenses: prev.licenses.map((l, i) => i === idx ? { ...l, ...patch } : l),
     }));
   };
 
-  const toggleStateExpanded = (state: string) => {
-    setExpandedStates(prev => {
-      const next = new Set(prev);
-      next.has(state) ? next.delete(state) : next.add(state);
-      return next;
-    });
+  const removeLicense = (idx: number) => {
+    const lic = form.licenses[idx];
+    if (!lic.isNew) setDeletedLicenseIds(prev => [...prev, lic.id]);
+    setForm(prev => ({
+      ...prev,
+      licenses: prev.licenses.filter((_, i) => i !== idx),
+    }));
   };
 
-  const stateOptions = US_STATES.map(s => ({ value: s, label: s }));
-  const mlsOptions = availableMls.map(m => ({ value: m.id, label: `${m.name} (${m.state})` }));
+  const addMls = () => {
+    setForm(prev => ({
+      ...prev,
+      mlsMemberships: [...prev.mlsMemberships, {
+        id: crypto.randomUUID(),
+        isNew: true,
+        mlsName: '',
+        mlsCode: '',
+        mlsMemberNumber: '',
+        boardName: '',
+        stateCode: '',
+        status: 'active',
+      }],
+    }));
+  };
+
+  const updateMls = (idx: number, patch: Partial<EditMls>) => {
+    setForm(prev => ({
+      ...prev,
+      mlsMemberships: prev.mlsMemberships.map((m, i) => i === idx ? { ...m, ...patch } : m),
+    }));
+  };
+
+  const removeMls = (idx: number) => {
+    const mls = form.mlsMemberships[idx];
+    if (!mls.isNew) setDeletedMlsIds(prev => [...prev, mls.id]);
+    setForm(prev => ({
+      ...prev,
+      mlsMemberships: prev.mlsMemberships.filter((_, i) => i !== idx),
+    }));
+  };
+
+  // ── Save ───────────────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    if (!form.firstName.trim()) return;
+    setSaving(true);
+    try {
+      // 1. Save contact record
+      await saveContactRecord({
+        id: form.id,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        contactType: form.contactType,
+        company: form.company.trim(),
+        timezone: form.timezone || undefined,
+        notes: form.notes.trim() || undefined,
+      });
+
+      // 2. Handle licenses (only for agents)
+      if (form.contactType === 'agent') {
+        // Delete removed licenses
+        for (const id of deletedLicenseIds) {
+          await deleteContactLicenseRecord(id);
+        }
+        // Upsert current licenses
+        for (const lic of form.licenses) {
+          await upsertContactLicense({
+            id: lic.isNew ? undefined : lic.id,
+            contactId: form.id,
+            stateCode: lic.stateCode,
+            licenseType: lic.licenseType,
+            licenseNumber: lic.licenseNumber,
+            status: lic.status,
+            expirationDate: lic.expirationDate || undefined,
+          });
+        }
+
+        // Delete removed MLS
+        for (const id of deletedMlsIds) {
+          await deleteContactMlsRecord(id);
+        }
+        // Upsert current MLS
+        for (const mls of form.mlsMemberships) {
+          await upsertContactMls({
+            id: mls.isNew ? undefined : mls.id,
+            contactId: form.id,
+            mlsName: mls.mlsName,
+            mlsCode: mls.mlsCode || undefined,
+            mlsMemberNumber: mls.mlsMemberNumber,
+            boardName: mls.boardName || undefined,
+            stateCode: mls.stateCode || undefined,
+            status: mls.status || 'active',
+          });
+        }
+      }
+
+      await refresh();
+      onDirectoryChanged?.();
+      closeModal();
+    } catch (err) {
+      console.error('Save failed:', err);
+      alert('Failed to save contact. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteContactRecord(deleteTarget.id);
+      await refresh();
+      onDirectoryChanged?.();
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+    setDeleteTarget(null);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span className="loading loading-spinner loading-lg text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-base-100 overflow-hidden">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex-none border-b border-base-300 bg-base-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {contactView === 'table' && (
-              <button
-                onClick={() => { setContactView('cards'); setSearch(''); }}
-                className="btn btn-ghost btn-sm btn-square"
-              >
-                <ArrowLeft size={16} />
-              </button>
-            )}
-            <div className="w-9 h-9 bg-primary/15 rounded-xl flex items-center justify-center">
-              <Users size={18} className="text-primary" />
-            </div>
-            <div>
-              <h1 className="font-bold text-base text-black">
-                {contactView === 'cards'
-                  ? 'Contact Directory'
-                  : ROLE_CARDS.find(r => r.id === tableRole)?.label ?? 'All Contacts'}
-              </h1>
-              <p className="text-xs text-black/50">
-                {contactView === 'cards'
-                  ? `${directory.length} contacts · select a category`
-                  : `${filtered.length} contact${filtered.length !== 1 ? 's' : ''}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => openAdd('agent-client')} className="btn btn-sm btn-outline gap-2">
-              <Plus size={14} /> New Agent Client
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          {activeCategory && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setActiveCategory(null)}>
+              <ArrowLeft size={16} />
             </button>
-            <button onClick={() => openAdd()} className="btn btn-primary btn-sm gap-2">
-              <Plus size={14} /> Add Contact
-            </button>
-          </div>
+          )}
+          <h1 className="text-xl font-bold text-base-content flex items-center gap-2">
+            <Users size={22} className="text-primary" />
+            {activeCategory
+              ? CATEGORIES.find(c => c.key === activeCategory)?.label ?? 'Contacts'
+              : 'Contacts Directory'}
+          </h1>
+          <span className="badge badge-ghost badge-sm">{filtered.length}</span>
         </div>
-
-        {/* Search bar — only in table view */}
-        {contactView === 'table' && (
-          <div className="mt-3 relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40" />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
             <input
-              className="input input-sm input-bordered w-full pl-8 bg-base-100"
-              placeholder="Search name, email, company, state…"
+              type="text"
+              placeholder="Search contacts..."
+              className="input input-sm input-bordered pl-8 w-full sm:w-56"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-        )}
+          <button className="btn btn-primary btn-sm gap-1" onClick={openAdd}>
+            <Plus size={14} /> Add Contact
+          </button>
+        </div>
       </div>
 
-      {/* Content: Role Cards OR Table */}
-      <div className="flex-1 overflow-y-auto">
-        {contactView === 'cards' ? (
-          /* ── Role Category Cards ── */
-          <div className="p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {ROLE_CARDS.map(card => {
-                const count = card.id === 'buyer'
-                  ? (roleCounts['buyer'] ?? 0) + (roleCounts['seller'] ?? 0) + (roleCounts['end_client'] ?? 0)
-                  : (roleCounts[card.id] ?? 0);
-                const Icon = card.icon;
-                return (
-                  <button
-                    key={card.id}
-                    onClick={() => {
-                      setTableRole(card.id as ContactRole);
-                      setRoleFilter(card.id as ContactRole | 'all');
-                      setSearch('');
-                      setContactView('table');
-                    }}
-                    className={`flex flex-col items-start gap-3 p-4 rounded-xl border-2 ${card.bg} ${card.border} hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 text-left`}
-                  >
-                    <div className={`w-10 h-10 rounded-lg bg-white/70 flex items-center justify-center shadow-sm`}>
-                      <Icon size={20} className={card.iconColor} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-black leading-tight">{card.label}</p>
-                      <span className={`inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded-full ${card.countBg}`}>
-                        {count} {count === 1 ? 'contact' : 'contacts'}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* ── Contacts Table ── */
-          <div className="p-6">
-            {filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-base-content/30 gap-3">
-                <Users size={40} strokeWidth={1} />
-                <p className="text-sm">No contacts found</p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-base-300 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-100 border-b border-base-300">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-black uppercase tracking-wide">Name</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-black uppercase tracking-wide hidden sm:table-cell">Phone</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-black uppercase tracking-wide hidden md:table-cell">Email</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-black uppercase tracking-wide hidden lg:table-cell">Company / States</th>
-                      <th className="px-4 py-3 w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((c, idx) => {
-                      const initials = c.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                      const card = ROLE_CARDS.find(r => r.id === c.role || (r.id === 'buyer' && (c.role === 'seller' || c.role === 'end_client' as string)));
-                      return (
-                        <tr
-                          key={c.id}
-                          className={`border-b border-base-200 hover:bg-base-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                        >
-                          {/* Name + avatar */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${card?.bg ?? 'bg-gray-100'} ${card?.iconColor ?? 'text-gray-600'}`}>
-                                {initials}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-black text-sm leading-tight flex items-center gap-1.5">
-                                  {c.name}
-                                  {c.role === 'agent-client' && (
-                                    <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium">our client</span>
-                                  )}
-                                </p>
-                                {c.clientId && (
-                                  <p className="text-xs text-black/40 mt-0.5">{c.clientId}</p>
-                                )}
-                                {/* Show phone/email inline on mobile */}
-                                <div className="sm:hidden text-xs text-black/50 mt-0.5 space-y-0.5">
-                                  {c.phone && <p>{c.phone}</p>}
-                                  {c.email && <p>{c.email}</p>}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          {/* Phone */}
-                          <td className="px-4 py-3 hidden sm:table-cell">
-                            <span className="text-black/70 text-xs">{c.phone || '—'}</span>
-                          </td>
-                          {/* Email */}
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            <span className="text-black/70 text-xs">{c.email || '—'}</span>
-                          </td>
-                          {/* Company / States */}
-                          <td className="px-4 py-3 hidden lg:table-cell">
-                            {c.company ? (
-                              <div className="flex items-center gap-1 text-xs text-black/70">
-                                <Building2 size={12} className="flex-none" />
-                                <span>{c.company}</span>
-                              </div>
-                            ) : c.states && c.states.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {c.states.slice(0, 3).map(s => (
-                                  <span key={s} className="text-xs bg-gray-100 text-black px-1.5 py-0.5 rounded">{s}</span>
-                                ))}
-                                {c.states.length > 3 && <span className="text-xs text-black/40">+{c.states.length - 3}</span>}
-                              </div>
-                            ) : (
-                              <span className="text-black/30 text-xs">—</span>
-                            )}
-                          </td>
-                          {/* Actions */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-1">
-                              <div className="relative">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setRowMenuId(rowMenuId === c.id ? null : c.id); }}
-                                  className="btn btn-ghost btn-xs btn-square"
-                                >
-                                  <MoreVertical size={15} />
-                                </button>
-                                {rowMenuId === c.id && (
-                                  <div className="absolute right-0 top-7 z-50 bg-white border border-gray-200 rounded-xl shadow-xl w-36 py-1">
-                                    <button
-                                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50"
-                                      onClick={() => { openEdit(c); setRowMenuId(null); }}
-                                    >
-                                      <Pencil size={13} /> Edit Contact
-                                    </button>
-                                    <button
-                                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                                      onClick={() => { setDeleteId(c.id); setRowMenuId(null); }}
-                                    >
-                                      <Trash2 size={13} /> Delete
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-md border border-base-300 max-h-[90vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-base-300 flex-none">
-              <h2 className="font-bold text-base">{editing ? 'Edit Contact' : 'Add New Contact'}</h2>
-              <button onClick={closeModal} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="px-5 py-4 flex flex-col gap-3 overflow-y-auto">
-              {/* Name + Role always visible */}
-              <div className="form-control">
-                <label className="label py-1"><span className="label-text text-xs font-medium">Full Name *</span></label>
-                <input className="input input-sm input-bordered" placeholder="e.g. John Smith" value={form.name} onChange={e => setField('name', e.target.value)} />
-              </div>
-
-              <div className="form-control">
-                <label className="label py-1"><span className="label-text text-xs font-medium">Role *</span></label>
-                <select className="select select-sm select-bordered" value={form.role} onChange={e => setField('role', e.target.value as ContactRole)}>
-                  {ROLES.filter(r => r.id !== 'all').map(r => (
-                    <option key={r.id} value={r.id}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text text-xs font-medium">Email</span></label>
-                  <input className="input input-sm input-bordered" type="email" placeholder="email@example.com" value={form.email} onChange={e => setField('email', e.target.value)} />
-                </div>
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text text-xs font-medium">Phone</span></label>
-                  <input className="input input-sm input-bordered" type="tel" placeholder="+1-555-000-0000" value={form.phone} onChange={e => setField('phone', formatPhoneLive(e.target.value))} />
-                </div>
-              </div>
-
-              {/* Agent Client extended fields */}
-              {form.role === 'agent-client' && (<>
-              <div className="form-control">
-                <label className="label py-1"><span className="label-text text-xs font-medium">Company</span></label>
-                <input className="input input-sm input-bordered" placeholder="Company name" value={form.company as string} onChange={e => setField('company', e.target.value)} />
-              </div>
-
-              {/* Team Section */}
-              <div className="border border-gray-300 rounded-lg overflow-hidden">
-                {/* Header row - Are you a team? */}
-                <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50">
-                  <div>
-                    <span className="text-xs font-semibold text-black">Team Members &amp; Admin</span>
-                    <p className="text-xs text-gray-500 mt-0.5">Does this agent client have a team?</p>
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <span className={`text-xs font-medium ${form.isTeam ? 'text-gray-400' : 'text-black'}`}>No</span>
-                    <div
-                      onClick={() => { setField('isTeam', !form.isTeam); if (form.isTeam) setField('teamRoles', []); }}
-                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${form.isTeam ? 'bg-blue-500' : 'bg-gray-300'}`}
-                    >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.isTeam ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                    </div>
-                    <span className={`text-xs font-medium ${form.isTeam ? 'text-black' : 'text-gray-400'}`}>Yes</span>
-                  </label>
-                </div>
-
-                {/* Role checkboxes - shown when isTeam is true */}
-                {form.isTeam && (
-                  <div className="px-3 py-3 bg-white border-t border-gray-200">
-                    <p className="text-xs text-gray-500 mb-2">Select all roles that apply to this team:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {TEAM_ROLE_OPTIONS.map(opt => {
-                        const checked = (form.teamRoles ?? []).includes(opt.value);
-                        return (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer group">
-                            <div
-                              onClick={() => {
-                                const current = form.teamRoles ?? [];
-                                setField('teamRoles', checked ? current.filter(r => r !== opt.value) : [...current, opt.value]);
-                              }}
-                              className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors cursor-pointer ${checked ? 'bg-blue-500 border-blue-500' : 'border-gray-300 group-hover:border-blue-400'}`}
-                            >
-                              {checked && (
-                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              )}
-                            </div>
-                            <span className={`text-xs ${checked ? 'text-black font-medium' : 'text-gray-600'}`}>{opt.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    {(form.teamRoles ?? []).length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-100 flex flex-wrap gap-1">
-                        {(form.teamRoles ?? []).map(r => (
-                          <span key={r} className="badge badge-sm bg-blue-100 text-blue-700 border-blue-200 font-normal">
-                            {TEAM_ROLE_OPTIONS.find(o => o.value === r)?.label ?? r}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* States multi-select */}
-              <div className="form-control">
-                <label className="label py-1">
-                  <span className="label-text text-xs font-medium">States Licensed / Operating In</span>
-                  {(form.states ?? []).length > 0 && (
-                    <span className="label-text-alt text-xs text-base-content/40">{(form.states ?? []).length} selected</span>
-                  )}
-                </label>
-                <MultiSelectDropdown
-                  options={stateOptions}
-                  selected={form.states ?? []}
-                  onChange={handleStatesChange}
-                  placeholder="Select states…"
-                />
-              </div>
-
-              {/* MLS multi-select — filtered by selected states */}
-              <div className="form-control">
-                <label className="label py-1">
-                  <span className="label-text text-xs font-medium">Associated MLS</span>
-                  {(form.states ?? []).length === 0 && mlsEntries.length > 0 && (
-                    <span className="label-text-alt text-xs text-amber-500">Select a state to filter MLS</span>
-                  )}
-                  {(form.states ?? []).length > 0 && availableMls.length === 0 && (
-                    <span className="label-text-alt text-xs text-base-content/40">No MLS for selected states</span>
-                  )}
-                </label>
-                <MultiSelectDropdown
-                  options={mlsOptions}
-                  selected={form.mlsIds ?? []}
-                  onChange={v => setField('mlsIds', v)}
-                  placeholder={mlsEntries.length === 0 ? 'No MLS entries yet — add them in MLS tab' : 'Select MLS boards…'}
-                  disabled={mlsEntries.length === 0}
-                />
-              </div>
-              </>)}
-
-              {/* Per-State Profile + Notes (Agent Client only) */}
-              {form.role === 'agent-client' && (form.states ?? []).length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="label-text text-xs font-semibold text-black">State Profiles</span>
-                    <span className="badge badge-xs badge-outline">{(form.states ?? []).length}</span>
-                  </div>
-                  {(form.states ?? []).map(state => {
-                    const si = stateInfoMap.find(x => x.state === state) ?? emptyStateInfo(state);
-                    const expanded = expandedStates.has(state);
-                    return (
-                      <div key={state} className="border border-gray-300 rounded-lg overflow-hidden">
-                        {/* State header */}
-                        <button
-                          type="button"
-                          onClick={() => toggleStateExpanded(state)}
-                          className="w-full flex items-center justify-between px-3 py-2 bg-gray-100 hover:bg-gray-200 transition-colors"
-                        >
-                          <div className="flex items-center gap-2">
-                            <MapPin size={12} className="text-gray-500" />
-                            <span className="text-xs font-semibold text-black">{state}</span>
-                            {(si.closingType || si.commissionType) && (
-                              <span className="text-xs text-gray-500">
-                                {si.closingType && `• ${si.closingType}`}
-                                {si.commissionType && ` • ${si.commissionType === 'cda' ? 'CDA' : 'Comm. Letter'}`}
-                              </span>
-                            )}
-                          </div>
-                          <ChevronDown size={13} className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {/* Expanded content */}
-                        {expanded && (
-                          <div className="px-3 py-3 flex flex-col gap-3 bg-base-100">
-                            {/* 1) Closing type */}
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="form-control">
-                                <label className="label py-0.5"><span className="label-text text-xs">Closing Type</span></label>
-                                <select
-                                  className="select select-xs select-bordered"
-                                  value={si.closingType}
-                                  onChange={e => updateStateInfo(state, 'closingType', e.target.value as any)}
-                                >
-                                  <option value="">— Select —</option>
-                                  <option value="escrow">Escrow State</option>
-                                  <option value="attorney">Attorney State</option>
-                                </select>
-                              </div>
-                              {/* 2) Commission type */}
-                              <div className="form-control">
-                                <label className="label py-0.5"><span className="label-text text-xs">Commission</span></label>
-                                <select
-                                  className="select select-xs select-bordered"
-                                  value={si.commissionType}
-                                  onChange={e => updateStateInfo(state, 'commissionType', e.target.value as any)}
-                                >
-                                  <option value="">— Select —</option>
-                                  <option value="commission-letter">Commission Letter</option>
-                                  <option value="cda">Request CDA</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* 3) Broker Info */}
-                            <div>
-                              <p className="text-xs font-medium text-base-content/60 mb-1.5">Broker Info</p>
-                              <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  className="input input-xs input-bordered"
-                                  type="email"
-                                  placeholder="Broker email"
-                                  value={si.brokerEmail}
-                                  onChange={e => updateStateInfo(state, 'brokerEmail', e.target.value)}
-                                />
-                                <input
-                                  className="input input-xs input-bordered"
-                                  type="tel"
-                                  placeholder="Broker phone"
-                                  value={si.brokerPhone}
-                                  onChange={e => updateStateInfo(state, 'brokerPhone', formatPhoneLive(e.target.value))}
-                                />
-                              </div>
-                            </div>
-
-                            {/* 4) Compliance Manager */}
-                            <div>
-                              <p className="text-xs font-medium text-base-content/60 mb-1.5">Compliance Manager</p>
-                              <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  className="input input-xs input-bordered"
-                                  type="email"
-                                  placeholder="Compliance email"
-                                  value={si.complianceEmail}
-                                  onChange={e => updateStateInfo(state, 'complianceEmail', e.target.value)}
-                                />
-                                <input
-                                  className="input input-xs input-bordered"
-                                  type="tel"
-                                  placeholder="Compliance phone"
-                                  value={si.compliancePhone}
-                                  onChange={e => updateStateInfo(state, 'compliancePhone', formatPhoneLive(e.target.value))}
-                                />
-                              </div>
-                            </div>
-
-                            {/* 5) eSignature App */}
-                            <div className="form-control">
-                              <label className="label py-0.5"><span className="label-text text-xs">eSignature Application</span></label>
-                              <input
-                                className="input input-xs input-bordered"
-                                placeholder="e.g. DocuSign, DotLoop, Authentisign…"
-                                value={si.eSignatureApp}
-                                onChange={e => updateStateInfo(state, 'eSignatureApp', e.target.value)}
-                              />
-                            </div>
-
-                            {/* 6) Links */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <p className="text-xs font-medium text-base-content/60">Resource Links</p>
-                                <button
-                                  type="button"
-                                  onClick={() => addStateLink(state)}
-                                  className="btn btn-ghost btn-xs gap-1 text-gray-600 hover:text-black h-5 min-h-0 px-1"
-                                >
-                                  <PlusCircle size={11} /> Add Link
-                                </button>
-                              </div>
-                              {si.links.length === 0 && (
-                                <p className="text-xs text-base-content/30 italic">No links added yet</p>
-                              )}
-                              {si.links.map((link, li) => (
-                                <div key={li} className="flex gap-1 mb-1">
-                                  <span className="flex items-center"><Link size={10} className="text-base-content/30" /></span>
-                                  <input
-                                    className="input input-xs input-bordered flex-1"
-                                    placeholder="https://…"
-                                    value={link}
-                                    onChange={e => updateStateLink(state, li, e.target.value)}
-                                  />
-                                  <button type="button" onClick={() => removeStateLink(state, li)} className="btn btn-ghost btn-xs btn-square h-6 min-h-0">
-                                    <X size={10} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {form.role === 'agent-client' && (
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text text-xs font-medium">Notes</span></label>
-                  <textarea className="textarea textarea-bordered textarea-sm resize-none" rows={2} placeholder="Any notes…" value={form.notes as string} onChange={e => setField('notes', e.target.value)} />
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-base-300 flex-none">
-              <button onClick={closeModal} className="btn btn-ghost btn-sm">Cancel</button>
-              <button
-                onClick={handleSave}
-                disabled={!form.name.trim()}
-                className="btn btn-primary btn-sm gap-2"
-              >
-                <Save size={13} />
-                {editing ? 'Save Changes' : 'Add Contact'}
-              </button>
-            </div>
-          </div>
+      {/* Category Cards (when no category selected) */}
+      {!activeCategory && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.key}
+              onClick={() => setActiveCategory(cat.key)}
+              className={`border rounded-lg p-4 flex flex-col items-center gap-2 hover:shadow-md transition-shadow cursor-pointer ${cat.bg} ${cat.border}`}
+            >
+              <span className={cat.text}>{cat.icon}</span>
+              <span className={`text-sm font-semibold ${cat.text}`}>{cat.label}</span>
+              <span className={`text-lg font-bold ${cat.text}`}>{categoryCounts[cat.key]}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* Table View (when category selected or search active) */}
+      {(activeCategory || search.trim()) && (
+        <div className="overflow-x-auto">
+          <table className="table table-sm w-full">
+            <thead>
+              <tr className="text-xs text-base-content/50 uppercase">
+                <th>Name</th>
+                <th className="hidden sm:table-cell">Email</th>
+                <th className="hidden sm:table-cell">Phone</th>
+                <th className="hidden md:table-cell">Company</th>
+                <th className="hidden lg:table-cell">States</th>
+                <th className="w-20">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} className="text-center text-base-content/40 py-8">No contacts found</td></tr>
+              )}
+              {filtered.map(c => (
+                <tr
+                  key={c.id}
+                  className="hover:bg-base-200 cursor-pointer"
+                  onClick={() => openEdit(c)}
+                >
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${avatarBg(c.contactType)}`}>
+                        {getInitials(c.fullName)}
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm flex items-center gap-1">
+                          {c.fullName}
+                          {c.isClient && <Star size={12} className="text-amber-500 fill-amber-500" />}
+                        </div>
+                        <div className="text-xs text-base-content/50">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${roleColor(c.contactType)}`}>
+                            {roleLabel(c.contactType)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="hidden sm:table-cell text-xs text-base-content/70">{c.email || '—'}</td>
+                  <td className="hidden sm:table-cell text-xs text-base-content/70">{c.phone || '—'}</td>
+                  <td className="hidden md:table-cell text-xs text-base-content/70">{c.company || '—'}</td>
+                  <td className="hidden lg:table-cell">
+                    <div className="flex gap-1 flex-wrap">
+                      {c.licenses.map(l => (
+                        <span key={l.id} className="badge badge-xs badge-outline">{l.stateCode}</span>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => openEdit(c)} title="Edit">
+                        <Pencil size={13} />
+                      </button>
+                      <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(c)} title="Delete">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Full list when no category and no search */}
+      {!activeCategory && !search.trim() && contacts.length > 0 && (
+        <div className="mt-2">
+          <p className="text-xs text-base-content/40 mb-2">Click a category above to view contacts, or use search.</p>
+        </div>
+      )}
+
+      {/* ── Add/Edit Modal ──────────────────────────────────────────────────── */}
+      {modalOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl max-h-[90vh] flex flex-col p-0">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-base-300">
+              <h3 className="font-bold text-base">{isEditing ? 'Edit Contact' : 'Add Contact'}</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={closeModal}><X size={16} /></button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {/* Basic Info */}
+              <div>
+                <div className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mb-2">Basic Info</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label py-0"><span className="label-text text-xs">First Name *</span></label>
+                    <input className="input input-sm input-bordered w-full" value={form.firstName} onChange={e => updateField('firstName', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label py-0"><span className="label-text text-xs">Last Name</span></label>
+                    <input className="input input-sm input-bordered w-full" value={form.lastName} onChange={e => updateField('lastName', e.target.value)} />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Contact Type *</span></label>
+                  <select className="select select-sm select-bordered w-full" value={form.contactType} onChange={e => updateField('contactType', e.target.value as ContactRole)}>
+                    {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="label py-0"><span className="label-text text-xs">Email</span></label>
+                    <input className="input input-sm input-bordered w-full" type="email" value={form.email} onChange={e => updateField('email', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label py-0"><span className="label-text text-xs">Phone</span></label>
+                    <input className="input input-sm input-bordered w-full" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Company</span></label>
+                  <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Timezone</span></label>
+                  <select className="select select-sm select-bordered w-full" value={form.timezone} onChange={e => updateField('timezone', e.target.value)}>
+                    {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                  </select>
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
+                  <textarea className="textarea textarea-bordered textarea-sm w-full" rows={2} value={form.notes} onChange={e => updateField('notes', e.target.value)} />
+                </div>
+              </div>
+
+              {/* Licenses (agents only) */}
+              {form.contactType === 'agent' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">Licenses</span>
+                      <span className="badge badge-xs badge-ghost">{form.licenses.length}</span>
+                    </div>
+                    <button className="btn btn-ghost btn-xs gap-1 text-primary" onClick={addLicense}>
+                      <Plus size={12} /> Add License
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {form.licenses.map((lic, idx) => (
+                      <div key={lic.id} className="border border-base-300 rounded-lg p-3 relative">
+                        <button
+                          className="btn btn-ghost btn-xs btn-circle absolute top-1 right-1 text-error"
+                          onClick={() => removeLicense(idx)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">State</span></label>
+                            <select className="select select-xs select-bordered w-full" value={lic.stateCode} onChange={e => updateLicense(idx, { stateCode: e.target.value })}>
+                              <option value="">—</option>
+                              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Type</span></label>
+                            <select className="select select-xs select-bordered w-full" value={lic.licenseType} onChange={e => updateLicense(idx, { licenseType: e.target.value })}>
+                              <option value="salesperson">Salesperson</option>
+                              <option value="broker">Broker</option>
+                              <option value="associate_broker">Associate Broker</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
+                            <select className="select select-xs select-bordered w-full" value={lic.status} onChange={e => updateLicense(idx, { status: e.target.value })}>
+                              <option value="active">Active</option>
+                              <option value="inactive">Inactive</option>
+                              <option value="expired">Expired</option>
+                              <option value="pending">Pending</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">License #</span></label>
+                            <input className="input input-xs input-bordered w-full" value={lic.licenseNumber} onChange={e => updateLicense(idx, { licenseNumber: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Expiration</span></label>
+                            <input className="input input-xs input-bordered w-full" type="date" value={lic.expirationDate} onChange={e => updateLicense(idx, { expirationDate: e.target.value })} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {form.licenses.length === 0 && (
+                      <p className="text-xs text-base-content/40 text-center py-3">No licenses added yet</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* MLS Memberships (agents only) */}
+              {form.contactType === 'agent' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">MLS Memberships</span>
+                      <span className="badge badge-xs badge-ghost">{form.mlsMemberships.length}</span>
+                    </div>
+                    <button className="btn btn-ghost btn-xs gap-1 text-primary" onClick={addMls}>
+                      <Plus size={12} /> Add MLS
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {form.mlsMemberships.map((mls, idx) => (
+                      <div key={mls.id} className="border border-base-300 rounded-lg p-3 relative">
+                        <button
+                          className="btn btn-ghost btn-xs btn-circle absolute top-1 right-1 text-error"
+                          onClick={() => removeMls(idx)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">MLS Name</span></label>
+                            <input className="input input-xs input-bordered w-full" value={mls.mlsName} onChange={e => updateMls(idx, { mlsName: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">MLS Code</span></label>
+                            <input className="input input-xs input-bordered w-full" value={mls.mlsCode} onChange={e => updateMls(idx, { mlsCode: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
+                            <input className="input input-xs input-bordered w-full" value={mls.mlsMemberNumber} onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Board Name</span></label>
+                            <input className="input input-xs input-bordered w-full" value={mls.boardName} onChange={e => updateMls(idx, { boardName: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">State</span></label>
+                            <select className="select select-xs select-bordered w-full" value={mls.stateCode} onChange={e => updateMls(idx, { stateCode: e.target.value })}>
+                              <option value="">—</option>
+                              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
+                            <select className="select select-xs select-bordered w-full" value={mls.status} onChange={e => updateMls(idx, { status: e.target.value })}>
+                              <option value="active">Active</option>
+                              <option value="inactive">Inactive</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {form.mlsMemberships.length === 0 && (
+                      <p className="text-xs text-base-content/40 text-center py-3">No MLS memberships added yet</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Organizations (read-only badges) */}
+              {isEditing && (() => {
+                const c = contacts.find(ct => ct.id === form.id);
+                if (!c || c.organizations.length === 0) return null;
+                return (
+                  <div>
+                    <div className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mb-2">Organizations</div>
+                    <div className="flex flex-wrap gap-2">
+                      {c.organizations.map(org => (
+                        <span key={org.membershipId} className="badge badge-outline badge-sm gap-1">
+                          <Building2 size={10} />
+                          {org.organizationName} {org.roleInOrganization ? `(${org.roleInOrganization})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
+              <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
+              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim()}>
+                {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
+                {isEditing ? 'Save Changes' : 'Add Contact'}
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={closeModal} />
+        </div>
+      )}
+
+      {/* Delete confirmation */}
       <ConfirmModal
-        isOpen={deleteId !== null}
-        title="Delete Contact?"
-        message="This will remove the contact from the directory. It won't affect deals they're already assigned to."
+        isOpen={!!deleteTarget}
+        title="Delete Contact"
+        message={deleteTarget ? `Are you sure you want to delete "${deleteTarget.fullName}"? This will also remove their licenses and MLS memberships.` : ''}
         confirmLabel="Delete"
-        onConfirm={() => { if (deleteId) { handleDelete(deleteId); } }}
-        onCancel={() => setDeleteId(null)}
+        confirmClass="btn-error"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );
-};
-
+}

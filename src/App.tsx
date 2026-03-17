@@ -55,7 +55,7 @@ function AppInner() {
   const [loading, setLoading]               = useState(true);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
-  const [quickAddRole, setQuickAddRole]     = useState<'agent-client' | 'contact' | null>(null);
+  const [quickAddRole, setQuickAddRole]     = useState<'agent' | 'contact' | null>(null);
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
 
@@ -318,7 +318,7 @@ function AppInner() {
 
       {/* Left sidebar */}
       <Sidebar
-        onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}
+        onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
         onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
         onAddDeal={() => setShowAdd(true)}
         dealCount={deals.length}
@@ -340,7 +340,7 @@ function AppInner() {
         <div className="hidden md:block flex-none">
           <Topbar
             onAddDeal={() => setShowAdd(true)}
-            onAddAgentClient={() => { setQuickAddRole('agent-client'); setView('contacts'); }}
+            onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
             onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
             dealCount={deals.filter(d => d.milestone !== 'archived').length}
             pendingAlerts={totalPending}
@@ -416,11 +416,11 @@ function AppInner() {
           {view === 'contacts' && (
             <div className="flex-1 overflow-auto">
               <ContactsDirectory
-                directory={directory}
-                onUpdate={persistDirectory}
-                mlsEntries={mlsEntries}
                 triggerAdd={quickAddRole}
                 onTriggerHandled={() => setQuickAddRole(null)}
+                onDirectoryChanged={() => {
+                  loadDirectory().then(data => setDirectory(data)).catch(console.error);
+                }}
               />
             </div>
           )}
@@ -436,7 +436,7 @@ function AppInner() {
               <ComplianceManager
                 templates={complianceTemplates}
                 onSave={persistCompliance}
-                agentClients={directory.filter(c => c.role === 'agent-client')}
+                agentClients={directory.filter(c => c.role === 'agent')}
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
               />
@@ -487,7 +487,7 @@ function AppInner() {
           onAdd={handleAdd}
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
-          agentClients={directory.filter(c => c.role === 'agent-client')}
+          agentClients={directory.filter(c => c.role === 'agent')}
           ddMasterItems={ddMasterItems}
         />
       )}
