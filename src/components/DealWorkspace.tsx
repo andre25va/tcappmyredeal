@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
+import { DealChatPanel } from './DealChatPanel';
 import { dealToRecord } from '../ai/dealConverter';
 import { Deal, DirectoryContact, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
@@ -46,7 +47,7 @@ import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat';
 
 interface Props {
   deal: Deal;
@@ -79,6 +80,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
+    { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} /> },
   ];
 
@@ -198,7 +200,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
       </div>
 
       {/* Tab Content */}
-      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} directory={directory} onGoToContacts={() => setTab('contacts')} editTrigger={editTrigger} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} directory={directory} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
@@ -206,6 +208,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
+        {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
         {tab === 'ai-emails' && <div className="p-4"><EmailCommandCenter deal={dealToRecord(deal)} emails={[]} /></div>}
       </div>
     </div>

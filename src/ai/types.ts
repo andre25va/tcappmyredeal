@@ -102,3 +102,30 @@ export type CompliancePrecheckResult = {
   notes: string[];
   summary: string;
 };
+
+// Phase 3A — Deal Chat Types
+
+export type DealChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  suggestedActions?: DealChatAction[];
+  factsUsed?: string[];
+  warnings?: string[];
+};
+
+export type DealChatAction = {
+  type: 'create_task' | 'add_note' | 'draft_email' | 'flag_compliance_issue' | 'suggest_stage_update';
+  payload: Record<string, unknown>;
+  confidence: number;
+  rationale: string;
+};
+
+export type DealChatResponse = {
+  answer: string;
+  confidence: number;
+  factsUsed: string[];
+  suggestedActions: DealChatAction[];
+  warnings: string[];
+};

@@ -102,6 +102,39 @@ const complianceSchema = {
   required: ['status', 'missingItems', 'inconsistentItems', 'notes', 'summary'],
 };
 
+const dealChatSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    answer: { type: 'string' },
+    confidence: { type: 'number' },
+    factsUsed: { type: 'array', items: { type: 'string' } },
+    suggestedActions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['create_task', 'add_note', 'draft_email', 'flag_compliance_issue', 'suggest_stage_update'],
+          },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          dueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'watch', 'fail', 'none'] },
+          targetRole: { type: 'string' },
+          confidence: { type: 'number' },
+          rationale: { type: 'string' },
+        },
+        required: ['type', 'title', 'description', 'dueDate', 'priority', 'targetRole', 'confidence', 'rationale'],
+      },
+    },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['answer', 'confidence', 'factsUsed', 'suggestedActions', 'warnings'],
+};
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 async function handleClassifyEmail(apiKey: string, body: any) {
@@ -225,6 +258,91 @@ ${JSON.stringify(threadSummaries, null, 2)}`;
   return callOpenAI(apiKey, systemPrompt, userContent, complianceSchema, 'compliance_precheck');
 }
 
+async function handleDealChat(apiKey: string, body: any) {
+  const { question, context, history } = body;
+  if (!question || !context) throw new Error('Missing question or context');
+
+  const systemPrompt = `You are a deal assistant for a real estate transaction coordinator (TC).
+You answer questions about ONE specific transaction file based on the provided context.
+
+RULES:
+- Only answer from the provided deal context. Do not invent facts.
+- Be concise and practical. TCs are busy.
+- If you see missing items, overdue tasks, or risks, proactively mention them.
+- When suggesting actions, only suggest what's clearly useful based on the context.
+- For create_task: fill title, description, dueDate (or null), priority, targetRole (who should do it)
+- For add_note: fill title=note summary, description=full note, priority="none", targetRole=""
+- For draft_email: fill title=subject, description=email body, targetRole=recipient role
+- For flag_compliance_issue: fill title=issue label, description=details, priority=severity (watch/fail)
+- For suggest_stage_update: fill title=new stage, description=rationale, targetRole=""
+- confidence should be 0.0-1.0 reflecting how sure you are
+- factsUsed should cite specific data points from the context
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  const contextStr = JSON.stringify(context, null, 1);
+
+  // Build conversation with context in first message
+  const messages: Array<{role: string; content: string}> = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `DEAL CONTEXT:\n${contextStr}` },
+    { role: 'assistant', content: 'I have the deal context loaded. What would you like to know?' },
+  ];
+
+  // Add conversation history (last 6 turns max to save tokens)
+  if (history && Array.isArray(history)) {
+    for (const msg of history.slice(-6)) {
+      messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
+    }
+  }
+
+  // Add current question
+  messages.push({ role: 'user', content: question });
+
+  const res = await fetch(OPENAI_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      temperature: 0.2,
+      messages,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'deal_chat_response',
+          strict: true,
+          schema: dealChatSchema,
+        },
+      },
+    }),
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || 'OpenAI API error');
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content in OpenAI response');
+
+  const parsed = JSON.parse(content);
+
+  // Convert flat action fields into typed payload objects for the client
+  if (parsed.suggestedActions) {
+    parsed.suggestedActions = parsed.suggestedActions.map((a: any) => ({
+      type: a.type,
+      payload: {
+        title: a.title,
+        description: a.description,
+        dueDate: a.dueDate,
+        priority: a.priority,
+        targetRole: a.targetRole,
+      },
+      confidence: a.confidence,
+      rationale: a.rationale,
+    }));
+  }
+
+  return parsed;
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -256,6 +374,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'compliance-precheck':
         result = await handleCompliancePrecheck(apiKey, req.body);
+        break;
+      case 'deal-chat':
+        result = await handleDealChat(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

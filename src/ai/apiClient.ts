@@ -10,7 +10,9 @@ import type {
   EmailThreadGroup,
   SuggestedTask,
   CompliancePrecheckResult,
+  DealChatResponse,
 } from "./types";
+import type { DealContextPacket } from "./chatContextBuilder";
 
 const AI_BASE = "/api/ai";
 
@@ -64,4 +66,13 @@ export async function compliancePrecheckAI(
   relatedThreads: EmailThreadGroup[]
 ): Promise<CompliancePrecheckResult> {
   return post("compliance-precheck", { deal, relatedThreads });
+}
+
+/** Send a deal-scoped chat question to AI */
+export async function dealChatQuery(
+  question: string,
+  context: DealContextPacket,
+  history: Array<{ role: string; content: string }>
+): Promise<DealChatResponse> {
+  return post<DealChatResponse>('deal-chat', { question, context, history });
 }
