@@ -32,7 +32,6 @@ import { useAudit } from './hooks/useAudit';
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
 if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
-  // Preserve session token
   const savedSession = localStorage.getItem('tc_session');
   localStorage.clear();
   if (savedSession) localStorage.setItem('tc_session', savedSession);
@@ -69,21 +68,9 @@ function AppInner() {
   const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);
   const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
 
-  // Show login if not authenticated
-  if (authLoading) {
-    return (
-      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-3">
-        <span className="loading loading-spinner loading-lg text-primary" />
-        <p className="text-sm text-base-content/50">Loading TC Command...</p>
-      </div>
-    );
-  }
-
-  if (!profile) return <LoginPage />;
-
   // ── Load deals ──────────────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     const init = async () => {
       try {
         const data = await loadDeals();
@@ -98,10 +85,9 @@ function AppInner() {
       }
     };
     init();
-  }, []);
+  }, [profile]);
 
   // Track actual width of transactions container for split-panel logic
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const el = txContainerRef.current;
     if (!el) return;
@@ -114,89 +100,64 @@ function AppInner() {
   }, [view]);
 
   // ── Load directory ───────────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadDirectory()
       .then(data => setDirectory(data))
       .catch(err => { console.error('Failed to load directory:', err); setDirectory([]); });
-  }, []);
+  }, [profile]);
 
   // ── Load MLS ─────────────────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadMls()
       .then(data => setMlsEntries(data))
       .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });
-  }, []);
+  }, [profile]);
 
   // ── Load compliance templates ─────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadCompliance()
       .then(data => setComplianceTemplates(data))
       .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });
-  }, []);
-
-  const persistCompliance = (updated: ComplianceTemplate[]) => {
-    setComplianceTemplates(updated);
-    saveCompliance(updated).catch(console.error);
-  };
+  }, [profile]);
 
   // ── Load users ───────────────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadUsers()
       .then(data => setUsers(data))
       .catch(err => { console.error('Failed to load users:', err); setUsers([]); });
-  }, []);
-
-  const persistUsers = (updated: AppUser[]) => {
-    setUsers(updated);
-    saveUsers(updated).catch(console.error);
-  };
+  }, [profile]);
 
   // ── Load email templates ─────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadEmailTemplates()
       .then(data => setEmailTemplates(data))
       .catch(err => { console.error('Failed to load email templates:', err); setEmailTemplates([]); });
-  }, []);
-
-  const persistEmailTemplates = async (updated: EmailTemplate[]) => {
-    setEmailTemplates(updated);
-    saveEmailTemplates(updated).catch(console.error);
-  };
+  }, [profile]);
 
   // ── Load compliance master items ─────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadMasterItems('compliance')
       .then(data => setComplianceMasterItems(data as ComplianceMasterItem[]))
       .catch(err => { console.error('Failed to load compliance master:', err); setComplianceMasterItems([]); });
-  }, []);
-
-  const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
-    setComplianceMasterItems(updated);
-    saveMasterItems('compliance', updated).catch(console.error);
-  };
+  }, [profile]);
 
   // ── Load DD master items ─────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     loadMasterItems('dd')
       .then(data => setDdMasterItems(data as DDMasterItem[]))
       .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });
-  }, []);
-
-  const persistDdMasterItems = (updated: DDMasterItem[]) => {
-    setDdMasterItems(updated);
-    saveMasterItems('dd', updated).catch(console.error);
-  };
+  }, [profile]);
 
   // ── Poll inbox unread count ──────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     const fetchUnread = async () => {
       try {
         const resp = await fetch('/api/sms/conversations');
@@ -210,11 +171,11 @@ function AppInner() {
     fetchUnread();
     const t = setInterval(fetchUnread, 60000);
     return () => clearInterval(t);
-  }, []);
+  }, [profile]);
 
   // ── Poll comm tasks pending count ────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    if (!profile) return;
     const fetchTaskCount = async () => {
       try {
         const { createClient } = await import('@supabase/supabase-js');
@@ -232,7 +193,33 @@ function AppInner() {
     fetchTaskCount();
     const t = setInterval(fetchTaskCount, 60000);
     return () => clearInterval(t);
-  }, []);
+  }, [profile]);
+
+  // ── Keep selectedId valid ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (deals.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
+    if (!stillExists) {
+      setSelectedId(deals[0].id);
+    }
+  }, [deals, selectedId]);
+
+  const storageMode = useMemo(() => 'Supabase Cloud Database', []);
+
+  // ── NOW it's safe to do conditional returns ──────────────────────────────────
+  if (authLoading) {
+    return (
+      <div data-theme="light" className="flex flex-col items-center justify-center h-screen bg-base-100 gap-3">
+        <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-sm text-base-content/50">Loading TC Command...</p>
+      </div>
+    );
+  }
+
+  if (!profile) return <LoginPage />;
 
   // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistDeals = (updated: Deal[]) => {
@@ -250,19 +237,30 @@ function AppInner() {
     saveMls(updated).catch(console.error);
   };
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    if (deals.length === 0) {
-      if (selectedId !== null) setSelectedId(null);
-      return;
-    }
-    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
-    if (!stillExists) {
-      setSelectedId(deals[0].id);
-    }
-  }, [deals, selectedId]);
+  const persistCompliance = (updated: ComplianceTemplate[]) => {
+    setComplianceTemplates(updated);
+    saveCompliance(updated).catch(console.error);
+  };
 
-  const storageMode = useMemo(() => 'Supabase Cloud Database', []);
+  const persistUsers = (updated: AppUser[]) => {
+    setUsers(updated);
+    saveUsers(updated).catch(console.error);
+  };
+
+  const persistEmailTemplates = async (updated: EmailTemplate[]) => {
+    setEmailTemplates(updated);
+    saveEmailTemplates(updated).catch(console.error);
+  };
+
+  const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
+    setComplianceMasterItems(updated);
+    saveMasterItems('compliance', updated).catch(console.error);
+  };
+
+  const persistDdMasterItems = (updated: DDMasterItem[]) => {
+    setDdMasterItems(updated);
+    saveMasterItems('dd', updated).catch(console.error);
+  };
 
   const handleUpdate = (deal: Deal) => {
     setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
