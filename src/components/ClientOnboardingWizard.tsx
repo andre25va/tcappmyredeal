@@ -83,6 +83,8 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
   const [preferredComm, setPreferredComm] = useState<'sms' | 'whatsapp' | 'email'>('sms');
   const [sendWelcome, setSendWelcome] = useState(true);
   const [welcomeMessage, setWelcomeMessage] = useState(defaultMessage);
+  const [formSent, setFormSent] = useState(false);
+  const [smsSent, setSmsSent] = useState(false);
 
   // Step 3: Access
   const [grantAccess, setGrantAccess] = useState<'yes' | 'no'>('yes');
@@ -480,6 +482,77 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
               />
             </div>
           )}
+        </div>
+
+        {/* Onboarding Channels */}
+        <div className="mt-4 border-t pt-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Additional Onboarding Options</p>
+          <div className="grid grid-cols-2 gap-3">
+            {/* Send Form Card */}
+            <button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await fetch('/api/onboard?action=send-form', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      phone: contact.phone,
+                      contact_name: `${contact.firstName} ${contact.lastName}`,
+                      channel: preferredComm,
+                      form_url: 'https://form.jotform.com/260755368659069',
+                    }),
+                  });
+                  setFormSent(true);
+                } catch (e) {
+                  console.error(e);
+                }
+                setLoading(false);
+              }}
+              disabled={loading || formSent || !contact.phone}
+              className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all text-left ${
+                formSent ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'
+              }`}
+            >
+              <span className="text-2xl mb-1">{formSent ? '✅' : '📋'}</span>
+              <span className="text-xs font-semibold text-gray-700">{formSent ? 'Form Sent!' : 'Send Onboarding Form'}</span>
+              <span className="text-xs text-gray-400 mt-0.5">Client fills out their info</span>
+            </button>
+
+            {/* SMS Onboarding Card */}
+            <button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await fetch('/api/onboard?action=start-sms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      phone: contact.phone,
+                      contact_id: contact.id,
+                      contact_name: `${contact.firstName} ${contact.lastName}`,
+                      channel: preferredComm,
+                      initiated_by: 'TC',
+                    }),
+                  });
+                  setSmsSent(true);
+                } catch (e) {
+                  console.error(e);
+                }
+                setLoading(false);
+              }}
+              disabled={loading || smsSent || !contact.phone}
+              className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all text-left ${
+                smsSent ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'
+              }`}
+            >
+              <span className="text-2xl mb-1">{smsSent ? '✅' : '💬'}</span>
+              <span className="text-xs font-semibold text-gray-700">{smsSent ? 'SMS Flow Started!' : 'Start SMS Onboarding'}</span>
+              <span className="text-xs text-gray-400 mt-0.5">8-step guided text flow</span>
+            </button>
+          </div>
+          {formSent && <p className="text-xs text-green-600 mt-2">✓ Form link sent — client will fill out their details</p>}
+          {smsSent && <p className="text-xs text-green-600 mt-2">✓ SMS onboarding started — client will receive step-by-step texts</p>}
         </div>
 
         <div className="flex gap-3">

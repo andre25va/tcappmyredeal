@@ -18,12 +18,7 @@ async function classifyMessage(contactName: string, dealAddress: string | null, 
       messages: [
         {
           role: 'system',
-          content: `You are a TC (Transaction Coordinator) assistant. Analyze inbound messages from clients and determine:
-1. Does this message contain a REQUEST or ACTION needed? (yes/no)
-2. If yes, write a concise task title (under 60 chars) for the TC to act on.
-3. Suggest priority: high/normal/low
-
-Respond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priority": "high|normal|low", "auto_reply": "brief friendly acknowledgment under 100 chars"}`,
+          content: `You are a TC (Transaction Coordinator) assistant. Analyze inbound messages from clients and determine:\n1. Does this message contain a REQUEST or ACTION needed? (yes/no)\n2. If yes, write a concise task title (under 60 chars) for the TC to act on.\n3. Suggest priority: high/normal/low\n\nRespond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priority": "high|normal|low", "auto_reply": "brief friendly acknowledgment under 100 chars"}`,
         },
         {
           role: 'user',
@@ -128,6 +123,177 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ── SMS Commands ──────────────────────────────────────────────────────────
     const bodyUpper = Body.trim().toUpperCase();
+
+    // ── Onboarding State Machine ─────────────────────────────────────────────
+    {
+      // Check if there's an active onboarding session for this phone
+      const { data: session } = await supabase
+        .from('onboarding_sessions')
+        .select('*')
+        .eq('phone_e164', fromE164)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (session) {
+        const reply = Body.trim();
+        const replyUpper = reply.toUpperCase();
+        const collected = session.collected as Record<string, string>;
+
+        // STOP at any point
+        if (replyUpper === 'STOP' || replyUpper === 'NO' && session.step === 'greeting') {
+          await supabase.from('onboarding_sessions').update({ status: 'abandoned' }).eq('id', session.id);
+          await sendTwilioReply(fromPhone, "No problem! Text us anytime if you need help. 🏠", isWhatsApp);
+          res.setHeader('Content-Type', 'text/xml');
+          return res.send('<Response></Response>');
+        }
+
+        let nextStep = session.step;
+        let responseMsg = '';
+
+        switch (session.step) {
+          case 'greeting':
+            if (replyUpper === 'YES') {
+              nextStep = 'name';
+              responseMsg = "Great! Let's get started 🎉\n\n1️⃣ What's your full name?";
+            } else {
+              responseMsg = "Reply YES to get started or STOP to skip. 😊";
+            }
+            break;
+
+          case 'name':
+            if (reply.trim().length < 2) { responseMsg = "Please enter your full name."; break; }
+            collected.name = reply.trim();
+            nextStep = 'license_num';
+            responseMsg = `Nice to meet you, ${reply.split(' ')[0]}! 😊\n\n2️⃣ What's your real estate license number?`;
+            break;
+
+          case 'license_num':
+            collected.license_num = reply.trim();
+            nextStep = 'license_state';
+            responseMsg = "3️⃣ What state is that license in? (e.g. KS, MO, IL)";
+            break;
+
+          case 'license_state':
+            collected.license_state = reply.trim().toUpperCase().substring(0, 2);
+            nextStep = 'mls_name';
+            responseMsg = "4️⃣ What MLS are you a member of? (e.g. Heartland MLS, KCRAR MLS)";
+            break;
+
+          case 'mls_name':
+            collected.mls_name = reply.trim();
+            nextStep = 'mls_id';
+            responseMsg = "5️⃣ What's your MLS Agent ID?";
+            break;
+
+          case 'mls_id':
+            collected.mls_id = reply.trim();
+            nextStep = 'brokerage';
+            responseMsg = "6️⃣ What brokerage or company are you with?";
+            break;
+
+          case 'brokerage':
+            collected.brokerage = reply.trim();
+            nextStep = 'comm_pref';
+            responseMsg = "7️⃣ How do you prefer to communicate?\nReply: SMS, WHATSAPP, or EMAIL";
+            break;
+
+          case 'comm_pref': {
+            const pref = replyUpper;
+            if (!['SMS', 'WHATSAPP', 'EMAIL'].includes(pref)) {
+              responseMsg = "Please reply SMS, WHATSAPP, or EMAIL.";
+              break;
+            }
+            collected.comm_pref = pref.toLowerCase();
+            nextStep = 'timezone';
+            responseMsg = "8️⃣ What's your time zone?\nReply: CENTRAL, EASTERN, MOUNTAIN, or PACIFIC";
+            break;
+          }
+
+          case 'timezone': {
+            const tz = replyUpper;
+            const tzMap: Record<string, string> = { CENTRAL: 'America/Chicago', EASTERN: 'America/New_York', MOUNTAIN: 'America/Denver', PACIFIC: 'America/Los_Angeles' };
+            if (!tzMap[tz]) { responseMsg = "Please reply CENTRAL, EASTERN, MOUNTAIN, or PACIFIC."; break; }
+            collected.timezone = tzMap[tz];
+            nextStep = 'confirm';
+            responseMsg = `Almost done! Here's your info:\n\n👤 ${collected.name}\n📋 License: ${collected.license_num} (${collected.license_state})\n🏢 MLS: ${collected.mls_name} / ${collected.mls_id}\n🏦 ${collected.brokerage}\n💬 Preferred: ${collected.comm_pref}\n⏰ Timezone: ${tz}\n\nReply YES to confirm or NO to restart.`;
+            break;
+          }
+
+          case 'confirm':
+            if (replyUpper === 'YES') {
+              // Save collected data to contact if we have one
+              if (session.contact_id) {
+                // Update notes on client_account
+                const noteStr = `sms_onboarding:completed,brokerage:${collected.brokerage},comm_pref:${collected.comm_pref},timezone:${collected.timezone}`;
+                await supabase.from('client_accounts').update({ notes: noteStr }).eq('contact_id', session.contact_id);
+              } else {
+                // Try to create or match contact
+                const nameParts = (collected.name || '').split(' ');
+                const firstName = nameParts[0] || '';
+                const lastName = nameParts.slice(1).join(' ') || '';
+                const { data: existing } = await supabase.from('contacts').select('id').ilike('first_name', firstName).ilike('last_name', lastName).limit(1).single();
+                if (existing) {
+                  await supabase.from('onboarding_sessions').update({ contact_id: existing.id }).eq('id', session.id);
+                } else {
+                  const { data: newContact } = await supabase.from('contacts').insert({
+                    first_name: firstName, last_name: lastName, phone: fromE164, contact_type: 'agent',
+                    notes: `SMS onboarding completed. Brokerage: ${collected.brokerage}. Comm pref: ${collected.comm_pref}. Timezone: ${collected.timezone}.`,
+                  }).select().single();
+                  if (newContact) {
+                    await supabase.from('onboarding_sessions').update({ contact_id: newContact.id }).eq('id', session.id);
+                    // Add license
+                    if (collected.license_num && collected.license_state) {
+                      await supabase.from('contact_licenses').insert({ contact_id: newContact.id, state: collected.license_state, license_number: collected.license_num, license_type: 'real_estate' });
+                    }
+                    // Add MLS
+                    if (collected.mls_name && collected.mls_id) {
+                      await supabase.from('contact_mls_memberships').insert({ contact_id: newContact.id, mls_name: collected.mls_name, mls_agent_id: collected.mls_id });
+                    }
+                    // Add to allowed_phones
+                    await supabase.from('allowed_phones').insert({ phone: fromE164, role: 'client', is_active: true });
+                  }
+                }
+              }
+              await supabase.from('onboarding_sessions').update({ status: 'completed', collected, step: 'completed' }).eq('id', session.id);
+              responseMsg = `✅ You're all set, ${(collected.name || '').split(' ')[0]}!\n\nYour TC Command account is now active. Your TC will be in touch shortly.\n\nText HELP anytime for commands. 🏠`;
+            } else if (replyUpper === 'NO') {
+              nextStep = 'name';
+              collected.name = '';
+              responseMsg = "No problem, let's start over.\n\n1️⃣ What's your full name?";
+            } else {
+              responseMsg = "Reply YES to confirm or NO to restart.";
+            }
+            break;
+        }
+
+        // Persist updated step + collected
+        if (nextStep !== session.step || Object.keys(collected).length) {
+          await supabase.from('onboarding_sessions').update({ step: nextStep, collected, updated_at: new Date().toISOString() }).eq('id', session.id);
+        }
+
+        await sendTwilioReply(fromPhone, responseMsg, isWhatsApp);
+
+        // Save message to conversations
+        const now2 = new Date().toISOString();
+        await supabase.from('messages').insert({
+          deal_id: null, contact_id: matchedContact?.id || null, direction: 'inbound',
+          channel, body: Body, status: 'received', from_number: fromPhone,
+          to_number: process.env.TWILIO_PHONE_NUMBER, external_message_id: MessageSid, sent_at: now2,
+        });
+        await supabase.from('messages').insert({
+          deal_id: null, contact_id: matchedContact?.id || null, direction: 'outbound',
+          channel, body: responseMsg, status: 'sent',
+          from_number: isWhatsApp ? (process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886') : process.env.TWILIO_PHONE_NUMBER,
+          to_number: fromPhone, sent_at: now2,
+        });
+
+        res.setHeader('Content-Type', 'text/xml');
+        return res.send('<Response></Response>');
+      }
+    }
+    // ── End Onboarding State Machine ─────────────────────────────────────────
 
     // HELP command
     if (bodyUpper === 'HELP') {
