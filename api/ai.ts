@@ -36,6 +36,43 @@ async function callOpenAI(apiKey: string, systemPrompt: string, userContent: str
   return JSON.parse(content);
 }
 
+// Shared action item schema used by deal-chat and voice
+const actionItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    type: {
+      type: 'string',
+      enum: ['create_task', 'add_note', 'draft_email', 'flag_compliance_issue', 'suggest_stage_update'],
+    },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    dueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    priority: { type: 'string', enum: ['low', 'medium', 'high', 'watch', 'fail', 'none'] },
+    targetRole: { type: 'string' },
+    confidence: { type: 'number' },
+    rationale: { type: 'string' },
+  },
+  required: ['type', 'title', 'description', 'dueDate', 'priority', 'targetRole', 'confidence', 'rationale'],
+};
+
+// Transform flat OpenAI action fields into typed payload objects
+function transformActions(actions: any[]): any[] {
+  if (!actions) return [];
+  return actions.map((a: any) => ({
+    type: a.type,
+    payload: {
+      title: a.title,
+      description: a.description,
+      dueDate: a.dueDate,
+      priority: a.priority,
+      targetRole: a.targetRole,
+    },
+    confidence: a.confidence,
+    rationale: a.rationale,
+  }));
+}
+
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const classificationSchema = {
@@ -109,27 +146,7 @@ const dealChatSchema = {
     answer: { type: 'string' },
     confidence: { type: 'number' },
     factsUsed: { type: 'array', items: { type: 'string' } },
-    suggestedActions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          type: {
-            type: 'string',
-            enum: ['create_task', 'add_note', 'draft_email', 'flag_compliance_issue', 'suggest_stage_update'],
-          },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          dueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          priority: { type: 'string', enum: ['low', 'medium', 'high', 'watch', 'fail', 'none'] },
-          targetRole: { type: 'string' },
-          confidence: { type: 'number' },
-          rationale: { type: 'string' },
-        },
-        required: ['type', 'title', 'description', 'dueDate', 'priority', 'targetRole', 'confidence', 'rationale'],
-      },
-    },
+    suggestedActions: { type: 'array', items: actionItemSchema },
     warnings: { type: 'array', items: { type: 'string' } },
   },
   required: ['answer', 'confidence', 'factsUsed', 'suggestedActions', 'warnings'],
@@ -182,27 +199,7 @@ const voiceInterpretationSchema = {
   properties: {
     transcript: { type: 'string' },
     summary: { type: 'string' },
-    suggestedActions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          type: {
-            type: 'string',
-            enum: ['create_task', 'add_note', 'draft_email', 'flag_compliance_issue', 'suggest_stage_update'],
-          },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          dueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-          priority: { type: 'string', enum: ['low', 'medium', 'high', 'watch', 'fail', 'none'] },
-          targetRole: { type: 'string' },
-          confidence: { type: 'number' },
-          rationale: { type: 'string' },
-        },
-        required: ['type', 'title', 'description', 'dueDate', 'priority', 'targetRole', 'confidence', 'rationale'],
-      },
-    },
+    suggestedActions: { type: 'array', items: actionItemSchema },
     mentionedEntities: { type: 'array', items: { type: 'string' } },
     detectedDates: { type: 'array', items: { type: 'string' } },
     warnings: { type: 'array', items: { type: 'string' } },
@@ -401,20 +398,7 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
   const parsed = JSON.parse(content);
 
   // Convert flat action fields into typed payload objects for the client
-  if (parsed.suggestedActions) {
-    parsed.suggestedActions = parsed.suggestedActions.map((a: any) => ({
-      type: a.type,
-      payload: {
-        title: a.title,
-        description: a.description,
-        dueDate: a.dueDate,
-        priority: a.priority,
-        targetRole: a.targetRole,
-      },
-      confidence: a.confidence,
-      rationale: a.rationale,
-    }));
-  }
+  parsed.suggestedActions = transformActions(parsed.suggestedActions);
 
   return parsed;
 }
@@ -486,20 +470,7 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
   const result = await callOpenAI(apiKey, systemPrompt, userContent, voiceInterpretationSchema, 'voice_interpretation');
 
   // Convert flat action fields into typed payload objects
-  if (result.suggestedActions) {
-    result.suggestedActions = result.suggestedActions.map((a: any) => ({
-      type: a.type,
-      payload: {
-        title: a.title,
-        description: a.description,
-        dueDate: a.dueDate,
-        priority: a.priority,
-        targetRole: a.targetRole,
-      },
-      confidence: a.confidence,
-      rationale: a.rationale,
-    }));
-  }
+  result.suggestedActions = transformActions(result.suggestedActions);
 
   return result;
 }
