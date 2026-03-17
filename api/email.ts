@@ -75,6 +75,80 @@ function stripHtml(html: string): string {
 }
 
 
+async function handleSearch(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ error: 'Gmail not configured' });
+
+  const addressParam = req.query.addresses as string;
+  if (!addressParam) return res.status(400).json({ error: 'addresses param required' });
+
+  let addresses: string[];
+  try { addresses = JSON.parse(addressParam); }
+  catch { addresses = addressParam.split(',').map((a: string) => a.trim()).filter(Boolean); }
+  if (!addresses.length) return res.status(400).json({ error: 'No addresses provided' });
+
+  const client = new ImapFlow({
+    host: 'imap.gmail.com', port: 993, secure: true,
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }, logger: false,
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock('INBOX');
+    const uidSet = new Set<number>();
+    try {
+      for (const addr of addresses) {
+        const uids1 = await (client.search as any)({ text: addr }, { uid: true });
+        for (const uid of (uids1 as number[])) uidSet.add(uid);
+        const words = addr.split(' ').slice(0, 3).join(' ');
+        const uids2 = await (client.search as any)({ subject: words }, { uid: true });
+        for (const uid of (uids2 as number[])) uidSet.add(uid);
+      }
+    } catch (searchErr) { console.error('IMAP search error:', searchErr); }
+
+    const emails: any[] = [];
+    const uidList = Array.from(uidSet).slice(0, 40);
+    for (const uid of uidList) {
+      try {
+        const msg = await client.fetchOne(uid.toString(), { envelope: true, source: true });
+        if (!msg) continue;
+        const source = msg.source?.toString('utf-8') || '';
+        const { text, html, attachments } = extractPartsFromSource(source);
+        const bodyText = text || (html ? stripHtml(html) : '');
+        const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+        const fromAddr = msg.envelope?.from?.[0];
+        emails.push({
+          id: msg.uid.toString(),
+          subject: msg.envelope?.subject || '(no subject)',
+          from: fromAddr ? `${fromAddr.name || ''} <${fromAddr.address || ''}>`.trim() : '',
+          to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
+          date: msgDate.toISOString(),
+          internalDate: msgDate.getTime().toString(),
+          snippet: bodyText.substring(0, 200),
+          bodyHtml: html || '',
+          body: bodyText,
+          attachments: attachments.map((a: any) => ({
+            filename: a.filename, contentType: a.contentType, size: a.size,
+            downloadUrl: `/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
+          })),
+        });
+      } catch (fetchErr) { console.error(`Failed to fetch UID ${uid}:`, fetchErr); }
+    }
+    lock.release();
+    await client.logout();
+    emails.sort((a, b) => Number(b.internalDate) - Number(a.internalDate));
+    return res.status(200).json({ emails, total: emails.length, addresses });
+  } catch (err: any) {
+    console.error('Email search error:', err);
+    try { await client.logout(); } catch {}
+    return res.status(500).json({ error: err.message || 'Search failed' });
+  }
+}
+
+
 async function classifyEmailsWithAI(threads: any[]): Promise<Map<string, boolean>> {
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
   if (!OPENAI_KEY || threads.length === 0) return new Map();
@@ -276,5 +350,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = req.query.action as string;
   if (action === 'send') return handleSend(req, res);
   if (action === 'attachment') return handleAttachment(req, res);
+  if (action === 'search') return handleSearch(req, res);
   return handleThreads(req, res);
 }

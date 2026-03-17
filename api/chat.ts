@@ -17,6 +17,8 @@ CAPABILITIES:
 - Provide TC best practices and advice
 - Draft follow-up emails
 - Navigate the user directly to a specific deal in the app
+- Search through Gmail emails by property address - shows a special popup with all matching emails + attachments
+- Search through SMS and WhatsApp conversations
 
 PERSONALITY:
 - Professional but friendly
@@ -29,6 +31,12 @@ NAVIGATION RULES:
 - When a user says "show me", "take me to", "open", "go to", "navigate to", or "pull up" a deal → ALWAYS call navigate_to_deal
 - After navigating, briefly describe what they'll see in the deal workspace
 - You can also navigate to app views (contacts, dashboard, compliance) using navigate_to_view
+
+EMAIL SEARCH RULES:
+- When user asks to "show emails for", "pull up emails about", "find emails related to", "search emails for", or "what emails do we have on" a property address → ALWAYS call search_property_emails
+- For duplex/multi-unit properties, extract BOTH addresses and pass them all
+- After calling search_property_emails, tell the user what you found and that they can browse the emails in the popup
+- The popup will have TWO tabs: all emails on one tab, all attachments on another
 
 IMPORTANT RULES:
 - When creating tasks, always confirm what you created
@@ -178,6 +186,28 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'search_property_emails',
+      description: 'Search Gmail for ALL emails related to a specific property address. Use when user asks to show emails for a property, pull up emails about an address, or find email history for a deal. For duplex/multi-unit properties, include both unit addresses. Opens a special popup with all emails and attachments organized by tabs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          addresses: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of property address(es) to search for. For a duplex, include both unit addresses e.g. ["123 Oak St", "125 Oak St"]. Always include street number and street name at minimum.',
+          },
+          label: {
+            type: 'string',
+            description: 'Human-readable label for the search e.g. "123 & 125 Oak St" or "4521 Maple Ave"',
+          },
+        },
+        required: ['addresses'],
       },
     },
   },
@@ -524,6 +554,18 @@ async function executeTool(
         });
       }
 
+      case 'search_property_emails': {
+        const addresses = args.addresses as string[];
+        const label = (args.label as string) || addresses.join(' & ');
+        // Return marker for frontend to open property email modal
+        return JSON.stringify({
+          propertyEmailSearch: true,
+          addresses,
+          label,
+          message: `Searching emails for: ${label}`,
+        });
+      }
+
       case 'draft_email': {
         const search = (args.deal_search as string).toLowerCase();
         const { data } = await supabase
@@ -623,6 +665,8 @@ export default async function handler(req: any, res: any) {
     let navigateTo: { type: 'deal'; dealId: string; address: string; city?: string; state?: string } |
                     { type: 'view'; view: string; label: string } | null = null;
 
+    let propertyEmailSearch: { addresses: string[]; label: string } | null = null;
+
     // Track task tool results for auto-navigation post-processing
     const taskToolResults: string[] = [];
 
@@ -667,6 +711,17 @@ export default async function handler(req: any, res: any) {
               } else if (fnName === 'navigate_to_view' && parsed.view) {
                 navigateTo = { type: 'view', view: parsed.view, label: parsed.label };
               }
+            }
+          } catch (e) {}
+        }
+
+
+        // Capture property email search actions
+        if (fnName === 'search_property_emails') {
+          try {
+            const parsed = JSON.parse(result);
+            if (parsed.propertyEmailSearch) {
+              propertyEmailSearch = { addresses: parsed.addresses, label: parsed.label };
             }
           } catch (e) {}
         }
@@ -749,7 +804,7 @@ export default async function handler(req: any, res: any) {
       metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds, navigated: !!navigateTo }),
     }).then(() => {}).catch(() => {});
 
-    return res.status(200).json({ reply, toolsUsed: rounds > 0, navigateTo });
+    return res.status(200).json({ reply, toolsUsed: rounds > 0, navigateTo, propertyEmailSearch });
   } catch (err: any) {
     console.error('Chat API error:', err);
     return res.status(500).json({ error: 'Failed to process chat request. Please try again.' });

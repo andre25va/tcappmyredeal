@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard } from 'lucide-react';
+import { PropertyEmailModal } from './PropertyEmailModal';
+import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard, Building2 } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -8,6 +9,7 @@ interface ChatMessage {
   timestamp: Date;
   toolsUsed?: boolean;
   navigateTo?: NavigateTo | null;
+  propertyEmailSearch?: { addresses: string[]; label: string } | null;
 }
 
 type NavigateTo =
@@ -31,6 +33,7 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [propertyModal, setPropertyModal] = useState<{ addresses: string[]; label: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,12 +94,13 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
       const data = await res.json();
 
       const assistantMsg: ChatMessage = {
-        id: `msg-${Date.now()}-ai`,
+        id: `msg-\${Date.now()}-ai`,
         role: 'assistant',
         content: data.reply || 'Sorry, I could not process that request.',
         timestamp: new Date(),
         toolsUsed: data.toolsUsed,
         navigateTo: data.navigateTo || null,
+        propertyEmailSearch: data.propertyEmailSearch || null,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -178,6 +182,23 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
       );
     }
     return null;
+  };
+
+
+  const renderPropertySearchButton = (pSearch: { addresses: string[]; label: string }) => {
+    return (
+      <button
+        onClick={() => setPropertyModal(pSearch)}
+        className="mt-3 flex items-center gap-2 w-full px-3 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-semibold transition-all group"
+      >
+        <Building2 size={13} className="flex-none" />
+        <div className="flex-1 text-left">
+          <div>📧 View Emails: {pSearch.label}</div>
+          <div className="text-[10px] opacity-70 font-normal mt-0.5">Emails tab + Attachments tab</div>
+        </div>
+        <ArrowRight size={13} className="flex-none group-hover:translate-x-0.5 transition-transform" />
+      </button>
+    );
   };
 
   return (
@@ -279,6 +300,7 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
                   )}
 
                   {msg.role === 'assistant' && msg.navigateTo && renderNavigateButton(msg.navigateTo)}
+                  {msg.role === 'assistant' && msg.propertyEmailSearch && renderPropertySearchButton(msg.propertyEmailSearch)}
 
                   {msg.toolsUsed && !msg.navigateTo && (
                     <div className="flex items-center gap-1 mt-2 pt-1.5 border-t border-base-300/30">
@@ -333,6 +355,15 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
             </div>
           </div>
         </div>
+      )}
+
+      {/* Property Email Modal */}
+      {propertyModal && (
+        <PropertyEmailModal
+          addresses={propertyModal.addresses}
+          label={propertyModal.label}
+          onClose={() => setPropertyModal(null)}
+        />
       )}
 
       <style>{`
