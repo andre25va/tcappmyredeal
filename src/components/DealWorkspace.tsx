@@ -9,6 +9,7 @@ import { DealCommTimeline } from './DealCommTimeline';
 import { dealToRecord } from '../ai/dealConverter';
 import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
+import { useDealEmails } from '../hooks/useDealEmails';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -68,6 +69,9 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   const [showSheet, setShowSheet] = useState(false);
   const [showFocusView, setShowFocusView] = useState(false);
 
+  // Fetch deal emails
+  const { emails: dealEmails, loading: emailsLoading, stats: emailStats } = useDealEmails(deal);
+
   // Reset to Overview whenever the deal changes
   useEffect(() => { setTab('overview'); }, [deal.id]);
   const pendingDocs = pendingDocCount(deal.documentRequests);
@@ -83,7 +87,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
-    { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} /> },
+    { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
   ];
 
   return (
@@ -212,7 +216,18 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
         {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
-        {tab === 'ai-emails' && <div className="p-4"><EmailCommandCenter deal={dealToRecord(deal)} emails={[]} /></div>}
+        {tab === 'ai-emails' && (
+          <div className="p-4">
+            {emailsLoading && dealEmails.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <span className="loading loading-spinner loading-md text-primary" />
+                <span className="ml-3 text-sm text-base-content/60">Searching & classifying emails…</span>
+              </div>
+            ) : (
+              <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

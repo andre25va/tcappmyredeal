@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
 import { DealHealthCard } from './DealHealthCard';
+import { EmailSummaryCard } from './EmailSummaryCard';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
@@ -10,7 +11,7 @@ import {
   closingCountdown, generateId
 } from '../utils/helpers';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -406,7 +407,7 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger }) => {
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails }) => {
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
@@ -519,6 +520,9 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
       {/* ─── Deal Health ─── */}
       <DealHealthCard dealRecord={dealToRecord(deal)} />
+
+      {/* ─── Email Summary ─── */}
+      <EmailSummaryCard deal={deal} onGoToEmails={onGoToEmails} />
 
       {/* ─── Milestone Stepper ─── */}
       <MilestoneStepper deal={deal} onUpdate={onUpdate} />
