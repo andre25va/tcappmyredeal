@@ -161,16 +161,14 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
     try {
       const { data: deals } = await supabase
         .from('deals')
-        .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
+        .select('id, property_address, city, state, pipeline_stage, closing_date, mls_number, contract_price, transaction_type, agent_name, listing_agent_name, selling_agent_name')
         .limit(200);
 
       (deals ?? []).forEach((d: any) => {
-        const extra = d.deal_data ?? {};
         const haystack = [
           d.property_address, d.city, d.state, d.pipeline_stage,
-          extra.buyerName, extra.sellerName, extra.listingAgentName,
-          extra.buyerAgentName, extra.lenderName, extra.titleCompanyName,
-          JSON.stringify(extra),
+          d.agent_name, d.listing_agent_name, d.selling_agent_name,
+          d.mls_number,
         ].map(s => (s || '').toLowerCase()).join(' ');
 
         if (terms.some(t => haystack.includes(t))) {
@@ -259,7 +257,7 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
       // Now run the actual filter against deals
       const { data: deals } = await supabase
         .from('deals')
-        .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
+        .select('id, property_address, city, state, pipeline_stage, closing_date, mls_number, contract_price, transaction_type, agent_name, listing_agent_name, selling_agent_name, updated_at')
         .limit(500);
 
       const matched = filterDeals(deals ?? [], iq);
@@ -291,8 +289,6 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
 
   function filterDeals(deals: any[], q: DealSearchQuery): any[] {
     return deals.filter(d => {
-      const extra = d.deal_data ?? {};
-
       // stage
       if (q.stage && q.stage.length > 0) {
         const mapped: Record<string, string> = {
@@ -315,27 +311,26 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
 
       // transactionType
       if (q.transactionType && q.transactionType.length > 0) {
-        const side = (extra.transactionType || '').toLowerCase();
+        const side = (d.transaction_type || '').toLowerCase();
         if (!q.transactionType.some(s => side.includes(s))) return false;
       }
 
       // textSearch
       if (q.textSearch) {
         const text = q.textSearch.toLowerCase();
-        const hay = [d.property_address, d.city, d.state, extra.agentName, extra.mlsNumber, JSON.stringify(extra)]
+        const hay = [d.property_address, d.city, d.state, d.agent_name, d.mls_number, d.listing_agent_name, d.selling_agent_name]
           .map(s => (s || '').toLowerCase()).join(' ');
         if (!hay.includes(text)) return false;
       }
 
-      // dealType
+      // dealType — property type not yet a relational column, skip filter for now
       if (q.dealType && q.dealType.length > 0) {
-        const pt = (extra.propertyType || '').toLowerCase();
-        if (!q.dealType.some(t => pt.includes(t))) return false;
+        // propertyType not available as relational column yet
       }
 
       // staleDaysGreaterThan
       if (typeof q.staleDaysGreaterThan === 'number') {
-        const updated = extra.updatedAt || d.updated_at;
+        const updated = d.updated_at;
         if (updated) {
           const daysSince = Math.floor((Date.now() - new Date(updated).getTime()) / 86400000);
           if (daysSince <= q.staleDaysGreaterThan) return false;
@@ -461,7 +456,7 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
     setFilterChips(chips);
     // Run search with saved filters
     supabase.from('deals')
-      .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
+      .select('id, property_address, city, state, pipeline_stage, closing_date, mls_number, contract_price, transaction_type, agent_name, listing_agent_name, selling_agent_name, updated_at')
       .limit(500)
       .then(({ data }) => {
         const matched = filterDeals(data ?? [], view.filters);

@@ -46,7 +46,6 @@ interface DirectoryContact {
 interface Deal {
   id: string;
   propertyAddress?: string;
-  deal_data?: any;
 }
 
 interface CommTasksViewProps {
@@ -157,7 +156,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
         contact_phone: selectedContact?.phone,
         contact_email: selectedContact?.email,
         deal_id: selectedDeal?.id,
-        deal_address: selectedDeal?.propertyAddress || selectedDeal?.deal_data?.address,
+        deal_address: selectedDeal?.propertyAddress,
         due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
         source: 'manual',
         status: 'pending',
@@ -282,7 +281,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
               <option value="">— No deal —</option>
               {deals.map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.propertyAddress || d.deal_data?.propertyAddress || `Deal ${d.id.slice(0, 8)}`}
+                  {d.propertyAddress || `Deal ${d.id.slice(0, 8)}`}
                 </option>
               ))}
             </select>
@@ -551,12 +550,11 @@ export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps)
         // Load deals
         const { data: dealData } = await supabase
           .from('deals')
-          .select('id, deal_data')
+          .select('id, property_address')
           .order('created_at', { ascending: false });
         if (dealData) setDeals(dealData.map(d => ({
           id: d.id,
-          propertyAddress: d.deal_data?.propertyAddress,
-          deal_data: d.deal_data,
+          propertyAddress: d.property_address,
         })));
       } finally {
         setLoading(false);

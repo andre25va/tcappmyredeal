@@ -84,25 +84,21 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
       // ── Deals: fetch all, filter client-side across all fields ──────
       const { data: deals, error: dealErr } = await supabase
         .from('deals')
-        .select('id, property_address, city, state, pipeline_stage, closing_date, deal_data')
+        .select('id, property_address, city, state, pipeline_stage, closing_date, mls_number, contract_price, transaction_type, agent_name, listing_agent_name, selling_agent_name')
         .limit(200);
 
       if (dealErr) console.error('Deal search error:', dealErr);
 
       (deals ?? []).forEach((d: any) => {
-        const extra = d.deal_data ?? {};
         const haystack = [
           (d.property_address || '').toLowerCase(),
           (d.city || '').toLowerCase(),
           (d.state || '').toLowerCase(),
           (d.pipeline_stage || '').toLowerCase(),
-          (extra.buyerName || '').toLowerCase(),
-          (extra.sellerName || '').toLowerCase(),
-          (extra.listingAgentName || '').toLowerCase(),
-          (extra.buyerAgentName || '').toLowerCase(),
-          (extra.lenderName || '').toLowerCase(),
-          (extra.titleCompanyName || '').toLowerCase(),
-          JSON.stringify(extra).toLowerCase(),
+          (d.agent_name || '').toLowerCase(),
+          (d.listing_agent_name || '').toLowerCase(),
+          (d.selling_agent_name || '').toLowerCase(),
+          (d.mls_number || '').toLowerCase(),
         ].join(' ');
 
         const matches = terms.some(t => haystack.includes(t));
