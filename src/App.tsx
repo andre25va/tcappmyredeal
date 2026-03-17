@@ -62,6 +62,8 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
+  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
+  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
   const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -310,8 +312,6 @@ function AppInner() {
     setView(v);
   };
 
-  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
-  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
   const handleNotificationNavigate = (navView: string, id?: string) => {
     if (navView === 'inbox' && id) {
