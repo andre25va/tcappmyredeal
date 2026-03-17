@@ -344,6 +344,357 @@ async function handleAttachment(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+// SMART EMAIL CLASSIFIER  –  3-layer: rules → deterministic → AI
+// ═══════════════════════════════════════════════════════════════════
+
+interface DealEmailContext {
+  dealId: string;
+  propertyAddress: string;
+  addressVariants: string[];
+  mlsNumber?: string;
+  clientNames: string[];
+  participantEmails: string[];
+  linkedThreadIds: string[];
+}
+
+interface EmailClassificationResult {
+  id: string;
+  shouldAttach: boolean;
+  confidence: number;
+  category: 'contract'|'inspection'|'appraisal'|'title'|'lender'|'closing'|'compliance'|'general'|'unrelated';
+  reason: string;
+  extractedSignals: string[];
+  source: 'deterministic'|'ai';
+}
+
+function normTxt(s: string): string {
+  return (s || '').toLowerCase().replace(/[^\w\s#-]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function matchAny(hay: string, needles: string[]): string[] {
+  const h = normTxt(hay);
+  return needles.filter(n => n && n.length > 2 && h.includes(normTxt(n)));
+}
+
+function buildAddressVariants(addr: string): string[] {
+  if (!addr) return [];
+  const base = addr.trim();
+  const variants = new Set<string>();
+  variants.add(base);
+  variants.add(base.toLowerCase());
+  const abbrevMap: Record<string,string> = {
+    'street':'st','avenue':'ave','boulevard':'blvd','drive':'dr',
+    'road':'rd','lane':'ln','court':'ct','place':'pl','trafficway':'twy',
+    'highway':'hwy','parkway':'pkwy','circle':'cir','terrace':'ter',
+  };
+  let abbrev = base.toLowerCase();
+  for (const [full, short] of Object.entries(abbrevMap)) {
+    abbrev = abbrev.replace(new RegExp(`\\b${full}\\b`,'gi'), short);
+  }
+  variants.add(abbrev);
+  const words = base.split(/\s+/).slice(0,4).join(' ');
+  if (words !== base) variants.add(words);
+  const numMatch = base.match(/^(\d+)/);
+  if (numMatch) variants.add(numMatch[1]);
+  return Array.from(variants).filter(v => v.length > 3);
+}
+
+function extractEmailHeaders(source: string): { messageId?: string; inReplyTo?: string; cc?: string } {
+  const headerEnd = source.indexOf('\r\n\r\n');
+  if (headerEnd === -1) return {};
+  const sec = source.substring(0, headerEnd).replace(/\r\n([ \t])/g,' ');
+  const get = (name: string) => {
+    const m = sec.match(new RegExp(`^${name}:\\s*(.+)$`,'im'));
+    return m ? m[1].trim() : undefined;
+  };
+  return {
+    messageId: get('Message-ID')?.replace(/[<>]/g,''),
+    inReplyTo: get('In-Reply-To')?.replace(/[<>]/g,''),
+    cc: get('Cc'),
+  };
+}
+
+function buildThreadGroups(emails: any[]): Map<string,string> {
+  const byMsgId = new Map<string,any>();
+  for (const e of emails) { if (e.messageId) byMsgId.set(e.messageId, e); }
+  function findRoot(e: any, depth=0): string {
+    if (depth > 15 || !e.inReplyTo) return e.messageId || e.id;
+    const parent = byMsgId.get(e.inReplyTo);
+    if (!parent || parent.id === e.id) return e.messageId || e.id;
+    return findRoot(parent, depth+1);
+  }
+  const result = new Map<string,string>();
+  for (const e of emails) result.set(e.id, findRoot(e));
+  return result;
+}
+
+function deterministicScore(email: any, deal: DealEmailContext): { score: number; signals: string[] } {
+  let score = 0;
+  const signals: string[] = [];
+  const subject = email.subject || '';
+  const body = email.bodyText || email.snippet || '';
+  const from = email.from || '';
+  const attNames: string[] = email.attachmentNames || [];
+
+  if (deal.linkedThreadIds.includes(email.threadGroupId || email.id)) {
+    score += 100; signals.push('linked_thread');
+  }
+  if (matchAny(subject, deal.addressVariants).length) { score += 40; signals.push('addr_subject'); }
+  if (matchAny(body, deal.addressVariants).length)    { score += 25; signals.push('addr_body'); }
+  if (deal.mlsNumber && matchAny(`${subject} ${body}`, [deal.mlsNumber]).length) {
+    score += 35; signals.push('mls_match');
+  }
+  if (matchAny(`${subject} ${body}`, deal.clientNames).length) { score += 15; signals.push('client_name'); }
+  const fromNorm = normTxt(from);
+  if (deal.participantEmails.find(p => fromNorm.includes(normTxt(p)))) {
+    score += 25; signals.push('participant_email');
+  }
+  const attKw = ['contract','inspection','appraisal','closing','disclosure','addendum','title','hoa','earnest'];
+  if (attNames.some(a => attKw.some(k => normTxt(a).includes(k)))) {
+    score += 10; signals.push('attachment_keyword');
+  }
+  return { score, signals };
+}
+
+async function classifyBatchWithAI(
+  grayEmails: any[],
+  deal: DealEmailContext,
+  signalsMap: Map<string,string[]>
+): Promise<Map<string,EmailClassificationResult>> {
+  const result = new Map<string,EmailClassificationResult>();
+  const KEY = process.env.OPENAI_API_KEY;
+  if (!KEY || grayEmails.length === 0) return result;
+  try {
+    const emailList = grayEmails.map(e => ({
+      id: e.id,
+      subject: (e.subject||'').substring(0,100),
+      from: (e.from||'').substring(0,80),
+      snippet: (e.snippet||'').substring(0,200),
+      attachmentNames: (e.attachmentNames||[]).slice(0,5),
+      deterministicSignals: signalsMap.get(e.id)||[],
+    }));
+    const systemPrompt = `You are classifying emails for a real estate transaction coordinator.
+Property: ${deal.propertyAddress}${deal.mlsNumber ? ` (MLS# ${deal.mlsNumber})` : ''}
+Participants: ${deal.participantEmails.join(', ')||'none'}
+Client names: ${deal.clientNames.join(', ')||'none'}
+Classify each email: does it belong to this transaction file?
+Prefer precision over recall. When unclear, set shouldAttach=false.
+Categories: contract, inspection, appraisal, title, lender, closing, compliance, general, unrelated`;
+
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'email_batch_classification',
+            strict: true,
+            schema: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                classifications: {
+                  type: 'array',
+                  items: {
+                    type: 'object', additionalProperties: false,
+                    properties: {
+                      id:               { type: 'string' },
+                      shouldAttach:     { type: 'boolean' },
+                      confidence:       { type: 'number' },
+                      category:         { type: 'string', enum: ['contract','inspection','appraisal','title','lender','closing','compliance','general','unrelated'] },
+                      reason:           { type: 'string' },
+                      extractedSignals: { type: 'array', items: { type: 'string' } },
+                    },
+                    required: ['id','shouldAttach','confidence','category','reason','extractedSignals'],
+                  },
+                },
+              },
+              required: ['classifications'],
+            },
+          },
+        },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Classify these ${emailList.length} emails:\n${JSON.stringify(emailList,null,2)}` },
+        ],
+      }),
+    });
+    if (!resp.ok) { console.error('OpenAI batch classify HTTP error:', resp.status); return result; }
+    const data = await resp.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{"classifications":[]}');
+    for (const item of (parsed.classifications||[])) {
+      result.set(item.id, {
+        id: item.id,
+        shouldAttach: item.shouldAttach && item.confidence >= 0.65,
+        confidence: Math.max(0, Math.min(1, item.confidence)),
+        category: item.category,
+        reason: item.reason,
+        extractedSignals: item.extractedSignals||[],
+        source: 'ai',
+      });
+    }
+  } catch(err) { console.error('AI batch classify error:', err); }
+  return result;
+}
+
+async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ error: 'Gmail not configured' });
+
+  const params = req.method === 'POST' ? req.body : req.query;
+  const addressParam = params.addresses as string;
+  if (!addressParam) return res.status(400).json({ error: 'addresses param required' });
+
+  let addresses: string[];
+  try { addresses = JSON.parse(addressParam); }
+  catch { addresses = addressParam.split(',').map((a:string)=>a.trim()).filter(Boolean); }
+
+  const mlsNumber = (params.mlsNumber as string)||'';
+  const dealId    = (params.dealId    as string)||'';
+  const clientNames:       string[] = (() => { try { return JSON.parse(params.clientNames as string||'[]'); } catch { return []; } })();
+  const participantEmails: string[] = (() => { try { return JSON.parse(params.participantEmails as string||'[]'); } catch { return []; } })();
+  const linkedThreadIds:   string[] = (() => { try { return JSON.parse(params.linkedThreadIds as string||'[]'); } catch { return []; } })();
+
+  const allVariants: string[] = [];
+  for (const addr of addresses) allVariants.push(...buildAddressVariants(addr));
+
+  const deal: DealEmailContext = {
+    dealId: dealId||'unknown',
+    propertyAddress: addresses[0]||'',
+    addressVariants: [...new Set(allVariants)],
+    mlsNumber: mlsNumber||undefined,
+    clientNames, participantEmails, linkedThreadIds,
+  };
+
+  // ── IMAP Search ────────────────────────────────────────────────────────────
+  const client = new ImapFlow({
+    host:'imap.gmail.com', port:993, secure:true,
+    auth:{ user:GMAIL_USER, pass:GMAIL_APP_PASSWORD }, logger:false,
+  });
+  const rawEmails: any[] = [];
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock('INBOX');
+    const uidSet = new Set<number>();
+    try {
+      for (const addr of addresses) {
+        const u1 = await (client.search as any)({ text: addr }, { uid:true });
+        for (const u of (u1 as number[])) uidSet.add(u);
+        const words = addr.split(' ').slice(0,3).join(' ');
+        const u2 = await (client.search as any)({ subject: words }, { uid:true });
+        for (const u of (u2 as number[])) uidSet.add(u);
+      }
+    } catch(e) { console.error('IMAP search error:', e); }
+    const uidList = Array.from(uidSet).slice(0,50);
+    for (const uid of uidList) {
+      try {
+        const msg = await client.fetchOne(uid.toString(), { envelope:true, source:true });
+        if (!msg) continue;
+        const source = msg.source?.toString('utf-8')||'';
+        const { text, html, attachments } = extractPartsFromSource(source);
+        const bodyText = text||(html ? stripHtml(html) : '');
+        const msgDate  = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+        const fromAddr = msg.envelope?.from?.[0];
+        const hdrs     = extractEmailHeaders(source);
+        rawEmails.push({
+          id: msg.uid.toString(),
+          messageId: hdrs.messageId,
+          inReplyTo: hdrs.inReplyTo,
+          subject: msg.envelope?.subject||'(no subject)',
+          from: fromAddr ? `${fromAddr.name||''} <${fromAddr.address||''}>`.trim() : '',
+          to: msg.envelope?.to?.map((a:any)=>a.address).join(', ')||'',
+          cc: hdrs.cc||msg.envelope?.cc?.map((a:any)=>a.address).join(', ')||'',
+          date: msgDate.toISOString(),
+          internalDate: msgDate.getTime().toString(),
+          snippet: bodyText.substring(0,200),
+          bodyHtml: html||'',
+          body: bodyText,
+          attachmentNames: attachments.map((a:any)=>a.filename),
+          attachments: attachments.map((a:any)=>({
+            filename:a.filename, contentType:a.contentType, size:a.size,
+            downloadUrl:`/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
+          })),
+        });
+      } catch(e) { console.error(`Fetch UID ${uid} error:`, e); }
+    }
+    lock.release();
+    await client.logout();
+  } catch(err:any) {
+    console.error('Email search-classify error:', err);
+    try { await client.logout(); } catch {}
+    return res.status(500).json({ error: err.message||'Search failed' });
+  }
+
+  // ── Thread grouping ────────────────────────────────────────────────────────
+  const threadGroupMap = buildThreadGroups(rawEmails);
+  for (const e of rawEmails) e.threadGroupId = threadGroupMap.get(e.id)||e.id;
+
+  // ── 3-layer classification ─────────────────────────────────────────────────
+  const hardAccept: any[] = [];
+  const hardReject: any[] = [];
+  const grayZone:   any[] = [];
+  const signalsMap  = new Map<string,string[]>();
+
+  for (const e of rawEmails) {
+    const { score, signals } = deterministicScore(e, deal);
+    signalsMap.set(e.id, signals);
+    e._score = score;
+    if      (score >= 80) hardAccept.push(e);
+    else if (score <  20) hardReject.push(e);
+    else                  grayZone.push(e);
+  }
+
+  const aiResults = await classifyBatchWithAI(grayZone, deal, signalsMap);
+
+  // ── Assemble results ───────────────────────────────────────────────────────
+  const results: any[] = [];
+
+  for (const e of hardAccept) {
+    const conf = Math.min(0.99, 0.90 + (e._score - 80) * 0.001);
+    results.push({ ...e, classification: {
+      shouldAttach:     true,
+      confidence:       conf,
+      category:         'general',
+      reason:           'High-confidence rule match',
+      extractedSignals: signalsMap.get(e.id)||[],
+      source:           'deterministic',
+    }});
+  }
+
+  for (const e of grayZone) {
+    const ai = aiResults.get(e.id);
+    if (ai?.shouldAttach) {
+      results.push({ ...e, classification: ai });
+    }
+  }
+
+  results.sort((a,b) => {
+    const cd = b.classification.confidence - a.classification.confidence;
+    if (Math.abs(cd) > 0.05) return cd;
+    return Number(b.internalDate) - Number(a.internalDate);
+  });
+
+  return res.status(200).json({
+    emails: results,
+    total:  results.length,
+    addresses,
+    stats: {
+      hardAccepted: hardAccept.length,
+      grayZone:     grayZone.length,
+      aiAccepted:   [...aiResults.values()].filter(r=>r.shouldAttach).length,
+      hardRejected: hardReject.length,
+      totalScanned: rawEmails.length,
+    },
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel rewrite passes path segment as query param:
   // /api/email/threads -> action='threads', /api/email/send -> action='send', /api/email/attachment -> action='attachment'
@@ -351,5 +702,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'send') return handleSend(req, res);
   if (action === 'attachment') return handleAttachment(req, res);
   if (action === 'search') return handleSearch(req, res);
+  if (action === 'search-classify') return handleSearchClassify(req, res);
   return handleThreads(req, res);
 }

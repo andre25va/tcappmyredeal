@@ -1,11 +1,12 @@
 {
   "rewrites": [
-    { "source": "/api/auth/:action", "destination": "/api/auth" },
+    { "source": "/api/auth/:action", "destination": "/api/auth?action=:action" },
     { "source": "/api/sms/send", "destination": "/api/sms" },
     { "source": "/api/sms/conversations", "destination": "/api/sms" },
     { "source": "/api/email/threads", "destination": "/api/email" },
     { "source": "/api/email/send", "destination": "/api/email" },
-    { "source": "/api/email/attachment", "destination": "/api/email" },
-    { "source": "/api/email/search", "destination": "/api/email?action=search" }
+    { "source": "/api/email/attachment", "destination": "/api/email?action=attachment" },
+    { "source": "/api/email/search", "destination": "/api/email?action=search" },
+    { "source": "/api/email/search-classify", "destination": "/api/email?action=search-classify" }
   ]
 }
