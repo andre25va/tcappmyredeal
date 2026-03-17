@@ -171,7 +171,7 @@ async function classifyEmailsWithAI(threads: any[]): Promise<Map<string, boolean
             role: 'system',
             content: `You are an email triage assistant for a real estate transaction coordinator (TC).
 Classify each email as priority:true or priority:false.
-PRIORITY=true: closing deadlines, contract issues, inspection requests, lender/title/agent direct messages, docs needed, urgent requests, date changes, earnest money, appraisal, escrow, wire instructions, buyer/seller communications.
+PRIORITY=true: closing deadlines, contract issues, inspection requests, lender/title/agent direct messages, docs needed, urgent requests, date changes, earnest money, appraisal, escrow, wire instructions, home warranty, buyer/seller communications.
 PRIORITY=false: newsletters, marketing, automated system notifications, promotions, general FYI, subscription emails, app alerts.
 Return ONLY a valid JSON array with no markdown: [{"id":"...","priority":true},{"id":"...","priority":false}]`,
           },

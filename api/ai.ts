@@ -934,6 +934,7 @@ Focus on state-specific requirements for the deal's jurisdiction and include gen
 - Financing type: financed deals need lender requirements (appraisal, loan commitment, clear to close from lender); cash deals skip lender items
 - Price range: higher-priced properties may need additional insurance reviews
 - Contract to closing timeline: tight timelines need expedited items flagged
+- Home warranty: ALWAYS include home warranty verification as a critical item — confirm ordered, coverage scope, cost allocation, and warranty company contact info. This is a MUST-HAVE before closing.
 
 IMPORTANT: Only suggest items NOT already in the deal's checklists. The existing items are provided below.
 Return practical, actionable items with clear reasons. Limit to 5-8 suggestions total across both categories.

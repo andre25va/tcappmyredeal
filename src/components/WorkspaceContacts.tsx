@@ -485,7 +485,9 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   };
 
   const addFromDirectory = async (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => {
-    const dealSide = side === 'buy' ? 'buyer' : side === 'sell' ? 'listing' : 'both' as any;
+    // Lenders are ALWAYS on the buy side — enforce regardless of where user clicked
+    const effectiveSide = cr.contactType === 'lender' ? 'buy' : side;
+    const dealSide = effectiveSide === 'buy' ? 'buyer' : effectiveSide === 'sell' ? 'listing' : 'both' as any;
     const dealRole = contactTypeToParticipantRole(cr.contactType);
 
     try {
@@ -510,12 +512,12 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       role: cr.contactType as ContactRole,
       company: cr.company,
       inNotificationList: true,
-      side,
+      side: effectiveSide,
     };
     onUpdate({
       ...deal,
       contacts: [...deal.contacts, contact],
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${side === 'buy' ? 'Buy' : side === 'sell' ? 'Sell' : 'Both'} Side`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
+      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
   };

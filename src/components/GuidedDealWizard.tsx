@@ -31,12 +31,14 @@ const fallbackDD = (): ChecklistItem[] => [
   { id: generateId(), title: 'Schedule home inspection', completed: false },
   { id: generateId(), title: 'Request seller disclosures', completed: false },
   { id: generateId(), title: 'Verify lender pre-approval letter', completed: false },
+  { id: generateId(), title: 'Confirm home warranty ordered and coverage details', completed: false },
 ];
 const defaultComp = (): ChecklistItem[] => [
   { id: generateId(), title: 'MLS data verified and entered', completed: false },
   { id: generateId(), title: 'Signed agency disclosure on file', completed: false },
   { id: generateId(), title: 'Buyer representation agreement on file', completed: false },
   { id: generateId(), title: 'All offer documents uploaded to broker platform', completed: false },
+  { id: generateId(), title: 'Home warranty confirmation on file (if applicable)', completed: false },
 ];
 
 interface Suggestion {
