@@ -14,6 +14,7 @@ import {
 } from '../utils/supabaseDb';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
+import { ClientOnboardingWizard } from './ClientOnboardingWizard';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
 
+  // Onboarding wizard
+  const [onboardingContact, setOnboardingContact] = useState<ContactRecord | null>(null);
+
   // ── Load data ────────────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
     try {
@@ -381,6 +385,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const handleSave = async () => {
     if (!form.firstName.trim()) return;
     setSaving(true);
+    // Capture wizard trigger conditions before clearing form
+    const isNewClient = form.contactType === 'agent' && form.isClient && !form.originalIsClient;
+    const savedFormId = form.id;
     try {
       const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
@@ -443,7 +450,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       }
 
       await refresh();
-      onDirectoryChanged?.();
+
+      // 4. If this is a NEW client, trigger onboarding wizard
+      if (isNewClient) {
+        const allContacts = await loadContactsFull();
+        const savedContact = allContacts.find(c => c.id === savedFormId);
+        if (savedContact) {
+          setOnboardingContact(savedContact);
+        }
+      } else {
+        onDirectoryChanged?.();
+      }
+
       closeModal();
     } catch (err) {
       console.error('Save failed:', err);
@@ -859,6 +877,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* Client Onboarding Wizard */}
+      {onboardingContact && (
+        <ClientOnboardingWizard
+          contact={onboardingContact}
+          onComplete={() => {
+            setOnboardingContact(null);
+            onDirectoryChanged?.();
+          }}
+          onSkip={() => setOnboardingContact(null)}
+        />
+      )}
     </div>
   );
 }
