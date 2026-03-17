@@ -165,7 +165,7 @@ async function handleAdminQuery(req: VercelRequest, res: VercelResponse) {
   try {
     // Pull database context for OpenAI
     const [dealsRes, contactsRes, tasksRes] = await Promise.all([
-      supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, contract_price, transaction_type, status').neq('status', 'terminated').limit(50),
+      supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, contract_price, transaction_type, status').or('status.is.null,status.neq.terminated').limit(50),
       supabase.from('contacts').select('id, first_name, last_name, email, contact_type, company').limit(100),
       supabase.from('comm_tasks').select('id, title, status, priority, due_date, deal_id').eq('status', 'pending').limit(30),
     ]);
@@ -197,12 +197,12 @@ Answer Andre's question directly and clearly. Keep voice answer under 3 sentence
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: question },
         ],
-        max_tokens: 500,
+        max_tokens: 300,
         temperature: 0.3,
       }),
     });
