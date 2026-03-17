@@ -6,6 +6,8 @@ const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
 const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER!;
 const APP_URL = 'https://tcappmyredeal.vercel.app';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
+const ADMIN_PHONE = '+13129989898';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -137,9 +139,108 @@ function buildClientDealSummary(deal: any): string {
 
 // ── Route Handlers ────────────────────────────────────────────────────────────
 
+async function handleAdminInbound(req: VercelRequest, res: VercelResponse, phone: string) {
+  res.setHeader('Content-Type', 'text/xml');
+  const greeting = say('Hey Andre! What would you like to know? Ask me about any deals, contacts, tasks, or anything in your database. Go ahead and speak after the tone.');
+  const gatherBlock = gather(
+    { action: `admin-query&phone=${encodeURIComponent(phone)}`, input: 'speech', timeout: 15 },
+    greeting
+  );
+  const fallback = say('No question received. Call back anytime. Goodbye!') + '<Hangup/>';
+  return res.send(twiml(gatherBlock, fallback));
+}
+
+async function handleAdminQuery(req: VercelRequest, res: VercelResponse) {
+  const { SpeechResult, From } = req.body;
+  const phone = (req.query.phone as string) || normalizeToE164(From || '');
+  const question = SpeechResult || '';
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  if (!question) {
+    const retry = say('I didn\'t catch that. Please call back and try again. Goodbye!');
+    return res.send(twiml(retry, '<Hangup/>'));
+  }
+
+  try {
+    // Pull database context for OpenAI
+    const [dealsRes, contactsRes, tasksRes] = await Promise.all([
+      supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, contract_price, transaction_type, status').neq('status', 'terminated').limit(50),
+      supabase.from('contacts').select('id, first_name, last_name, email, contact_type, company').limit(100),
+      supabase.from('comm_tasks').select('id, title, status, priority, due_date, deal_id').eq('status', 'pending').limit(30),
+    ]);
+
+    const deals = dealsRes.data || [];
+    const contacts = contactsRes.data || [];
+    const tasks = tasksRes.data || [];
+
+    const systemPrompt = `You are the AI assistant for TC Command, a real estate transaction coordination app owned by Andre Vargas (AVT Capital LLC). 
+Andre is calling you via phone and asking a question about his database. 
+Answer concisely and helpfully. You have access to live data from his Supabase database.
+
+CURRENT DATABASE SNAPSHOT:
+=== DEALS (${deals.length} total) ===
+${deals.map((d: any) => `- ${d.property_address}${d.city ? `, ${d.city}` : ''}${d.state ? `, ${d.state}` : ''} | Stage: ${d.pipeline_stage} | Type: ${d.transaction_type} | Closing: ${d.closing_date || 'TBD'} | Price: $${d.contract_price?.toLocaleString() || 'N/A'} | Status: ${d.status}`).join('\n')}
+
+=== CONTACTS (${contacts.length} total) ===
+${contacts.map((c: any) => `- ${c.first_name} ${c.last_name} | Type: ${c.contact_type}${c.company ? ` | ${c.company}` : ''}${c.email ? ` | ${c.email}` : ''}`).join('\n')}
+
+=== PENDING TASKS (${tasks.length} total) ===
+${tasks.map((t: any) => `- ${t.title} | Priority: ${t.priority} | Due: ${t.due_date || 'No due date'}`).join('\n')}
+
+Answer Andre's question directly and clearly. Keep voice answer under 3 sentences. You will also send him the full detailed answer via SMS.`;
+
+    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 500,
+        temperature: 0.3,
+      }),
+    });
+
+    const aiData = await aiRes.json() as any;
+    const answer = aiData.choices?.[0]?.message?.content || 'I wasn\'t able to find an answer. Please try again.';
+
+    // Send full answer via SMS
+    await sendSms(phone, `🤖 TC Command AI\n\nYou asked: "${question}"\n\n${answer}`);
+
+    // Voice reads a brief summary
+    const voiceSummary = answer.length > 300 ? answer.substring(0, 280) + '... Full answer sent to your phone.' : answer + ' I\'ve also sent this to your phone.';
+
+    const responseVoice = say(voiceSummary);
+    const followUp = gather(
+      { action: `admin-query&phone=${encodeURIComponent(phone)}`, input: 'speech', timeout: 10 },
+      say('Do you have another question? Go ahead and ask, or hang up when done.')
+    );
+    const fallback = '<Hangup/>';
+
+    return res.send(twiml(responseVoice, followUp, fallback));
+
+  } catch (err) {
+    console.error('admin-query error:', err);
+    const errMsg = say('Sorry, I ran into an error looking that up. Please try again in a moment. Goodbye!');
+    return res.send(twiml(errMsg, '<Hangup/>'));
+  }
+}
+
 async function handleInbound(req: VercelRequest, res: VercelResponse) {
   const { From, CallSid } = req.body;
   const fromE164 = normalizeToE164(From || '');
+
+  // Admin voice AI flow — Andre Vargas gets full database query assistant
+  if (fromE164 === ADMIN_PHONE) {
+    return handleAdminInbound(req, res, fromE164);
+  }
+
   const caller = await identifyCallerByPhone(fromE164);
 
   // Log communication event
@@ -446,6 +547,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'callback-reason': return handleCallbackReason(req, res);
       case 'callback-confirm': return handleCallbackConfirm(req, res);
       case 'call-status': return handleCallStatus(req, res);
+      case 'admin-query': return handleAdminQuery(req, res);
       default:
         // Unknown route — hang up gracefully
         res.setHeader('Content-Type', 'text/xml');
