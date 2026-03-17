@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-import { Deal, DirectoryContact, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
+import { Deal, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import {
   loadDeals, saveDeals, saveSingleDeal,
-  loadDirectory, saveDirectory,
+  loadContactsFull,
   loadMls, saveMls,
   loadCompliance, saveCompliance,
   loadUsers, saveUsers,
@@ -59,7 +59,7 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
 
-  const [directory, setDirectory]               = useState<DirectoryContact[]>([]);
+  const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
   const [complianceTemplates, setComplianceTemplates] = useState<ComplianceTemplate[]>([]);
   const [users, setUsers]                       = useState<AppUser[]>([]);
@@ -98,12 +98,12 @@ function AppInner() {
     return () => ro.disconnect();
   }, [view]);
 
-  // ── Load directory ───────────────────────────────────────────────────────────
+  // ── Load contact records ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!profile) return;
-    loadDirectory()
-      .then(data => setDirectory(data))
-      .catch(err => { console.error('Failed to load directory:', err); setDirectory([]); });
+    loadContactsFull()
+      .then(data => setContactRecords(data))
+      .catch(err => { console.error('Failed to load contacts:', err); setContactRecords([]); });
   }, [profile]);
 
   // ── Load MLS ─────────────────────────────────────────────────────────────────
@@ -221,11 +221,6 @@ function AppInner() {
   if (!profile) return <LoginPage />;
 
   // ── Persist helpers ──────────────────────────────────────────────────────────
-  const persistDirectory = (updated: DirectoryContact[]) => {
-    setDirectory(updated);
-    saveDirectory(updated).catch(console.error);
-  };
-
   const persistMls = (updated: MlsEntry[]) => {
     setMlsEntries(updated);
     saveMls(updated).catch(console.error);
@@ -382,7 +377,7 @@ function AppInner() {
                     onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
                     amberFilter={amberFilter}
                     onClearAmberFilter={() => setAmberFilter(false)}
-                    directory={directory}
+                    contactRecords={contactRecords}
                   />
                 </div>
               )}
@@ -399,7 +394,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} directory={directory} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -419,7 +414,7 @@ function AppInner() {
                 triggerAdd={quickAddRole}
                 onTriggerHandled={() => setQuickAddRole(null)}
                 onDirectoryChanged={() => {
-                  loadDirectory().then(data => setDirectory(data)).catch(console.error);
+                  loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
               />
             </div>
@@ -436,7 +431,7 @@ function AppInner() {
               <ComplianceManager
                 templates={complianceTemplates}
                 onSave={persistCompliance}
-                agentClients={directory.filter(c => c.role === 'agent')}
+                agentClients={contactRecords.filter(c => c.contactType === 'agent')}
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
               />
@@ -466,7 +461,7 @@ function AppInner() {
                 users={users}
                 onSaveUsers={persistUsers}
                 deals={deals}
-                directory={directory}
+                contactRecords={contactRecords}
                 mlsEntries={mlsEntries}
                 complianceTemplates={complianceTemplates}
                 storageMode={storageMode}
@@ -487,7 +482,7 @@ function AppInner() {
           onAdd={handleAdd}
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
-          agentClients={directory.filter(c => c.role === 'agent')}
+          agentClients={contactRecords.filter(c => c.contactType === 'agent')}
           ddMasterItems={ddMasterItems}
         />
       )}

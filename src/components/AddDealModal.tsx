@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { X, Building2, AlertTriangle, ShoppingCart, Tag } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionSide, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, DirectoryContact, DDMasterItem } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionSide, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem } from '../types';
 import { generateId, propertyTypeLabel, statusLabel, docTypeConfig } from '../utils/helpers';
 
 interface Props {
   onAdd: (deal: Deal) => void;
   onClose: () => void;
   complianceTemplates?: ComplianceTemplate[];
-  agentClients?: DirectoryContact[];
+  agentClients?: ContactRecord[];
   ddMasterItems?: DDMasterItem[];
 }
 
@@ -212,7 +212,7 @@ export const AddDealModal: React.FC<Props> = ({ onAdd, onClose, complianceTempla
                 >
                   <option value="">-- Select Agent Client --</option>
                   {agentClients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>
+                    <option key={c.id} value={c.id}>{c.fullName}{c.company ? ` — ${c.company}` : ''}</option>
                   ))}
                 </select>
                 {form.agentClientId && complianceTemplates && (() => {

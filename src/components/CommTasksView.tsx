@@ -35,7 +35,7 @@ interface CommTask {
   created_at: string;
 }
 
-interface DirectoryContact {
+interface ContactInfo {
   id: string;
   name: string;
   phone?: string;
@@ -117,7 +117,7 @@ function isDueOverdue(dueDate?: string): boolean {
 // ─── Create Task Modal ───────────────────────────────────────────────────────
 
 interface CreateTaskModalProps {
-  contacts: DirectoryContact[];
+  contacts: ContactInfo[];
   deals: Deal[];
   onSave: (task: Partial<CommTask>) => Promise<void>;
   onClose: () => void;
@@ -130,7 +130,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
   const [channel, setChannel] = useState<Channel>(prefill?.channel || 'sms');
   const [priority, setPriority] = useState<Priority>(prefill?.priority || 'normal');
   const [messageDraft, setMessageDraft] = useState(prefill?.message_draft || '');
-  const [selectedContact, setSelectedContact] = useState<DirectoryContact | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactInfo | null>(null);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [dueDate, setDueDate] = useState(prefill?.due_date ? new Date(prefill.due_date).toISOString().slice(0, 16) : '');
   const [saving, setSaving] = useState(false);
@@ -516,7 +516,7 @@ function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal }: Task
 
 export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps) {
   const [tasks, setTasks] = useState<CommTask[]>([]);
-  const [contacts, setContacts] = useState<DirectoryContact[]>([]);
+  const [contacts, setContacts] = useState<ContactInfo[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [channelFilter, setChannelFilter] = useState<Channel | 'all'>('all');
@@ -543,10 +543,16 @@ export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps)
         await loadTasks();
         // Load contacts
         const { data: contactData } = await supabase
-          .from('directory_contacts')
-          .select('id, name, phone, email, role')
-          .order('name');
-        if (contactData) setContacts(contactData as DirectoryContact[]);
+          .from('contacts')
+          .select('id, first_name, last_name, contact_type, email, phone, company')
+          .order('first_name');
+        if (contactData) setContacts(contactData.map((c: any) => ({
+          id: c.id,
+          name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+          phone: c.phone,
+          email: c.email,
+          role: c.contact_type,
+        })) as ContactInfo[]);
         // Load deals
         const { data: dealData } = await supabase
           .from('deals')

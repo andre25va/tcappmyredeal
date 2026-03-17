@@ -3,14 +3,14 @@ import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check,
 import { DealHealthCard } from './DealHealthCard';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
-import { Deal, DealStatus, PropertyType, AgentContact, DirectoryContact, DealMilestone, ActivityType, Reminder } from '../types';
+import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
 import { generateTasksForMilestone, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
 import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,
   closingCountdown, generateId
 } from '../utils/helpers';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; directory?: DirectoryContact[]; onGoToContacts?: () => void; editTrigger?: number; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -35,9 +35,9 @@ const AgentEditSection: React.FC<{
   draft: AgentContact;
   onChange: (a: AgentContact) => void;
   accent: string;
-  agentOptions: DirectoryContact[];
+  agentOptions: ContactRecord[];
 }> = ({ label, draft, onChange, accent, agentOptions }) => {
-  const selectedContact = agentOptions.find(x => x.name === draft.name && (x.phone || '') === draft.phone);
+  const selectedContact = agentOptions.find(x => x.fullName === draft.name && (x.phone || '') === draft.phone);
   const selectedId = selectedContact?.id ?? '';
 
   return (
@@ -66,28 +66,28 @@ const AgentEditSection: React.FC<{
             onChange({ name: '', phone: '', email: '', isOurClient: false });
             return;
           }
-          const dc = agentOptions.find(x => x.id === e.target.value);
-          if (dc) onChange({
-            name: dc.name,
-            phone: dc.phone || '',
-            email: dc.email || '',
-            isOurClient: dc.role === 'agent-client',
+          const cr = agentOptions.find(x => x.id === e.target.value);
+          if (cr) onChange({
+            name: cr.fullName,
+            phone: cr.phone || '',
+            email: cr.email || '',
+            isOurClient: !!cr.isClient,
           });
         }}
       >
         <option value="">— clear / none —</option>
         {/* Agent Clients first */}
-        {agentOptions.filter(x => x.role === 'agent-client').length > 0 && (
+        {agentOptions.filter(x => x.isClient).length > 0 && (
           <optgroup label="⭐ Agent Clients (Our Clients)">
-            {agentOptions.filter(x => x.role === 'agent-client').map(dc => (
-              <option key={dc.id} value={dc.id}>{dc.name}{dc.company ? ` — ${dc.company}` : ''}</option>
+            {agentOptions.filter(x => x.isClient).map(cr => (
+              <option key={cr.id} value={cr.id}>{cr.fullName}{cr.company ? ` — ${cr.company}` : ''}</option>
             ))}
           </optgroup>
         )}
-        {agentOptions.filter(x => x.role === 'agent').length > 0 && (
+        {agentOptions.filter(x => !x.isClient).length > 0 && (
           <optgroup label="Agents">
-            {agentOptions.filter(x => x.role === 'agent').map(dc => (
-              <option key={dc.id} value={dc.id}>{dc.name}{dc.company ? ` — ${dc.company}` : ''}</option>
+            {agentOptions.filter(x => !x.isClient).map(cr => (
+              <option key={cr.id} value={cr.id}>{cr.fullName}{cr.company ? ` — ${cr.company}` : ''}</option>
             ))}
           </optgroup>
         )}
@@ -406,8 +406,8 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory = [], onGoToContacts, editTrigger }) => {
-  const agentOptions = directory.filter(c => c.role === 'agent' || c.role === 'agent-client');
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger }) => {
+  const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
 

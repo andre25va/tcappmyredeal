@@ -15,7 +15,6 @@ import {
   ActivityEntry,
   Contact,
   AgentContact,
-  DirectoryContact,
   Organization,
   ClientAccount,
   ContactLicense,
@@ -431,108 +430,6 @@ export async function loadContactLicenses(contactId: string): Promise<ContactLic
       brokerOrganizationName: o?.name ?? undefined,
     };
   });
-}
-
-// ─── DIRECTORY CONTACTS ─────────────────────────────────────────────────────
-
-export async function loadDirectory(): Promise<DirectoryContact[]> {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select(`
-      id, first_name, last_name, full_name, email, phone, contact_type, company,
-      license_number, timezone, created_at
-    `)
-    .order('last_name', { ascending: true });
-
-  if (error) throw error;
-
-  const contactIds = (data ?? []).map((r) => r.id);
-
-  const [licenseRes, orgMemberRes] = await Promise.all([
-    contactIds.length > 0
-      ? supabase.from('contact_licenses').select('contact_id, state_code, license_number, status').in('contact_id', contactIds)
-      : Promise.resolve({ data: [], error: null }),
-    contactIds.length > 0
-      ? supabase.from('organization_members').select('contact_id, organization_id, organizations:organization_id ( name )').in('contact_id', contactIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  const licensesByContact: Record<string, string[]> = {};
-  for (const lic of licenseRes.data ?? []) {
-    if (!licensesByContact[lic.contact_id]) licensesByContact[lic.contact_id] = [];
-    licensesByContact[lic.contact_id].push(lic.state_code);
-  }
-
-  const orgByContact: Record<string, string> = {};
-  for (const om of orgMemberRes.data ?? []) {
-    const o = om.organizations as unknown as Record<string, string> | null;
-    if (o?.name) orgByContact[om.contact_id] = o.name;
-  }
-
-  const { data: clientMembers } = await supabase
-    .from('client_account_members')
-    .select('contact_id, client_account_id')
-    .in('contact_id', contactIds)
-    .eq('is_primary', true);
-
-  const clientByContact: Record<string, string> = {};
-  for (const cm of clientMembers ?? []) {
-    if (cm.contact_id) clientByContact[cm.contact_id] = cm.client_account_id;
-  }
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
-    email: row.email || '',
-    phone: row.phone || '',
-    role: row.contact_type || 'other',
-    company: orgByContact[row.id] || row.company || undefined,
-    states: licensesByContact[row.id] || undefined,
-    mlsIds: undefined,
-    clientId: clientByContact[row.id] || undefined,
-    isTeam: false,
-    notes: undefined,
-    createdAt: row.created_at || new Date().toISOString(),
-  }));
-}
-
-export async function saveDirectory(contacts: DirectoryContact[]): Promise<void> {
-  if (contacts.length === 0) {
-    return;
-  }
-
-  const rows = contacts.map((c) => {
-    const nameParts = c.name.split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
-    return {
-      id: c.id,
-      first_name: firstName,
-      last_name: lastName,
-      full_name: c.name,
-      email: c.email ?? null,
-      phone: c.phone ?? null,
-      contact_type: c.role,
-      company: c.company ?? null,
-      updated_at: new Date().toISOString(),
-    };
-  });
-
-  const { error } = await supabase.from('contacts').upsert(rows, { onConflict: 'id' });
-  if (error) throw error;
-
-  const legacyRows = contacts.map((c) => ({
-    id: c.id,
-    name: c.name,
-    email: c.email ?? null,
-    phone: c.phone ?? null,
-    role: c.role,
-    company: c.company ?? null,
-    data: c,
-    updated_at: new Date().toISOString(),
-  }));
-
-  await supabase.from('directory_contacts').upsert(legacyRows, { onConflict: 'id' });
 }
 
 // ─── MLS ENTRIES ─────────────────────────────────────────────────────────────

@@ -5,11 +5,11 @@ import {
   Star, AlertCircle, Home, Eye, EyeOff, Pencil, Check, X, Lock, ChevronRight,
   MoreVertical, StickyNote, User, RotateCcw, GripVertical,
 } from 'lucide-react';
-import { Deal, ComplianceTemplate, ChecklistItem, AppUser, DirectoryContact } from '../types';
+import { Deal, ComplianceTemplate, ChecklistItem, AppUser, ContactRecord } from '../types';
 import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; users?: AppUser[]; directory?: DirectoryContact[]; complianceTemplates?: any[]; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; users?: AppUser[]; contactRecords?: ContactRecord[]; complianceTemplates?: any[]; }
 
 // ─── Property-type auto-inject templates ──────────────────────────────────────
 const CONDO_HOA_ITEMS: { title: string; required: boolean }[] = [
@@ -601,7 +601,7 @@ const ComplianceSection: React.FC<{
 const ComplianceTabPanel: React.FC<{
   deal: Deal;
   complianceTemplates: ComplianceTemplate[];
-  directory: DirectoryContact[];
+  contactRecords: ContactRecord[];
   showCompleted: boolean;
   onToggle: (id: string) => void;
   onAdd: (title: string, dueDate: string) => void;
@@ -611,7 +611,7 @@ const ComplianceTabPanel: React.FC<{
   onLoadTemplate: (tplId: string) => void;
   onSetTemplateId: (tplId: string) => void;
   onReorder?: (dragId: string, dropId: string) => void;
-}> = ({ deal, complianceTemplates, directory, showCompleted, onToggle, onAdd, onDelete, onNote, onRename, onLoadTemplate, onSetTemplateId, onReorder }) => {
+}> = ({ deal, complianceTemplates, contactRecords, showCompleted, onToggle, onAdd, onDelete, onNote, onRename, onLoadTemplate, onSetTemplateId, onReorder }) => {
   const [listOpen, setListOpen] = useState(true);
   const [confirmLoad, setConfirmLoad] = useState<{ tplId: string; name: string } | null>(null);
 
@@ -621,7 +621,7 @@ const ComplianceTabPanel: React.FC<{
   );
   const currentTplId = deal.complianceTemplateId ?? autoTpl?.id ?? '';
   const currentTpl = (complianceTemplates ?? []).find((t) => t.id === currentTplId);
-  const agentClient = directory?.find(c => c.id === deal.agentClientId);
+  const agentClient = contactRecords?.find(c => c.id === deal.agentClientId);
 
   const handleSelectTemplate = (tplId: string) => {
     if (!tplId) return;
@@ -671,7 +671,7 @@ const ComplianceTabPanel: React.FC<{
 
         {autoTpl && !deal.complianceTemplateId && (
           <p className="text-xs text-blue-500 mt-1.5">
-            ↑ Auto-matched from agent client{agentClient ? ` (${agentClient.name})` : ''}
+            ↑ Auto-matched from agent client{agentClient ? ` (${agentClient.fullName})` : ''}
           </p>
         )}
       </div>
@@ -740,7 +740,7 @@ const ComplianceTabPanel: React.FC<{
 };
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [], directory = [], complianceTemplates = [] }) => {
+export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [], contactRecords = [], complianceTemplates = [] }) => {
   const [activeTab, setActiveTab]               = useState<'dd' | 'compliance'>('dd');
   const [showCompleted, setShowCompleted]       = useState(true);
   const [showViewModal, setShowViewModal]       = useState(false);
@@ -1226,7 +1226,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
         <ComplianceTabPanel
           deal={deal}
           complianceTemplates={complianceTemplates}
-          directory={directory}
+          contactRecords={contactRecords}
           showCompleted={showCompleted}
           onToggle={toggleComp}
           onAdd={addComp}

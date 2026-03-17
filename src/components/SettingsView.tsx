@@ -5,7 +5,7 @@ import {
   UserCheck, AlertCircle, Mail, GripVertical, MoreVertical, Star,
   Copy, CheckCheck, Ban,
 } from 'lucide-react';
-import { AppUser, UserRole, Deal, DirectoryContact, MlsEntry, ComplianceTemplate, EmailTemplate, ConfirmationButton, ComplianceMasterItem, DDMasterItem } from '../types';
+import { AppUser, UserRole, Deal, ContactRecord, MlsEntry, ComplianceTemplate, EmailTemplate, ConfirmationButton, ComplianceMasterItem, DDMasterItem } from '../types';
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -13,7 +13,7 @@ interface Props {
   users: AppUser[];
   onSaveUsers: (users: AppUser[]) => void;
   deals: Deal[];
-  directory: DirectoryContact[];
+  contactRecords: ContactRecord[];
   mlsEntries: MlsEntry[];
   complianceTemplates: ComplianceTemplate[];
   storageMode: string;
@@ -1403,7 +1403,7 @@ function AccessUsersTab() {
 
 // ── Main component ───────────────────────────────────────────────────────────
 export const SettingsView: React.FC<Props> = ({
-  users, onSaveUsers, deals, directory, mlsEntries, complianceTemplates, storageMode,
+  users, onSaveUsers, deals, contactRecords, mlsEntries, complianceTemplates, storageMode,
   emailTemplates, onSaveEmailTemplates,
   complianceMasterItems, onSaveComplianceMasterItems,
   ddMasterItems = [], onSaveDdMasterItems,
@@ -1448,11 +1448,9 @@ export const SettingsView: React.FC<Props> = ({
 
   const exportContacts = () => {
     const headers = ['Name', 'Email', 'Phone', 'Role', 'Company', 'States', 'MLS IDs', 'Notes', 'Created'];
-    const rows = directory.map(c => [
-      c.name, c.email, c.phone, c.role, c.company ?? '',
-      (c.states ?? []).join('; '),
-      (c.mlsIds ?? []).join('; '),
-      c.notes ?? '', c.createdAt,
+    const rows = contactRecords.map(c => [
+      c.fullName, c.email, c.phone, c.contactType, c.company ?? '',
+      '', '', c.notes ?? '', '',
     ]);
     downloadCSV('contacts.csv', toCSV(headers, rows));
     flash('contacts');
@@ -1499,9 +1497,9 @@ export const SettingsView: React.FC<Props> = ({
     {
       key: 'contacts',
       label: 'Contacts',
-      description: `Export all ${directory.length} contacts from directory`,
+      description: `Export all ${contactRecords.length} contacts from directory`,
       icon: <Users size={22} className="text-secondary" />,
-      count: directory.length,
+      count: contactRecords.length,
       action: exportContacts,
       color: 'border-secondary/20 bg-secondary/5',
     },

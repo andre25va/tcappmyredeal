@@ -63,7 +63,7 @@ export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'clos
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'condo' | 'townhouse' | 'land' | 'commercial';
-export type ContactRole = 'agent' | 'agent-client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
+export type ContactRole = 'agent' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
 
 // ── New relational type aliases ──────────────────────────────────────────────
 export type ContactType = ContactRole; // alias for clarity during migration
@@ -260,40 +260,6 @@ export type DocRequestStatus = 'pending' | 'in_progress' | 'confirmed';
 export type ActivityType =
   | 'deal_created' | 'status_change' | 'checklist' | 'contact_added'
   | 'document_requested' | 'document_confirmed' | 'reminder_set' | 'note' | 'price_change';
-
-// ── Legacy types (kept for backward compat during Phase 4 migration) ────────
-
-export interface AgentClientStateInfo {
-  state: string;
-  closingType: 'escrow' | 'attorney' | '';
-  commissionType: 'commission-letter' | 'cda' | '';
-  brokerEmail: string;
-  brokerPhone: string;
-  complianceEmail: string;
-  compliancePhone: string;
-  eSignatureApp: string;
-  links: string[];
-}
-
-/**
- * @deprecated Use Contact + Organization joins instead. Will be removed in Phase 4D.
- */
-export interface DirectoryContact {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: ContactRole;
-  company?: string;
-  states?: string[];
-  mlsIds?: string[];
-  stateInfo?: AgentClientStateInfo[];
-  clientId?: string;
-  isTeam?: boolean;
-  teamRoles?: string[];
-  notes?: string;
-  createdAt: string;
-}
 
 export interface AdditionalPerson {
   id: string;

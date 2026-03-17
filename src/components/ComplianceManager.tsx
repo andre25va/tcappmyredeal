@@ -20,13 +20,13 @@ const US_STATES: { abbr: string; name: string }[] = [
   {abbr:'UT',name:'Utah'},{abbr:'VT',name:'Vermont'},{abbr:'VA',name:'Virginia'},{abbr:'WA',name:'Washington'},
   {abbr:'WV',name:'West Virginia'},{abbr:'WI',name:'Wisconsin'},{abbr:'WY',name:'Wyoming'},
 ];
-import { ComplianceTemplate, ComplianceTemplateItem, DirectoryContact } from '../types';
+import { ComplianceTemplate, ComplianceTemplateItem, ContactRecord } from '../types';
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
   templates: ComplianceTemplate[];
-  agentClients: DirectoryContact[];
+  agentClients: ContactRecord[];
   deals: { agentClientId?: string }[];
   onSave: (templates: ComplianceTemplate[]) => void;
   masterItems?: import('../types').ComplianceMasterItem[];
@@ -119,7 +119,7 @@ const ItemRow: React.FC<{
 /* ─── Template Editor (right panel) ──────────────────────────── */
 const TemplateEditor: React.FC<{
   template: ComplianceTemplate;
-  agentClients: DirectoryContact[];
+  agentClients: ContactRecord[];
   dealCount: number;
   onUpdate: (t: ComplianceTemplate) => void;
   onDelete: (id: string) => void;
@@ -379,9 +379,9 @@ const TemplateEditor: React.FC<{
               {assignedAgents.map(agent => (
                 <div key={agent.id} className="flex items-center gap-1.5 bg-secondary/10 border border-secondary/20 rounded-full pl-2 pr-1 py-1">
                   <div className="w-5 h-5 rounded-full bg-secondary text-secondary-content flex items-center justify-center text-xs font-bold shrink-0">
-                    {agent.name.charAt(0).toUpperCase()}
+                    {agent.fullName.charAt(0).toUpperCase()}
                   </div>
-                  <span className="text-xs font-medium text-black">{agent.name}</span>
+                  <span className="text-xs font-medium text-black">{agent.fullName}</span>
                   <button
                     onClick={() => toggleAgent(agent.id)}
                     className="w-4 h-4 rounded-full bg-error/20 hover:bg-error/40 flex items-center justify-center transition-colors"
@@ -408,7 +408,7 @@ const TemplateEditor: React.FC<{
                     className="flex items-center gap-1.5 bg-white border border-gray-200 hover:border-secondary/40 hover:bg-secondary/5 rounded-full pl-2 pr-2 py-1 transition-colors"
                   >
                     <UserPlus size={11} className="text-secondary shrink-0" />
-                    <span className="text-xs text-black">{agent.name}</span>
+                    <span className="text-xs text-black">{agent.fullName}</span>
                   </button>
                 ))}
               </div>
@@ -713,7 +713,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
   const agentNamesFor = (templateId: string) => {
     const tpl = migratedTemplates.find(t => t.id === templateId);
     if (!tpl || !tpl.agentClientIds.length) return [];
-    return agentClients.filter(c => tpl.agentClientIds.includes(c.id)).map(c => c.name);
+    return agentClients.filter(c => tpl.agentClientIds.includes(c.id)).map(c => c.fullName);
   };
 
   return (

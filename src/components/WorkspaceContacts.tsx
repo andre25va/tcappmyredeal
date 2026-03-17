@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save } from 'lucide-react';
-import { Deal, Contact, ContactRole, DirectoryContact, AdditionalPerson } from '../types';
+import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
+import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; directory?: DirectoryContact[]; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; }
 
 // Which side a role defaults to
 const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
@@ -16,7 +17,7 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
 };
 
 // Full contact info popup
-const ContactPopup: React.FC<{ contact: Contact; dc?: DirectoryContact; onClose: () => void; onToggleNotif: () => void; onRemove: () => void }> = ({ contact, dc, onClose, onToggleNotif, onRemove }) => (
+const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: () => void; onToggleNotif: () => void; onRemove: () => void }> = ({ contact, cr, onClose, onToggleNotif, onRemove }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
     <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
       {/* Header */}
@@ -44,16 +45,16 @@ const ContactPopup: React.FC<{ contact: Contact; dc?: DirectoryContact; onClose:
             <a href={`tel:${contact.phone}`} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
           </div>
         )}
-        {(contact.company || dc?.company) && (
+        {(contact.company || cr?.company) && (
           <div className="flex items-center gap-3">
             <Building2 size={14} className="text-gray-400 flex-none" />
-            <span className="text-sm text-black">{contact.company || dc?.company}</span>
+            <span className="text-sm text-black">{contact.company || cr?.company}</span>
           </div>
         )}
-        {dc?.notes && (
+        {cr?.notes && (
           <div className="pt-1 border-t border-gray-100">
             <p className="text-xs text-gray-400 mb-0.5">Notes</p>
-            <p className="text-sm text-black">{dc.notes}</p>
+            <p className="text-sm text-black">{cr.notes}</p>
           </div>
         )}
         {/* Notification status */}
@@ -77,15 +78,15 @@ const ContactPopup: React.FC<{ contact: Contact; dc?: DirectoryContact; onClose:
   </div>
 );
 
-// Searchable directory picker
-const DirectoryPicker: React.FC<{
-  directory: DirectoryContact[];
+// Searchable contact picker
+const ContactPicker: React.FC<{
+  contactRecords: ContactRecord[];
   existingIds: string[];
   defaultSide: 'buy' | 'sell' | 'both';
-  pickerType: 'agent-client' | 'team' | 'contact';
-  onAdd: (dc: DirectoryContact, side: 'buy' | 'sell' | 'both') => void;
+  pickerType: 'client' | 'team' | 'contact';
+  onAdd: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
   onClose: () => void;
-}> = ({ directory, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
+}> = ({ contactRecords, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
   const [search, setSearch] = useState('');
   const side = presetSide;
   const ref = useRef<HTMLDivElement>(null);
@@ -96,24 +97,24 @@ const DirectoryPicker: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // Filter directory by picker type
-  const byType = (dc: DirectoryContact) => {
-    if (pickerType === 'agent-client') return dc.role === 'agent-client';
-    if (pickerType === 'team') return ['agent', 'tc', 'other', 'inspector'].includes(dc.role);
-    // 'contact' — everything except agent-client
-    return dc.role !== 'agent-client';
+  // Filter by picker type
+  const byType = (cr: ContactRecord) => {
+    if (pickerType === 'client') return cr.contactType === 'agent' && cr.isClient;
+    if (pickerType === 'team') return ['agent', 'tc', 'other', 'inspector'].includes(cr.contactType);
+    // 'contact' — general contacts
+    return true;
   };
 
-  const filtered = directory.filter(dc =>
-    !existingIds.includes(dc.id) &&
-    byType(dc) &&
-    (dc.name.toLowerCase().includes(search.toLowerCase()) ||
-     dc.email?.toLowerCase().includes(search.toLowerCase()) ||
-     roleLabel(dc.role).toLowerCase().includes(search.toLowerCase()) ||
-     dc.company?.toLowerCase().includes(search.toLowerCase()))
+  const filtered = contactRecords.filter(cr =>
+    !existingIds.includes(cr.id) &&
+    byType(cr) &&
+    (cr.fullName.toLowerCase().includes(search.toLowerCase()) ||
+     cr.email?.toLowerCase().includes(search.toLowerCase()) ||
+     roleLabel(cr.contactType).toLowerCase().includes(search.toLowerCase()) ||
+     cr.company?.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const pickerLabel = pickerType === 'agent-client' ? 'Select Agent Client'
+  const pickerLabel = pickerType === 'client' ? 'Select Agent Client'
     : pickerType === 'team' ? 'Select Team Member'
     : 'Select Contact';
 
@@ -139,15 +140,15 @@ const DirectoryPicker: React.FC<{
         {filtered.length === 0 && (
           <p className="text-xs text-gray-400 text-center py-6">No contacts found</p>
         )}
-        {filtered.map(dc => (
-          <button key={dc.id} onClick={() => { onAdd(dc, side); onClose(); }}
+        {filtered.map(cr => (
+          <button key={cr.id} onClick={() => { onAdd(cr, side); onClose(); }}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(dc.role)}`}>
-              {getInitials(dc.name)}
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(cr.contactType)}`}>
+              {getInitials(cr.fullName)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-black truncate">{dc.name}</p>
-              <p className="text-xs text-gray-400 truncate">{roleLabel(dc.role)}{dc.company ? ` · ${dc.company}` : ''}</p>
+              <p className="text-sm font-medium text-black truncate">{cr.fullName}</p>
+              <p className="text-xs text-gray-400 truncate">{roleLabel(cr.contactType)}{cr.company ? ` · ${cr.company}` : ''}</p>
             </div>
           </button>
         ))}
@@ -336,7 +337,7 @@ const SubContactRow: React.FC<{ contact: Contact; isLast: boolean; onClick: () =
 );
 
 // Regular contact row (no agent client on this side)
-const ContactCard: React.FC<{ contact: Contact; dc?: DirectoryContact; onClick: () => void }> = ({ contact, dc, onClick }) => (
+const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () => void }> = ({ contact, cr, onClick }) => (
   <button onClick={onClick}
     className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/70 transition-colors text-left group">
     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(contact.role)}`}>
@@ -360,11 +361,11 @@ interface SideSectionProps {
   side: 'buy' | 'sell';
   showAddMenu: 'buy' | 'sell' | null;
   setShowAddMenu: (v: 'buy' | 'sell' | null) => void;
-  pickerConfig: { side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null;
-  setPickerConfig: (v: { side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null) => void;
+  pickerConfig: { side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null;
+  setPickerConfig: (v: { side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null) => void;
   existingDirIds: string[];
-  directory: DirectoryContact[];
-  addFromDirectory: (dc: DirectoryContact, side: 'buy' | 'sell' | 'both') => void;
+  contactRecords: ContactRecord[];
+  addFromDirectory: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
   deal: Deal;
   onUpdate: (d: Deal) => void;
   setPopupContactId: (id: string | null) => void;
@@ -374,12 +375,12 @@ const SideSection: React.FC<SideSectionProps> = ({
   title, accent, contacts, side,
   showAddMenu, setShowAddMenu,
   pickerConfig, setPickerConfig,
-  existingDirIds, directory,
+  existingDirIds, contactRecords,
   addFromDirectory, deal, onUpdate,
   setPopupContactId,
 }) => {
-  const agentClient = contacts.find(c => c.role === 'agent-client');
-  const subContacts = contacts.filter(c => c.role !== 'agent-client');
+  const agentClient = contacts.find(c => deal.participants?.some(p => p.contactId === (c.directoryId || c.id) && p.isClientSide));
+  const subContacts = contacts.filter(c => c.id !== agentClient?.id);
   const hasAgentClient = !!agentClient;
 
   const menuWrapRef = useRef<HTMLDivElement>(null);
@@ -394,7 +395,7 @@ const SideSection: React.FC<SideSectionProps> = ({
   }, [side, showAddMenu, setShowAddMenu]);
 
   const openMenu = () => { setShowAddMenu(showAddMenu === side ? null : side); setPickerConfig(null); };
-  const openPicker = (type: 'agent-client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
+  const openPicker = (type: 'client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
 
   return (
     <div className="flex-1 min-w-0">
@@ -419,7 +420,7 @@ const SideSection: React.FC<SideSectionProps> = ({
                 <p className="text-xs text-gray-400 font-medium">Add to {side === 'buy' ? 'Buy' : 'Sell'} Side</p>
               </div>
               <button
-                onClick={() => openPicker('agent-client')}
+                onClick={() => openPicker('client')}
                 className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors text-left"
               >
                 <div className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center flex-none">
@@ -460,8 +461,8 @@ const SideSection: React.FC<SideSectionProps> = ({
           )}
 
           {pickerConfig?.side === side && (
-            <DirectoryPicker
-              directory={directory}
+            <ContactPicker
+              contactRecords={contactRecords}
               existingIds={existingDirIds}
               defaultSide={side}
               pickerType={pickerConfig.type}
@@ -509,7 +510,7 @@ const SideSection: React.FC<SideSectionProps> = ({
                 <ContactCard
                   key={c.id}
                   contact={c}
-                  dc={directory.find(d => d.id === c.directoryId)}
+                  cr={contactRecords.find(d => d.id === c.directoryId)}
                   onClick={() => setPopupContactId(c.id)}
                 />
               ))}
@@ -521,9 +522,9 @@ const SideSection: React.FC<SideSectionProps> = ({
   );
 };
 
-export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory = [] }) => {
+export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [] }) => {
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
-  const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'agent-client' | 'team' | 'contact' } | null>(null);
+  const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -532,15 +533,39 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
 
   const existingDirIds = deal.contacts.filter(c => c.directoryId).map(c => c.directoryId!);
 
-  const addFromDirectory = (dc: DirectoryContact, side: 'buy' | 'sell' | 'both') => {
+  const contactTypeToParticipantRole = (ct: string): DealParticipantRole => {
+    const map: Record<string, DealParticipantRole> = {
+      agent: 'lead_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
+      inspector: 'inspector', appraiser: 'appraiser', buyer: 'buyer', seller: 'seller', tc: 'tc', other: 'other',
+    };
+    return map[ct] || 'other';
+  };
+
+  const addFromDirectory = async (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => {
+    const dealSide = side === 'buy' ? 'buyer' : side === 'sell' ? 'listing' : 'both' as any;
+    const dealRole = contactTypeToParticipantRole(cr.contactType);
+
+    try {
+      await saveDealParticipant({
+        dealId: deal.id,
+        contactId: cr.id,
+        side: dealSide,
+        dealRole,
+        isPrimary: false,
+        isClientSide: !!cr.isClient,
+      });
+    } catch (err) {
+      console.error('Failed to add participant:', err);
+    }
+
     const contact: Contact = {
-      id: generateId(),
-      directoryId: dc.id,
-      name: dc.name,
-      email: dc.email || '',
-      phone: dc.phone || '',
-      role: dc.role as ContactRole,
-      company: dc.company,
+      id: cr.id,
+      directoryId: cr.id,
+      name: cr.fullName,
+      email: cr.email || '',
+      phone: cr.phone || '',
+      role: cr.contactType as ContactRole,
+      company: cr.company,
       inNotificationList: true,
       side,
     };
@@ -556,7 +581,15 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
     onUpdate({ ...deal, contacts: deal.contacts.map(c => c.id === id ? { ...c, inNotificationList: !c.inNotificationList } : c), updatedAt: new Date().toISOString() });
   };
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
+    const participant = deal.participants?.find(p => p.contactId === id || p.contactId === deal.contacts.find(c => c.id === id)?.directoryId);
+    if (participant) {
+      try {
+        await deleteDealParticipant(participant.id);
+      } catch (err) {
+        console.error('Failed to remove participant:', err);
+      }
+    }
     const c = deal.contacts.find(x => x.id === id);
     onUpdate({
       ...deal,
@@ -571,7 +604,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
   const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
-  const popupDc = popupContact?.directoryId ? directory.find(d => d.id === popupContact.directoryId) : undefined;
+  const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
 
 
   return (
@@ -606,7 +639,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
             title="Buy Side" accent="text-blue-600" contacts={buySide} side="buy"
             showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
             pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
-            existingDirIds={existingDirIds} directory={directory}
+            existingDirIds={existingDirIds} contactRecords={contactRecords}
             addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
             setPopupContactId={setPopupContactId}
           />
@@ -616,7 +649,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
             title="Sell Side" accent="text-green-600" contacts={sellSide} side="sell"
             showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
             pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
-            existingDirIds={existingDirIds} directory={directory}
+            existingDirIds={existingDirIds} contactRecords={contactRecords}
             addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
             setPopupContactId={setPopupContactId}
           />
@@ -627,7 +660,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, directory =
       {popupContact && (
         <ContactPopup
           contact={popupContact}
-          dc={popupDc}
+          cr={popupCr}
           onClose={() => setPopupContactId(null)}
           onToggleNotif={() => toggleNotif(popupContact.id)}
           onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}

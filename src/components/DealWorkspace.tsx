@@ -7,7 +7,7 @@ import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
 import { VoiceUpdatePanel } from './VoiceUpdatePanel';
 import { dealToRecord } from '../ai/dealConverter';
-import { Deal, DirectoryContact, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
+import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
@@ -54,13 +54,13 @@ interface Props {
   deal: Deal;
   onUpdate: (deal: Deal) => void;
   onBack?: () => void;
-  directory?: DirectoryContact[];
+  contactRecords?: ContactRecord[];
   users?: AppUser[];
   emailTemplates?: EmailTemplate[];
   complianceTemplates?: ComplianceTemplate[];
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directory = [], users = [], emailTemplates = [], complianceTemplates = [] }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [] }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState(false);
   const [copiedMls, setCopiedMls] = useState(false);
@@ -203,10 +203,10 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
 
       {/* Tab Content */}
       <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'voice' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} directory={directory} onGoToContacts={() => setTab('contacts')} editTrigger={editTrigger} />}
-        {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} directory={directory} complianceTemplates={complianceTemplates} />}
+        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} editTrigger={editTrigger} />}
+        {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
-        {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} directory={directory} />}
+        {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
