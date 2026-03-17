@@ -695,11 +695,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">First Name *</span></label>
-                    <input className="input input-sm input-bordered w-full" value={form.firstName} onChange={e => updateField('firstName', e.target.value)} />
+                    <input className="input input-sm input-bordered w-full" value={form.firstName} onChange={e => updateField('firstName', e.target.value)} autoComplete="off" />
                   </div>
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Last Name</span></label>
-                    <input className="input input-sm input-bordered w-full" value={form.lastName} onChange={e => updateField('lastName', e.target.value)} />
+                    <input className="input input-sm input-bordered w-full" value={form.lastName} onChange={e => updateField('lastName', e.target.value)} autoComplete="off" />
                   </div>
                 </div>
                 <div className="mt-2">
@@ -711,16 +711,22 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Email</span></label>
-                    <input className="input input-sm input-bordered w-full" type="email" value={form.email} onChange={e => updateField('email', e.target.value)} />
+                    <input className="input input-sm input-bordered w-full" type="email" autoComplete="off" value={form.email} onChange={e => updateField('email', e.target.value)} />
                   </div>
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Phone</span></label>
-                    <input className="input input-sm input-bordered w-full" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
+                    <input
+                      className="input input-sm input-bordered w-full"
+                      type="tel"
+                      autoComplete="off"
+                      value={form.phone}
+                      onChange={e => updateField('phone', formatPhoneLive(e.target.value))}
+                    />
                   </div>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Company</span></label>
-                  <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
+                  <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} autoComplete="off" />
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Timezone</span></label>
@@ -809,7 +815,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                         <div className="grid grid-cols-2 gap-2 mt-2">
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">License #</span></label>
-                            <input className="input input-xs input-bordered w-full" value={lic.licenseNumber} onChange={e => updateLicense(idx, { licenseNumber: e.target.value })} />
+                            <input className="input input-xs input-bordered w-full" autoComplete="off" value={lic.licenseNumber} onChange={e => updateLicense(idx, { licenseNumber: e.target.value })} />
                           </div>
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">Expiration</span></label>
@@ -849,21 +855,21 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                         <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">MLS Name</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsName} onChange={e => updateMls(idx, { mlsName: e.target.value })} />
+                            <input className="input input-xs input-bordered w-full" autoComplete="off" value={mls.mlsName} onChange={e => updateMls(idx, { mlsName: e.target.value })} />
                           </div>
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">MLS Code</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsCode} onChange={e => updateMls(idx, { mlsCode: e.target.value })} />
+                            <input className="input input-xs input-bordered w-full" autoComplete="off" value={mls.mlsCode} onChange={e => updateMls(idx, { mlsCode: e.target.value })} />
                           </div>
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsMemberNumber} onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })} />
+                            <input className="input input-xs input-bordered w-full" autoComplete="off" value={mls.mlsMemberNumber} onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })} />
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-2 mt-2">
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">Board Name</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.boardName} onChange={e => updateMls(idx, { boardName: e.target.value })} />
+                            <input className="input input-xs input-bordered w-full" autoComplete="off" value={mls.boardName} onChange={e => updateMls(idx, { boardName: e.target.value })} />
                           </div>
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">State</span></label>
