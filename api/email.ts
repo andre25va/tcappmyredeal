@@ -93,6 +93,8 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }, logger: false,
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
   });
 
   try {
@@ -110,7 +112,7 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
     } catch (searchErr) { console.error('IMAP search error:', searchErr); }
 
     const emails: any[] = [];
-    const uidList = Array.from(uidSet).slice(0, 40);
+    const uidList = Array.from(uidSet).slice(0, 15);
     for (const uid of uidList) {
       try {
         const msg = await client.fetchOne(uid.toString(), { envelope: true, source: true });
@@ -169,11 +171,7 @@ async function classifyEmailsWithAI(threads: any[]): Promise<Map<string, boolean
         messages: [
           {
             role: 'system',
-            content: `You are an email triage assistant for a real estate transaction coordinator (TC).
-Classify each email as priority:true or priority:false.
-PRIORITY=true: closing deadlines, contract issues, inspection requests, lender/title/agent direct messages, docs needed, urgent requests, date changes, earnest money, appraisal, escrow, wire instructions, home warranty, buyer/seller communications.
-PRIORITY=false: newsletters, marketing, automated system notifications, promotions, general FYI, subscription emails, app alerts.
-Return ONLY a valid JSON array with no markdown: [{"id":"...","priority":true},{"id":"...","priority":false}]`,
+            content: `You are an email triage assistant for a real estate transaction coordinator (TC).\nClassify each email as priority:true or priority:false.\nPRIORITY=true: closing deadlines, contract issues, inspection requests, lender/title/agent direct messages, docs needed, urgent requests, date changes, earnest money, appraisal, escrow, wire instructions, home warranty, buyer/seller communications.\nPRIORITY=false: newsletters, marketing, automated system notifications, promotions, general FYI, subscription emails, app alerts.\nReturn ONLY a valid JSON array with no markdown: [{"id":"...","priority":true},{"id":"...","priority":false}]`,
           },
           { role: 'user', content: JSON.stringify(emailList) },
         ],
@@ -201,6 +199,8 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }, logger: false,
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
   });
   try {
     await client.connect();
@@ -305,6 +305,8 @@ async function handleAttachment(req: VercelRequest, res: VercelResponse) {
   const client = new ImapFlow({
     host: 'imap.gmail.com', port: 993, secure: true,
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }, logger: false,
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
   });
   try {
     await client.connect();
@@ -475,13 +477,7 @@ async function classifyBatchWithAI(
       attachmentNames: (e.attachmentNames||[]).slice(0,5),
       deterministicSignals: signalsMap.get(e.id)||[],
     }));
-    const systemPrompt = `You are classifying emails for a real estate transaction coordinator.
-Property: ${deal.propertyAddress}${deal.mlsNumber ? ` (MLS# ${deal.mlsNumber})` : ''}
-Participants: ${deal.participantEmails.join(', ')||'none'}
-Client names: ${deal.clientNames.join(', ')||'none'}
-Classify each email: does it belong to this transaction file?
-Prefer precision over recall. When unclear, set shouldAttach=false.
-Categories: contract, inspection, appraisal, title, lender, closing, compliance, general, unrelated`;
+    const systemPrompt = `You are classifying emails for a real estate transaction coordinator.\nProperty: ${deal.propertyAddress}${deal.mlsNumber ? ` (MLS# ${deal.mlsNumber})` : ''}\nParticipants: ${deal.participantEmails.join(', ')||'none'}\nClient names: ${deal.clientNames.join(', ')||'none'}\nClassify each email: does it belong to this transaction file?\nPrefer precision over recall. When unclear, set shouldAttach=false.\nCategories: contract, inspection, appraisal, title, lender, closing, compliance, general, unrelated`;
 
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -577,59 +573,84 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
   const client = new ImapFlow({
     host:'imap.gmail.com', port:993, secure:true,
     auth:{ user:GMAIL_USER, pass:GMAIL_APP_PASSWORD }, logger:false,
+    connectionTimeout: 8000,
+    socketTimeout: 8000,
   });
   const rawEmails: any[] = [];
+  const TIMEOUT_MS = 8500;
+
   try {
-    await client.connect();
-    const lock = await client.getMailboxLock('INBOX');
-    const uidSet = new Set<number>();
-    try {
-      for (const addr of addresses) {
-        const u1 = await (client.search as any)({ text: addr }, { uid:true });
-        for (const u of (u1 as number[])) uidSet.add(u);
-        const words = addr.split(' ').slice(0,3).join(' ');
-        const u2 = await (client.search as any)({ subject: words }, { uid:true });
-        for (const u of (u2 as number[])) uidSet.add(u);
-      }
-    } catch(e) { console.error('IMAP search error:', e); }
-    const uidList = Array.from(uidSet).slice(0,50);
-    for (const uid of uidList) {
-      try {
-        const msg = await client.fetchOne(uid.toString(), { envelope:true, source:true });
-        if (!msg) continue;
-        const source = msg.source?.toString('utf-8')||'';
-        const { text, html, attachments } = extractPartsFromSource(source);
-        const bodyText = text||(html ? stripHtml(html) : '');
-        const msgDate  = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
-        const fromAddr = msg.envelope?.from?.[0];
-        const hdrs     = extractEmailHeaders(source);
-        rawEmails.push({
-          id: msg.uid.toString(),
-          messageId: hdrs.messageId,
-          inReplyTo: hdrs.inReplyTo,
-          subject: msg.envelope?.subject||'(no subject)',
-          from: fromAddr ? `${fromAddr.name||''} <${fromAddr.address||''}>`.trim() : '',
-          to: msg.envelope?.to?.map((a:any)=>a.address).join(', ')||'',
-          cc: hdrs.cc||msg.envelope?.cc?.map((a:any)=>a.address).join(', ')||'',
-          date: msgDate.toISOString(),
-          internalDate: msgDate.getTime().toString(),
-          snippet: bodyText.substring(0,200),
-          bodyHtml: html||'',
-          body: bodyText,
-          attachmentNames: attachments.map((a:any)=>a.filename),
-          attachments: attachments.map((a:any)=>({
-            filename:a.filename, contentType:a.contentType, size:a.size,
-            downloadUrl:`/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
-          })),
-        });
-      } catch(e) { console.error(`Fetch UID ${uid} error:`, e); }
-    }
-    lock.release();
-    await client.logout();
+    await Promise.race([
+      (async () => {
+        await client.connect();
+        const lock = await client.getMailboxLock('INBOX');
+        const uidSet = new Set<number>();
+        try {
+          for (const addr of addresses) {
+            const u1 = await (client.search as any)({ text: addr }, { uid:true });
+            for (const u of (u1 as number[])) uidSet.add(u);
+            const words = addr.split(' ').slice(0,3).join(' ');
+            const u2 = await (client.search as any)({ subject: words }, { uid:true });
+            for (const u of (u2 as number[])) uidSet.add(u);
+          }
+        } catch(e) { console.error('IMAP search error:', e); }
+        const uidList = Array.from(uidSet).slice(0,15);
+        for (const uid of uidList) {
+          try {
+            const msg = await client.fetchOne(uid.toString(), { envelope:true, source:true });
+            if (!msg) continue;
+            const source = msg.source?.toString('utf-8')||'';
+            const { text, html, attachments } = extractPartsFromSource(source);
+            const bodyText = text||(html ? stripHtml(html) : '');
+            const msgDate  = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+            const fromAddr = msg.envelope?.from?.[0];
+            const hdrs     = extractEmailHeaders(source);
+            rawEmails.push({
+              id: msg.uid.toString(),
+              messageId: hdrs.messageId,
+              inReplyTo: hdrs.inReplyTo,
+              subject: msg.envelope?.subject||'(no subject)',
+              from: fromAddr ? `${fromAddr.name||''} <${fromAddr.address||''}>`.trim() : '',
+              to: msg.envelope?.to?.map((a:any)=>a.address).join(', ')||'',
+              cc: hdrs.cc||msg.envelope?.cc?.map((a:any)=>a.address).join(', ')||'',
+              date: msgDate.toISOString(),
+              internalDate: msgDate.getTime().toString(),
+              snippet: bodyText.substring(0,200),
+              bodyHtml: html||'',
+              body: bodyText,
+              attachmentNames: attachments.map((a:any)=>a.filename),
+              attachments: attachments.map((a:any)=>({
+                filename:a.filename, contentType:a.contentType, size:a.size,
+                downloadUrl:`/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
+              })),
+            });
+          } catch(e) { console.error(`Fetch UID ${uid} error:`, e); }
+        }
+        lock.release();
+        await client.logout();
+      })(),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('IMAP_TIMEOUT')), TIMEOUT_MS)
+      ),
+    ]);
   } catch(err:any) {
-    console.error('Email search-classify error:', err);
     try { await client.logout(); } catch {}
-    return res.status(500).json({ error: err.message||'Search failed' });
+    if (err.message === 'IMAP_TIMEOUT') {
+      // Return whatever we managed to collect before timeout
+      if (rawEmails.length === 0) {
+        return res.status(200).json({
+          emails: [],
+          total: 0,
+          addresses,
+          stats: { hardAccepted: 0, grayZone: 0, aiAccepted: 0, hardRejected: 0, totalScanned: 0 },
+          warning: 'Email search timed out. Try again or check Gmail connectivity.',
+        });
+      }
+      // Fall through with partial results
+    } else {
+      console.error('Email search-classify error:', err);
+      return res.status(500).json({ error: err.message||'Search failed' });
+    }
   }
 
   // ── Thread grouping ────────────────────────────────────────────────────────
