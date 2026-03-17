@@ -55,7 +55,6 @@ async function handleSend(req: VercelRequest, res: VercelResponse) {
         ...(need_reply ? { waiting_for_reply: true, waiting_since: now } : {}),
       }).eq('id', convId);
     }
-    // reply_tracking table removed — waiting flags now stored in conversations table
     const results: any[] = [], errors: any[] = [];
     for (const recipient of recipients) {
       const phone = recipient.phone.replace(/\D/g, '');
@@ -93,7 +92,7 @@ async function handleConversations(req: VercelRequest, res: VercelResponse) {
         return res.json({ messages });
       }
       let q = supabase.from('conversations')
-        .select('*, deals(property_address, city, state, milestone)')
+        .select('*, deals(property_address, city, state, pipeline_stage)')
         .order('last_message_at', { ascending: false });
       if (deal_id) q = q.eq('deal_id', deal_id);
       const { data: conversations, error } = await q;
@@ -115,8 +114,6 @@ async function handleConversations(req: VercelRequest, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Vercel rewrite passes the path segment as query param:
-  // /api/sms/send -> action='send', /api/sms/conversations -> action='conversations'
   const action = req.query.action as string;
   if (action === 'send') return handleSend(req, res);
   return handleConversations(req, res);
