@@ -30,6 +30,7 @@ import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAudit } from './hooks/useAudit';
+import { NotificationBell } from './components/NotificationBell';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -309,6 +310,11 @@ function AppInner() {
     setView(v);
   };
 
+  const handleNotificationNavigate = (view: string, conversationId?: string) => {
+    setView(view as View);
+    // If navigating to inbox with conversation, the Inbox component will handle selection
+  };
+
   const selected = deals.find(d => d.id === selectedId) ?? null;
 
   const totalPending = deals.reduce((a, d) =>
@@ -361,16 +367,21 @@ function AppInner() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Desktop top bar */}
-        <div className="hidden md:block flex-none">
-          <Topbar
-            onAddDeal={() => setShowAdd(true)}
-            onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
-            onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
-            dealCount={deals.filter(d => d.milestone !== 'archived').length}
-            pendingAlerts={totalPending}
-            onSelectDeal={handleSelectDeal}
-            onSetView={(v) => setView(v as any)}
-          />
+        <div className="hidden md:flex items-center flex-none">
+          <div className="flex-1">
+            <Topbar
+              onAddDeal={() => setShowAdd(true)}
+              onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
+              onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
+              dealCount={deals.filter(d => d.milestone !== 'archived').length}
+              pendingAlerts={totalPending}
+              onSelectDeal={handleSelectDeal}
+              onSetView={(v) => setView(v as any)}
+            />
+          </div>
+          <div className="pr-3">
+            <NotificationBell onNavigate={handleNotificationNavigate} />
+          </div>
         </div>
         {/* Mobile top bar */}
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
@@ -378,6 +389,7 @@ function AppInner() {
           <span className="font-bold text-sm text-base-content flex-1">
             {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
           </span>
+          <NotificationBell onNavigate={handleNotificationNavigate} />
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
           </button>

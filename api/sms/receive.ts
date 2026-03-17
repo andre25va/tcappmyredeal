@@ -302,12 +302,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         .eq('id', conversation.id);
 
-      // Clear reply_tracking entry
-      await supabase
-        .from('reply_tracking')
-        .update({ is_active: false, cleared_at: now })
-        .eq('conversation_id', conversation.id)
-        .eq('is_active', true);
     }
 
     // 4. Save inbound message
@@ -323,6 +317,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       to_number: process.env.TWILIO_PHONE_NUMBER,
       external_message_id: MessageSid,
       sent_at: now,
+    });
+
+    // Create notification for inbound message
+    await supabase.from('notifications').insert({
+      type: channel,
+      title: `New ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} from ${contactName}`,
+      body: Body.substring(0, 200),
+      from_name: contactName,
+      from_identifier: fromPhone,
+      conversation_id: conversation?.id || null,
+      deal_id: relatedDeal?.id || null,
+      contact_id: matchedContact?.id || null,
     });
 
     // 5. AI classify and auto-create comm task
