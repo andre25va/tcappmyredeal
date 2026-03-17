@@ -16,7 +16,7 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   return 'both';
 };
 
-// Full contact info popup
+// ── Full contact info popup ──────────────────────────────────────────────────
 const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: () => void; onToggleNotif: () => void; onRemove: () => void }> = ({ contact, cr, onClose, onToggleNotif, onRemove }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
     <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -57,7 +57,6 @@ const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: ()
             <p className="text-sm text-black">{cr.notes}</p>
           </div>
         )}
-        {/* Notification status */}
         <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
           {contact.inNotificationList
             ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
@@ -78,7 +77,7 @@ const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: ()
   </div>
 );
 
-// Searchable contact picker
+// ── Searchable contact picker ────────────────────────────────────────────────
 const ContactPicker: React.FC<{
   contactRecords: ContactRecord[];
   existingIds: string[];
@@ -97,11 +96,9 @@ const ContactPicker: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // Filter by picker type
   const byType = (cr: ContactRecord) => {
     if (pickerType === 'client') return cr.contactType === 'agent' && cr.isClient;
     if (pickerType === 'team') return ['agent', 'tc', 'other', 'inspector'].includes(cr.contactType);
-    // 'contact' — general contacts
     return true;
   };
 
@@ -120,14 +117,12 @@ const ContactPicker: React.FC<{
 
   return (
     <div ref={ref} className="absolute right-0 z-40 bg-white border border-gray-200 rounded-2xl shadow-2xl w-72 overflow-hidden">
-      {/* Side label */}
       <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full flex-none ${side === 'buy' ? 'bg-blue-500' : side === 'sell' ? 'bg-green-500' : 'bg-gray-400'}`} />
         <span className="text-xs font-semibold text-gray-600">
           {pickerLabel} — {side === 'buy' ? 'Buy Side' : side === 'sell' ? 'Sell Side' : 'Both Sides'}
         </span>
       </div>
-      {/* Search */}
       <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
         <Search size={13} className="text-gray-400 flex-none" />
         <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
@@ -135,7 +130,6 @@ const ContactPicker: React.FC<{
           placeholder="Search contacts..." />
         {search && <button onClick={() => setSearch('')}><X size={12} className="text-gray-300" /></button>}
       </div>
-      {/* Results */}
       <div className="max-h-56 overflow-y-auto">
         {filtered.length === 0 && (
           <p className="text-xs text-gray-400 text-center py-6">No contacts found</p>
@@ -157,15 +151,14 @@ const ContactPicker: React.FC<{
   );
 };
 
-// Additional People collapsed section inside AgentClientRow card
+// ── Additional People (spouses/co-buyers) inside agent client card ───────────
 const MARITAL_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated', 'Other'];
 const RELATIONSHIP_OPTIONS = ['Spouse', 'Co-Buyer', 'Co-Seller', 'Partner', 'Family Member', 'Other'];
 
-const AgentClientRow: React.FC<{
+const AdditionalPeopleSection: React.FC<{
   contact: Contact;
-  onClick: () => void;
   onUpdateContact: (updated: Contact) => void;
-}> = ({ contact, onClick, onUpdateContact }) => {
+}> = ({ contact, onUpdateContact }) => {
   const [expanded, setExpanded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -201,162 +194,131 @@ const AgentClientRow: React.FC<{
   };
 
   return (
-    <div className="rounded-lg overflow-hidden">
-      {/* Main row */}
-      <button onClick={onClick}
-        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/70 transition-colors text-left group">
-        <div className="relative flex-none">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(contact.role)}`}>
-            {getInitials(contact.name)}
-          </div>
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-bold text-black truncate">{contact.name}</span>
-            <span className="text-xs bg-red-100 text-red-600 rounded-full px-1.5 py-0 font-semibold whitespace-nowrap">our client</span>
-          </div>
-          <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-        </div>
-        <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
+    <div className="mt-2">
+      <button
+        onClick={() => setExpanded(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary transition-colors px-1 py-0.5 rounded-md hover:bg-white/50"
+      >
+        <Users size={11} />
+        <span className="font-medium">Spouse / Co-Buyer</span>
+        {people.length > 0 && (
+          <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0 text-[10px] font-bold">{people.length}</span>
+        )}
+        {expanded ? <ChevronDown size={11} className="ml-auto" /> : <ChevronRight size={11} className="ml-auto" />}
       </button>
 
-      {/* Additional People toggle */}
-      <div className="ml-2 mt-0.5">
-        <button
-          onClick={() => setExpanded(o => !o)}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-white/50 w-full"
-        >
-          <Users size={11} />
-          <span className="font-medium">Additional People</span>
-          {people.length > 0 && (
-            <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0 text-[10px] font-bold">{people.length}</span>
+      {expanded && (
+        <div className="mt-1.5 ml-2 border-l-2 border-gray-200 pl-3 space-y-1.5">
+          {people.map(p => (
+            <div key={p.id} className="bg-white border border-gray-100 rounded-lg p-2 text-xs">
+              <div className="flex items-start justify-between gap-1">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-black truncate">{p.name}</p>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {p.relationship && <span className="bg-blue-50 text-blue-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.relationship}</span>}
+                    {p.maritalStatus && <span className="bg-purple-50 text-purple-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.maritalStatus}</span>}
+                  </div>
+                  {p.phone && <p className="text-gray-400 mt-0.5">{p.phone}</p>}
+                  {p.email && <p className="text-gray-400 truncate">{p.email}</p>}
+                </div>
+                <div className="flex gap-1 flex-none">
+                  <button onClick={() => startEdit(p)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-primary"><Edit2 size={10} /></button>
+                  <button onClick={() => removePerson(p.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={10} /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {showForm ? (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 space-y-1.5">
+              <p className="text-[11px] font-semibold text-blue-700 mb-1">{editId ? 'Edit Person' : 'Add Person'}</p>
+              <input className="input input-bordered input-xs w-full text-xs" placeholder="Full Name *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-1.5">
+                <select className="select select-bordered select-xs w-full text-xs" value={form.relationship} onChange={e => setForm(f => ({ ...f, relationship: e.target.value }))}>
+                  <option value="">Relationship</option>
+                  {RELATIONSHIP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <select className="select select-bordered select-xs w-full text-xs" value={form.maritalStatus} onChange={e => setForm(f => ({ ...f, maritalStatus: e.target.value }))}>
+                  <option value="">Marital Status</option>
+                  {MARITAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <input className="input input-bordered input-xs w-full text-xs" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              <input className="input input-bordered input-xs w-full text-xs" placeholder="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              <div className="flex gap-1.5 pt-0.5">
+                <button onClick={saveForm} className="btn btn-primary btn-xs flex-1 gap-1"><Save size={10} /> Save</button>
+                <button onClick={resetForm} className="btn btn-ghost btn-xs flex-1">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', relationship: '', maritalStatus: '', phone: '', email: '' }); }}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline px-1 py-1"
+            >
+              <UserPlus size={11} /> Add Person
+            </button>
           )}
-          {expanded ? <ChevronDown size={11} className="ml-auto" /> : <ChevronRight size={11} className="ml-auto" />}
-        </button>
-
-        {expanded && (
-          <div className="mt-1 ml-2 border-l-2 border-gray-200 pl-3 space-y-1.5">
-            {/* Existing people */}
-            {people.map(p => (
-              <div key={p.id} className="bg-white border border-gray-100 rounded-lg p-2 text-xs">
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-black truncate">{p.name}</p>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {p.relationship && <span className="bg-blue-50 text-blue-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.relationship}</span>}
-                      {p.maritalStatus && <span className="bg-purple-50 text-purple-600 rounded-full px-1.5 py-0 text-[10px] font-medium">{p.maritalStatus}</span>}
-                    </div>
-                    {p.phone && <p className="text-gray-400 mt-0.5">{p.phone}</p>}
-                    {p.email && <p className="text-gray-400 truncate">{p.email}</p>}
-                  </div>
-                  <div className="flex gap-1 flex-none">
-                    <button onClick={() => startEdit(p)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-primary"><Edit2 size={10} /></button>
-                    <button onClick={() => removePerson(p.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={10} /></button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* Add form */}
-            {showForm ? (
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 space-y-1.5">
-                <p className="text-[11px] font-semibold text-blue-700 mb-1">{editId ? 'Edit Person' : 'Add Person'}</p>
-                <input
-                  className="input input-bordered input-xs w-full text-xs"
-                  placeholder="Full Name *"
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                />
-                <div className="grid grid-cols-2 gap-1.5">
-                  <select className="select select-bordered select-xs w-full text-xs" value={form.relationship} onChange={e => setForm(f => ({ ...f, relationship: e.target.value }))}>
-                    <option value="">Relationship</option>
-                    {RELATIONSHIP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                  <select className="select select-bordered select-xs w-full text-xs" value={form.maritalStatus} onChange={e => setForm(f => ({ ...f, maritalStatus: e.target.value }))}>
-                    <option value="">Marital Status</option>
-                    {MARITAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-                <input
-                  className="input input-bordered input-xs w-full text-xs"
-                  placeholder="Phone"
-                  value={form.phone}
-                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                />
-                <input
-                  className="input input-bordered input-xs w-full text-xs"
-                  placeholder="Email"
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                />
-                <div className="flex gap-1.5 pt-0.5">
-                  <button onClick={saveForm} className="btn btn-primary btn-xs flex-1 gap-1"><Save size={10} /> Save</button>
-                  <button onClick={resetForm} className="btn btn-ghost btn-xs flex-1">Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => { setShowForm(true); setEditId(null); setForm({ name: '', relationship: '', maritalStatus: '', phone: '', email: '' }); }}
-                className="flex items-center gap-1.5 text-xs text-primary hover:underline px-2 py-1"
-              >
-                <UserPlus size={11} /> Add Person
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// Sub-contact row — indented with tree line
-const SubContactRow: React.FC<{ contact: Contact; isLast: boolean; onClick: () => void }> = ({ contact, isLast, onClick }) => (
-  <div className="flex items-stretch">
-    {/* Tree line */}
-    <div className="flex flex-col items-center w-5 flex-none ml-3">
-      <div className="w-px bg-gray-300 flex-1" />
-      <div className={`w-px ${isLast ? 'bg-transparent' : 'bg-gray-300'} flex-1`} />
-    </div>
-    <div className="flex items-center w-3 flex-none">
-      <div className="w-full h-px bg-gray-300" />
-    </div>
-    <button onClick={onClick}
-      className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/70 transition-colors text-left group min-w-0">
-      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(contact.role)}`}>
-        {getInitials(contact.name)}
+// ── Agent Client Card (highlighted, prominent) ───────────────────────────────
+const AgentClientCard: React.FC<{
+  contact: Contact;
+  onClick: () => void;
+  onUpdateContact: (updated: Contact) => void;
+}> = ({ contact, onClick, onUpdateContact }) => (
+  <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+    <button onClick={onClick} className="w-full flex items-center gap-3 text-left group">
+      <div className="relative flex-none">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${roleAvatarBg(contact.role)}`}>
+          {getInitials(contact.name)}
+        </div>
+        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-xs font-semibold text-black truncate block">{contact.name}</span>
-        <span className="text-xs text-gray-400 truncate block">{roleLabel(contact.role)}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-black truncate">{contact.name}</span>
+          <span className="text-[10px] bg-red-100 text-red-600 rounded-full px-2 py-0.5 font-semibold whitespace-nowrap leading-none">our client</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
+          {contact.company && <span className="text-xs text-gray-400">· {contact.company}</span>}
+        </div>
       </div>
-      {contact.inNotificationList && <Bell size={10} className="text-primary opacity-50 flex-none" />}
-      <ChevronRight size={11} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
+      <ChevronRight size={14} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
     </button>
+    <AdditionalPeopleSection contact={contact} onUpdateContact={onUpdateContact} />
   </div>
 );
 
-// Regular contact row (no agent client on this side)
+// ── Regular Contact Card ─────────────────────────────────────────────────────
 const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () => void }> = ({ contact, cr, onClick }) => (
   <button onClick={onClick}
-    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/70 transition-colors text-left group">
-    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(contact.role)}`}>
+    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all text-left group">
+    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(contact.role)}`}>
       {getInitials(contact.name)}
     </div>
     <div className="flex-1 min-w-0">
-      <span className="text-xs font-semibold text-black truncate block">{contact.name}</span>
-      <span className="text-xs text-gray-400 truncate block">{roleLabel(contact.role)}</span>
+      <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
+        {(contact.company || cr?.company) && <span className="text-xs text-gray-400">· {contact.company || cr?.company}</span>}
+      </div>
     </div>
-    <div className="flex items-center gap-1 flex-none">
-      {contact.inNotificationList && <Bell size={10} className="text-primary opacity-50" />}
-      <ChevronRight size={11} className="text-gray-300 group-hover:text-primary transition-colors" />
+    <div className="flex items-center gap-1.5 flex-none">
+      {contact.inNotificationList && <Bell size={11} className="text-primary/50" />}
+      <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors" />
     </div>
   </button>
 );
 
+// ── Side Section (one column) ────────────────────────────────────────────────
 interface SideSectionProps {
   title: string;
-  accent: string;
+  dotColor: string;
   contacts: Contact[];
   side: 'buy' | 'sell';
   showAddMenu: 'buy' | 'sell' | null;
@@ -372,7 +334,7 @@ interface SideSectionProps {
 }
 
 const SideSection: React.FC<SideSectionProps> = ({
-  title, accent, contacts, side,
+  title, dotColor, contacts, side,
   showAddMenu, setShowAddMenu,
   pickerConfig, setPickerConfig,
   existingDirIds, contactRecords,
@@ -380,7 +342,7 @@ const SideSection: React.FC<SideSectionProps> = ({
   setPopupContactId,
 }) => {
   const agentClient = contacts.find(c => deal.participants?.some(p => p.contactId === (c.directoryId || c.id) && p.isClientSide));
-  const subContacts = contacts.filter(c => c.id !== agentClient?.id);
+  const otherContacts = contacts.filter(c => c.id !== agentClient?.id);
   const hasAgentClient = !!agentClient;
 
   const menuWrapRef = useRef<HTMLDivElement>(null);
@@ -398,63 +360,55 @@ const SideSection: React.FC<SideSectionProps> = ({
   const openPicker = (type: 'client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
 
   return (
-    <div className="flex-1 min-w-0">
+    <div className="flex flex-col h-full">
       {/* Section header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${side === 'buy' ? 'bg-blue-500' : 'bg-green-500'}`} />
-          <h3 className={`font-bold text-sm ${accent}`}>{title}</h3>
-          <span className="text-xs text-gray-400 font-normal">({contacts.length})</span>
+          <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+          <h3 className="font-bold text-base text-black">{title}</h3>
+          <span className="text-xs text-gray-400 font-medium">({contacts.length})</span>
         </div>
         <div className="relative" ref={menuWrapRef}>
-          <button
-            onClick={openMenu}
-            className="btn btn-xs btn-outline gap-1 border-gray-300 text-gray-600 hover:bg-gray-50"
-          >
+          <button onClick={openMenu}
+            className="btn btn-xs btn-outline gap-1 border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400">
             <Plus size={11} /> Add <ChevronDown size={10} />
           </button>
 
           {showAddMenu === side && (
-            <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden w-48">
-              <div className="px-3 py-1.5 border-b border-gray-100">
-                <p className="text-xs text-gray-400 font-medium">Add to {side === 'buy' ? 'Buy' : 'Sell'} Side</p>
+            <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden w-52">
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <p className="text-xs text-gray-500 font-semibold">Add to {title}</p>
               </div>
-              <button
-                onClick={() => openPicker('client')}
-                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 transition-colors text-left"
-              >
-                <div className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center flex-none">
-                  <UserCheck size={12} className="text-red-500" />
+              <button onClick={() => openPicker('client')}
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 transition-colors text-left">
+                <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center flex-none">
+                  <UserCheck size={13} className="text-red-500" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-black">Add Agent Client</p>
+                  <p className="text-sm font-semibold text-black">Agent Client</p>
                   <p className="text-xs text-gray-400">Our client (red dot)</p>
                 </div>
               </button>
               {hasAgentClient && (
-                <button
-                  onClick={() => openPicker('team')}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 transition-colors text-left"
-                >
-                  <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center flex-none">
-                    <Users size={12} className="text-blue-600" />
+                <button onClick={() => openPicker('team')}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 transition-colors text-left">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-none">
+                    <Users size={13} className="text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-black">Add Team Member</p>
+                    <p className="text-sm font-semibold text-black">Team Member</p>
                     <p className="text-xs text-gray-400">TC, showing agent…</p>
                   </div>
                 </button>
               )}
-              <button
-                onClick={() => openPicker('contact')}
-                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-green-50 transition-colors text-left"
-              >
-                <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center flex-none">
-                  <User size={12} className="text-green-600" />
+              <button onClick={() => openPicker('contact')}
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-green-50 transition-colors text-left">
+                <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center flex-none">
+                  <User size={13} className="text-green-600" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-black">Add Contact</p>
-                  <p className="text-xs text-gray-400">End Client, Lender, Title…</p>
+                  <p className="text-sm font-semibold text-black">Contact</p>
+                  <p className="text-xs text-gray-400">Lender, Title, End Client…</p>
                 </div>
               </button>
             </div>
@@ -473,15 +427,18 @@ const SideSection: React.FC<SideSectionProps> = ({
         </div>
       </div>
 
+      {/* Contact cards */}
       {contacts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-3 border border-dashed border-gray-200 rounded-lg">
-          <p className="text-xs text-gray-400">No contacts yet</p>
-          <button onClick={() => setShowAddMenu(side)} className="text-xs text-primary mt-0.5 hover:underline">+ Add</button>
+        <div className="flex-1 flex flex-col items-center justify-center py-8 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+          <Users size={20} className="text-gray-300 mb-2" />
+          <p className="text-sm text-gray-400 font-medium">No contacts yet</p>
+          <button onClick={() => setShowAddMenu(side)} className="text-xs text-primary mt-1 hover:underline font-medium">+ Add first contact</button>
         </div>
       ) : (
-        <div>
+        <div className="space-y-2">
+          {/* Agent client card (if present) */}
           {agentClient && (
-            <AgentClientRow
+            <AgentClientCard
               contact={agentClient}
               onClick={() => setPopupContactId(agentClient.id)}
               onUpdateContact={(updated) => {
@@ -493,43 +450,29 @@ const SideSection: React.FC<SideSectionProps> = ({
               }}
             />
           )}
-          {agentClient ? (
-            <div className="mt-0.5">
-              {subContacts.map((c, i) => (
-                <SubContactRow
-                  key={c.id}
-                  contact={c}
-                  isLast={i === subContacts.length - 1}
-                  onClick={() => setPopupContactId(c.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {subContacts.map(c => (
-                <ContactCard
-                  key={c.id}
-                  contact={c}
-                  cr={contactRecords.find(d => d.id === c.directoryId)}
-                  onClick={() => setPopupContactId(c.id)}
-                />
-              ))}
-            </div>
-          )}
+
+          {/* Other contacts — flat list, no tree lines */}
+          {otherContacts.map(c => (
+            <ContactCard
+              key={c.id}
+              contact={c}
+              cr={contactRecords.find(d => d.id === c.directoryId)}
+              onClick={() => setPopupContactId(c.id)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 };
 
+// ── Main Component ───────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [] }) => {
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
-
-
 
   const existingDirIds = deal.contacts.filter(c => c.directoryId).map(c => c.directoryId!);
 
@@ -606,25 +549,24 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
   const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
 
-
   return (
-    <div className="p-5 space-y-5">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
 
       {/* Notification List */}
       <div className="bg-primary/5 border border-primary/20 rounded-xl overflow-hidden">
-        <button onClick={() => setNotifOpen(o => !o)} className="w-full flex items-center gap-2 p-3 hover:bg-primary/10 transition-colors">
-          <Bell size={14} className="text-primary opacity-70" />
+        <button onClick={() => setNotifOpen(o => !o)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-primary/10 transition-colors">
+          <Bell size={15} className="text-primary opacity-70" />
           <span className="font-semibold text-sm text-black flex-1 text-left">Notification List</span>
-          <span className="badge badge-primary badge-xs mr-1">{notifList.length}</span>
-          {notifOpen ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
+          <span className="badge badge-primary badge-sm">{notifList.length}</span>
+          {notifOpen ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
         </button>
         {notifOpen && (
-          <div className="px-3 pb-3 flex flex-wrap gap-2 border-t border-primary/10 pt-2">
+          <div className="px-4 pb-3 flex flex-wrap gap-2 border-t border-primary/10 pt-3">
             {notifList.length === 0 && <p className="text-xs text-gray-400">No contacts on notification list.</p>}
             {notifList.map(c => (
-              <div key={c.id} className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-lg border border-gray-200">
+              <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-gray-200 shadow-sm">
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(c.role)}`}>{getInitials(c.name)}</div>
-                <span className="text-xs text-black">{c.name}</span>
+                <span className="text-xs font-medium text-black">{c.name}</span>
                 <span className={`badge badge-xs ${roleBadge(c.role)}`}>{roleLabel(c.role)}</span>
               </div>
             ))}
@@ -632,11 +574,11 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         )}
       </div>
 
-      {/* Buy Side / Sell Side — stacked */}
-      <div className="flex flex-col gap-3">
-        <div className="border border-blue-100 rounded-xl p-3 bg-blue-50/30">
+      {/* Two-column grid: Buy Side | Sell Side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+        <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/30">
           <SideSection
-            title="Buy Side" accent="text-blue-600" contacts={buySide} side="buy"
+            title="Buy Side" dotColor="bg-blue-500" contacts={buySide} side="buy"
             showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
             pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
             existingDirIds={existingDirIds} contactRecords={contactRecords}
@@ -644,9 +586,9 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
             setPopupContactId={setPopupContactId}
           />
         </div>
-        <div className="border border-green-100 rounded-xl p-3 bg-green-50/30">
+        <div className="border border-green-200 rounded-xl p-4 bg-green-50/30">
           <SideSection
-            title="Sell Side" accent="text-green-600" contacts={sellSide} side="sell"
+            title="Sell Side" dotColor="bg-green-500" contacts={sellSide} side="sell"
             showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
             pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
             existingDirIds={existingDirIds} contactRecords={contactRecords}
