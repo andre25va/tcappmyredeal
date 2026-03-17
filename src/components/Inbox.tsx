@@ -362,7 +362,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emailEndRef = useRef<HTMLDivElement>(null);
-  const refreshRef = useRef<NodeJS.Timeout>();
+  const refreshRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -999,7 +999,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
               </>
             );
           })()
-          )}
+          }
         </div>
       )}
 
