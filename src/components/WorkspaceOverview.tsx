@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
+import { DealHealthCard } from './DealHealthCard';
+import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
 import { Deal, DealStatus, PropertyType, AgentContact, DirectoryContact, DealMilestone, ActivityType, Reminder } from '../types';
 import { generateTasksForMilestone, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
@@ -514,6 +516,9 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, directory =
 
   return (
     <div className="p-5 space-y-5 max-w-4xl">
+
+      {/* ─── Deal Health ─── */}
+      <DealHealthCard dealRecord={dealToRecord(deal)} />
 
       {/* ─── Milestone Stepper ─── */}
       <MilestoneStepper deal={deal} onUpdate={onUpdate} />
