@@ -24,6 +24,7 @@ import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
 import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
+import { CommunicationsConsole } from './components/CommunicationsConsole';
 import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -58,6 +59,7 @@ function AppInner() {
   const [quickAddRole, setQuickAddRole]     = useState<'agent' | 'contact' | null>(null);
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
+  const [voicePending, setVoicePending]     = useState(0);
 
   const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -194,6 +196,31 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
+  // ── Poll voice pending count ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    const fetchVoiceCount = async () => {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const url = import.meta.env.VITE_SUPABASE_URL;
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!url || !key) return;
+        const sb = createClient(url, key);
+
+        // Count pending voice updates + open callbacks + pending change requests
+        const [vuRes, cbRes, crRes] = await Promise.all([
+          sb.from('voice_deal_updates').select('id', { count: 'exact', head: true }).eq('review_status', 'pending'),
+          sb.from('callback_requests').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+          sb.from('change_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending_review'),
+        ]);
+        setVoicePending((vuRes.count || 0) + (cbRes.count || 0) + (crRes.count || 0));
+      } catch { /* silent */ }
+    };
+    fetchVoiceCount();
+    const t = setInterval(fetchVoiceCount, 60000);
+    return () => clearInterval(t);
+  }, [profile]);
+
   // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
     if (deals.length === 0) {
@@ -327,6 +354,7 @@ function AppInner() {
         onCloseMobile={() => setMobileOpen(false)}
         inboxUnread={inboxUnread}
         tasksPending={tasksPending}
+        voicePending={voicePending}
       />
 
       {/* Main content */}
@@ -347,7 +375,7 @@ function AppInner() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3">
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : 'Settings'}
           </span>
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
@@ -452,6 +480,12 @@ function AppInner() {
                 }}
                 onSelectDeal={handleSelectDeal}
               />
+            </div>
+          )}
+
+          {view === 'voice' && (
+            <div className="flex-1 overflow-hidden">
+              <CommunicationsConsole onSelectDeal={handleSelectDeal} />
             </div>
           )}
 

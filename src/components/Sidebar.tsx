@@ -3,11 +3,11 @@ import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   ClipboardList, Settings, FileText, UserPlus, MessageSquare,
-  CheckSquare, Clock, LogOut,
+  CheckSquare, Clock, LogOut, Phone,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks';
+export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks' | 'voice';
 
 interface SidebarProps {
   onAddDeal: () => void;
@@ -25,17 +25,20 @@ interface SidebarProps {
   inboxUnread: number;
   tasksPending?: number;
   waitingCount?: number;
+  voicePending?: number;
 }
 
 const NAV_ITEMS = (
   dealCount: number,
   inboxUnread: number,
   tasksPending: number,
-  waitingCount: number
+  waitingCount: number,
+  voicePendingCount: number
 ): { id: View; label: string; icon: React.ReactNode; badge?: number; waitingBadge?: number }[] => [
   { id: 'dashboard',    label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
   { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined, waitingBadge: waitingCount > 0 ? waitingCount : undefined },
   { id: 'tasks',        label: 'Comm Tasks',   icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
+  { id: 'voice',        label: 'Voice',        icon: <Phone size={18} />, badge: voicePendingCount > 0 ? voicePendingCount : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },
   { id: 'mls',          label: 'MLS',          icon: <Globe size={18} /> },
@@ -51,9 +54,9 @@ function getInitials(name: string): string {
 function SidebarInner({
   onAddDeal, onAddAgentClient, onAddContact, dealCount, pendingAlerts, onAmberClick,
   view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay,
-  inboxUnread, tasksPending = 0, waitingCount = 0,
+  inboxUnread, tasksPending = 0, waitingCount = 0, voicePending = 0,
 }: SidebarProps & { isMobileOverlay: boolean }) {
-  const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending, waitingCount);
+  const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending, waitingCount, voicePending);
   const [createOpen, setCreateOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);

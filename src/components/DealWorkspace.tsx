@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Mic,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
-import { VoiceUpdatePanel } from './VoiceUpdatePanel';
+import { DealCommTimeline } from './DealCommTimeline';
 import { dealToRecord } from '../ai/dealConverter';
 import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
@@ -48,7 +48,7 @@ import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'voice';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms';
 
 interface Props {
   deal: Deal;
@@ -82,7 +82,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
-    { id: 'voice',      label: 'Voice',      icon: <Mic size={13} /> },
+    { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} /> },
   ];
 
@@ -202,7 +202,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       </div>
 
       {/* Tab Content */}
-      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'voice' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} editTrigger={editTrigger} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
@@ -211,7 +211,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
-        {tab === 'voice'     && <VoiceUpdatePanel deal={deal} onUpdate={onUpdate} />}
+        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
         {tab === 'ai-emails' && <div className="p-4"><EmailCommandCenter deal={dealToRecord(deal)} emails={[]} /></div>}
       </div>
     </div>
