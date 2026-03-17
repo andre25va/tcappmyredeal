@@ -281,14 +281,15 @@ async function handleAdminEmailConfirm(req: VercelRequest, res: VercelResponse) 
         .eq('event_type', 'admin_voice_qa')
         .order('created_at', { ascending: true });
 
+      console.log(`admin-email-confirm: found ${events?.length || 0} Q&A events for callSid=${callSid}`);
       if (events && events.length > 0) {
         const callDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         const callTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' });
 
         const qaHtml = events.map((e: any, i: number) => `
           <div style="margin-bottom:20px;padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #2563eb;">
-            <p style="margin:0 0 8px;font-weight:600;color:#1e3a5f;font-size:15px;">Q${i + 1}: ${e.metadata?.question || ''}</p>
-            <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;">${e.metadata?.answer || ''}</p>
+            <p style="margin:0 0 8px;font-weight:600;color:#1e3a5f;font-size:15px;">Q${i + 1}: ${e.metadata?.question || '(question not recorded)'}</p>
+            <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;">${e.metadata?.answer || '(answer not recorded)'}</p>
           </div>`).join('');
 
         const emailHtml = `
@@ -306,7 +307,7 @@ async function handleAdminEmailConfirm(req: VercelRequest, res: VercelResponse) 
             </div>
           </div>`;
 
-        await fetch('https://api.resend.com/emails', {
+        const adminEmailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
@@ -319,9 +320,18 @@ async function handleAdminEmailConfirm(req: VercelRequest, res: VercelResponse) 
             html: emailHtml,
           }),
         });
+        const adminEmailBody = await adminEmailRes.json() as any;
+        if (!adminEmailRes.ok) {
+          console.error('Resend admin voice email FAILED:', JSON.stringify(adminEmailBody));
+          return res.send(twiml(
+            say('I ran into a problem sending the email. The mail service may need attention. Have a great day! Goodbye.'),
+            '<Hangup/>'
+          ));
+        }
+        console.log('Resend admin voice email sent OK, id:', adminEmailBody.id);
 
         return res.send(twiml(
-          say('Done! I emailed a full summary to your inbox. Have a great day! Goodbye.'),
+          say('Done! I sent a full summary to info at andrevargasteam dot com. Have a great day! Goodbye.'),
           '<Hangup/>'
         ));
       }
@@ -540,7 +550,7 @@ async function handleClientAIEmailConfirm(req: VercelRequest, res: VercelRespons
             </div>
           </div>`;
 
-        await fetch('https://api.resend.com/emails', {
+        const clientEmailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
@@ -553,9 +563,18 @@ async function handleClientAIEmailConfirm(req: VercelRequest, res: VercelRespons
             html: emailHtml,
           }),
         });
+        const clientEmailBody = await clientEmailRes.json() as any;
+        if (!clientEmailRes.ok) {
+          console.error('Resend client voice email FAILED:', JSON.stringify(clientEmailBody));
+          return res.send(twiml(
+            say('I ran into a problem sending the email. Please try again on your next call. Have a great day! Goodbye.'),
+            '<Hangup/>'
+          ));
+        }
+        console.log('Resend client voice email sent OK, id:', clientEmailBody.id);
 
         return res.send(twiml(
-          say(`Done! I emailed a summary to ${recipientEmail}. Have a great day! Goodbye.`),
+          say(`Done! I sent a summary to your email on file. Have a great day! Goodbye.`),
           '<Hangup/>'
         ));
       }
@@ -837,12 +856,14 @@ async function handleCallStatus(req: VercelRequest, res: VercelResponse) {
   const { CallSid, CallDuration, CallStatus } = req.body;
 
   try {
+    // Only update the GENERAL inbound call event — never overwrite Q&A records
     await supabase
       .from('communication_events')
       .update({
         metadata: { duration: CallDuration, callStatus: CallStatus },
       })
-      .eq('source_ref', CallSid);
+      .eq('source_ref', CallSid)
+      .eq('event_type', 'general');
   } catch (err) {
     console.error('call-status update error:', err);
   }
