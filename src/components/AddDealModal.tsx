@@ -71,12 +71,12 @@ export const AddDealModal: React.FC<Props> = ({ onAdd, onClose, complianceTempla
 
     const deal: Deal = {
       id: generateId(),
-      address: form.address.trim(), city: form.city.trim(),
+      propertyAddress: form.address.trim(), address: form.address.trim(), city: form.city.trim(),
       state: form.state.trim().toUpperCase(), zipCode: form.zipCode.trim(),
       mlsNumber: form.mlsNumber.trim() || `MLS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
-      propertyType: form.propertyType, status: form.status, transactionSide: form.transactionSide,
+      propertyType: form.propertyType, status: form.status, transactionType: form.transactionSide, transactionSide: form.transactionSide,
       contractDate: form.contractDate, closingDate: form.closingDate,
       agentId: generateId(), agentName: form.agentName.trim(),
       agentClientId: form.agentClientId || undefined,

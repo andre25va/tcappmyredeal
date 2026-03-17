@@ -61,8 +61,143 @@ export interface AppUser {
 }
 export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'closed' | 'terminated';
 export type TransactionSide = 'buyer' | 'seller';
+export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'condo' | 'townhouse' | 'land' | 'commercial';
 export type ContactRole = 'agent' | 'agent-client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'tc' | 'other';
+
+// ── New relational type aliases ──────────────────────────────────────────────
+export type ContactType = ContactRole; // alias for clarity during migration
+export type OrganizationType = 'team' | 'brokerage' | 'title_company' | 'lender_company' | 'builder' | 'vendor';
+export type DealSide = 'listing' | 'buyer' | 'seller' | 'vendor' | 'internal';
+export type DealParticipantRole = 'lead_agent' | 'co_agent' | 'admin' | 'tc' | 'lender' | 'title_officer' | 'buyer' | 'seller' | 'inspector' | 'appraiser' | 'other';
+export type LicenseType = 'salesperson' | 'broker' | 'associate_broker';
+export type LicenseStatus = 'active' | 'inactive' | 'expired' | 'pending';
+export type MlsMembershipStatus = 'active' | 'inactive' | 'suspended';
+export type ClientAccountType = 'individual_agent' | 'team';
+export type ClientAccountStatus = 'active' | 'inactive' | 'former' | 'prospect';
+export type OrgMemberRole = 'lead_agent' | 'agent' | 'admin' | 'tc' | 'broker' | 'loan_officer' | 'title_officer' | 'staff';
+
+// ── Organizations ────────────────────────────────────────────────────────────
+
+export interface Organization {
+  id: string;
+  name: string;
+  organizationType: OrganizationType;
+  email?: string;
+  phone?: string;
+  address?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  contactId: string;
+  roleInOrganization: OrgMemberRole;
+  isPrimary: boolean;
+  isActive: boolean;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields (populated by data layer)
+  organizationName?: string;
+  contactName?: string;
+}
+
+// ── Client Accounts ──────────────────────────────────────────────────────────
+
+export interface ClientAccount {
+  id: string;
+  accountName: string;
+  accountType: ClientAccountType;
+  primaryContactId?: string;
+  primaryOrganizationId?: string;
+  status: ClientAccountStatus;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields
+  primaryContactName?: string;
+  primaryOrganizationName?: string;
+}
+
+export interface ClientAccountMember {
+  id: string;
+  clientAccountId: string;
+  contactId?: string;
+  organizationId?: string;
+  relationshipRole: 'primary_client' | 'admin' | 'tc' | 'support_agent' | 'team_member';
+  isPrimary: boolean;
+  isActive: boolean;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Contact Licenses & MLS ───────────────────────────────────────────────────
+
+export interface ContactLicense {
+  id: string;
+  contactId: string;
+  stateCode: string;
+  licenseType: LicenseType;
+  licenseNumber: string;
+  status: LicenseStatus;
+  brokerOrganizationId?: string;
+  issueDate?: string;
+  expirationDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields
+  brokerOrganizationName?: string;
+}
+
+export interface ContactMlsMembership {
+  id: string;
+  contactId: string;
+  mlsName: string;
+  mlsCode?: string;
+  mlsMemberNumber: string;
+  officeMlsNumber?: string;
+  stateCode?: string;
+  brokerOrganizationId?: string;
+  boardName?: string;
+  status: MlsMembershipStatus;
+  startDate?: string;
+  endDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Deal Participants ────────────────────────────────────────────────────────
+
+export interface DealParticipant {
+  id: string;
+  dealId: string;
+  contactId?: string;
+  organizationId?: string;
+  clientAccountId?: string;
+  side: DealSide;
+  dealRole: DealParticipantRole;
+  isPrimary: boolean;
+  isClientSide: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields (populated by data layer)
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  organizationName?: string;
+}
+
+// ── Compliance ───────────────────────────────────────────────────────────────
 
 export interface ComplianceMasterItem {
   id: string;
@@ -92,6 +227,8 @@ export interface ComplianceTemplate {
   agentClientId?: string;
   agentClientName?: string;
 }
+
+// ── MLS ──────────────────────────────────────────────────────────────────────
 
 export interface MlsDocument {
   id: string;
@@ -124,6 +261,8 @@ export type ActivityType =
   | 'deal_created' | 'status_change' | 'checklist' | 'contact_added'
   | 'document_requested' | 'document_confirmed' | 'reminder_set' | 'note' | 'price_change';
 
+// ── Legacy types (kept for backward compat during Phase 4 migration) ────────
+
 export interface AgentClientStateInfo {
   state: string;
   closingType: 'escrow' | 'attorney' | '';
@@ -136,6 +275,9 @@ export interface AgentClientStateInfo {
   links: string[];
 }
 
+/**
+ * @deprecated Use Contact + Organization joins instead. Will be removed in Phase 4D.
+ */
 export interface DirectoryContact {
   id: string;
   name: string;
@@ -166,13 +308,23 @@ export interface Contact {
   id: string;
   directoryId?: string;
   name: string;
+  fullName?: string;       // Phase 4: computed from first_name + last_name
+  firstName?: string;      // Phase 4: from contacts table
+  lastName?: string;       // Phase 4: from contacts table
   email: string;
   phone: string;
   role: ContactRole;
+  contactType?: ContactType;  // Phase 4: same as role, clearer name
   company?: string;
+  timezone?: string;       // Phase 4: IANA timezone
   inNotificationList: boolean;
   side?: 'buy' | 'sell' | 'both';
   additionalPeople?: AdditionalPerson[];
+  // Phase 4: relational joins (populated by data layer)
+  organizations?: OrganizationMember[];
+  licenses?: ContactLicense[];
+  mlsMemberships?: ContactMlsMembership[];
+  clientAccountId?: string;
 }
 
 export interface ChecklistItem {
@@ -220,6 +372,9 @@ export interface ActivityEntry {
   type: ActivityType;
 }
 
+/**
+ * @deprecated Use DealParticipant instead. Will be removed in Phase 4D.
+ */
 export interface AgentContact {
   name: string;
   phone: string;
@@ -229,6 +384,10 @@ export interface AgentContact {
 
 export interface Deal {
   id: string;
+
+  // ── Property info ──────────────────────────────────────────────────────────
+  propertyAddress: string;       // Phase 4: canonical name (was `address`)
+  /** @deprecated Use propertyAddress instead. Kept required for backward compat. */
   address: string;
   city: string;
   state: string;
@@ -237,26 +396,50 @@ export interface Deal {
   listPrice: number;
   contractPrice: number;
   propertyType: PropertyType;
+
+  // ── Deal status ────────────────────────────────────────────────────────────
   status: DealStatus;
+  milestone: DealMilestone;
+  transactionType: TransactionType;    // Phase 4: canonical (was transactionSide)
+  /** @deprecated Use transactionType instead. Kept required for backward compat. */
   transactionSide: TransactionSide;
+  riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
+
+  // ── Dates ──────────────────────────────────────────────────────────────────
   contractDate: string;
   closingDate: string;
+
+  // ── Relationships (Phase 4 relational) ─────────────────────────────────────
+  primaryClientAccountId?: string;     // FK to client_accounts
+  assignedTcUserId?: string;           // FK to profiles
+  assignedComplianceUserId?: string;   // FK to profiles
+  participants?: DealParticipant[];    // Loaded from deal_participants table
+
+  // ── Legacy agent fields (populated from participants for backward compat) ──
+  /** @deprecated Use participants with is_client_side=true instead */
   agentId: string;
+  /** @deprecated Use participants with is_client_side=true instead */
   agentName: string;
+  /** @deprecated Use clientAccount lookup instead */
   agentClientId?: string;
   complianceTemplateId?: string;
+  /** @deprecated Use participants with side='buyer' and deal_role='lead_agent' */
   buyerAgent?: AgentContact;
+  /** @deprecated Use participants with side='listing' and deal_role='lead_agent' */
   sellerAgent?: AgentContact;
+
+  // ── Embedded arrays (kept during transition, tasks/checklists still in JSONB) ─
+  /** @deprecated Will be replaced by deal_participants in 4D */
   contacts: Contact[];
   dueDiligenceChecklist: ChecklistItem[];
   complianceChecklist: ChecklistItem[];
   documentRequests: DocumentRequest[];
   reminders: Reminder[];
   activityLog: ActivityEntry[];
+  tasks: DealTask[];
+
   notes: string;
   archiveReason?: string;
-  milestone: DealMilestone;
-  tasks: DealTask[];
   createdAt: string;
   updatedAt: string;
 }
