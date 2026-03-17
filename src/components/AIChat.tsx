@@ -73,7 +73,6 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
     setIsLoading(true);
 
     try {
-      // Build message history for context (last 10 messages)
       const history = [...messages.slice(-10), userMsg].map(m => ({
         role: m.role,
         content: m.content,
@@ -127,11 +126,8 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
   };
 
   const formatContent = (content: string) => {
-    // Simple markdown-like formatting
     return content.split('\n').map((line, i) => {
-      // Bold
       let formatted = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      // Bullet points
       if (formatted.startsWith('- ') || formatted.startsWith('• ')) {
         return (
           <div key={i} className="flex gap-1.5 ml-2">
@@ -140,7 +136,6 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
           </div>
         );
       }
-      // Numbered lists
       const numMatch = formatted.match(/^(\d+)\.\s/);
       if (numMatch) {
         return (
@@ -150,9 +145,7 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
           </div>
         );
       }
-      // Empty line
       if (!formatted.trim()) return <div key={i} className="h-2" />;
-      // Regular text
       return <div key={i} dangerouslySetInnerHTML={{ __html: formatted }} />;
     });
   };
@@ -189,11 +182,11 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — positioned above inbox reply bar */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-5 right-5 z-50 w-14 h-14 bg-primary rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group"
+          className="fixed bottom-28 right-5 z-50 w-14 h-14 bg-primary rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group"
           title="TC Command AI"
         >
           <Sparkles size={24} className="text-primary-content" />
@@ -203,9 +196,9 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
         </button>
       )}
 
-      {/* Chat panel */}
+      {/* Chat panel — anchored above reply bar */}
       {isOpen && (
-        <div className="fixed bottom-5 right-5 z-50 w-[400px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-base-100 rounded-2xl shadow-2xl border border-base-300 flex flex-col overflow-hidden animate-in">
+        <div className="fixed bottom-28 right-5 z-50 w-[400px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-10rem)] bg-base-100 rounded-2xl shadow-2xl border border-base-300 flex flex-col overflow-hidden animate-in">
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-primary text-primary-content flex-none">
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
@@ -262,7 +255,6 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
                 key={msg.id}
                 className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
               >
-                {/* Avatar */}
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center flex-none ${
                     msg.role === 'user'
@@ -273,7 +265,6 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
                   {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                 </div>
 
-                {/* Bubble */}
                 <div
                   className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                     msg.role === 'user'
@@ -287,7 +278,6 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) =
                     <div>{msg.content}</div>
                   )}
 
-                  {/* Navigation button */}
                   {msg.role === 'assistant' && msg.navigateTo && renderNavigateButton(msg.navigateTo)}
 
                   {msg.toolsUsed && !msg.navigateTo && (
