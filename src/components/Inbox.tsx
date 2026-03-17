@@ -1170,9 +1170,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <button
             onClick={handleEmailReply}
             disabled={!emailReplyText.trim() || emailSending}
-            className={`btn btn-sm px-3 rounded-xl ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
+            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 ${emailNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : 'btn-success'}`}
           >
-            {emailSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {emailSending ? <Loader2 size={14} className="animate-spin" /> : <><Send size={14} /><span className="text-xs">Send</span></>}
           </button>
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
@@ -1300,10 +1300,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <button
             onClick={handleSendReply}
             disabled={!replyText.trim() || sending}
-            className={`btn btn-sm px-3 rounded-xl text-white ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
-            style={!needReply && selectedConv.channel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
+            className={`btn btn-sm px-4 rounded-xl font-semibold gap-1.5 ${needReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : selectedConv.channel === 'whatsapp' ? 'text-white border-0' : 'btn-primary'}`}
+            style={selectedConv.channel === 'whatsapp' && !needReply ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
           >
-            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <><Send size={14} /><span className="text-xs">Send</span></>}
           </button>
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
@@ -1574,7 +1574,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <button
             onClick={handleComposeSend}
             disabled={!selectedRecipients.length || !composeBody.trim() || composeSending}
-            className={`btn btn-sm gap-2 rounded-xl text-white ${smsNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500' : ''}`}
+            className={`btn btn-sm gap-2 rounded-xl font-semibold ${smsNeedReply ? 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-white' : composeChannel === 'whatsapp' ? 'text-white border-0' : 'btn-primary'}`}
             style={!smsNeedReply && composeChannel === 'whatsapp' ? { backgroundColor: '#25D366', borderColor: '#25D366' } : undefined}
           >
             {composeSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
