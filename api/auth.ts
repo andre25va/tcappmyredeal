@@ -124,18 +124,31 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '';
   const ua = req.headers['user-agent'] || '';
   try {
+    // Find the latest unused, unexpired OTP for this phone
     const { data: otp } = await supabase.from('otp_codes').select('*').eq('phone', normalized).eq('used', false)
       .gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).single();
     if (!otp) return res.status(400).json({ error: 'Code expired or not found. Request a new one.' });
+
+    // Track attempts
     await supabase.from('otp_codes').update({ attempts: otp.attempts + 1 }).eq('id', otp.id);
     if (otp.attempts >= 5) {
       await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
       return res.status(400).json({ error: 'Too many attempts. Please request a new code.' });
     }
+
+    // Validate code
     if (otp.code !== String(code).trim()) return res.status(400).json({ error: 'Incorrect code. Please try again.' });
-    await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
+
+    // ── DO NOT mark OTP as used yet ──
+    // We only consume it after successfully creating the session.
+    // This way, if we return hasExistingSession, the OTP stays valid
+    // for the force=true retry.
+
+    // Whitelist check
     const { count: whitelistCount } = await supabase.from('allowed_phones').select('*', { count: 'exact', head: true });
     const isBootstrap = (whitelistCount ?? 0) === 0;
+
+    // Find or create profile
     let { data: profile } = await supabase.from('profiles').select('*').eq('phone', normalized).single();
     const isFirstLogin = !profile;
     if (!profile) {
@@ -146,7 +159,7 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       if (isBootstrap) await supabase.from('allowed_phones').insert({ phone: normalized, name: 'Admin', added_by: newProfile.id });
     }
 
-    // ── Link profile_id back to allowed_phones ──
+    // Link profile_id back to allowed_phones
     if (!isBootstrap) {
       await supabase.from('allowed_phones').update({ profile_id: profile.id }).eq('phone', normalized);
     }
@@ -163,6 +176,7 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
         .limit(1);
       if (existingSessions && existingSessions.length > 0) {
         const existing = existingSessions[0];
+        // Return WITHOUT consuming OTP — user may retry with force=true
         return res.status(200).json({
           hasExistingSession: true,
           deviceLabel: parseDeviceLabel(existing.user_agent || ''),
@@ -170,6 +184,9 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
         });
       }
     }
+
+    // ── NOW consume the OTP (session will be created) ──
+    await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
 
     // Invalidate all old active sessions (skip for demo)
     if (!isDemo) {
