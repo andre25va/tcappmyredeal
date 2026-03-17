@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, StickyNote,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, StickyNote, Scan,
 } from 'lucide-react';
 import { Deal, DirectoryContact, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { pendingDocCount } from '../utils/helpers';
@@ -11,7 +11,6 @@ const copyToClipboard = (text: string, onSuccess?: () => void): void => {
     navigator.clipboard.writeText(text).then(() => {
       onSuccess?.();
     }).catch(() => {
-      // fallback
       legacyCopy(text, onSuccess);
     });
   } else {
@@ -36,6 +35,7 @@ const legacyCopy = (text: string, onSuccess?: () => void): void => {
   window.prompt('Copy (Ctrl+C / Cmd+C):', text);
 };
 import { TransactionSheet } from './TransactionSheet';
+import { FocusViewModal } from './FocusViewModal';
 import { WorkspaceOverview } from './WorkspaceOverview';
 import { WorkspaceChecklists } from './WorkspaceChecklists';
 import { WorkspaceTasks } from './WorkspaceTasks';
@@ -62,6 +62,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
   const [copiedMls, setCopiedMls] = useState(false);
   const [editTrigger, setEditTrigger] = useState(0);
   const [showSheet, setShowSheet] = useState(false);
+  const [showFocusView, setShowFocusView] = useState(false);
 
   // Reset to Overview whenever the deal changes
   useEffect(() => { setTab('overview'); }, [deal.id]);
@@ -112,7 +113,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
                   {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                 </button>
               </div>
-              {/* City, State ZIP — no gap */}
+              {/* City, State ZIP */}
               <p className="text-sm text-black/60 leading-tight ml-[22px]">
                 {[deal.city, deal.state, deal.zipCode].filter(Boolean).join(', ')}
               </p>
@@ -135,8 +136,16 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
             </div>
           </div>
 
-          {/* Right: Sheet + Edit Deal */}
+          {/* Right: Focus View + Sheet + Edit Deal */}
           <div className="flex items-center gap-2 flex-none mt-0.5">
+            <button
+              onClick={() => setShowFocusView(true)}
+              title="Focus View"
+              className="btn btn-sm btn-ghost gap-1.5 border border-gray-300 text-black hover:bg-gray-100"
+            >
+              <Scan size={13} />
+              <span className="hidden sm:inline text-xs">Focus View</span>
+            </button>
             <button
               onClick={() => setShowSheet(true)}
               title="View Transaction Sheet"
@@ -158,10 +167,11 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, directo
       {/* Transaction Sheet Modal */}
       {showSheet && <TransactionSheet deal={deal} onClose={() => setShowSheet(false)} />}
 
+      {/* Focus View Modal */}
+      {showFocusView && <FocusViewModal deal={deal} onClose={() => setShowFocusView(false)} />}
+
       {/* Tab Bar */}
       <div className="flex-none border-b border-base-300 bg-base-200 flex items-center overflow-x-auto scrollbar-none">
-
-
         {/* Tabs */}
         <div className="flex items-center gap-0 flex-none md:flex-1 overflow-x-auto scrollbar-none px-1 md:px-4">
           {tabs.map(t => (

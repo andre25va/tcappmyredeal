@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, Scan } from 'lucide-react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
 import { Deal, DealStatus, DirectoryContact } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
   statusLabel, statusDot, closingCountdown, formatCurrency,
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
-import { FocusViewModal } from './FocusViewModal';
 
 interface Props {
   deals: Deal[];
@@ -51,7 +50,6 @@ const renderDealCard = (
   selectedId: string | null,
   onSelect: (id: string) => void,
   styles: typeof sideStylesConst,
-  onFocusView: (deal: Deal) => void,
 ) => {
   const isArchived = deal.milestone === 'archived';
   const side      = deal.transactionSide ?? 'buyer';
@@ -148,19 +146,8 @@ const renderDealCard = (
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center justify-between gap-1">
-        {/* Focus View button */}
-        <button
-          className="btn btn-xs btn-ghost gap-1 text-base-content/50 hover:text-base-content hover:bg-base-300"
-          title="Focus View"
-          onClick={e => { e.stopPropagation(); onFocusView(deal); }}
-        >
-          <Scan size={11} />
-          <span className="text-[11px]">Focus View</span>
-        </button>
-
-        {/* View button */}
+      {/* View button */}
+      <div className="flex justify-end">
         <button
           className={`btn btn-xs ${side === 'buyer' ? 'btn-info' : 'btn-success'} btn-outline gap-1`}
           onClick={e => { e.stopPropagation(); onSelect(deal.id); }}
@@ -177,7 +164,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
   const [showArchived, setShowArchived] = useState(false);
-  const [focusDeal, setFocusDeal] = useState<Deal | null>(null);
 
   // Reset local filters when amber filter activates
   React.useEffect(() => {
@@ -326,13 +312,13 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
                   Closing This Week ({closingThisWeek.length})
                 </span>
               </div>
-              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, setFocusDeal))}
+              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
               {otherDeals.length > 0 && (
                 <div className="border-t border-gray-200 my-1" />
               )}
             </>
           )}
-          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, setFocusDeal))}
+          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
         </div>
 
         {/* Footer */}
@@ -351,13 +337,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
         </div>
       </div>
 
-      {/* Focus View Modal */}
-      {focusDeal && (
-        <FocusViewModal
-          deal={focusDeal}
-          onClose={() => setFocusDeal(null)}
-        />
-      )}
     </>
   );
 };
