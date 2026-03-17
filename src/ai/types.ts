@@ -151,3 +151,14 @@ export interface SearchInterpretationResponse {
   assumptions: string[];
   warnings: string[];
 }
+
+// ── Phase 3C: Voice Updates ───────────────────────────────────────────────────
+
+export interface VoiceUpdateInterpretation {
+  transcript: string;
+  summary: string;
+  suggestedActions: DealChatAction[];
+  mentionedEntities: string[];
+  detectedDates: string[];
+  warnings: string[];
+}

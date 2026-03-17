@@ -12,6 +12,7 @@ import type {
   CompliancePrecheckResult,
   DealChatResponse,
   SearchInterpretationResponse,
+  VoiceUpdateInterpretation,
 } from "./types";
 import type { DealContextPacket } from "./chatContextBuilder";
 
@@ -83,4 +84,12 @@ export async function interpretSearchAI(
   query: string
 ): Promise<SearchInterpretationResponse> {
   return post<SearchInterpretationResponse>('interpret-search', { query });
+}
+
+/** Interpret a voice update transcript for a deal */
+export async function interpretVoiceUpdateAI(
+  transcript: string,
+  dealContext: object
+): Promise<VoiceUpdateInterpretation> {
+  return post<VoiceUpdateInterpretation>('interpret-voice-update', { transcript, dealContext });
 }

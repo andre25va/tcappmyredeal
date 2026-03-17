@@ -176,6 +176,41 @@ const searchInterpretationSchema = {
   required: ['interpretedQuery', 'explanation', 'assumptions', 'warnings'],
 };
 
+const voiceInterpretationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    transcript: { type: 'string' },
+    summary: { type: 'string' },
+    suggestedActions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['create_task', 'add_note', 'draft_email', 'flag_compliance_issue', 'suggest_stage_update'],
+          },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          dueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'watch', 'fail', 'none'] },
+          targetRole: { type: 'string' },
+          confidence: { type: 'number' },
+          rationale: { type: 'string' },
+        },
+        required: ['type', 'title', 'description', 'dueDate', 'priority', 'targetRole', 'confidence', 'rationale'],
+      },
+    },
+    mentionedEntities: { type: 'array', items: { type: 'string' } },
+    detectedDates: { type: 'array', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['transcript', 'summary', 'suggestedActions', 'mentionedEntities', 'detectedDates', 'warnings'],
+};
+
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 async function handleClassifyEmail(apiKey: string, body: any) {
@@ -421,6 +456,54 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
   return callOpenAI(apiKey, systemPrompt, `Search query: "${query}"`, searchInterpretationSchema, 'search_interpretation');
 }
 
+
+async function handleInterpretVoiceUpdate(apiKey: string, body: any) {
+  const { transcript, dealContext } = body;
+  if (!transcript) throw new Error('Missing transcript');
+
+  const systemPrompt = `You are a voice update interpreter for a real estate transaction coordinator (TC).
+The TC has just spoken a quick update about a deal. Your job is to extract structured information from the transcript.
+
+RULES:
+- Extract all mentioned tasks, notes, timeline updates, and compliance flags.
+- Detect any dates mentioned (inspection dates, closing dates, deadlines, etc.) and return them in detectedDates as YYYY-MM-DD when possible.
+- Identify mentioned people, companies, or roles in mentionedEntities.
+- For create_task: fill title, description, dueDate (or null), priority, targetRole (who should do it)
+- For add_note: fill title=note summary, description=full note, priority="none", targetRole=""
+- For draft_email: fill title=subject, description=email body, targetRole=recipient role
+- For flag_compliance_issue: fill title=issue label, description=details, priority=severity (watch/fail)
+- For suggest_stage_update: fill title=new stage, description=rationale, targetRole=""
+- confidence should be 0.0-1.0 reflecting how sure you are about each action
+- Only create actions that are clearly implied by the transcript — do not invent tasks
+- Return the original transcript cleaned up (minor grammar fixes OK, keep meaning exact)
+- Summary should be 1-2 sentences max
+- If the transcript is unclear or too short, add a warning
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  const userContent = `DEAL CONTEXT:\n${JSON.stringify(dealContext, null, 1)}\n\nVOICE TRANSCRIPT:\n"${transcript}"`;
+
+  const result = await callOpenAI(apiKey, systemPrompt, userContent, voiceInterpretationSchema, 'voice_interpretation');
+
+  // Convert flat action fields into typed payload objects
+  if (result.suggestedActions) {
+    result.suggestedActions = result.suggestedActions.map((a: any) => ({
+      type: a.type,
+      payload: {
+        title: a.title,
+        description: a.description,
+        dueDate: a.dueDate,
+        priority: a.priority,
+        targetRole: a.targetRole,
+      },
+      confidence: a.confidence,
+      rationale: a.rationale,
+    }));
+  }
+
+  return result;
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -458,6 +541,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'interpret-search':
         result = await handleInterpretSearch(apiKey, req.body);
+        break;
+      case 'interpret-voice-update':
+        result = await handleInterpretVoiceUpdate(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
