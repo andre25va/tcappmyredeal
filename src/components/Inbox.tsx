@@ -26,7 +26,7 @@ interface Conversation {
   unread_count: number;
   waiting_for_reply?: boolean;
   waiting_since?: string | null;
-  deals?: { property_address: string; city: string; state: string; milestone: string } | null;
+  deals?: { property_address: string; city: string; state: string; pipeline_stage: string } | null;
 }
 
 interface Message {
@@ -368,7 +368,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
   const loadConversations = useCallback(async () => {
     try {
-      const resp = await fetch('/api/sms/conversations');
+      const resp = await fetch('/api/sms?action=conversations');
       if (resp.ok) {
         const data = await resp.json();
         setConversations(data.conversations || []);
@@ -423,7 +423,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const loadMessages = useCallback(async (convId: string) => {
     setMsgLoading(true);
     try {
-      const resp = await fetch(`/api/sms/conversations?conversation_id=${convId}`);
+      const resp = await fetch(`/api/sms?action=conversations&conversation_id=${convId}`);
       if (resp.ok) {
         const data = await resp.json();
         setMessages(data.messages || []);
@@ -501,7 +501,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     if (!replyText.trim() || !selectedConv || sending) return;
     setSending(true);
     try {
-      const resp = await fetch('/api/sms/send', {
+      const resp = await fetch('/api/sms?action=send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -625,7 +625,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         fetch(`${sbUrl}/rest/v1/contacts?select=id,first_name,last_name,phone,email,contact_type,company&phone=not.is.null&order=first_name`, {
           headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
         }),
-        fetch(`${sbUrl}/rest/v1/deals?select=id,property_address,city,state&milestone=neq.archived&order=property_address`, {
+        fetch(`${sbUrl}/rest/v1/deals?select=id,property_address,city,state&pipeline_stage=neq.archived&order=property_address`, {
           headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
         }),
       ]);
@@ -665,7 +665,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     setComposeSending(true);
     setComposeError('');
     try {
-      const resp = await fetch('/api/sms/send', {
+      const resp = await fetch('/api/sms?action=send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
