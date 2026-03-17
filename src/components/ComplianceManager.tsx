@@ -139,7 +139,6 @@ const TemplateEditor: React.FC<{
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Keep items in sync when template changes (different template selected)
   React.useEffect(() => {
     setItems(template.items);
     setInspectionDays(template.inspectionPeriodDays !== undefined ? String(template.inspectionPeriodDays) : '');
@@ -187,11 +186,10 @@ const TemplateEditor: React.FC<{
   };
 
   const assignedAgents = agentClients.filter(c => (template.agentClientIds ?? []).includes(c.id));
-  // Filter unassigned agents by template state (if set)
   const unassignedAgents = agentClients.filter(c => {
     if ((template.agentClientIds ?? []).includes(c.id)) return false;
-    if (!templateState) return true; // no filter if no state set
-    return (c.states ?? []).includes(templateState);
+    if (!templateState) return true;
+    return (c.licenses ?? []).map(l => l.stateCode).includes(templateState);
   });
   const filteredStateOptions = US_STATES.filter(s =>
     s.name.toLowerCase().includes(stateSearch.toLowerCase()) ||
@@ -201,7 +199,6 @@ const TemplateEditor: React.FC<{
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
       <div className="p-5 border-b border-base-300 flex-none bg-white">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -248,7 +245,6 @@ const TemplateEditor: React.FC<{
             </div>
           </div>
 
-          {/* Stats */}
           <div className="flex flex-wrap gap-2 shrink-0 justify-end">
             <div className="text-center min-w-[36px]">
               <div className="text-base font-bold text-black">{items.length}</div>
@@ -269,10 +265,7 @@ const TemplateEditor: React.FC<{
           </div>
         </div>
 
-        {/* State + Inspection Period row */}
         <div className="mt-4 flex flex-wrap items-center gap-4">
-
-          {/* State selector */}
           <div className="flex items-center gap-2 relative">
             <MapPin size={14} className="text-black/40 shrink-0" />
             <span className="text-xs font-medium text-black">State:</span>
@@ -324,7 +317,6 @@ const TemplateEditor: React.FC<{
             )}
           </div>
 
-          {/* Inspection Period */}
           <div className="flex items-center gap-2">
             <Calendar size={14} className="text-black/40 shrink-0" />
             <span className="text-xs font-medium text-black">Inspection Period:</span>
@@ -358,10 +350,7 @@ const TemplateEditor: React.FC<{
         )}
       </div>
 
-      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto min-h-0">
-
-        {/* ── Assigned Agents section ── */}
         <div className="p-4 border-b border-base-300">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -371,7 +360,6 @@ const TemplateEditor: React.FC<{
             </div>
           </div>
 
-          {/* Assigned list */}
           {assignedAgents.length === 0 ? (
             <p className="text-xs text-black/30 italic mb-3">No agents assigned — select from the list below</p>
           ) : (
@@ -394,7 +382,6 @@ const TemplateEditor: React.FC<{
             </div>
           )}
 
-          {/* Unassigned agents to add */}
           {unassignedAgents.length > 0 && (
             <div>
               <p className="text-xs text-black/40 mb-2 font-medium">
@@ -433,7 +420,6 @@ const TemplateEditor: React.FC<{
           )}
         </div>
 
-        {/* ── Master Checklist Items (read-only, toggle to include) ── */}
         <div className="p-4 border-t border-base-300">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -510,7 +496,6 @@ const TemplateEditor: React.FC<{
           )}
         </div>
 
-        {/* ── Custom Items (template-specific) ── */}
         <div className="p-4 border-t border-base-300">
           <div className="flex items-center gap-2 mb-2">
             <Plus size={14} className="text-black/50" />
@@ -553,7 +538,6 @@ const TemplateEditor: React.FC<{
         </div>
       </div>
 
-      {/* Delete template footer */}
       <div className="p-4 border-t border-base-300 flex-none bg-white">
         <div className="flex items-center justify-end">
           <button onClick={() => setShowDeleteConfirm(true)} className="btn btn-ghost btn-xs text-error gap-1">
@@ -562,7 +546,6 @@ const TemplateEditor: React.FC<{
         </div>
       </div>
 
-      {/* Confirm delete template */}
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title={`Delete "${template.name}"?`}
@@ -572,7 +555,6 @@ const TemplateEditor: React.FC<{
         onCancel={() => setShowDeleteConfirm(false)}
       />
 
-      {/* Confirm delete custom item */}
       <ConfirmModal
         isOpen={deleteItemId !== null}
         title="Remove this item?"
@@ -640,7 +622,6 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenuId]);
 
-  // Migrate legacy templates (agentClientId → agentClientIds)
   const migratedTemplates = React.useMemo(() => {
     return templates.map(t => {
       if (!t.agentClientIds) {
@@ -654,7 +635,6 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
     });
   }, [templates]);
 
-  // Auto-select first if none selected
   React.useEffect(() => {
     if (!selectedId && migratedTemplates.length > 0) {
       setSelectedId(migratedTemplates[0].id);
@@ -695,7 +675,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
       ...src,
       id: generateId(),
       name: `${src.name} (Copy)`,
-      agentClientIds: [],            // don't copy agent assignments
+      agentClientIds: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -725,9 +705,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
         />
       )}
 
-      {/* ── Left panel: Template list ── */}
       <div className="w-56 md:w-64 lg:w-72 shrink-0 border-r border-base-300 flex flex-col min-h-0 bg-white">
-        {/* Header */}
         <div className="p-4 border-b border-base-300 flex-none">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
@@ -776,7 +754,6 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
                       : 'hover:bg-base-200 border border-transparent'
                   }`}
                 >
-                  {/* Icon */}
                   <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-sm font-bold ${
                     active ? 'bg-secondary text-secondary-content' : 'bg-base-300 text-black/50'
                   }`}>
@@ -822,9 +799,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
                       <MoreVertical size={14} />
                     </button>
                     {openMenuId === tpl.id && (
-                      <div
-                        className="absolute right-0 top-7 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[130px]"
-                                              >
+                      <div className="absolute right-0 top-7 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[130px]">
                         <button
                           onClick={e => { e.stopPropagation(); setSelectedId(tpl.id); setOpenMenuId(null); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-xs text-black hover:bg-gray-50"
@@ -855,7 +830,6 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
         )}
       </div>
 
-      {/* Confirm delete from 3-dot menu */}
       <ConfirmModal
         isOpen={confirmDeleteMenuId !== null}
         title={`Delete "${templates.find(t => t.id === confirmDeleteMenuId)?.name ?? 'this template'}"?`}
@@ -865,7 +839,6 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
         onCancel={() => setConfirmDeleteMenuId(null)}
       />
 
-      {/* ── Right panel: Template editor ── */}
       <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
         {selectedTemplate ? (
           <TemplateEditor
