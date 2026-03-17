@@ -8,12 +8,12 @@ import { createClient } from '@supabase/supabase-js';
 
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 
-async function callOpenAI(apiKey: string, systemPrompt: string, userContent: string, schema: object, schemaName: string) {
+async function callOpenAI(apiKey: string, systemPrompt: string, userContent: string, schema: object, schemaName: string, model = 'gpt-4o') {
   const res = await fetch(OPENAI_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model,
       temperature: 0,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -249,6 +249,22 @@ Rules:
 - Be concise and factual.
 - If the transcript is garbled or unclear, note that in the summary.
 - Do not invent information not in the transcript.`;
+
+// ── Deal Health AI Schema ─────────────────────────────────────────────────────
+
+const dealHealthAISchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    riskSummary: { type: 'string' },
+    recommendations: { type: 'array', items: { type: 'string' } },
+    nextMilestone: { type: 'string' },
+    estimatedDaysToClose: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+    topRisk: { type: 'string' },
+    overallAssessment: { type: 'string', enum: ['on-track', 'needs-attention', 'at-risk', 'critical'] },
+  },
+  required: ['riskSummary', 'recommendations', 'nextMilestone', 'estimatedDaysToClose', 'topRisk', 'overallAssessment'],
+};
 
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -647,6 +663,41 @@ async function handleProcessRecording(apiKey: string, body: any) {
 }
 
 
+// ── Deal Health AI Handler ────────────────────────────────────────────────────
+
+async function handleDealHealthAI(apiKey: string, body: any) {
+  const { deal } = body;
+  if (!deal) throw new Error('Missing deal data');
+
+  const systemPrompt = `You are analyzing a real estate transaction file's health for a transaction coordinator. Be concise, specific, and actionable. Base all analysis on the provided deal data — never invent facts.
+
+Today's date: ${new Date().toISOString().split('T')[0]}`;
+
+  const dealSnapshot = {
+    id: deal.id,
+    propertyAddress: deal.propertyAddress || deal.property_address,
+    stage: deal.stage || deal.pipeline_stage,
+    closingDate: deal.closingDate || deal.closing_date,
+    contractPrice: deal.contractPrice || deal.contract_price,
+    transactionType: deal.transactionType || deal.transaction_type,
+    agentName: deal.agentName || deal.agent_name,
+    mlsNumber: deal.mlsNumber || deal.mls_number,
+    complianceItems: deal.complianceItems || deal.compliance_items || [],
+    dueDiligenceItems: deal.dueDiligenceItems || deal.due_diligence_items || [],
+    tasks: deal.tasks || [],
+    lastActivityAt: deal.lastActivityAt || deal.last_activity_at || deal.updated_at,
+    participants: deal.participants || [],
+    staleWarnings: deal.staleWarnings || [],
+    missingItems: deal.missingItems || [],
+    overdueTasks: deal.overdueTasks || [],
+  };
+
+  const userContent = `DEAL DATA:\n${JSON.stringify(dealSnapshot, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, dealHealthAISchema, 'deal_health_ai_response', 'gpt-4o-mini');
+}
+
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -690,6 +741,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'process-recording':
         result = await handleProcessRecording(apiKey, req.body);
+        break;
+      case 'deal-health-ai':
+        result = await handleDealHealthAI(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

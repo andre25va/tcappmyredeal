@@ -1,6 +1,8 @@
-import React from 'react';
-import { Activity, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { getDealHealth } from '../ai/dealHealth';
+import { dealHealthAI } from '../ai/apiClient';
+import type { DealHealthAIResponse } from '../ai/apiClient';
 import { DealRecord } from '../ai/types';
 
 interface Props {
@@ -13,10 +15,37 @@ const LABEL_STYLES = {
   'at-risk': { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-800', icon: AlertTriangle },
 };
 
+const ASSESSMENT_STYLES: Record<string, string> = {
+  'on-track': 'bg-emerald-100 text-emerald-800',
+  'needs-attention': 'bg-amber-100 text-amber-800',
+  'at-risk': 'bg-orange-100 text-orange-800',
+  'critical': 'bg-red-100 text-red-800',
+};
+
 export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
   const health = getDealHealth(dealRecord);
   const style = LABEL_STYLES[health.label];
   const Icon = style.icon;
+
+  const [aiResult, setAiResult] = useState<DealHealthAIResponse | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiExpanded, setAiExpanded] = useState(true);
+
+  const runAIAnalysis = useCallback(async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await dealHealthAI(dealRecord);
+      setAiResult(result);
+      setAiExpanded(true);
+    } catch (err: any) {
+      setAiError(err.message || 'AI analysis failed');
+    } finally {
+      setAiLoading(false);
+    }
+  }, [dealRecord, aiLoading]);
 
   return (
     <div className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
@@ -25,10 +54,29 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
           <Activity size={16} className={style.text} />
           <h3 className="text-sm font-semibold text-base-content">Deal Health</h3>
         </div>
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${style.badge}`}>
-          <Icon size={12} />
-          <span>{health.score}/100</span>
-          <span className="capitalize">— {health.label}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runAIAnalysis}
+            disabled={aiLoading}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors disabled:opacity-50"
+          >
+            {aiLoading ? (
+              <>
+                <span className="loading loading-spinner loading-xs" />
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <Brain size={12} />
+                AI Analysis
+              </>
+            )}
+          </button>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${style.badge}`}>
+            <Icon size={12} />
+            <span>{health.score}/100</span>
+            <span className="capitalize">— {health.label}</span>
+          </div>
         </div>
       </div>
 
@@ -64,6 +112,82 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
                   <li key={item} className="text-xs text-orange-600">• {item}</li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI Error */}
+      {aiError && (
+        <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200">
+          <AlertTriangle size={14} className="text-red-500 flex-none" />
+          <span className="text-xs text-red-700 flex-1">{aiError}</span>
+          <button
+            onClick={runAIAnalysis}
+            className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium"
+          >
+            <RefreshCw size={12} />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* AI Results */}
+      {aiResult && (
+        <div className="mt-3 border-t border-current/10 pt-3">
+          <button
+            onClick={() => setAiExpanded(!aiExpanded)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900 mb-2"
+          >
+            <Brain size={12} />
+            AI Insights
+            <span className={`badge badge-xs ${ASSESSMENT_STYLES[aiResult.overallAssessment] || 'bg-gray-100 text-gray-700'}`}>
+              {aiResult.overallAssessment}
+            </span>
+            {aiExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+
+          {aiExpanded && (
+            <div className="space-y-3 pl-1">
+              {/* Risk Summary */}
+              <div>
+                <h6 className="text-xs font-semibold text-base-content/60 mb-0.5">Risk Summary</h6>
+                <p className="text-xs text-base-content/80">{aiResult.riskSummary}</p>
+              </div>
+
+              {/* Top Risk */}
+              {aiResult.topRisk && (
+                <div>
+                  <h6 className="text-xs font-semibold text-base-content/60 mb-0.5">Top Risk</h6>
+                  <p className="text-xs text-red-600">{aiResult.topRisk}</p>
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {aiResult.recommendations.length > 0 && (
+                <div>
+                  <h6 className="text-xs font-semibold text-base-content/60 mb-0.5">Recommendations</h6>
+                  <ul className="space-y-0.5">
+                    {aiResult.recommendations.slice(0, 5).map((rec, idx) => (
+                      <li key={idx} className="text-xs text-base-content/80">• {rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Next Milestone */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div>
+                  <h6 className="text-xs font-semibold text-base-content/60 mb-0.5">Next Milestone</h6>
+                  <p className="text-xs text-base-content/80">{aiResult.nextMilestone}</p>
+                </div>
+                {aiResult.estimatedDaysToClose !== null && (
+                  <div>
+                    <h6 className="text-xs font-semibold text-base-content/60 mb-0.5">Est. Days to Close</h6>
+                    <p className="text-xs text-base-content/80">{aiResult.estimatedDaysToClose} days</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

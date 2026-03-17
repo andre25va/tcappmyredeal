@@ -1,6 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X, Home, Users, CheckSquare, FileText } from 'lucide-react';
+import { Search, X, Home, Users, CheckSquare, FileText, Brain, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { interpretSearchAI } from '../ai/apiClient';
+
+// NL trigger words for AI search detection
+const NL_TRIGGER_WORDS = ['show', 'find', 'which', 'files', 'closing', 'missing', 'overdue', 'stale', 'at risk', 'problem', 'where', 'who', 'what', 'list', 'get', 'all', 'any', 'deals with', 'need', 'pending'];
+
+function looksLikeNaturalLanguage(q: string): boolean {
+  const lower = q.toLowerCase().trim();
+  return NL_TRIGGER_WORDS.some(w => lower.includes(w));
+}
 
 // Map full state names / cities to abbreviations (and vice versa)
 const STATE_SYNONYMS: Record<string, string[]> = {
@@ -34,6 +43,7 @@ interface SearchResult {
   subtitle: string;
   icon: React.ReactNode;
   meta?: string;
+  aiInterpreted?: boolean;
 }
 
 interface GlobalSearchProps {
@@ -50,6 +60,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // AI search state
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null);
+  const [aiAssumptions, setAiAssumptions] = useState<string[]>([]);
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const [showAiOption, setShowAiOption] = useState(false);
 
   const iconFor = (type: SearchResult['type']) => {
     const cls = 'flex-none';
@@ -73,9 +90,82 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
     return 'Document';
   };
 
+  const clearAiState = () => {
+    setAiExplanation(null);
+    setAiAssumptions([]);
+    setAiWarnings([]);
+    setShowAiOption(false);
+  };
+
+  const runAISearch = useCallback(async (q: string) => {
+    if (!q.trim() || q.trim().length < 3) return;
+    setAiLoading(true);
+    clearAiState();
+
+    try {
+      const aiResponse = await interpretSearchAI(q.trim());
+      setAiExplanation(aiResponse.explanation);
+      setAiAssumptions(aiResponse.assumptions);
+      setAiWarnings(aiResponse.warnings);
+
+      const filters = aiResponse.interpretedQuery;
+      let dbQuery = supabase
+        .from('deals')
+        .select('id, property_address, city, state, pipeline_stage, closing_date, mls_number, transaction_type, agent_name');
+
+      if (filters.stage && filters.stage.length > 0) {
+        dbQuery = dbQuery.in('pipeline_stage', filters.stage);
+      }
+      if (filters.closingDateRange) {
+        if (filters.closingDateRange.start) {
+          dbQuery = dbQuery.gte('closing_date', filters.closingDateRange.start);
+        }
+        if (filters.closingDateRange.end) {
+          dbQuery = dbQuery.lte('closing_date', filters.closingDateRange.end);
+        }
+      }
+      if (filters.transactionType && filters.transactionType.length > 0) {
+        dbQuery = dbQuery.in('transaction_type', filters.transactionType);
+      }
+      if (filters.textSearch) {
+        const t = filters.textSearch;
+        dbQuery = dbQuery.or(`property_address.ilike.%${t}%,agent_name.ilike.%${t}%,mls_number.ilike.%${t}%`);
+      }
+
+      dbQuery = dbQuery.limit(20);
+
+      const { data: deals, error } = await dbQuery;
+      if (error) {
+        console.error('AI search query error:', error);
+      }
+
+      const aiResults: SearchResult[] = (deals ?? []).map((d: any) => ({
+        id: d.id,
+        type: 'deal' as const,
+        title: [d.property_address, d.city, d.state].filter(Boolean).join(', ') || 'Unknown address',
+        subtitle: formatStage(d.pipeline_stage),
+        icon: iconFor('deal'),
+        meta: d.closing_date
+          ? `Closes ${new Date(d.closing_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+          : undefined,
+        aiInterpreted: true,
+      }));
+
+      setResults(aiResults);
+      setOpen(true);
+      setActiveIndex(0);
+    } catch (err: any) {
+      console.error('AI search error:', err);
+      setAiWarnings([err.message || 'AI search failed']);
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
   const runSearch = useCallback(async (q: string) => {
-    if (!q.trim() || q.trim().length < 2) { setResults([]); setOpen(false); return; }
+    if (!q.trim() || q.trim().length < 2) { setResults([]); setOpen(false); clearAiState(); return; }
     setLoading(true);
+    clearAiState();
     const term = q.trim().toLowerCase();
     const terms = expandTerms(term);
     const collected: SearchResult[] = [];
@@ -122,11 +212,11 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
         }
       });
 
-      // ── Contacts (directory table) ────────────────────────────────────
+      // ── Contacts ────────────────────────────────────────────────────
       const { data: contacts, error: contactErr } = await supabase
-        .from('directory')
-        .select('id, name, role, company, email, phone')
-        .or(`name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%,role.ilike.%${term}%`)
+        .from('contacts')
+        .select('id, first_name, last_name, contact_type, email, phone, company')
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%,contact_type.ilike.%${term}%`)
         .limit(5);
 
       if (contactErr) console.error('Contact search error:', contactErr);
@@ -135,8 +225,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
         collected.push({
           id: c.id,
           type: 'contact',
-          title: c.name ?? 'Unknown',
-          subtitle: [c.role, c.company].filter(Boolean).join(' · ') || 'Contact',
+          title: [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown',
+          subtitle: [c.contact_type, c.company].filter(Boolean).join(' · ') || 'Contact',
           icon: iconFor('contact'),
           meta: c.email,
         });
@@ -191,7 +281,15 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
     setOpen(collected.length > 0 || q.length > 1);
     setActiveIndex(0);
     setLoading(false);
-  }, []);
+
+    // Show AI option if NL query detected, or auto-trigger if no results
+    const isNL = looksLikeNaturalLanguage(q);
+    if (collected.length === 0 && q.trim().length > 5) {
+      runAISearch(q);
+    } else if (isNL && collected.length > 0) {
+      setShowAiOption(true);
+    }
+  }, [runAISearch]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -222,6 +320,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
   const handleSelect = (result: SearchResult) => {
     setQuery('');
     setOpen(false);
+    clearAiState();
     if (result.type === 'deal' || result.type === 'task' || result.type === 'document') {
       onSelectDeal(result.id);
     } else if (result.type === 'contact') {
@@ -259,7 +358,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
         />
         {query && (
           <button
-            onClick={() => { setQuery(''); setResults([]); setOpen(false); inputRef.current?.focus(); }}
+            onClick={() => { setQuery(''); setResults([]); setOpen(false); clearAiState(); inputRef.current?.focus(); }}
             className="absolute right-2 text-base-content/40 hover:text-base-content"
           >
             <X size={13} />
@@ -273,25 +372,62 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
       {/* Dropdown */}
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl z-[300] overflow-hidden">
-          {loading && (
+          {(loading || aiLoading) && (
             <div className="flex items-center justify-center py-4 gap-2 text-sm text-gray-400">
               <span className="loading loading-spinner loading-xs" />
-              Searching…
+              {aiLoading ? 'AI is interpreting your search…' : 'Searching…'}
             </div>
           )}
 
-          {!loading && results.length === 0 && query.length > 1 && (
+          {/* AI explanation header */}
+          {aiExplanation && !aiLoading && (
+            <div className="px-3 py-2 bg-indigo-50 border-b border-indigo-100">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Brain size={12} className="text-indigo-600" />
+                <span className="text-xs font-semibold text-indigo-700">AI Interpreted</span>
+              </div>
+              <p className="text-xs text-indigo-600">{aiExplanation}</p>
+              {aiAssumptions.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {aiAssumptions.map((a, i) => (
+                    <span key={i} className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-500">{a}</span>
+                  ))}
+                </div>
+              )}
+              {aiWarnings.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {aiWarnings.map((w, i) => (
+                    <div key={i} className="flex items-center gap-1 text-[10px] text-amber-600">
+                      <AlertTriangle size={10} />
+                      {w}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loading && !aiLoading && results.length === 0 && query.length > 1 && !aiExplanation && (
             <div className="py-4 px-4 text-sm text-gray-400 text-center">
               No results for &ldquo;{query}&rdquo;
             </div>
           )}
 
-          {!loading && results.length > 0 && (
+          {!loading && !aiLoading && results.length > 0 && (
             <>
-              <div className="px-3 py-1.5 border-b border-gray-100">
+              <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                   {results.length} result{results.length !== 1 ? 's' : ''}
                 </span>
+                {showAiOption && !aiExplanation && (
+                  <button
+                    onClick={() => runAISearch(query)}
+                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    <Brain size={11} />
+                    Try AI Search
+                  </button>
+                )}
               </div>
               <ul className="py-1 max-h-72 overflow-y-auto">
                 {results.map((r, i) => (
@@ -310,6 +446,9 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectDeal, onSetV
                         <div className="text-xs text-gray-400 truncate">{r.subtitle}</div>
                       </div>
                       <div className="flex-none flex items-center gap-2">
+                        {r.aiInterpreted && (
+                          <span className="badge badge-xs bg-indigo-50 text-indigo-600 font-medium">AI</span>
+                        )}
                         {r.meta && <span className="text-xs text-gray-400">{r.meta}</span>}
                         <span className={`badge badge-xs font-medium ${colorFor(r.type)}`}>
                           {labelFor(r.type)}

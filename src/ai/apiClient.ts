@@ -93,3 +93,17 @@ export async function interpretVoiceUpdateAI(
 ): Promise<VoiceUpdateInterpretation> {
   return post<VoiceUpdateInterpretation>('interpret-voice-update', { transcript, dealContext });
 }
+
+/** AI-powered deal health analysis */
+export interface DealHealthAIResponse {
+  riskSummary: string;
+  recommendations: string[];
+  nextMilestone: string;
+  estimatedDaysToClose: number | null;
+  topRisk: string;
+  overallAssessment: 'on-track' | 'needs-attention' | 'at-risk' | 'critical';
+}
+
+export async function dealHealthAI(deal: DealRecord): Promise<DealHealthAIResponse> {
+  return post<DealHealthAIResponse>('deal-health-ai', { deal });
+}
