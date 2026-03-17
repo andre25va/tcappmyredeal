@@ -91,7 +91,7 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
       clientAccount = ca;
     }
 
-    // 4. Get active deals via deal_participants
+    // 4. Get deals via deal_participants — no status filter (fetch all)
     const { data: participants } = await supabase
       .from('deal_participants')
       .select('deal_id')
@@ -102,9 +102,8 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
     if (dealIds.length > 0) {
       const { data: deals } = await supabase
         .from('deals')
-        .select('id, property_address, pipeline_stage, closing_date, city, state')
-        .in('id', dealIds)
-        .not('status', 'in', '("closed","terminated")');
+        .select('id, property_address, pipeline_stage, closing_date, city, state, contract_price, transaction_type, status')
+        .in('id', dealIds);
       activeDeals = deals || [];
     }
 
@@ -337,6 +336,240 @@ async function handleAdminEmailConfirm(req: VercelRequest, res: VercelResponse) 
   ));
 }
 
+// ── Client AI Voice Flow ──────────────────────────────────────────────────────
+
+async function handleClientAIInbound(req: VercelRequest, res: VercelResponse, caller: CallerContext) {
+  const { CallSid } = req.body;
+  const phone = caller.contact ? (await supabase.from('contact_phone_channels').select('phone_e164').eq('contact_id', caller.contact.id).limit(1).single()).data?.phone_e164 || '' : '';
+  const firstName = caller.contact.first_name;
+  const dealCount = caller.activeDeals.length;
+  const dealWord = dealCount === 1 ? 'deal' : 'deals';
+  const dealSummary = dealCount > 0
+    ? `You currently have ${dealCount} active ${dealWord}: ${caller.activeDeals.map(d => d.property_address).join(', ')}.`
+    : `I don't see any active deals on file for you right now.`;
+
+  res.setHeader('Content-Type', 'text/xml');
+  const greeting = say(`Hey ${firstName}! Welcome to My ReDeal. ${dealSummary} What would you like to know? You can ask me about your deals, closing dates, contacts, or anything about your transactions. Say done when you're finished.`);
+  const gatherBlock = gather(
+    { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}`, input: 'speech', timeout: 15 },
+    greeting
+  );
+  const fallback = say('No question received. Call us back anytime. Goodbye!') + '<Hangup/>';
+  return res.send(twiml(gatherBlock, fallback));
+}
+
+async function handleClientAIQuery(req: VercelRequest, res: VercelResponse) {
+  const { SpeechResult, From, CallSid } = req.body;
+  const phone = (req.query.phone as string) || normalizeToE164(From || '');
+  const callSid = (req.query.callSid as string) || CallSid || '';
+  const question = SpeechResult || '';
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  if (!question) {
+    const retry = say('I didn\'t catch that. Go ahead and ask your question.');
+    const gatherBlock = gather(
+      { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: 15 },
+      retry
+    );
+    return res.send(twiml(gatherBlock, say('No question received. Goodbye!'), '<Hangup/>'));
+  }
+
+  // Detect "done"
+  const donePhrases = ['done', 'goodbye', 'bye', "that's all", 'thats all', 'no more', 'nothing else', 'i\'m done', 'im done', 'all set', 'no questions', 'hang up', 'i\'m good', 'im good', 'stop', 'end'];
+  if (donePhrases.some(p => question.toLowerCase().includes(p))) {
+    return handleClientAIWrapup(req, res, phone, callSid);
+  }
+
+  try {
+    const caller = await identifyCallerByPhone(phone);
+    if (!caller) {
+      return res.send(twiml(say('Sorry, I couldn\'t identify your account. Please call back later. Goodbye.'), '<Hangup/>'));
+    }
+
+    const firstName = caller.contact.first_name;
+    const lastName = caller.contact.last_name;
+
+    // Get full deal details including participants for their deals
+    let dealDetails = caller.activeDeals;
+    let dealContactsText = '';
+    if (caller.activeDeals.length > 0) {
+      const dealIds = caller.activeDeals.map((d: any) => d.id);
+      const { data: participants } = await supabase
+        .from('deal_participants')
+        .select('deal_id, role, contact_id, contacts(first_name, last_name, email, contact_type, company)')
+        .in('deal_id', dealIds);
+
+      if (participants && participants.length > 0) {
+        const byDeal: Record<string, string[]> = {};
+        for (const p of participants as any[]) {
+          if (!byDeal[p.deal_id]) byDeal[p.deal_id] = [];
+          const c = p.contacts;
+          if (c) byDeal[p.deal_id].push(`  ${c.first_name} ${c.last_name} (${p.role || c.contact_type}${c.company ? `, ${c.company}` : ''})`);
+        }
+        dealContactsText = `\n=== DEAL CONTACTS ===\n` + Object.entries(byDeal).map(([dealId, contacts]) => {
+          const deal = caller.activeDeals.find((d: any) => d.id === dealId);
+          return `${deal?.property_address || dealId}:\n${contacts.join('\n')}`;
+        }).join('\n\n');
+      }
+    }
+
+    const systemPrompt = `You are the AI voice assistant for TC Command, a real estate transaction coordination service. You're speaking with ${firstName} ${lastName}, one of the agents.
+Keep answers to 2-3 short sentences — this is a phone call, be direct and voice-friendly. No bullet points or lists.
+Do NOT offer to send anything — the system handles that at the end of the call.
+Only answer questions about their data shown below. If asked about something outside their deals, politely say you only have info about their active transactions.
+
+${firstName}'s CURRENT DATA:
+=== DEALS (${caller.activeDeals.length} total) ===
+${caller.activeDeals.length > 0
+  ? caller.activeDeals.map((d: any) => `- ${d.property_address}${d.city ? `, ${d.city}` : ''}${d.state ? `, ${d.state}` : ''} | Stage: ${d.pipeline_stage || 'N/A'} | Type: ${d.transaction_type || 'N/A'} | Closing: ${d.closing_date || 'TBD'} | Price: $${d.contract_price?.toLocaleString() || 'N/A'} | Status: ${d.status || 'active'}`).join('\n')
+  : 'No active deals found'}
+${dealContactsText}`;
+
+    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 200,
+        temperature: 0.3,
+      }),
+    });
+
+    const aiData = await aiRes.json() as any;
+    const answer = aiData.choices?.[0]?.message?.content || 'I wasn\'t able to find an answer to that.';
+
+    // Store Q&A for end-of-call email
+    await supabase.from('communication_events').insert({
+      contact_id: caller.contact.id,
+      channel: 'voice',
+      direction: 'inbound',
+      event_type: 'client_voice_qa',
+      summary: `Q: ${question.substring(0, 200)}`,
+      source_ref: callSid,
+      metadata: { question, answer, phone, timestamp: new Date().toISOString(), contactName: `${firstName} ${lastName}` },
+    });
+
+    const responseVoice = say(answer);
+    const followUp = gather(
+      { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: 12 },
+      say('Any other questions? Or say done when you\'re finished.')
+    );
+    const fallback = `<Redirect method="POST">${escapeXml(`${APP_URL}/api/voice?route=client-ai-wrapup&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`)}</Redirect>`;
+
+    return res.send(twiml(responseVoice, followUp, fallback));
+
+  } catch (err) {
+    console.error('client-ai-query error:', err);
+    return res.send(twiml(say('Sorry, I ran into an error. Please try again. Goodbye!'), '<Hangup/>'));
+  }
+}
+
+async function handleClientAIWrapup(req: VercelRequest, res: VercelResponse, phone?: string, callSid?: string) {
+  const _phone = phone || (req.query.phone as string) || '';
+  const _callSid = callSid || (req.query.callSid as string) || '';
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  const prompt = say('Would you like me to email you a summary of this conversation? Say yes or no.');
+  const gatherBlock = gather(
+    { action: `client-ai-email-confirm&phone=${encodeURIComponent(_phone)}&callSid=${encodeURIComponent(_callSid)}`, input: 'speech dtmf', timeout: 8 },
+    prompt
+  );
+  const fallback = say('No problem. Have a great day! Goodbye.') + '<Hangup/>';
+  return res.send(twiml(gatherBlock, fallback));
+}
+
+async function handleClientAIEmailConfirm(req: VercelRequest, res: VercelResponse) {
+  const { SpeechResult, Digits } = req.body;
+  const phone = (req.query.phone as string) || '';
+  const callSid = (req.query.callSid as string) || '';
+  const speech = (SpeechResult || '').toLowerCase();
+  const digits = Digits || '';
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  const wantsEmail = speech.includes('yes') || digits === '1';
+
+  if (wantsEmail && callSid) {
+    try {
+      const caller = await identifyCallerByPhone(phone);
+      const recipientEmail = caller?.contact.email;
+      const recipientName = caller ? `${caller.contact.first_name} ${caller.contact.last_name}` : 'Client';
+
+      if (!recipientEmail) {
+        return res.send(twiml(say('I don\'t have an email address on file for you. Have a great day! Goodbye.'), '<Hangup/>'));
+      }
+
+      const { data: events } = await supabase
+        .from('communication_events')
+        .select('metadata, created_at')
+        .eq('source_ref', callSid)
+        .eq('event_type', 'client_voice_qa')
+        .order('created_at', { ascending: true });
+
+      if (events && events.length > 0) {
+        const callDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const callTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' });
+
+        const qaHtml = events.map((e: any, i: number) => `
+          <div style="margin-bottom:20px;padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #2563eb;">
+            <p style="margin:0 0 8px;font-weight:600;color:#1e3a5f;font-size:15px;">Q${i + 1}: ${e.metadata?.question || ''}</p>
+            <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;">${e.metadata?.answer || ''}</p>
+          </div>`).join('');
+
+        const emailHtml = `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+            <div style="background:#1e3a5f;padding:24px;border-radius:8px 8px 0 0;">
+              <h1 style="margin:0;color:#fff;font-size:22px;">📞 Your Call Summary</h1>
+              <p style="margin:6px 0 0;color:#93c5fd;font-size:14px;">${callDate} at ${callTime} CT</p>
+            </div>
+            <div style="padding:24px;">
+              <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Hi ${recipientName}, here's a summary of your ${events.length} question${events.length === 1 ? '' : 's'} from today's call.</p>
+              ${qaHtml}
+            </div>
+            <div style="padding:16px 24px;background:#f1f5f9;border-radius:0 0 8px 8px;text-align:center;">
+              <p style="margin:0;color:#94a3b8;font-size:12px;">TC Command — My ReDeal Transaction Services</p>
+            </div>
+          </div>`;
+
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'TC Command <tc@myredeal.com>',
+            to: [recipientEmail],
+            subject: `📞 Your Call Summary — ${new Date().toLocaleDateString('en-US')}`,
+            html: emailHtml,
+          }),
+        });
+
+        return res.send(twiml(
+          say(`Done! I emailed a summary to ${recipientEmail}. Have a great day! Goodbye.`),
+          '<Hangup/>'
+        ));
+      }
+    } catch (err) {
+      console.error('client-ai-email-confirm error:', err);
+    }
+  }
+
+  return res.send(twiml(
+    say('No problem. Have a great day! Goodbye.'),
+    '<Hangup/>'
+  ));
+}
+
 async function handleInbound(req: VercelRequest, res: VercelResponse) {
   const { From, CallSid } = req.body;
   const fromE164 = normalizeToE164(From || '');
@@ -362,22 +595,8 @@ async function handleInbound(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Content-Type', 'text/xml');
 
   if (caller) {
-    const firstName = caller.contact.first_name;
-    const dealCount = caller.activeDeals.length;
-
-    if (dealCount > 0) {
-      const greeting = say(`Hello ${firstName}! Thanks for calling My ReDeal Transaction Services. You have ${dealCount} active ${dealCount === 1 ? 'file' : 'files'}.`);
-      const menu = say('Press 1 or say status for a deal update texted to you. Press 2 or say update to leave a voice message about your deal. Press 3 or say callback to request a callback. Press 0 to repeat this menu.');
-      const gatherBlock = gather({ action: `intent&phone=${encodeURIComponent(fromE164)}`, input: 'dtmf speech', timeout: 8 }, greeting, menu);
-      const fallback = say('We didn\'t hear anything. Goodbye!') + '<Hangup/>';
-      return res.send(twiml(gatherBlock, fallback));
-    } else {
-      const greeting = say(`Hello ${firstName}! Thanks for calling My ReDeal Transaction Services. We don't have any active files for you right now.`);
-      const prompt = say('You can press 3 or say callback to request a callback, or leave a message after the beep.');
-      const gatherBlock = gather({ action: `intent&phone=${encodeURIComponent(fromE164)}`, input: 'dtmf speech', timeout: 6 }, greeting, prompt);
-      const recordFallback = `<Record action="${escapeXml(`${APP_URL}/api/voice?route=record-complete&phone=${encodeURIComponent(fromE164)}`)}" method="POST" maxLength="120" transcribe="false" recordingStatusCallback="${escapeXml(`${APP_URL}/api/voice?route=recording-status&phone=${encodeURIComponent(fromE164)}`)}" recordingStatusCallbackMethod="POST"/>`;
-      return res.send(twiml(gatherBlock, recordFallback));
-    }
+    // All known clients get the AI voice assistant scoped to their data
+    return handleClientAIInbound(req, res, caller);
   } else {
     // Unknown caller
     const greeting = say('Thank you for calling My ReDeal Transaction Services. We don\'t recognize this number. Please leave a message with your name, phone number, and the property address you\'re calling about, and we\'ll get back to you shortly.');
@@ -655,6 +874,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'admin-query': return handleAdminQuery(req, res);
       case 'admin-wrapup': return handleAdminWrapup(req, res);
       case 'admin-email-confirm': return handleAdminEmailConfirm(req, res);
+      case 'client-ai-query': return handleClientAIQuery(req, res);
+      case 'client-ai-wrapup': return handleClientAIWrapup(req, res);
+      case 'client-ai-email-confirm': return handleClientAIEmailConfirm(req, res);
       default:
         // Unknown route — hang up gracefully
         res.setHeader('Content-Type', 'text/xml');
