@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail } from 'lucide-react';
+import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail, AlertTriangle, MonitorSmartphone, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type Step = 'phone' | 'otp' | 'success';
@@ -15,7 +15,7 @@ function formatPhoneDisplay(raw: string) {
 }
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, kickedOut, kickedOutMessage, clearKickedOut } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -26,6 +26,11 @@ export function LoginPage() {
   const [countdown, setCountdown] = useState(0);
   const [emailHint, setEmailHint] = useState('');
   const [emailSent, setEmailSent] = useState(false);
+  // Existing session modal state
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [existingDeviceLabel, setExistingDeviceLabel] = useState('');
+  const [existingDeviceLastSeen, setExistingDeviceLastSeen] = useState('');
+  const [pendingOtpCode, setPendingOtpCode] = useState('');
 
   const codeRefs = [
     useRef<HTMLInputElement>(null),
@@ -51,7 +56,6 @@ export function LoginPage() {
     if (isDemo) { handleDemoLogin(); return; }
     setError('');
     if (!phoneReady) { setError('Enter a valid 10-digit phone number.'); return; }
-
     setLoading(true);
     try {
       const resp = await fetch('/api/auth/request-otp', {
@@ -84,9 +88,7 @@ export function LoginPage() {
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Demo login failed.'); return; }
       setStep('success');
-      setTimeout(() => {
-        login(data.token, data.profile, false);
-      }, 800);
+      setTimeout(() => { login(data.token, data.profile, false); }, 800);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -140,25 +142,29 @@ export function LoginPage() {
     }
   };
 
-  const handleVerify = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const fullCode = code.join('');
+  const doVerify = async (forceLogin = false) => {
+    const fullCode = pendingOtpCode || code.join('');
     if (fullCode.length < 6) { setError('Enter the 6-digit code.'); return; }
-
     setError('');
     setLoading(true);
     try {
       const resp = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneDigits, code: fullCode }),
+        body: JSON.stringify({ phone: phoneDigits, code: fullCode, force: forceLogin }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Verification failed.'); return; }
+      // Existing session on another device?
+      if (data.hasExistingSession) {
+        setPendingOtpCode(fullCode);
+        setExistingDeviceLabel(data.deviceLabel || 'another device');
+        setExistingDeviceLastSeen(data.lastSeen || '');
+        setShowDeviceModal(true);
+        return;
+      }
       setStep('success');
-      setTimeout(() => {
-        login(data.token, data.profile, data.isFirstLogin);
-      }, 800);
+      setTimeout(() => { login(data.token, data.profile, data.isFirstLogin); }, 800);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -166,10 +172,21 @@ export function LoginPage() {
     }
   };
 
+  const handleVerify = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    await doVerify(false);
+  };
+
+  const handleForceLogin = async () => {
+    setShowDeviceModal(false);
+    await doVerify(true);
+  };
+
   const handleResend = async () => {
     if (countdown > 0) return;
     setError('');
     setCode(['', '', '', '', '', '']);
+    setPendingOtpCode('');
     setEmailSent(false);
     setEmailHint('');
     setLoading(true);
@@ -191,8 +208,8 @@ export function LoginPage() {
   };
 
   useEffect(() => {
-    if (step === 'otp' && code.join('').length === 6 && !loading) {
-      handleVerify();
+    if (step === 'otp' && code.join('').length === 6 && !loading && !showDeviceModal) {
+      doVerify(false);
     }
   }, [code, step]);
 
@@ -201,6 +218,58 @@ export function LoginPage() {
       data-theme="light"
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-4"
     >
+      {/* ── Kicked-out banner ── */}
+      {kickedOut && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm">
+          <div className="alert alert-warning shadow-lg flex gap-2">
+            <AlertTriangle size={16} className="flex-none" />
+            <span className="text-sm flex-1">{kickedOutMessage}</span>
+            <button onClick={clearKickedOut} className="btn btn-ghost btn-xs">✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Existing device modal ── */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-none">
+                <MonitorSmartphone size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Already signed in</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Active session detected on {existingDeviceLabel}</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              You're already signed in on <strong>{existingDeviceLabel}</strong>. Continuing here will sign that device out.
+            </p>
+            {existingDeviceLastSeen && (
+              <p className="text-xs text-gray-400">
+                Last active: {new Date(existingDeviceLastSeen).toLocaleString()}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeviceModal(false)}
+                className="btn btn-outline btn-sm flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleForceLogin}
+                disabled={loading}
+                className="btn btn-primary btn-sm flex-1 gap-1"
+              >
+                {loading ? <span className="loading loading-spinner loading-xs" /> : <LogIn size={14} />}
+                Sign in here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
@@ -245,7 +314,6 @@ export function LoginPage() {
                     <div className="alert alert-error py-2 px-3 text-sm">{error}</div>
                   )}
 
-                  {/* Demo number detected — show instant access button only */}
                   {isDemo ? (
                     <>
                       <button
@@ -265,7 +333,6 @@ export function LoginPage() {
                     </>
                   ) : (
                     <>
-                      {/* SMS button */}
                       <button
                         type="submit"
                         className="btn btn-primary w-full gap-2"
@@ -277,8 +344,6 @@ export function LoginPage() {
                           <><Phone size={15} /> Send code via SMS</>
                         )}
                       </button>
-
-                      {/* Email button */}
                       <button
                         type="button"
                         onClick={handleSendEmail}
@@ -353,7 +418,7 @@ export function LoginPage() {
                   <div className="flex items-center justify-between text-xs text-base-content/50">
                     <button
                       type="button"
-                      onClick={() => { setStep('phone'); setCode(['','','','','','']); setError(''); setEmailSent(false); setEmailHint(''); }}
+                      onClick={() => { setStep('phone'); setCode(['','','','','','']); setError(''); setEmailSent(false); setEmailHint(''); setPendingOtpCode(''); }}
                       className="link link-hover"
                     >
                       ← Change number

@@ -6,6 +6,8 @@ import { randomUUID } from 'crypto';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 
+const DEMO_PHONE = '+17085069000';
+
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (digits.length === 10) return `+1${digits}`;
@@ -23,6 +25,17 @@ function maskEmail(email: string): string {
   const domainParts = domain.split('.');
   const maskedDomain = domainParts[0].slice(0, 3) + '***.' + domainParts.slice(1).join('.');
   return `${maskedLocal}@${maskedDomain}`;
+}
+
+function parseDeviceLabel(ua: string): string {
+  if (!ua) return 'Unknown device';
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  if (/Android/i.test(ua)) return 'Android device';
+  if (/Mac/i.test(ua)) return 'Mac';
+  if (/Windows/i.test(ua)) return 'Windows PC';
+  if (/Linux/i.test(ua)) return 'Linux device';
+  return 'Another device';
 }
 
 async function handleRequestOtp(req: VercelRequest, res: VercelResponse) {
@@ -84,9 +97,10 @@ async function handleRequestOtp(req: VercelRequest, res: VercelResponse) {
 
 async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const { phone, code } = req.body || {};
+  const { phone, code, force = false } = req.body || {};
   if (!phone || !code) return res.status(400).json({ error: 'Phone and code required' });
   const normalized = normalizePhone(phone);
+  const isDemo = normalized === DEMO_PHONE;
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '';
   const ua = req.headers['user-agent'] || '';
   try {
@@ -111,14 +125,44 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       profile = newProfile;
       if (isBootstrap) await supabase.from('allowed_phones').insert({ phone: normalized, name: 'Admin', added_by: newProfile.id });
     }
+
+    // ── Single-session enforcement (skip for demo) ──
+    if (!isDemo && !force) {
+      const { data: existingSessions } = await supabase
+        .from('sessions')
+        .select('id, ip_address, user_agent, last_used, created_at')
+        .eq('user_id', profile.id)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString())
+        .order('last_used', { ascending: false })
+        .limit(1);
+      if (existingSessions && existingSessions.length > 0) {
+        const existing = existingSessions[0];
+        return res.status(200).json({
+          hasExistingSession: true,
+          deviceLabel: parseDeviceLabel(existing.user_agent || ''),
+          lastSeen: existing.last_used || existing.created_at,
+        });
+      }
+    }
+
+    // Invalidate all old active sessions (skip for demo)
+    if (!isDemo) {
+      await supabase
+        .from('sessions')
+        .update({ is_active: false })
+        .eq('user_id', profile.id)
+        .eq('is_active', true);
+    }
+
     await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', profile.id);
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua });
+    await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua, is_active: true });
     await supabase.from('audit_log').insert({
       user_id: profile.id, user_name: profile.name || normalized, user_phone: normalized,
       action: 'login', entity_type: 'user', entity_id: profile.id, entity_name: profile.name || normalized,
-      metadata: { ip, ua, isFirstLogin }, ip_address: ip, user_agent: ua,
+      metadata: { ip, ua, isFirstLogin, forced: force }, ip_address: ip, user_agent: ua,
     });
     return res.status(200).json({ success: true, token, profile, isFirstLogin });
   } catch (err: any) {
@@ -132,8 +176,29 @@ async function handleSession(req: VercelRequest, res: VercelResponse) {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
-    const { data: session } = await supabase.from('sessions').select('*, profiles(*)').eq('token', token).gt('expires_at', new Date().toISOString()).single();
-    if (!session) return res.status(401).json({ error: 'Session expired or invalid' });
+    // Check for valid active session
+    const { data: session } = await supabase
+      .from('sessions')
+      .select('*, profiles(*)')
+      .eq('token', token)
+      .eq('is_active', true)
+      .gt('expires_at', new Date().toISOString())
+      .single();
+
+    if (!session) {
+      // Check if this token was kicked out by another login
+      const { data: kicked } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('token', token)
+        .eq('is_active', false)
+        .single();
+      if (kicked) {
+        return res.status(401).json({ valid: false, reason: 'other_device' });
+      }
+      return res.status(401).json({ error: 'Session expired or invalid' });
+    }
+
     await supabase.from('sessions').update({ last_used: new Date().toISOString() }).eq('token', token);
     return res.status(200).json({ valid: true, profile: session.profiles });
   } catch {
@@ -147,7 +212,7 @@ async function handleLogout(req: VercelRequest, res: VercelResponse) {
   if (!token) return res.status(400).json({ error: 'No token' });
   try {
     const { data: session } = await supabase.from('sessions').select('*, profiles(id, name, phone)').eq('token', token).single();
-    await supabase.from('sessions').delete().eq('token', token);
+    await supabase.from('sessions').update({ is_active: false }).eq('token', token);
     if (session?.profiles) {
       const p = session.profiles as any;
       await supabase.from('audit_log').insert({
@@ -167,7 +232,7 @@ async function handleUpdateProfile(req: VercelRequest, res: VercelResponse) {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   const { name, timezone, avatar_color } = req.body || {};
   try {
-    const { data: session } = await supabase.from('sessions').select('user_id, profiles(*)').eq('token', token).gt('expires_at', new Date().toISOString()).single();
+    const { data: session } = await supabase.from('sessions').select('user_id, profiles(*)').eq('token', token).eq('is_active', true).gt('expires_at', new Date().toISOString()).single();
     if (!session) return res.status(401).json({ error: 'Session expired' });
     const updates: any = { updated_at: new Date().toISOString() };
     if (name !== undefined) updates.name = name;
@@ -194,17 +259,18 @@ async function handleDemoLogin(req: VercelRequest, res: VercelResponse) {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '';
   const ua = req.headers['user-agent'] || '';
   try {
-    let { data: profile } = await supabase.from('profiles').select('*').eq('phone', '+17085069000').single();
+    let { data: profile } = await supabase.from('profiles').select('*').eq('phone', DEMO_PHONE).single();
     if (!profile) {
-      const { data: newProfile, error } = await supabase.from('profiles').insert({ phone: '+17085069000', role: 'viewer', name: 'Demo User' }).select().single();
+      const { data: newProfile, error } = await supabase.from('profiles').insert({ phone: DEMO_PHONE, role: 'viewer', name: 'Demo User' }).select().single();
       if (error) throw error;
       profile = newProfile;
     }
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua });
+    // Demo: allow concurrent sessions (is_active = true, no invalidation of existing)
+    await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua, is_active: true });
     await supabase.from('audit_log').insert({
-      user_id: profile.id, user_name: 'Demo User', user_phone: '+17085069000',
+      user_id: profile.id, user_name: 'Demo User', user_phone: DEMO_PHONE,
       action: 'demo_login', entity_type: 'user', entity_id: profile.id, entity_name: 'Demo User',
       metadata: { ip, ua }, ip_address: ip, user_agent: ua,
     });
@@ -216,7 +282,6 @@ async function handleDemoLogin(req: VercelRequest, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // action comes from Vercel rewrite path segment e.g. /api/auth/request-otp -> action='request-otp'
   const action = req.query.action as string;
   switch (action) {
     case 'request-otp': return handleRequestOtp(req, res);

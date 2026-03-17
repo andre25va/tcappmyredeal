@@ -3,8 +3,9 @@ import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   ClipboardList, Settings, FileText, UserPlus, MessageSquare,
-  CheckSquare, Clock,
+  CheckSquare, Clock, LogOut,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks';
 
@@ -42,6 +43,11 @@ const NAV_ITEMS = (
   { id: 'settings',     label: 'Settings',     icon: <Settings size={18} /> },
 ];
 
+function getInitials(name: string): string {
+  if (!name) return '?';
+  return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+}
+
 function SidebarInner({
   onAddDeal, onAddAgentClient, onAddContact, dealCount, pendingAlerts, onAmberClick,
   view, onSetView, collapsed, onToggleCollapse, onCloseMobile, isMobileOverlay,
@@ -50,6 +56,7 @@ function SidebarInner({
   const navItems = NAV_ITEMS(dealCount, inboxUnread, tasksPending, waitingCount);
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
+  const { profile, logout } = useAuth();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -58,6 +65,11 @@ function SidebarInner({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const avatarColor = profile?.avatar_color || '#6366f1';
+  const initials = getInitials(profile?.name || '');
+  const displayName = profile?.name || profile?.phone || 'User';
+  const isDemo = profile?.role === 'viewer';
 
   return (
     <div className={`flex flex-col h-full bg-base-200 border-r border-base-300 select-none transition-all duration-200 ${collapsed && !isMobileOverlay ? 'w-14' : 'w-52'}`}>
@@ -134,7 +146,6 @@ function SidebarInner({
                 <>
                   <span className="flex-1 leading-none">{item.label}</span>
                   <div className="flex items-center gap-1">
-                    {/* ⏳ Waiting for reply badge */}
                     {item.waitingBadge !== undefined && item.waitingBadge > 0 && (
                       <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
                         active ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-100 text-amber-700'
@@ -143,7 +154,6 @@ function SidebarInner({
                         {item.waitingBadge}
                       </span>
                     )}
-                    {/* Unread badge */}
                     {item.badge !== undefined && (
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
                         active ? 'bg-white/20 text-white' : 'bg-base-content/10 text-base-content/60'
@@ -159,7 +169,8 @@ function SidebarInner({
         })}
       </nav>
 
-      <div className={`pb-4 pt-3 flex flex-col gap-2 border-t border-base-300 ${collapsed && !isMobileOverlay ? 'px-1 items-center' : 'px-3'}`}>
+      {/* ── Bottom section ── */}
+      <div className={`pb-3 pt-3 flex flex-col gap-2 border-t border-base-300 ${collapsed && !isMobileOverlay ? 'px-1 items-center' : 'px-3'}`}>
         {pendingAlerts > 0 && (
           collapsed && !isMobileOverlay ? (
             <button
@@ -188,6 +199,7 @@ function SidebarInner({
           )
         )}
 
+        {/* Create New button */}
         <div ref={createRef} className="relative">
           {collapsed && !isMobileOverlay ? (
             <button
@@ -228,6 +240,55 @@ function SidebarInner({
               >
                 <Users size={15} className="text-primary flex-none" />
                 Add Contact
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── User footer ── */}
+        <div className={`mt-1 pt-2 border-t border-base-300 ${ collapsed && !isMobileOverlay ? 'flex flex-col items-center gap-1.5 w-full' : ''}`}>
+          {collapsed && !isMobileOverlay ? (
+            <>
+              {/* Avatar */}
+              <div
+                title={displayName}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {initials}
+              </div>
+              {/* Sign out */}
+              <button
+                onClick={logout}
+                title="Sign out"
+                className="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-error hover:bg-error/10"
+              >
+                <LogOut size={13} />
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              {/* Avatar */}
+              <div
+                className="w-7 h-7 rounded-full flex-none flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {initials}
+              </div>
+              {/* Name + role */}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-base-content/80 truncate leading-tight">{displayName}</div>
+                {isDemo && (
+                  <div className="text-[10px] text-base-content/40 leading-tight">Demo view</div>
+                )}
+              </div>
+              {/* Sign out button */}
+              <button
+                onClick={logout}
+                title="Sign out"
+                className="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-error hover:bg-error/10 flex-none"
+              >
+                <LogOut size={13} />
               </button>
             </div>
           )}
