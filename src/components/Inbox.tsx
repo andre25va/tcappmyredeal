@@ -272,14 +272,27 @@ function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
 
 function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-1.5 cursor-pointer group select-none">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={e => onChange(e.target.checked)}
-        className="checkbox checkbox-xs rounded-sm"
-        style={checked ? { accentColor: '#f59e0b', borderRadius: '3px' } : { borderRadius: '3px' }}
-      />
+    <label
+      className="flex items-center gap-1.5 cursor-pointer group select-none"
+      onClick={() => onChange(!checked)}
+    >
+      <div
+        className="flex items-center justify-center flex-none transition-all"
+        style={{
+          width: '14px',
+          height: '14px',
+          border: '2px solid #1f2937',
+          borderRadius: '3px',
+          backgroundColor: 'white',
+          boxShadow: checked ? '0 0 0 1px #1f2937' : 'none',
+        }}
+      >
+        {checked && (
+          <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+            <path d="M1 3.5L3.5 6L8 1" stroke="#1f2937" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
       <span className={`text-[11px] font-medium transition-colors ${checked ? 'text-amber-600' : 'text-base-content/50 group-hover:text-base-content/70'}`}>
         Reply Needed
       </span>
