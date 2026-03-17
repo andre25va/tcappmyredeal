@@ -497,7 +497,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         side: dealSide,
         dealRole,
         isPrimary: false,
-        isClientSide: !!cr.isClient,
+        isClientSide: !!cr.isClient || pickerConfig?.type === 'client',
       });
     } catch (err) {
       console.error('Failed to add participant:', err);
@@ -514,9 +514,20 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       inNotificationList: true,
       side: effectiveSide,
     };
+    const isClientSideFlag = !!cr.isClient || pickerConfig?.type === 'client';
+    const newParticipant = {
+      id: crypto.randomUUID(),
+      contactId: cr.id,
+      dealId: deal.id,
+      side: dealSide,
+      dealRole,
+      isPrimary: false,
+      isClientSide: isClientSideFlag,
+    };
     onUpdate({
       ...deal,
       contacts: [...deal.contacts, contact],
+      participants: [...(deal.participants || []), newParticipant],
       activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });

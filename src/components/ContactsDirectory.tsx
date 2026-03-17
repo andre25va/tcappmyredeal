@@ -711,11 +711,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Email</span></label>
-                    <input className="input input-sm input-bordered w-full" type="email" value={form.email} onChange={e => updateField('email', e.target.value)} />
+                    <input className="input input-sm input-bordered w-full" type="email" autoComplete="off" value={form.email} onChange={e => updateField('email', e.target.value)} />
                   </div>
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Phone</span></label>
-                    <input className="input input-sm input-bordered w-full" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
+                    <input className="input input-sm input-bordered w-full" autoComplete="off" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
                   </div>
                 </div>
                 <div className="mt-2">
@@ -730,7 +730,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
-                  <textarea className="textarea textarea-bordered textarea-sm w-full" rows={2} value={form.notes} onChange={e => updateField('notes', e.target.value)} />
+                  <textarea className="textarea textarea-bordered textarea-sm w-full" autoComplete="off" rows={2} value={form.notes} onChange={e => updateField('notes', e.target.value)} />
                 </div>
               </div>
 

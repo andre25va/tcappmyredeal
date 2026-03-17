@@ -481,7 +481,7 @@ async function executeTool(
         const query = (args.query as string).toLowerCase();
         const { data: contacts, error: cError } = await supabase
           .from('contacts')
-          .select('first_name, last_name, email, phone, role, company');
+          .select('first_name, last_name, email, phone, contact_type, company');
 
         const matches: any[] = [];
 
@@ -489,8 +489,8 @@ async function executeTool(
           contacts.forEach((c: any) => {
             const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim().toLowerCase();
             if (fullName.includes(query) || (c.email || '').toLowerCase().includes(query) ||
-                (c.company || '').toLowerCase().includes(query) || (c.role || '').toLowerCase().includes(query)) {
-              matches.push({ name: `${c.first_name || ''} ${c.last_name || ''}`.trim(), email: c.email, phone: c.phone, role: c.role, company: c.company });
+                (c.company || '').toLowerCase().includes(query) || (c.contact_type || '').toLowerCase().includes(query)) {
+              matches.push({ name: `${c.first_name || ''} ${c.last_name || ''}`.trim(), email: c.email, phone: c.phone, role: c.contact_type, company: c.company });
             }
           });
         }
