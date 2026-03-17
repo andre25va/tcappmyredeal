@@ -3,11 +3,11 @@ import {
   Building2, LayoutDashboard, Briefcase, Users, Globe,
   Plus, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   ClipboardList, Settings, FileText, UserPlus, MessageSquare,
-  CheckSquare, Clock, LogOut, Phone, BarChart3,
+  CheckSquare, Clock, LogOut, Phone, BarChart3, Zap,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks' | 'voice' | 'reports';
+export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'workflows';
 
 interface SidebarProps {
   onAddDeal: () => void;
@@ -39,6 +39,7 @@ const NAV_ITEMS = (
   { id: 'reports',      label: 'AI Reports',   icon: <BarChart3 size={18} /> },
   { id: 'inbox',        label: 'Inbox',        icon: <MessageSquare size={18} />, badge: inboxUnread > 0 ? inboxUnread : undefined, waitingBadge: waitingCount > 0 ? waitingCount : undefined },
   { id: 'tasks',        label: 'Comm Tasks',   icon: <CheckSquare size={18} />, badge: tasksPending > 0 ? tasksPending : undefined },
+  { id: 'workflows',    label: 'Workflows',    icon: <Zap size={18} /> },
   { id: 'voice',        label: 'Voice',        icon: <Phone size={18} />, badge: voicePendingCount > 0 ? voicePendingCount : undefined },
   { id: 'transactions', label: 'Transactions', icon: <Briefcase size={18} />, badge: dealCount },
   { id: 'contacts',     label: 'Contacts',     icon: <Users size={18} /> },

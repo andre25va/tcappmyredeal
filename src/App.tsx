@@ -26,6 +26,7 @@ import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
 import { AIReports } from './components/AIReports';
+import { WorkflowsPage } from './components/WorkflowsPage';
 import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -405,7 +406,7 @@ function AppInner() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'workflows' ? 'Workflows' : 'Settings'}
           </span>
           <NotificationBell onNavigate={handleNotificationNavigate} />
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
@@ -529,6 +530,10 @@ function AppInner() {
             <div className="flex-1 overflow-auto">
               <AIReports deals={deals} />
             </div>
+          )}
+
+          {view === 'workflows' && (
+            <WorkflowsPage />
           )}
 
           {view === 'settings' && (

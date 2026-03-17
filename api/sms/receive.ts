@@ -648,6 +648,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdTaskId = task?.id || null;
     }
 
+    // ── Workflow engine for unmatched messages ────────────────────────────────────
+    // Call our internal workflow engine to classify and act on the message
+    try {
+      await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'https://tcappmyredeal.vercel.app'}/api/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          triggerType: 'sms_inbound',
+          content: Body,
+          context: {
+            from: fromPhone,
+            channel: 'sms',
+            contactId: matchedContact?.id || null,
+          },
+        }),
+      });
+    } catch (e) {
+      console.error('Workflow engine call failed:', e);
+    }
+
     // 6. Auto-reply
     const autoReply = ai.auto_reply || 'Thanks for reaching out! We\'ll get back to you shortly. 🏠';
     await sendTwilioReply(fromPhone, autoReply, isWhatsApp);

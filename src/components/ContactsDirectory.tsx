@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
   Home, DollarSign, Scale, ClipboardCheck,
-  ArrowLeft, Shield, FileText, SendHorizontal, Loader2,
+  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles,
 } from 'lucide-react';
 import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership } from '../types';
 import {
@@ -654,6 +654,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       </button>
                       <button className="btn btn-ghost btn-xs text-success" onClick={() => openSendOnboarding(c)} title="Send Onboarding">
                         <SendHorizontal size={13} />
+                      </button>
+                      <button className="btn btn-ghost btn-xs text-purple-500" onClick={() => setOnboardingContact(c)} title="Open Onboarding Wizard">
+                        <Sparkles size={13} />
                       </button>
                       <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(c)} title="Delete">
                         <Trash2 size={13} />
