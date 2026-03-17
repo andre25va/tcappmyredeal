@@ -63,30 +63,46 @@ interface Props {
   deals?: Deal[];
 }
 
-/** Derive representation from buyer/seller isOurClient flags */
+/**
+ * Derive representation from deal_participants (is_client_side flag).
+ * Uses participants array directly — more reliable than deprecated buyerAgent/sellerAgent fields.
+ */
 function getRepresentation(deal: Deal): { label: string; style: string; tooltip: string } | null {
-  const buyerClient = deal.buyerAgent?.isOurClient;
-  const sellerClient = deal.sellerAgent?.isOurClient;
+  const participants = deal.participants ?? [];
 
-  if (buyerClient && sellerClient) {
+  // Find client-side agents by side
+  const buyerClients = participants.filter(
+    p => (p.side === 'buyer') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+  );
+  const sellerClients = participants.filter(
+    p => (p.side === 'listing' || p.side === 'seller') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+  );
+
+  const hasBuyer = buyerClients.length > 0;
+  const hasSeller = sellerClients.length > 0;
+
+  const buyerNames = buyerClients.map(p => p.contactName).filter(Boolean).join(', ');
+  const sellerNames = sellerClients.map(p => p.contactName).filter(Boolean).join(', ');
+
+  if (hasBuyer && hasSeller) {
     return {
       label: 'Representing Both Sides',
       style: 'bg-violet-100 text-violet-700 border-violet-300',
-      tooltip: `Our clients: ${deal.buyerAgent?.name ?? 'Buyer Agent'} (buy) & ${deal.sellerAgent?.name ?? 'Seller Agent'} (sell)`,
+      tooltip: `Buy side: ${buyerNames || 'Client Agent'} · Sell side: ${sellerNames || 'Client Agent'}`,
     };
   }
-  if (buyerClient) {
+  if (hasBuyer) {
     return {
       label: 'Representing Buyer',
       style: 'bg-blue-50 text-blue-700 border-blue-300',
-      tooltip: `Our client: ${deal.buyerAgent?.name ?? 'Buyer Agent'}`,
+      tooltip: `Our client: ${buyerNames || 'Buyer Agent'}`,
     };
   }
-  if (sellerClient) {
+  if (hasSeller) {
     return {
       label: 'Representing Seller',
       style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-      tooltip: `Our client: ${deal.sellerAgent?.name ?? 'Seller Agent'}`,
+      tooltip: `Our client: ${sellerNames || 'Seller Agent'}`,
     };
   }
   return null;
@@ -178,15 +194,22 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                   </button>
                 )}
               </div>
-              {/* Representation badge */}
-              {representation && (
-                <div className="mt-1.5 ml-[22px]">
+              {/* ── Representation badge ── */}
+              {representation ? (
+                <div className="mt-2 ml-[22px]">
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${representation.style}`}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold shadow-sm ${representation.style}`}
                     title={representation.tooltip}
                   >
-                    <Shield size={10} className="flex-none" />
+                    <Shield size={11} className="flex-none" />
                     {representation.label}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 ml-[22px]">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-400 text-xs font-medium">
+                    <Shield size={11} className="flex-none" />
+                    No client representation
                   </span>
                 </div>
               )}
