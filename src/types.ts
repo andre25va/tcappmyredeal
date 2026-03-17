@@ -473,3 +473,173 @@ export interface SmsMessage {
   sent_at: string;
   created_at: string;
 }
+
+// ── Voice + AI (Phase 5) ─────────────────────────────────────────────────────
+
+export interface ContactPhoneChannel {
+  id: string;
+  contactId: string;
+  clientAccountId?: string;
+  phoneE164: string;
+  label?: string;
+  isVerified: boolean;
+  canCallIn: boolean;
+  canReceiveTexts: boolean;
+  canRequestUpdates: boolean;
+  canSubmitVoiceUpdates: boolean;
+  canRequestCallback: boolean;
+  isPrimary: boolean;
+  status: 'active' | 'inactive' | 'blocked';
+  createdAt: string;
+  updatedAt: string;
+  // Joined display fields
+  contactName?: string;
+  contactType?: string;
+}
+
+export interface VoiceAnalysis {
+  containsChangeRequest: boolean;
+  changeType?: string;
+  impactLevel?: string;
+  suggestedActions?: string[];
+  sentiment?: string;
+  keyEntities?: string[];
+}
+
+export interface VoiceSuggestedAction {
+  type: string;
+  description: string;
+}
+
+export interface VoiceDealUpdate {
+  id: string;
+  dealId?: string;
+  callerContactId?: string;
+  callerClientAccountId?: string;
+  phoneE164: string;
+  callSid?: string;
+  recordingSid?: string;
+  recordingUrl?: string;
+  recordingDuration?: number;
+  transcript?: string;
+  aiSummary?: string;
+  aiAnalysis?: VoiceAnalysis;
+  suggestedActions?: VoiceSuggestedAction[];
+  confidenceLevel: 'high' | 'medium' | 'low';
+  reviewStatus: 'pending' | 'reviewed' | 'applied' | 'dismissed';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  contactName?: string;
+  dealAddress?: string;
+}
+
+export interface CallbackRequest {
+  id: string;
+  dealId?: string;
+  callerContactId?: string;
+  callerClientAccountId?: string;
+  phoneE164: string;
+  requestedByChannel: 'voice' | 'sms';
+  reason?: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: 'open' | 'acknowledged' | 'completed' | 'dismissed';
+  assignedUserId?: string;
+  requestedAt: string;
+  acknowledgedAt?: string;
+  completedAt?: string;
+  notes?: string;
+  contactName?: string;
+  dealAddress?: string;
+}
+
+export interface CommunicationEvent {
+  id: string;
+  dealId?: string;
+  contactId?: string;
+  clientAccountId?: string;
+  channel: 'voice' | 'sms' | 'email' | 'whatsapp';
+  direction: 'inbound' | 'outbound';
+  eventType: 'status_request' | 'voice_update' | 'callback_request' | 'sms_command' | 'general';
+  summary?: string;
+  transcript?: string;
+  recordingUrl?: string;
+  sourceRef?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  contactName?: string;
+  dealAddress?: string;
+}
+
+export type ChangeType = 'closing_date' | 'price_change' | 'inspection' | 'repair_request' |
+  'cancellation' | 'contract_term' | 'possession' | 'document_update' | 'other';
+
+export type ChangeImpact = 'low' | 'medium' | 'high' | 'critical';
+
+export type ChangeStatus = 'pending_review' | 'needs_clarification' | 'approved' | 'rejected' | 'applied';
+
+export interface ChangeRequest {
+  id: string;
+  dealId: string;
+  requestedByContactId?: string;
+  requestedByClientAccountId?: string;
+  sourceEventId?: string;
+  sourceChannel: 'voice' | 'sms' | 'email';
+  changeType: ChangeType;
+  requestedChangeText: string;
+  aiStructuredPayload?: Record<string, unknown>;
+  impactLevel: ChangeImpact;
+  status: ChangeStatus;
+  assignedReviewerUserId?: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  appliedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  contactName?: string;
+  dealAddress?: string;
+}
+
+export interface AmbiguityQueueItem {
+  id: string;
+  channel: 'voice' | 'sms';
+  phoneE164: string;
+  body?: string;
+  callSid?: string;
+  likelyContactIds?: string[];
+  likelyDealIds?: string[];
+  confidenceLevel: 'low' | 'medium';
+  status: 'open' | 'resolved' | 'dismissed';
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CallerContext {
+  phoneChannel: ContactPhoneChannel;
+  contact: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    contactType: string;
+  };
+  clientAccount?: {
+    id: string;
+    accountName: string;
+    status: string;
+  };
+  activeDeals: Array<{
+    id: string;
+    propertyAddress: string;
+    milestone: string;
+    closingDate?: string;
+    city?: string;
+    state?: string;
+  }>;
+}

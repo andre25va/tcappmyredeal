@@ -33,6 +33,16 @@ import {
   PropertyType,
   TransactionType,
   TransactionSide,
+  ContactPhoneChannel,
+  VoiceDealUpdate,
+  VoiceAnalysis,
+  VoiceSuggestedAction,
+  CallbackRequest,
+  CommunicationEvent,
+  ChangeRequest,
+  ChangeStatus,
+  ChangeImpact,
+  AmbiguityQueueItem,
 } from '../types';
 
 // ─── DEAL PARTICIPANTS ──────────────────────────────────────────────────────
@@ -909,4 +919,340 @@ export async function upsertContactMls(mls: {
 export async function deleteContactMlsRecord(id: string): Promise<void> {
   const { error } = await supabase.from('contact_mls_memberships').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ── PHONE CHANNELS (Phase 5) ────────────────────────────────────────────────
+
+export async function loadPhoneChannels(contactId?: string): Promise<ContactPhoneChannel[]> {
+  let query = supabase
+    .from('contact_phone_channels')
+    .select(`*, contacts:contact_id ( full_name, contact_type )`)
+    .order('created_at', { ascending: true });
+
+  if (contactId) {
+    query = query.eq('contact_id', contactId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const c = row.contacts as Record<string, string> | null;
+    return {
+      id: row.id,
+      contactId: row.contact_id,
+      clientAccountId: row.client_account_id ?? undefined,
+      phoneE164: row.phone_e164,
+      label: row.label ?? undefined,
+      isVerified: row.is_verified,
+      canCallIn: row.can_call_in,
+      canReceiveTexts: row.can_receive_texts,
+      canRequestUpdates: row.can_request_updates,
+      canSubmitVoiceUpdates: row.can_submit_voice_updates,
+      canRequestCallback: row.can_request_callback,
+      isPrimary: row.is_primary,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      contactName: c?.full_name ?? undefined,
+      contactType: c?.contact_type ?? undefined,
+    };
+  });
+}
+
+export async function savePhoneChannel(channel: Partial<ContactPhoneChannel> & { contactId: string; phoneE164: string }): Promise<string> {
+  const row = {
+    id: channel.id || crypto.randomUUID(),
+    contact_id: channel.contactId,
+    client_account_id: channel.clientAccountId || null,
+    phone_e164: channel.phoneE164,
+    label: channel.label || 'mobile',
+    is_verified: channel.isVerified ?? true,
+    can_call_in: channel.canCallIn ?? true,
+    can_receive_texts: channel.canReceiveTexts ?? true,
+    can_request_updates: channel.canRequestUpdates ?? true,
+    can_submit_voice_updates: channel.canSubmitVoiceUpdates ?? true,
+    can_request_callback: channel.canRequestCallback ?? true,
+    is_primary: channel.isPrimary ?? false,
+    status: channel.status || 'active',
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('contact_phone_channels').upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+  return row.id;
+}
+
+export async function deletePhoneChannel(id: string): Promise<void> {
+  const { error } = await supabase.from('contact_phone_channels').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── VOICE DEAL UPDATES (Phase 5) ────────────────────────────────────────────
+
+export async function loadVoiceDealUpdates(filters?: { dealId?: string; status?: string }): Promise<VoiceDealUpdate[]> {
+  let query = supabase
+    .from('voice_deal_updates')
+    .select(`*, contacts:caller_contact_id ( full_name ), deals:deal_id ( property_address )`)
+    .order('created_at', { ascending: false });
+
+  if (filters?.dealId) query = query.eq('deal_id', filters.dealId);
+  if (filters?.status) query = query.eq('review_status', filters.status);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const c = row.contacts as Record<string, string> | null;
+    const d = row.deals as Record<string, string> | null;
+    return {
+      id: row.id,
+      dealId: row.deal_id ?? undefined,
+      callerContactId: row.caller_contact_id ?? undefined,
+      callerClientAccountId: row.caller_client_account_id ?? undefined,
+      phoneE164: row.phone_e164,
+      callSid: row.call_sid ?? undefined,
+      recordingSid: row.recording_sid ?? undefined,
+      recordingUrl: row.recording_url ?? undefined,
+      recordingDuration: row.recording_duration ?? undefined,
+      transcript: row.transcript ?? undefined,
+      aiSummary: row.ai_summary ?? undefined,
+      aiAnalysis: row.ai_analysis ?? undefined,
+      suggestedActions: row.suggested_actions ?? undefined,
+      confidenceLevel: row.confidence_level,
+      reviewStatus: row.review_status,
+      reviewedBy: row.reviewed_by ?? undefined,
+      reviewedAt: row.reviewed_at ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      contactName: c?.full_name ?? undefined,
+      dealAddress: d?.property_address ?? undefined,
+    };
+  });
+}
+
+export async function updateVoiceDealUpdateStatus(id: string, status: string, reviewedBy?: string): Promise<void> {
+  const update: Record<string, unknown> = {
+    review_status: status,
+    updated_at: new Date().toISOString(),
+  };
+  if (reviewedBy) {
+    update.reviewed_by = reviewedBy;
+    update.reviewed_at = new Date().toISOString();
+  }
+  const { error } = await supabase.from('voice_deal_updates').update(update).eq('id', id);
+  if (error) throw error;
+}
+
+// ── CALLBACK REQUESTS (Phase 5) ─────────────────────────────────────────────
+
+export async function loadCallbackRequests(filters?: { status?: string; dealId?: string }): Promise<CallbackRequest[]> {
+  let query = supabase
+    .from('callback_requests')
+    .select(`*, contacts:caller_contact_id ( full_name ), deals:deal_id ( property_address )`)
+    .order('requested_at', { ascending: false });
+
+  if (filters?.status) query = query.eq('status', filters.status);
+  if (filters?.dealId) query = query.eq('deal_id', filters.dealId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const c = row.contacts as Record<string, string> | null;
+    const d = row.deals as Record<string, string> | null;
+    return {
+      id: row.id,
+      dealId: row.deal_id ?? undefined,
+      callerContactId: row.caller_contact_id ?? undefined,
+      callerClientAccountId: row.caller_client_account_id ?? undefined,
+      phoneE164: row.phone_e164,
+      requestedByChannel: row.requested_by_channel,
+      reason: row.reason ?? undefined,
+      priority: row.priority,
+      status: row.status,
+      assignedUserId: row.assigned_user_id ?? undefined,
+      requestedAt: row.requested_at,
+      acknowledgedAt: row.acknowledged_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
+      notes: row.notes ?? undefined,
+      contactName: c?.full_name ?? undefined,
+      dealAddress: d?.property_address ?? undefined,
+    };
+  });
+}
+
+export async function updateCallbackRequestStatus(id: string, status: string, notes?: string): Promise<void> {
+  const update: Record<string, unknown> = { status };
+  if (status === 'acknowledged') update.acknowledged_at = new Date().toISOString();
+  if (status === 'completed') update.completed_at = new Date().toISOString();
+  if (notes) update.notes = notes;
+  const { error } = await supabase.from('callback_requests').update(update).eq('id', id);
+  if (error) throw error;
+}
+
+// ── COMMUNICATION EVENTS (Phase 5) ──────────────────────────────────────────
+
+export async function loadCommunicationEvents(filters?: { dealId?: string; contactId?: string; limit?: number }): Promise<CommunicationEvent[]> {
+  let query = supabase
+    .from('communication_events')
+    .select(`*, contacts:contact_id ( full_name ), deals:deal_id ( property_address )`)
+    .order('created_at', { ascending: false });
+
+  if (filters?.dealId) query = query.eq('deal_id', filters.dealId);
+  if (filters?.contactId) query = query.eq('contact_id', filters.contactId);
+  if (filters?.limit) query = query.limit(filters.limit);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const c = row.contacts as Record<string, string> | null;
+    const d = row.deals as Record<string, string> | null;
+    return {
+      id: row.id,
+      dealId: row.deal_id ?? undefined,
+      contactId: row.contact_id ?? undefined,
+      clientAccountId: row.client_account_id ?? undefined,
+      channel: row.channel,
+      direction: row.direction,
+      eventType: row.event_type,
+      summary: row.summary ?? undefined,
+      transcript: row.transcript ?? undefined,
+      recordingUrl: row.recording_url ?? undefined,
+      sourceRef: row.source_ref ?? undefined,
+      metadata: row.metadata ?? undefined,
+      createdAt: row.created_at,
+      contactName: c?.full_name ?? undefined,
+      dealAddress: d?.property_address ?? undefined,
+    };
+  });
+}
+
+// ── CHANGE REQUESTS (Phase 5) ───────────────────────────────────────────────
+
+export async function loadChangeRequests(filters?: { dealId?: string; status?: string }): Promise<ChangeRequest[]> {
+  let query = supabase
+    .from('change_requests')
+    .select(`*, contacts:requested_by_contact_id ( full_name ), deals:deal_id ( property_address )`)
+    .order('created_at', { ascending: false });
+
+  if (filters?.dealId) query = query.eq('deal_id', filters.dealId);
+  if (filters?.status) query = query.eq('status', filters.status);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const c = row.contacts as Record<string, string> | null;
+    const d = row.deals as Record<string, string> | null;
+    return {
+      id: row.id,
+      dealId: row.deal_id,
+      requestedByContactId: row.requested_by_contact_id ?? undefined,
+      requestedByClientAccountId: row.requested_by_client_account_id ?? undefined,
+      sourceEventId: row.source_event_id ?? undefined,
+      sourceChannel: row.source_channel,
+      changeType: row.change_type,
+      requestedChangeText: row.requested_change_text,
+      aiStructuredPayload: row.ai_structured_payload ?? undefined,
+      impactLevel: row.impact_level,
+      status: row.status,
+      assignedReviewerUserId: row.assigned_reviewer_user_id ?? undefined,
+      reviewedByUserId: row.reviewed_by_user_id ?? undefined,
+      reviewedAt: row.reviewed_at ?? undefined,
+      appliedAt: row.applied_at ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      contactName: c?.full_name ?? undefined,
+      dealAddress: d?.property_address ?? undefined,
+    };
+  });
+}
+
+export async function updateChangeRequestStatus(id: string, status: ChangeStatus, reviewedBy?: string, notes?: string): Promise<void> {
+  const update: Record<string, unknown> = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+  if (reviewedBy) {
+    update.reviewed_by_user_id = reviewedBy;
+    update.reviewed_at = new Date().toISOString();
+  }
+  if (status === 'applied') update.applied_at = new Date().toISOString();
+  if (notes !== undefined) update.notes = notes;
+  const { error } = await supabase.from('change_requests').update(update).eq('id', id);
+  if (error) throw error;
+}
+
+// ── AMBIGUITY QUEUE (Phase 5) ───────────────────────────────────────────────
+
+export async function loadAmbiguityQueue(): Promise<AmbiguityQueueItem[]> {
+  const { data, error } = await supabase
+    .from('ambiguity_queue')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    channel: row.channel,
+    phoneE164: row.phone_e164,
+    body: row.body ?? undefined,
+    callSid: row.call_sid ?? undefined,
+    likelyContactIds: row.likely_contact_ids ?? undefined,
+    likelyDealIds: row.likely_deal_ids ?? undefined,
+    confidenceLevel: row.confidence_level,
+    status: row.status,
+    resolvedBy: row.resolved_by ?? undefined,
+    resolutionNotes: row.resolution_notes ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function resolveAmbiguityItem(id: string, resolution: { contactId?: string; resolvedBy: string; notes: string }): Promise<void> {
+  const { error } = await supabase
+    .from('ambiguity_queue')
+    .update({
+      status: 'resolved',
+      resolved_by: resolution.resolvedBy,
+      resolution_notes: resolution.notes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// ── CLIENT DEAL SUMMARY (Phase 5) ──────────────────────────────────────────
+
+export async function buildClientDealSummary(dealId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('deals')
+    .select('property_address, city, state, pipeline_stage, closing_date, status')
+    .eq('id', dealId)
+    .single();
+
+  if (error || !data) return 'Deal not found.';
+
+  const milestoneLabels: Record<string, string> = {
+    'contract-received': 'Contract Received',
+    'emd-due': 'EMD Due',
+    'inspections-due': 'Inspections Due',
+    'appraisal-ordered': 'Appraisal Ordered',
+    'appraisal-received': 'Appraisal Received',
+    'title-opened': 'Title Opened',
+    'loan-commitment': 'Loan Commitment',
+    'closing-scheduled': 'Closing Scheduled',
+    'clear-to-close': 'Clear to Close',
+    'closed': 'Closed',
+  };
+
+  const address = data.property_address || 'Unknown';
+  const cityState = [data.city, data.state].filter(Boolean).join(', ');
+  const milestone = milestoneLabels[data.pipeline_stage] || data.pipeline_stage || 'Unknown';
+  const closing = data.closing_date ? new Date(data.closing_date).toLocaleDateString() : 'TBD';
+
+  return `📋 ${address}${cityState ? `, ${cityState}` : ''}\n📌 Status: ${milestone}\n📅 Closing: ${closing}`;
 }
