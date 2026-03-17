@@ -88,8 +88,10 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   };
 
   const handleClick = (n: Notification) => {
+    // Delete from notification center immediately
     deleteNotification(n.id);
     setOpen(false);
+    // Route to correct section
     if (n.conversation_id && onNavigate) {
       onNavigate('inbox', n.conversation_id);
     } else if (n.deal_id && onNavigate) {
@@ -140,6 +142,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-80 max-h-96 bg-base-100 border border-base-300 rounded-xl shadow-2xl z-[100] flex flex-col overflow-hidden">
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
             <span className="font-semibold text-sm">Notifications</span>
             {notifications.length > 0 && (
@@ -149,6 +152,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
             )}
           </div>
 
+          {/* List */}
           <div className="overflow-y-auto flex-1">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-base-content/40 text-sm">
@@ -176,6 +180,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
                       <span className="text-[10px] text-base-content/40 mt-1 block">{timeAgo(n.created_at)}</span>
                     </div>
                   </button>
+                  {/* Dismiss X button */}
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
                     className="px-2 hover:bg-base-200 text-base-content/30 hover:text-base-content/70 transition-colors"

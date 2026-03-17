@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
   Home, DollarSign, Scale, ClipboardCheck,
-  ArrowLeft, Shield, FileText,
+  ArrowLeft, Shield, FileText, SendHorizontal, Loader2,
 } from 'lucide-react';
 import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership } from '../types';
 import {
@@ -230,6 +230,55 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
   // Onboarding wizard
   const [onboardingContact, setOnboardingContact] = useState<ContactRecord | null>(null);
+
+  // Quick Send Onboarding modal
+  const [sendOnboardingTarget, setSendOnboardingTarget] = useState<ContactRecord | null>(null);
+  const [onboardChannel, setOnboardChannel] = useState<'sms' | 'whatsapp' | 'email'>('sms');
+  const [onboardMsg, setOnboardMsg] = useState('');
+  const [onboardSending, setOnboardSending] = useState(false);
+  const [onboardToast, setOnboardToast] = useState('');
+
+  function openSendOnboarding(c: ContactRecord) {
+    const msg = `Hi ${c.firstName}! I'm Andre, your Transaction Coordinator at MyReDeal. I'll be managing your deals from contract to close — I'll send updates here. Reply anytime with questions! 🏠`;
+    setOnboardMsg(msg);
+    setOnboardChannel(c.phone ? 'sms' : 'email');
+    setSendOnboardingTarget(c);
+  }
+
+  async function sendOnboarding() {
+    if (!sendOnboardingTarget) return;
+    setOnboardSending(true);
+    try {
+      const c = sendOnboardingTarget;
+      if (onboardChannel === 'sms' || onboardChannel === 'whatsapp') {
+        const phone = c.phone.replace(/\D/g, '');
+        const e164 = phone.length === 10 ? `+1${phone}` : `+${phone}`;
+        const res = await fetch('/api/sms/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: e164, body: onboardMsg, channel: onboardChannel }),
+        });
+        if (!res.ok) throw new Error('Send failed');
+      } else {
+        const res = await fetch('/api/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: c.email,
+            subject: 'Welcome — Your Transaction Coordinator is Here',
+            body: onboardMsg,
+          }),
+        });
+        if (!res.ok) throw new Error('Send failed');
+      }
+      setOnboardToast('✓ Onboarding message sent!');
+      setTimeout(() => { setOnboardToast(''); setSendOnboardingTarget(null); }, 2000);
+    } catch {
+      setOnboardToast('✗ Failed to send. Check phone/email.');
+    } finally {
+      setOnboardSending(false);
+    }
+  }
 
   // ── Load data ────────────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -603,6 +652,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       <button className="btn btn-ghost btn-xs" onClick={() => openEdit(c)} title="Edit">
                         <Pencil size={13} />
                       </button>
+                      <button className="btn btn-ghost btn-xs text-success" onClick={() => openSendOnboarding(c)} title="Send Onboarding">
+                        <SendHorizontal size={13} />
+                      </button>
                       <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(c)} title="Delete">
                         <Trash2 size={13} />
                       </button>
@@ -879,6 +931,94 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       />
 
       {/* Client Onboarding Wizard */}
+
+      {/* ── Quick Send Onboarding Modal ───────────────────────────── */}
+      {sendOnboardingTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-base-300">
+              <div className="flex items-center gap-2">
+                <SendHorizontal size={18} className="text-primary" />
+                <div>
+                  <h3 className="font-semibold text-sm">Send Onboarding</h3>
+                  <p className="text-xs text-base-content/50">{sendOnboardingTarget.fullName}</p>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setSendOnboardingTarget(null)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Channel selector */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2 block">Send via</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setOnboardChannel('sms')}
+                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${onboardChannel === 'sms' ? 'bg-primary text-primary-content border-primary' : 'border-base-300 hover:border-primary/50'}`}
+                  >
+                    📱 SMS
+                  </button>
+                  <button
+                    onClick={() => setOnboardChannel('whatsapp')}
+                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${onboardChannel === 'whatsapp' ? 'bg-success text-success-content border-success' : 'border-base-300 hover:border-success/50'}`}
+                  >
+                    💬 WhatsApp
+                  </button>
+                  <button
+                    onClick={() => setOnboardChannel('email')}
+                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${onboardChannel === 'email' ? 'bg-secondary text-secondary-content border-secondary' : 'border-base-300 hover:border-secondary/50'}`}
+                  >
+                    ✉️ Email
+                  </button>
+                </div>
+                {/* Show destination */}
+                <p className="text-xs text-base-content/40 mt-1 ml-1">
+                  {onboardChannel === 'email'
+                    ? `→ ${sendOnboardingTarget.email || 'No email on file'}`
+                    : `→ ${sendOnboardingTarget.phone || 'No phone on file'}`}
+                </p>
+              </div>
+
+              {/* Message editor */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2 block">Message</label>
+                <textarea
+                  className="textarea textarea-bordered w-full text-sm"
+                  rows={4}
+                  value={onboardMsg}
+                  onChange={e => setOnboardMsg(e.target.value)}
+                />
+              </div>
+
+              {/* Toast */}
+              {onboardToast && (
+                <div className={`text-sm font-medium px-3 py-2 rounded-lg ${onboardToast.startsWith('✓') ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
+                  {onboardToast}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 p-4 border-t border-base-300">
+              <button className="btn btn-ghost btn-sm flex-1" onClick={() => setSendOnboardingTarget(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary btn-sm flex-1 gap-2"
+                onClick={sendOnboarding}
+                disabled={onboardSending || !onboardMsg.trim() || (onboardChannel !== 'email' && !sendOnboardingTarget.phone) || (onboardChannel === 'email' && !sendOnboardingTarget.email)}
+              >
+                {onboardSending ? <Loader2 size={14} className="animate-spin" /> : <SendHorizontal size={14} />}
+                {onboardSending ? 'Sending...' : 'Send Onboarding'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {onboardingContact && (
         <ClientOnboardingWizard
           contact={onboardingContact}

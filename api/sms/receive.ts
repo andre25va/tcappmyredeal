@@ -152,6 +152,98 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let nextStep = session.step;
         let responseMsg = '';
 
+        // ── Contract Intake State Machine ────────────────────────────────────
+        if ((collected as any).session_type === 'contract_intake') {
+          const reply = Body.trim();
+          const replyUpper = reply.toUpperCase();
+
+          if (replyUpper === 'STOP' || replyUpper === 'CANCEL') {
+            await supabase.from('onboarding_sessions').update({ status: 'abandoned' }).eq('id', session.id);
+            await sendTwilioReply(fromPhone, "No problem! Text NEW CONTRACT anytime to start again. 🏠", isWhatsApp);
+            res.setHeader('Content-Type', 'text/xml');
+            return res.send('<Response></Response>');
+          }
+
+          if (session.step === 'contract_address') {
+            const address = reply.trim();
+            if (address.length < 5) {
+              await sendTwilioReply(fromPhone, "Please send the full property address (e.g. 123 Main St, Kansas City, MO)", isWhatsApp);
+              res.setHeader('Content-Type', 'text/xml');
+              return res.send('<Response></Response>');
+            }
+
+            // Create draft deal in Supabase
+            const { data: newDeal } = await supabase.from('deals').insert({
+              property_address: address,
+              status: 'draft',
+              pipeline_stage: 'New',
+              transaction_type: 'purchase',
+              notes: `Auto-created from SMS: "${Body}" from ${contactName} (${fromPhone})`,
+              created_at: new Date().toISOString(),
+            }).select().single();
+
+            // Link contact as participant if matched
+            if (matchedContact && newDeal) {
+              await supabase.from('deal_participants').insert({
+                deal_id: newDeal.id,
+                contact_id: matchedContact.id,
+                role: 'agent',
+                transaction_side: 'buyer',
+                is_client_side: true,
+              });
+            }
+
+            // Create comm task for TC
+            await supabase.from('comm_tasks').insert({
+              title: `New Contract: ${address}`,
+              description: `Client ${contactName} (${fromPhone}) submitted a new contract via SMS. Deal created as draft. Review and complete deal setup.`,
+              channel: channel,
+              contact_id: matchedContact?.id || null,
+              deal_id: newDeal?.id || null,
+              status: 'pending',
+              priority: 'high',
+              source: 'auto_inbound',
+              due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+            });
+
+            // Create notification for TC
+            await supabase.from('notifications').insert({
+              type: 'deal',
+              title: `🏠 New Contract from ${contactName}`,
+              body: `Address: ${address}. Draft deal created — review and complete setup.`,
+              from_name: contactName,
+              from_identifier: fromPhone,
+              deal_id: newDeal?.id || null,
+              contact_id: matchedContact?.id || null,
+            });
+
+            // Mark session complete
+            await supabase.from('onboarding_sessions').update({
+              status: 'completed', step: 'completed',
+              collected: { ...collected, address, deal_id: newDeal?.id || null },
+              updated_at: new Date().toISOString(),
+            }).eq('id', session.id);
+
+            const confirmMsg = `✅ Got it! New contract started for:\n\n🏠 ${address}\n\nYour TC will be in touch shortly to complete the file. Text HELP for commands anytime!`;
+            await sendTwilioReply(fromPhone, confirmMsg, isWhatsApp);
+
+            // Log messages
+            const msgNow = new Date().toISOString();
+            await supabase.from('messages').insert([
+              { deal_id: newDeal?.id || null, contact_id: matchedContact?.id || null, direction: 'inbound', channel, body: Body, status: 'received', from_number: fromPhone, to_number: process.env.TWILIO_PHONE_NUMBER, external_message_id: MessageSid, sent_at: msgNow },
+              { deal_id: newDeal?.id || null, contact_id: matchedContact?.id || null, direction: 'outbound', channel, body: confirmMsg, status: 'sent', from_number: isWhatsApp ? (process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886') : process.env.TWILIO_PHONE_NUMBER, to_number: fromPhone, sent_at: msgNow },
+            ]);
+            res.setHeader('Content-Type', 'text/xml');
+            return res.send('<Response></Response>');
+          }
+
+          // Unknown contract intake step - reset
+          await supabase.from('onboarding_sessions').update({ status: 'abandoned' }).eq('id', session.id);
+          res.setHeader('Content-Type', 'text/xml');
+          return res.send('<Response></Response>');
+        }
+        // ── End Contract Intake ───────────────────────────────────────────────
+
         switch (session.step) {
           case 'greeting':
             if (replyUpper === 'YES') {
@@ -294,6 +386,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     // ── End Onboarding State Machine ─────────────────────────────────────────
+
+    // NEW CONTRACT keyword — start contract intake
+    if (bodyUpper.includes('NEW CONTRACT') || bodyUpper === 'NEW CONTRACT') {
+      // Cancel any existing contract intake sessions first
+      await supabase.from('onboarding_sessions')
+        .update({ status: 'abandoned' })
+        .eq('phone_e164', fromE164)
+        .eq('status', 'active');
+
+      // Start new contract intake session
+      await supabase.from('onboarding_sessions').insert({
+        phone_e164: fromE164,
+        step: 'contract_address',
+        collected: { session_type: 'contract_intake' },
+        status: 'active',
+        contact_id: matchedContact?.id || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const greeting = matchedContact
+        ? `📋 New contract! Hi ${matchedContact.first_name} 👋\n\nWhat's the property address for this contract? (e.g. 123 Main St, Kansas City, MO)\n\nReply STOP to cancel.`
+        : `📋 New contract! What's the property address? (e.g. 123 Main St, Kansas City, MO)\n\nReply STOP to cancel.`;
+
+      await sendTwilioReply(fromPhone, greeting, isWhatsApp);
+
+      // Log the inbound message
+      const now0 = new Date().toISOString();
+      await supabase.from('messages').insert({
+        deal_id: null, contact_id: matchedContact?.id || null, direction: 'inbound',
+        channel, body: Body, status: 'received', from_number: fromPhone,
+        to_number: process.env.TWILIO_PHONE_NUMBER, external_message_id: MessageSid, sent_at: now0,
+      });
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
 
     // HELP command
     if (bodyUpper === 'HELP') {

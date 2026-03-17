@@ -716,6 +716,163 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+
+// ── Contract Email Detection ──────────────────────────────────────────────────
+async function handleCheckContracts(req: VercelRequest, res: VercelResponse) {
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!
+  );
+
+  const CONTRACT_SUBJECTS = ['contract', 'purchase agreement', 'listing agreement', 'offer', 'amendment', 'addendum', 'counter offer', 'countered'];
+  const CONTRACT_ATTACHMENTS = ['.pdf', '.docx', '.doc', '.png', '.jpg'];
+
+  const client = new ImapFlow({
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+    logger: false,
+    tls: { rejectUnauthorized: false },
+  });
+
+  const results: any[] = [];
+
+  try {
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('IMAP connect timeout')), 8000)),
+    ]);
+
+    await client.mailboxOpen('INBOX');
+
+    // Search for unseen emails from last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000);
+    const uids = await client.search({ since: sevenDaysAgo, seen: false });
+
+    if (!uids || uids.length === 0) {
+      await client.logout();
+      return res.json({ processed: 0, results: [] });
+    }
+
+    // Fetch up to 20 recent unseen emails
+    const fetchUids = uids.slice(-20);
+
+    for await (const msg of client.fetch(fetchUids, { source: true, uid: true, envelope: true })) {
+      try {
+        const source = msg.source.toString();
+        const envelope = msg.envelope;
+        const subject = envelope?.subject || '';
+        const from = envelope?.from?.[0];
+        const fromEmail = from?.address || '';
+        const fromName = from?.name || fromEmail;
+        const messageId = envelope?.messageId || `uid-${msg.uid}`;
+
+        // Skip if we've already processed this email
+        const { data: existing } = await supabase
+          .from('messages')
+          .select('id')
+          .eq('external_message_id', messageId)
+          .eq('channel', 'email')
+          .limit(1);
+
+        if (existing && existing.length > 0) continue;
+
+        // Check if subject suggests a contract
+        const subjectLower = subject.toLowerCase();
+        const isContractSubject = CONTRACT_SUBJECTS.some(s => subjectLower.includes(s));
+
+        // Check for attachments
+        const hasContractAttachment = CONTRACT_ATTACHMENTS.some(ext =>
+          source.toLowerCase().includes('content-disposition: attachment') &&
+          source.toLowerCase().includes(ext)
+        );
+
+        if (!isContractSubject && !hasContractAttachment) continue;
+
+        // Look up contact by email
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email')
+          .ilike('email', fromEmail)
+          .limit(1);
+        const matchedContact = contacts?.[0] || null;
+        const contactName = matchedContact
+          ? `${matchedContact.first_name} ${matchedContact.last_name}`
+          : fromName;
+
+        // Send auto-reply via SMTP asking for address
+        const transporter = nodemailer.createTransport({
+          host: 'smtp.gmail.com', port: 587, secure: false,
+          auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+        });
+
+        const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+        const replyBody = `Hi ${contactName.split(' ')[0]},\n\nThank you for sending the contract! 🏠\n\nTo get your file started, could you please reply with the property address for this contract?\n\nFor example: 123 Main St, Kansas City, MO 64108\n\nThanks,\nTC Command`;
+
+        try {
+          await transporter.sendMail({
+            from: GMAIL_USER,
+            to: fromEmail,
+            subject: replySubject,
+            text: replyBody,
+            inReplyTo: messageId,
+            references: messageId,
+          });
+        } catch (smtpErr) {
+          console.error('SMTP reply error:', smtpErr);
+        }
+
+        // Save inbound email to messages table
+        await supabase.from('messages').insert({
+          contact_id: matchedContact?.id || null,
+          direction: 'inbound',
+          channel: 'email',
+          body: `[Contract Email] Subject: ${subject} — Auto-replied asking for property address.`,
+          status: 'received',
+          from_number: fromEmail,
+          to_number: GMAIL_USER,
+          external_message_id: messageId,
+          sent_at: new Date().toISOString(),
+        });
+
+        // Create high-priority comm task for TC
+        await supabase.from('comm_tasks').insert({
+          title: `New Contract Email: ${subject.substring(0, 60)}`,
+          description: `Email from ${contactName} (${fromEmail}) appears to contain a contract. Auto-replied asking for property address. Subject: "${subject}"`,
+          channel: 'email',
+          contact_id: matchedContact?.id || null,
+          status: 'pending',
+          priority: 'high',
+          source: 'auto_inbound',
+          due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        });
+
+        // Create notification for TC
+        await supabase.from('notifications').insert({
+          type: 'email',
+          title: `📄 Contract Email from ${contactName}`,
+          body: `Subject: "${subject}". Auto-replied asking for property address.`,
+          from_name: contactName,
+          from_identifier: fromEmail,
+          contact_id: matchedContact?.id || null,
+        });
+
+        results.push({ from: fromEmail, subject, contactName, replied: true });
+      } catch (msgErr) {
+        console.error('Error processing message:', msgErr);
+      }
+    }
+
+    await client.logout();
+  } catch (err) {
+    console.error('Contract check error:', err);
+    return res.status(500).json({ error: 'Contract check failed', details: String(err) });
+  }
+
+  return res.json({ processed: results.length, results });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel rewrite passes path segment as query param:
   // /api/email/threads -> action='threads', /api/email/send -> action='send', /api/email/attachment -> action='attachment'
@@ -724,5 +881,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'attachment') return handleAttachment(req, res);
   if (action === 'search') return handleSearch(req, res);
   if (action === 'search-classify') return handleSearchClassify(req, res);
+  if (action === 'check-contracts') return handleCheckContracts(req, res);
   return handleThreads(req, res);
 }
