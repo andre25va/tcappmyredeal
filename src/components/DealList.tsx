@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, Scan } from 'lucide-react';
 import { Deal, DealStatus, DirectoryContact } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
   statusLabel, statusDot, closingCountdown, formatCurrency,
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
+import { FocusViewModal } from './FocusViewModal';
 
 interface Props {
   deals: Deal[];
@@ -50,6 +51,7 @@ const renderDealCard = (
   selectedId: string | null,
   onSelect: (id: string) => void,
   styles: typeof sideStylesConst,
+  onFocusView: (deal: Deal) => void,
 ) => {
   const isArchived = deal.milestone === 'archived';
   const side      = deal.transactionSide ?? 'buyer';
@@ -146,8 +148,19 @@ const renderDealCard = (
         </div>
       )}
 
-      {/* View button */}
-      <div className="flex justify-end">
+      {/* Action buttons */}
+      <div className="flex items-center justify-between gap-1">
+        {/* Focus View button */}
+        <button
+          className="btn btn-xs btn-ghost gap-1 text-base-content/50 hover:text-base-content hover:bg-base-300"
+          title="Focus View"
+          onClick={e => { e.stopPropagation(); onFocusView(deal); }}
+        >
+          <Scan size={11} />
+          <span className="text-[11px]">Focus View</span>
+        </button>
+
+        {/* View button */}
         <button
           className={`btn btn-xs ${side === 'buyer' ? 'btn-info' : 'btn-success'} btn-outline gap-1`}
           onClick={e => { e.stopPropagation(); onSelect(deal.id); }}
@@ -164,9 +177,10 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
   const [showArchived, setShowArchived] = useState(false);
+  const [focusDeal, setFocusDeal] = useState<Deal | null>(null);
 
   // Reset local filters when amber filter activates
-  useEffect(() => {
+  React.useEffect(() => {
     if (amberFilter) {
       setSearch('');
       setFilter('all');
@@ -217,123 +231,133 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   const otherDeals = filtered.filter(d => !closingThisWeek.includes(d));
 
   return (
-    <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80">
-      {/* Search + Filters */}
-      {/* Amber Alert Filter Banner */}
-      {amberFilter && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500 border-b border-amber-600">
-          <AlertTriangle size={13} className="text-white flex-none" />
-          <span className="text-xs font-semibold text-white flex-1">
-            Showing {filtered.length} deal{filtered.length !== 1 ? 's' : ''} with amber alerts
-          </span>
-          <button
-            onClick={onClearAmberFilter}
-            className="flex items-center gap-0.5 text-xs text-white/80 hover:text-white font-medium"
-          >
-            <X size={12} /> Clear
-          </button>
+    <>
+      <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80">
+        {/* Search + Filters */}
+        {/* Amber Alert Filter Banner */}
+        {amberFilter && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-500 border-b border-amber-600">
+            <AlertTriangle size={13} className="text-white flex-none" />
+            <span className="text-xs font-semibold text-white flex-1">
+              Showing {filtered.length} deal{filtered.length !== 1 ? 's' : ''} with amber alerts
+            </span>
+            <button
+              onClick={onClearAmberFilter}
+              className="flex items-center gap-0.5 text-xs text-white/80 hover:text-white font-medium"
+            >
+              <X size={12} /> Clear
+            </button>
+          </div>
+        )}
+
+        <div className="p-3 border-b border-base-300 space-y-2">
+          <label className="input input-bordered input-sm flex items-center gap-2">
+            <Search size={13} className="opacity-50" />
+            <input
+              type="text"
+              className="grow text-sm min-w-0"
+              placeholder="Search deals, agents, MLS…"
+              value={search}
+              onChange={e => handleSearchChange(e.target.value)}
+            />
+          </label>
+
+          {/* Buyer / Seller toggle */}
+          <div className="flex gap-1">
+            {(['all', 'buyer', 'seller'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => handleSideFilterChange(s)}
+                className={`btn btn-xs flex-1 gap-1 ${
+                  sideFilter === s
+                    ? s === 'buyer'  ? 'bg-blue-500  text-white border-blue-500  hover:bg-blue-600'
+                    : s === 'seller' ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
+                    : 'btn-neutral'
+                    : 'btn-ghost'
+                }`}
+              >
+                {s === 'buyer'  && <ShoppingCart size={10} />}
+                {s === 'seller' && <Tag size={10} />}
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Status filters */}
+          <div className="flex gap-1 flex-wrap">
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => handleFilterChange(f.value)}
+                className={`btn btn-xs ${filter === f.value ? 'btn-primary' : 'btn-ghost'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Archived toggle */}
+          <div className="flex items-center justify-between pt-1">
+            <button
+              className={`btn btn-xs gap-1 ${showArchived ? 'btn-warning' : 'btn-ghost text-gray-400'}`}
+              onClick={() => setShowArchived(v => !v)}
+            >
+              <Archive size={10} />
+              {showArchived ? 'Hide Archived' : 'Show Archived'}
+              {deals.filter(d => d.milestone === 'archived').length > 0 && (
+                <span className="badge badge-xs">{deals.filter(d => d.milestone === 'archived').length}</span>
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Deal Cards */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+          {filtered.length === 0 && (
+            <div className="text-center text-base-content/30 text-sm py-10">No deals found</div>
+          )}
+
+          {/* Closing This Week section */}
+          {closingThisWeek.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-1 py-1">
+                <Flame size={11} className="text-red-500" />
+                <span className="text-xs font-bold text-red-600 uppercase tracking-wide">
+                  Closing This Week ({closingThisWeek.length})
+                </span>
+              </div>
+              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, setFocusDeal))}
+              {otherDeals.length > 0 && (
+                <div className="border-t border-gray-200 my-1" />
+              )}
+            </>
+          )}
+          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, setFocusDeal))}
+        </div>
+
+        {/* Footer */}
+        <div className="p-2 border-t border-base-300">
+          <div className="flex items-center justify-center gap-3 text-xs text-base-content/30">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+              {deals.filter(d => d.transactionSide === 'buyer').length} Buyer
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
+              {deals.filter(d => d.transactionSide === 'seller').length} Seller
+            </span>
+            <span>{filtered.length} shown</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Focus View Modal */}
+      {focusDeal && (
+        <FocusViewModal
+          deal={focusDeal}
+          onClose={() => setFocusDeal(null)}
+        />
       )}
-
-      <div className="p-3 border-b border-base-300 space-y-2">
-        <label className="input input-bordered input-sm flex items-center gap-2">
-          <Search size={13} className="opacity-50" />
-          <input
-            type="text"
-            className="grow text-sm min-w-0"
-            placeholder="Search deals, agents, MLS…"
-            value={search}
-            onChange={e => handleSearchChange(e.target.value)}
-          />
-        </label>
-
-        {/* Buyer / Seller toggle */}
-        <div className="flex gap-1">
-          {(['all', 'buyer', 'seller'] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => handleSideFilterChange(s)}
-              className={`btn btn-xs flex-1 gap-1 ${
-                sideFilter === s
-                  ? s === 'buyer'  ? 'bg-blue-500  text-white border-blue-500  hover:bg-blue-600'
-                  : s === 'seller' ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
-                  : 'btn-neutral'
-                  : 'btn-ghost'
-              }`}
-            >
-              {s === 'buyer'  && <ShoppingCart size={10} />}
-              {s === 'seller' && <Tag size={10} />}
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Status filters */}
-        <div className="flex gap-1 flex-wrap">
-          {STATUS_FILTERS.map(f => (
-            <button
-              key={f.value}
-              onClick={() => handleFilterChange(f.value)}
-              className={`btn btn-xs ${filter === f.value ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Archived toggle */}
-        <div className="flex items-center justify-between pt-1">
-          <button
-            className={`btn btn-xs gap-1 ${showArchived ? 'btn-warning' : 'btn-ghost text-gray-400'}`}
-            onClick={() => setShowArchived(v => !v)}
-          >
-            <Archive size={10} />
-            {showArchived ? 'Hide Archived' : 'Show Archived'}
-            {deals.filter(d => d.milestone === 'archived').length > 0 && (
-              <span className="badge badge-xs">{deals.filter(d => d.milestone === 'archived').length}</span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Deal Cards */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {filtered.length === 0 && (
-          <div className="text-center text-base-content/30 text-sm py-10">No deals found</div>
-        )}
-
-        {/* Closing This Week section */}
-        {closingThisWeek.length > 0 && (
-          <>
-            <div className="flex items-center gap-2 px-1 py-1">
-              <Flame size={11} className="text-red-500" />
-              <span className="text-xs font-bold text-red-600 uppercase tracking-wide">
-                Closing This Week ({closingThisWeek.length})
-              </span>
-            </div>
-            {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
-            {otherDeals.length > 0 && (
-              <div className="border-t border-gray-200 my-1" />
-            )}
-          </>
-        )}
-        {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
-      </div>
-
-      {/* Footer */}
-      <div className="p-2 border-t border-base-300">
-        <div className="flex items-center justify-center gap-3 text-xs text-base-content/30">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-            {deals.filter(d => d.transactionSide === 'buyer').length} Buyer
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-            {deals.filter(d => d.transactionSide === 'seller').length} Seller
-          </span>
-          <span>{filtered.length} shown</span>
-        </div>
-      </div>
-    </div>
+    </>
   );
 };
