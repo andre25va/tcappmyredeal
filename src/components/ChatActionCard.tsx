@@ -27,6 +27,11 @@ const labelMap: Record<string, string> = {
 export const ChatActionCard: React.FC<Props> = ({ action, onApprove, onDismiss }) => {
   const [expanded, setExpanded] = useState(false);
   const p = action.payload as Record<string, unknown>;
+  const desc = p.description ? String(p.description) : '';
+  const due = p.dueDate ? String(p.dueDate) : '';
+  const prio = p.priority ? String(p.priority) : '';
+  const role = p.targetRole ? String(p.targetRole) : '';
+  const title = p.title ? String(p.title) : '';
 
   return (
     <div className="bg-base-200 border border-base-300 rounded-xl p-3 mt-2 text-sm">
@@ -43,15 +48,15 @@ export const ChatActionCard: React.FC<Props> = ({ action, onApprove, onDismiss }
       </div>
 
       {/* Title */}
-      <p className="font-medium text-xs mt-1 text-base-content/80">{String(p.title || '')}</p>
+      <p className="font-medium text-xs mt-1 text-base-content/80">{title}</p>
 
       {/* Expanded details */}
       {expanded && (
         <div className="mt-2 space-y-1 text-xs text-base-content/60">
-          {p.description && <p>{String(p.description)}</p>}
-          {p.dueDate && <p><strong>Due:</strong> {String(p.dueDate)}</p>}
-          {p.priority && p.priority !== 'none' && <p><strong>Priority:</strong> {String(p.priority)}</p>}
-          {p.targetRole && <p><strong>For:</strong> {String(p.targetRole)}</p>}
+          {desc && <p>{desc}</p>}
+          {due && <p><strong>Due:</strong> {due}</p>}
+          {prio && prio !== 'none' && <p><strong>Priority:</strong> {prio}</p>}
+          {role && <p><strong>For:</strong> {role}</p>}
           <p className="italic text-base-content/40">{action.rationale}</p>
         </div>
       )}
