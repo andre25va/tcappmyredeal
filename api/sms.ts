@@ -55,13 +55,7 @@ async function handleSend(req: VercelRequest, res: VercelResponse) {
         ...(need_reply ? { waiting_for_reply: true, waiting_since: now } : {}),
       }).eq('id', convId);
     }
-    if (need_reply && convId) {
-      await supabase.from('reply_tracking').insert({
-        channel, conversation_id: convId,
-        contact_name: recipients.map(r => r.name).join(', '),
-        subject: body.substring(0, 80), flagged_at: now, is_active: true,
-      });
-    }
+    // reply_tracking table removed — waiting flags now stored in conversations table
     const results: any[] = [], errors: any[] = [];
     for (const recipient of recipients) {
       const phone = recipient.phone.replace(/\D/g, '');
@@ -92,14 +86,14 @@ async function handleConversations(req: VercelRequest, res: VercelResponse) {
       const { conversation_id, deal_id } = req.query as Record<string, string>;
       if (conversation_id) {
         const { data: messages, error } = await supabase
-          .from('messages').select('*, contacts(first_name, last_name, phone, role)')
+          .from('messages').select('*, contacts(first_name, last_name, phone, contact_type)')
           .eq('conversation_id', conversation_id).order('sent_at', { ascending: true });
         if (error) throw error;
         await supabase.from('conversations').update({ unread_count: 0 }).eq('id', conversation_id);
         return res.json({ messages });
       }
       let q = supabase.from('conversations')
-        .select('*, deals(property_address, city, state, pipeline_stage)')
+        .select('*, deals(property_address, city, state, milestone)')
         .order('last_message_at', { ascending: false });
       if (deal_id) q = q.eq('deal_id', deal_id);
       const { data: conversations, error } = await q;

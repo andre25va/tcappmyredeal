@@ -435,6 +435,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     city: deal.city,
     state: deal.state,
     zipCode: deal.zipCode,
+    legalDescription: deal.legalDescription || '',
   });
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
   const [sellerDraft, setSellerDraft] = useState<AgentContact>(deal.sellerAgent ?? emptyAgent());
@@ -454,6 +455,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       city: deal.city,
       state: deal.state,
       zipCode: deal.zipCode,
+      legalDescription: deal.legalDescription || '',
     });
     setBuyerDraft(deal.buyerAgent ?? emptyAgent());
     setSellerDraft(deal.sellerAgent ?? emptyAgent());
@@ -479,6 +481,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       city: fields.city,
       state: fields.state,
       zipCode: fields.zipCode,
+      legalDescription: fields.legalDescription,
       buyerAgent: buyerDraft.name ? buyerDraft : undefined,
       sellerAgent: sellerDraft.name ? sellerDraft : undefined,
     });
@@ -792,6 +795,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       onChange={e => setFields(p => ({ ...p, closingDate: e.target.value }))} />
                   </div>
                   <div className="col-span-2">
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-base-content/50 mb-1 block">Legal Description</label>
+                    <textarea className="textarea textarea-bordered w-full text-sm" rows={3} value={fields.legalDescription}
+                      onChange={e => setFields(p => ({ ...p, legalDescription: e.target.value }))}
+                      placeholder="Enter the property legal description..." />
+                  </div>
                     <label className="text-xs text-base-content/50 mb-1 block">Internal Notes</label>
                     <textarea className="textarea textarea-bordered w-full text-sm" rows={2} value={fields.notes}
                       onChange={e => setFields(p => ({ ...p, notes: e.target.value }))} />

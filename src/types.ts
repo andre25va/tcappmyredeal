@@ -385,6 +385,7 @@ export interface Deal {
 city: string;
   state: string;
   zipCode: string;
+  legalDescription?: string;
   mlsNumber: string;
   listPrice: number;
   contractPrice: number;

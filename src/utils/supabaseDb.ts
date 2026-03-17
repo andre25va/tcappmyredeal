@@ -154,7 +154,7 @@ export async function loadDeals(): Promise<Deal[]> {
     .select(`
       id, property_address, city, state, zip, mls_number,
       deal_type, status, pipeline_stage,
-      contract_date, closing_date, purchase_price, notes,
+      contract_date, closing_date, purchase_price, notes, legal_description,
       primary_client_account_id, transaction_type, risk_level,
       assigned_tc_user_id, assigned_compliance_user_id,
       deal_data, created_at, updated_at
@@ -206,6 +206,7 @@ export async function loadDeals(): Promise<Deal[]> {
       activityLog: (dd.activityLog as ActivityEntry[]) ?? [],
       tasks: (dd.tasks as DealTask[]) ?? [],
       notes: row.notes || (dd.notes as string) || '',
+      legalDescription: row.legal_description || (dd.legalDescription as string) || '',
       archiveReason: (dd.archiveReason as string) ?? undefined,
       createdAt: row.created_at || (dd.createdAt as string) || new Date().toISOString(),
       updatedAt: row.updated_at || (dd.updatedAt as string) || new Date().toISOString(),
@@ -234,6 +235,7 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     closing_date: deal.closingDate || null,
     purchase_price: deal.contractPrice ?? null,
     notes: deal.notes ?? null,
+    legal_description: deal.legalDescription || null,
     primary_client_account_id: deal.primaryClientAccountId ?? null,
     transaction_type: deal.transactionType || 'buyer',
     risk_level: deal.riskLevel || 'normal',
@@ -274,6 +276,7 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       closing_date: deal.closingDate || null,
       purchase_price: deal.contractPrice ?? null,
       notes: deal.notes ?? null,
+      legal_description: deal.legalDescription || null,
       primary_client_account_id: deal.primaryClientAccountId ?? null,
       transaction_type: deal.transactionType || 'buyer',
       risk_level: deal.riskLevel || 'normal',

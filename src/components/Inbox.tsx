@@ -26,7 +26,7 @@ interface Conversation {
   unread_count: number;
   waiting_for_reply?: boolean;
   waiting_since?: string | null;
-  deals?: { property_address: string; city: string; state: string; pipeline_stage: string } | null;
+  deals?: { property_address: string; city: string; state: string; milestone: string } | null;
 }
 
 interface Message {
@@ -41,7 +41,7 @@ interface Message {
   sent_at: string;
   need_reply?: boolean;
   auto_created_task_id: string | null;
-  contacts?: { first_name: string; last_name: string; phone: string; role: string } | null;
+  contacts?: { first_name: string; last_name: string; phone: string; contact_type: string } | null;
 }
 
 interface EmailAttachment {
@@ -87,7 +87,7 @@ interface DBContact {
   last_name: string;
   phone: string | null;
   email: string | null;
-  role: string;
+  contact_type: string;
   company: string | null;
 }
 
@@ -381,23 +381,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   }, []);
 
   const loadEmailReplyFlags = useCallback(async () => {
-    try {
-      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const resp = await fetch(`${sbUrl}/rest/v1/reply_tracking?channel=eq.email&is_active=eq.true&select=email_thread_id`, {
-        headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
-      });
-      if (resp.ok) {
-        const flags = await resp.json() as { email_thread_id: string }[];
-        const flagMap: Record<string, boolean> = {};
-        for (const f of flags) {
-          if (f.email_thread_id) flagMap[f.email_thread_id] = true;
-        }
-        setEmailReplyFlags(flagMap);
-      }
-    } catch (e) {
-      console.error('Failed to load email reply flags:', e);
-    }
+    // reply_tracking table removed — email reply flags now managed in local state only
+    // Future: could store in conversations table with channel=email
   }, []);
 
   const loadEmailThreads = useCallback(async () => {
@@ -575,27 +560,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       if (resp.ok) {
         setEmailReplyText('');
 
-        // Flag for reply tracking if needed
+        // Track reply-needed flag in local state (reply_tracking table removed)
         if (emailNeedReply) {
-          const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-          const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-          await fetch(`${sbUrl}/rest/v1/reply_tracking`, {
-            method: 'POST',
-            headers: {
-              apikey: sbKey,
-              Authorization: `Bearer ${sbKey}`,
-              'Content-Type': 'application/json',
-              Prefer: 'return=minimal',
-            },
-            body: JSON.stringify({
-              channel: 'email',
-              email_thread_id: selectedEmailThread.id,
-              contact_name: parseFromName(selectedEmailThread.from),
-              subject: selectedEmailThread.subject,
-              flagged_at: new Date().toISOString(),
-              is_active: true,
-            }),
-          });
           setEmailReplyFlags(prev => ({ ...prev, [selectedEmailThread.id]: true }));
           setEmailNeedReply(false);
         }
@@ -623,27 +589,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         body: JSON.stringify({ to: emailTo, cc: emailCc, subject: emailSubject, body: emailBody }),
       });
       if (resp.ok) {
-        // Flag for reply tracking if needed
         if (composeNeedReply) {
-          const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-          const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-          // We don't know the thread id yet for new emails, so we store by subject+to
-          await fetch(`${sbUrl}/rest/v1/reply_tracking`, {
-            method: 'POST',
-            headers: {
-              apikey: sbKey,
-              Authorization: `Bearer ${sbKey}`,
-              'Content-Type': 'application/json',
-              Prefer: 'return=minimal',
-            },
-            body: JSON.stringify({
-              channel: 'email',
-              contact_name: emailTo,
-              subject: emailSubject,
-              flagged_at: new Date().toISOString(),
-              is_active: true,
-            }),
-          });
+          // reply_tracking table removed — flag managed locally
+          setComposeNeedReply(false);
         }
         setShowEmailCompose(false);
         setEmailTo(''); setEmailSubject(''); setEmailBody(''); setEmailCc('');
@@ -661,18 +609,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   };
 
   const clearEmailWaiting = async (threadId: string) => {
-    const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    await fetch(`${sbUrl}/rest/v1/reply_tracking?email_thread_id=eq.${threadId}&is_active=eq.true`, {
-      method: 'PATCH',
-      headers: {
-        apikey: sbKey,
-        Authorization: `Bearer ${sbKey}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({ is_active: false, cleared_at: new Date().toISOString() }),
-    });
+    // reply_tracking table removed — clear flag from local state
     setEmailReplyFlags(prev => {
       const next = { ...prev };
       delete next[threadId];
@@ -685,10 +622,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       const sbUrl = import.meta.env.VITE_SUPABASE_URL;
       const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const [cResp, dResp] = await Promise.all([
-        fetch(`${sbUrl}/rest/v1/contacts?select=id,first_name,last_name,phone,email,role,company&phone=not.is.null&order=first_name`, {
+        fetch(`${sbUrl}/rest/v1/contacts?select=id,first_name,last_name,phone,email,contact_type,company&phone=not.is.null&order=first_name`, {
           headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
         }),
-        fetch(`${sbUrl}/rest/v1/deals?select=id,property_address,city,state&status=eq.active&order=property_address`, {
+        fetch(`${sbUrl}/rest/v1/deals?select=id,property_address,city,state&milestone=neq.archived&order=property_address`, {
           headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
         }),
       ]);
@@ -797,7 +734,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     if (!contactSearch) return true;
     const q = contactSearch.toLowerCase();
     return `${c.first_name} ${c.last_name}`.toLowerCase().includes(q) ||
-      c.company?.toLowerCase().includes(q) || c.role.toLowerCase().includes(q);
+      c.company?.toLowerCase().includes(q) || (c.contact_type || '').toLowerCase().includes(q);
   });
 
   const typeIcon = (type: string) => {
@@ -1566,7 +1503,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium">{c.first_name} {c.last_name}</div>
-                        <div className="text-xs text-base-content/50">{c.role} · {c.phone}</div>
+                        <div className="text-xs text-base-content/50">{c.contact_type || 'contact'} · {c.phone}</div>
                       </div>
                       {selected && <CheckCheck size={14} className="text-primary flex-none" />}
                     </button>
