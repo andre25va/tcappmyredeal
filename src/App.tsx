@@ -33,6 +33,10 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAudit } from './hooks/useAudit';
 import { NotificationBell } from './components/NotificationBell';
 import { ActiveCallOverlay } from './components/ActiveCallOverlay';
+import { MobileBottomNav } from './components/mobile/MobileBottomNav';
+import { MicPermissionBanner } from './components/mobile/MicPermissionBanner';
+import { useVisualViewport } from './hooks/useVisualViewport';
+import { useMicPermission } from './hooks/useMicPermission';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -46,6 +50,11 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 function AppInner() {
   const { profile, loading: authLoading, isFirstLogin } = useAuth();
   const { logAction } = useAudit();
+
+  // ── Mobile hooks ─────────────────────────────────────────────────────────────
+  useVisualViewport();
+  const { micState, requestMic } = useMicPermission();
+  const [showMicBanner, setShowMicBanner] = React.useState(true);
 
   const [view, setView]                     = useState<View>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -546,8 +555,19 @@ function AppInner() {
           )}
 
           {view === 'voice' && (
-            <div className="flex-1 overflow-hidden">
-              <CommunicationsConsole onSelectDeal={handleSelectDeal} onCallStarted={handleCallStarted} />
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {showMicBanner && (
+                <div className="md:hidden flex-none">
+                  <MicPermissionBanner
+                    micState={micState}
+                    onRequestMic={requestMic}
+                    onDismiss={() => setShowMicBanner(false)}
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <CommunicationsConsole onSelectDeal={handleSelectDeal} onCallStarted={handleCallStarted} />
+              </div>
             </div>
           )}
 
@@ -581,7 +601,22 @@ function AppInner() {
             </div>
           )}
         </div>
+
+        {/* Mobile bottom nav spacer — prevents content being hidden behind fixed nav */}
+        <div
+          className="md:hidden flex-none"
+          style={{ height: 'calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px))' }}
+          aria-hidden="true"
+        />
       </div>
+
+      {/* Mobile bottom navigation bar */}
+      <MobileBottomNav
+        view={view}
+        onSetView={handleSetView}
+        voicePending={voicePending}
+        tasksPending={tasksPending}
+      />
 
       {showAdd && (
         <GuidedDealWizard

@@ -20,3 +20,23 @@ button, .btn, .badge, .tab, .menu a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Mobile / iOS safe-area variables ─────────────────────── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --keyboard-offset: 0px;
+  --mobile-nav-h: 60px;
+}
+
+/* Prevent double-tap zoom on buttons and nav items on iOS */
+button, a, .btn {
+  touch-action: manipulation;
+}
+
+/* Font-size ≥ 16px on inputs prevents iOS from zooming on focus */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: max(16px, 1rem);
+  }
+}
