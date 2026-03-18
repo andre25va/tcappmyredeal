@@ -7,7 +7,7 @@ import {
 
 export type View =
   | 'dashboard'
-  | 'deals'
+  | 'transactions'
   | 'contacts'
   | 'scripts'
   | 'settings'
@@ -15,52 +15,72 @@ export type View =
   | 'compliance'
   | 'activity'
   | 'notifications'
-  | 'mls';
+  | 'mls'
+  | 'inbox'
+  | 'tasks'
+  | 'voice'
+  | 'reports';
 
 interface SidebarProps {
   view: View;
   onSetView: (v: View) => void;
   onAddAgentClient?: () => void;
-  onLogout?: () => void;
-  unreadCount?: number;
+  onAddContact?: () => void;
+  onAddDeal?: () => void;
+  dealCount?: number;
+  pendingAlerts?: number;
+  onAmberClick?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   mobileOpen?: boolean;
-  onMobileClose?: () => void;
+  onCloseMobile?: () => void;
+  inboxUnread?: number;
+  tasksPending?: number;
+  voicePending?: number;
+  // User info + logout
+  onLogout?: () => void;
   userName?: string;
   userRole?: string;
   userInitials?: string;
 }
 
-export const MobileMenuButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: number }> = ({ onClick, pendingAlerts }) => (
   <button
     onClick={onClick}
     className="fixed top-3 left-3 z-50 btn btn-ghost btn-sm btn-square lg:hidden"
     aria-label="Open menu"
   >
     <Menu size={20} />
+    {pendingAlerts !== undefined && pendingAlerts > 0 && (
+      <span className="absolute -top-1 -right-1 badge badge-error badge-xs text-white">{pendingAlerts}</span>
+    )}
   </button>
 );
 
-const APP_VERSION = 'v2026.03.18.9';
+const APP_VERSION = 'v2026.03.18.10';
 
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard',     label: 'Dashboard',     icon: <LayoutDashboard size={18} /> },
-  { view: 'deals',        label: 'Deals',          icon: <Building2 size={18} /> },
-  { view: 'contacts',     label: 'Contacts',       icon: <Users size={18} /> },
-  { view: 'dialer',       label: 'Dialer',         icon: <Phone size={18} /> },
-  { view: 'compliance',   label: 'Compliance',     icon: <ClipboardList size={18} /> },
-  { view: 'scripts',      label: 'Scripts',        icon: <BookOpen size={18} /> },
-  { view: 'activity',     label: 'Activity Log',   icon: <FileText size={18} /> },
-  { view: 'mls',          label: 'MLS Directory',  icon: <Building2 size={18} /> },
-  { view: 'settings',     label: 'Settings',       icon: <Settings size={18} /> },
+  { view: 'transactions',  label: 'Deals',          icon: <Building2 size={18} /> },
+  { view: 'contacts',      label: 'Contacts',       icon: <Users size={18} /> },
+  { view: 'dialer',        label: 'Dialer',         icon: <Phone size={18} /> },
+  { view: 'inbox',         label: 'Inbox',          icon: <Bell size={18} /> },
+  { view: 'compliance',    label: 'Compliance',     icon: <ClipboardList size={18} /> },
+  { view: 'scripts',       label: 'Scripts',        icon: <BookOpen size={18} /> },
+  { view: 'activity',      label: 'Activity Log',   icon: <FileText size={18} /> },
+  { view: 'mls',           label: 'MLS Directory',  icon: <Building2 size={18} /> },
+  { view: 'settings',      label: 'Settings',       icon: <Settings size={18} /> },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
   view,
   onSetView,
-  onLogout,
-  unreadCount = 0,
+  onCloseMobile,
   mobileOpen = false,
-  onMobileClose,
+  inboxUnread = 0,
+  tasksPending = 0,
+  voicePending = 0,
+  onLogout,
   userName,
   userRole,
   userInitials,
@@ -71,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={onMobileClose}
+          onClick={onCloseMobile}
         />
       )}
 
@@ -79,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className={`
           fixed top-0 left-0 h-full w-60 bg-base-200 border-r border-base-300
           flex flex-col z-50 transition-transform duration-200
-          ${ mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0 lg:static lg:z-auto
         `}
       >
@@ -92,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="font-bold text-base-content text-sm">TC Command</span>
           </div>
           <button
-            onClick={onMobileClose}
+            onClick={onCloseMobile}
             className="btn btn-ghost btn-xs btn-square lg:hidden"
           >
             <X size={14} />
@@ -103,14 +123,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="flex-1 overflow-y-auto py-2 px-2">
           {NAV_ITEMS.map(item => {
             const isActive = view === item.view;
+            const badge =
+              item.view === 'inbox' ? inboxUnread
+              : item.view === 'tasks' ? tasksPending
+              : item.view === 'voice' ? voicePending
+              : 0;
             return (
               <button
                 key={item.view}
-                onClick={() => { onSetView(item.view); onMobileClose?.(); }}
+                onClick={() => { onSetView(item.view); onCloseMobile?.(); }}
                 className={`
                   w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg
                   text-sm font-medium transition-colors mb-0.5
-                  ${ isActive
+                  ${isActive
                     ? 'bg-primary text-primary-content'
                     : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'
                   }
@@ -120,10 +145,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {item.icon}
                   <span>{item.label}</span>
                 </div>
-                {item.view === 'notifications' && unreadCount > 0 && (
-                  <span className="badge badge-error badge-xs text-white">{unreadCount}</span>
-                )}
-                {isActive && <ChevronRight size={14} className="opacity-60" />}
+                <div className="flex items-center gap-1">
+                  {badge > 0 && (
+                    <span className="badge badge-error badge-xs text-white">{badge}</span>
+                  )}
+                  {isActive && <ChevronRight size={14} className="opacity-60" />}
+                </div>
               </button>
             );
           })}
@@ -133,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 py-3 border-t border-base-300">
           {(userName || userInitials) && (
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
                 {userInitials ?? '?'}
               </div>
               <div className="min-w-0">

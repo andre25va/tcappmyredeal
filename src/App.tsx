@@ -43,7 +43,7 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 }
 
 function AppInner() {
-  const { profile, loading: authLoading, isFirstLogin } = useAuth();
+  const { profile, loading: authLoading, isFirstLogin, logout } = useAuth();
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
@@ -65,7 +65,6 @@ function AppInner() {
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
 
-  // These MUST be here at the top, not after conditional returns
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
@@ -354,14 +353,14 @@ function AppInner() {
       {isFirstLogin && <ProfileSetupModal />}
 
       <Sidebar
+        view={view}
+        onSetView={handleSetView}
         onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
         onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
         onAddDeal={() => setShowAdd(true)}
         dealCount={deals.length}
         pendingAlerts={totalPending}
         onAmberClick={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
-        view={view}
-        onSetView={handleSetView}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(c => !c)}
         mobileOpen={mobileOpen}
@@ -369,6 +368,10 @@ function AppInner() {
         inboxUnread={inboxUnread}
         tasksPending={tasksPending}
         voicePending={voicePending}
+        onLogout={logout}
+        userName={profile.name}
+        userRole={profile.role}
+        userInitials={profile.initials}
       />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
