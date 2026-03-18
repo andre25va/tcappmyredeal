@@ -46,6 +46,7 @@ function AppInner() {
   const { profile, loading: authLoading, isFirstLogin } = useAuth();
   const { logAction } = useAudit();
 
+  // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen]         = useState(false);
@@ -63,6 +64,10 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
+
+  // These MUST be here at the top, not after conditional returns
+  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
+  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
   const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -298,9 +303,6 @@ function AppInner() {
     if (v === 'transactions') { setSelectedId(null); setTxPanel('list'); }
     setView(v);
   };
-
-  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
-  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
   const handleNotificationNavigate = (navView: string, id?: string) => {
     if (navView === 'inbox' && id) {
