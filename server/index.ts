@@ -39,7 +39,7 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ── Routes (loaded with error handling) ─────────────────────────────────────
+// ── Routes (loaded with error handling) then start server ───────────────────
 async function loadRoutes() {
   try {
     console.log('Loading voice routes...');
@@ -67,12 +67,12 @@ async function loadRoutes() {
   } catch (e) {
     console.error('❌ Failed to load callback routes:', e);
   }
-}
 
-// ── 404 Handler ───────────────────────────────────────────────────────────────
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found', service: 'tc-command-telephony' });
-});
+  // ── 404 Handler (MUST be after all routes) ──────────────────────────────────
+  app.use((_req, res) => {
+    res.status(404).json({ error: 'Not found', service: 'tc-command-telephony' });
+  });
+}
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 loadRoutes().then(() => {
@@ -81,7 +81,6 @@ loadRoutes().then(() => {
   });
 }).catch((e) => {
   console.error('Fatal startup error:', e);
-  // Still start the server so health check works
   app.listen(PORT, () => {
     console.log(`⚠️ Server started with errors on port ${PORT}`);
   });
