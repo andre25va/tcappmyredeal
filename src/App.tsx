@@ -424,16 +424,40 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
-          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
+
+        {/* Mobile top bar — menu button on RIGHT to avoid iOS Safari back-button overlap */}
+        <div
+          className="md:hidden flex items-center px-3 border-b border-base-300 bg-base-200 flex-none gap-2"
+          style={{
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            height: 'calc(3rem + env(safe-area-inset-top, 0px))',
+          }}
+        >
+          {/* Title — flex-1 so it fills available space */}
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'workflows' ? 'Workflows' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard'
+              : view === 'transactions' ? 'Transactions'
+              : view === 'contacts' ? 'Contacts'
+              : view === 'mls' ? 'MLS'
+              : view === 'compliance' ? 'Compliance'
+              : view === 'inbox' ? 'Inbox'
+              : view === 'tasks' ? 'Comm Tasks'
+              : view === 'voice' ? 'Voice'
+              : view === 'reports' ? 'AI Reports'
+              : view === 'workflows' ? 'Workflows'
+              : 'Settings'}
           </span>
-          <NotificationBell onNavigate={handleNotificationNavigate} />
+
+          {/* + New Deal */}
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
           </button>
+
+          {/* Notification bell */}
+          <NotificationBell onNavigate={handleNotificationNavigate} />
+
+          {/* Hamburger — rightmost, away from iOS Safari back-button zone */}
+          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
         </div>
 
         {/* View content */}

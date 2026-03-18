@@ -3,6 +3,7 @@ import { Phone, Loader2 } from 'lucide-react';
 import { DealPickerPopup } from './DealPickerPopup';
 import { FEATURE_FLAGS } from '../config/feature.flags';
 import { TELEPHONY_URL } from '../lib/telephony';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CallButtonProps {
   phoneNumber: string;
@@ -35,11 +36,17 @@ export const CallButton: React.FC<CallButtonProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const { profile } = useAuth();
 
   // Feature flag gate — disable all call buttons with one flag flip
   if (!FEATURE_FLAGS.outboundCallbacks) return null;
 
   const initiateCall = async (selectedDealId?: string) => {
+    if (!profile?.id) {
+      console.warn('CallButton: no profile id — cannot initiate callback');
+      return;
+    }
+
     setLoading(true);
     setShowPicker(false);
     try {
@@ -51,12 +58,16 @@ export const CallButton: React.FC<CallButtonProps> = ({
           contactName,
           contactPhone: phoneNumber,
           dealId: selectedDealId || undefined,
+          profileId: profile.id,
           requestedBy: 'tc-app',
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        onCallStarted?.(data.callSid || data.id || 'call-initiated');
+        onCallStarted?.(data.callSid || data.staffCallSid || data.id || 'call-initiated');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error('CallButton: initiate failed', res.status, err);
       }
     } catch (err) {
       console.error('Failed to initiate call:', err);
