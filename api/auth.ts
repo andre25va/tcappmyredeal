@@ -42,15 +42,24 @@ function parseDeviceLabel(ua: string): string {
 async function requireAdmin(token: string): Promise<string | null> {
   if (!token) return null;
   try {
+    // Step 1: Find the active session
     const { data: session } = await supabase
       .from('sessions')
-      .select('user_id, profiles!inner(role)')
+      .select('user_id')
       .eq('token', token)
       .eq('is_active', true)
       .gt('expires_at', new Date().toISOString())
       .single();
     if (!session) return null;
-    if ((session.profiles as any)?.role !== 'admin') return null;
+
+    // Step 2: Check the profile's role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user_id)
+      .single();
+    if (!profile || profile.role !== 'admin') return null;
+
     return session.user_id as string;
   } catch {
     return null;
@@ -131,31 +140,21 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '';
   const ua = req.headers['user-agent'] || '';
   try {
-    // Find the latest unused, unexpired OTP for this phone
     const { data: otp } = await supabase.from('otp_codes').select('*').eq('phone', normalized).eq('used', false)
       .gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).single();
     if (!otp) return res.status(400).json({ error: 'Code expired or not found. Request a new one.' });
 
-    // Track attempts
     await supabase.from('otp_codes').update({ attempts: otp.attempts + 1 }).eq('id', otp.id);
     if (otp.attempts >= 5) {
       await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
       return res.status(400).json({ error: 'Too many attempts. Please request a new code.' });
     }
 
-    // Validate code
     if (otp.code !== String(code).trim()) return res.status(400).json({ error: 'Incorrect code. Please try again.' });
 
-    // ── DO NOT mark OTP as used yet ──
-    // We only consume it after successfully creating the session.
-    // This way, if we return hasExistingSession, the OTP stays valid
-    // for the force=true retry.
-
-    // Whitelist check
     const { count: whitelistCount } = await supabase.from('allowed_phones').select('*', { count: 'exact', head: true });
     const isBootstrap = (whitelistCount ?? 0) === 0;
 
-    // Find or create profile
     let { data: profile } = await supabase.from('profiles').select('*').eq('phone', normalized).single();
     const isFirstLogin = !profile;
     if (!profile) {
@@ -166,12 +165,10 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       if (isBootstrap) await supabase.from('allowed_phones').insert({ phone: normalized, name: 'Admin', added_by: newProfile.id });
     }
 
-    // Link profile_id back to allowed_phones
     if (!isBootstrap) {
       await supabase.from('allowed_phones').update({ profile_id: profile.id }).eq('phone', normalized);
     }
 
-    // ── Single-session enforcement (skip for demo) ──
     if (!isDemo && !force) {
       const { data: existingSessions } = await supabase
         .from('sessions')
@@ -183,7 +180,6 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
         .limit(1);
       if (existingSessions && existingSessions.length > 0) {
         const existing = existingSessions[0];
-        // Return WITHOUT consuming OTP — user may retry with force=true
         return res.status(200).json({
           hasExistingSession: true,
           deviceLabel: parseDeviceLabel(existing.user_agent || ''),
@@ -192,10 +188,8 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── NOW consume the OTP (session will be created) ──
     await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
 
-    // Invalidate all old active sessions (skip for demo)
     if (!isDemo) {
       await supabase
         .from('sessions')
@@ -312,7 +306,6 @@ async function handleDemoLogin(req: VercelRequest, res: VercelResponse) {
       if (error) throw error;
       profile = newProfile;
     }
-    // Link profile_id to allowed_phones
     await supabase.from('allowed_phones').update({ profile_id: profile.id }).eq('phone', DEMO_PHONE);
 
     const token = randomUUID();
@@ -345,7 +338,6 @@ async function handleListUsers(req: VercelRequest, res: VercelResponse) {
 
     if (!allowed || allowed.length === 0) return res.status(200).json({ users: [] });
 
-    // Get profile data (last_login) for all linked profiles
     const profileIds = allowed.filter(u => u.profile_id).map(u => u.profile_id as string);
     let profileMap: Record<string, any> = {};
     if (profileIds.length > 0) {
@@ -356,7 +348,6 @@ async function handleListUsers(req: VercelRequest, res: VercelResponse) {
       if (profiles) profiles.forEach(p => { profileMap[p.id] = p; });
     }
 
-    // Get active session counts per user
     const { data: activeSessions } = await supabase
       .from('sessions')
       .select('user_id')
@@ -455,7 +446,6 @@ async function handleEditUser(req: VercelRequest, res: VercelResponse) {
 
     if (error) throw error;
 
-    // If revoking access, invalidate all active sessions for this user
     if (is_active === false && updated.profile_id) {
       await supabase
         .from('sessions')
@@ -498,12 +488,10 @@ async function handleDeleteUser(req: VercelRequest, res: VercelResponse) {
 
     if (!target) return res.status(404).json({ error: 'User not found' });
 
-    // Can't delete yourself
     if (target.profile_id === adminId) {
       return res.status(400).json({ error: 'You cannot delete your own account.' });
     }
 
-    // Invalidate all active sessions
     if (target.profile_id) {
       await supabase
         .from('sessions')
