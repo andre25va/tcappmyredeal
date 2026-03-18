@@ -30,7 +30,7 @@ const US_STATES = [
 ];
 
 const TIMEZONES = [
-  { value: '', label: 'Not set' },
+  { value: '', label: 'Select timezone...' },
   { value: 'America/New_York', label: 'Eastern (ET)' },
   { value: 'America/Chicago', label: 'Central (CT)' },
   { value: 'America/Denver', label: 'Mountain (MT)' },
@@ -237,6 +237,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
   const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [timezoneError, setTimezoneError] = useState(false);
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
@@ -319,6 +320,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       setIsEditing(false);
       setDeletedLicenseIds([]);
       setDeletedMlsIds([]);
+      setTimezoneError(false);
       setModalOpen(true);
       onTriggerHandled?.();
     }
@@ -363,6 +365,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setIsEditing(false);
     setDeletedLicenseIds([]);
     setDeletedMlsIds([]);
+    setTimezoneError(false);
     setModalOpen(true);
   };
 
@@ -371,17 +374,20 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setIsEditing(true);
     setDeletedLicenseIds([]);
     setDeletedMlsIds([]);
+    setTimezoneError(false);
     setModalOpen(true);
   };
 
   const closeModal = () => {
     setModalOpen(false);
     setSaving(false);
+    setTimezoneError(false);
   };
 
   // ── Form helpers ───────────────────────────────────────────────────────────
   const updateField = <K extends keyof EditForm>(key: K, val: EditForm[K]) => {
     setForm(prev => ({ ...prev, [key]: val }));
+    if (key === 'timezone') setTimezoneError(false);
   };
 
   const addLicense = () => {
@@ -470,6 +476,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!form.firstName.trim()) return;
+    if (!form.timezone) {
+      setTimezoneError(true);
+      return;
+    }
     setSaving(true);
     // Capture wizard trigger conditions before clearing form
     const isNewClient = form.contactType === 'agent' && form.isClient && !form.originalIsClient;
@@ -787,10 +797,19 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
                 </div>
                 <div className="mt-2">
-                  <label className="label py-0"><span className="label-text text-xs">Timezone</span></label>
-                  <select className="select select-sm select-bordered w-full" value={form.timezone} onChange={e => updateField('timezone', e.target.value)}>
+                  <label className="label py-0">
+                    <span className="label-text text-xs">Timezone *</span>
+                  </label>
+                  <select
+                    className={`select select-sm select-bordered w-full ${timezoneError ? 'select-error' : ''}`}
+                    value={form.timezone}
+                    onChange={e => updateField('timezone', e.target.value)}
+                  >
                     {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
                   </select>
+                  {timezoneError && (
+                    <p className="text-error text-xs mt-1">Please select a timezone.</p>
+                  )}
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
