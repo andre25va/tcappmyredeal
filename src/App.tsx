@@ -362,6 +362,10 @@ function AppInner() {
     userInitials: profile.initials,
   };
 
+  // ── Derived contact lists for wizard ─────────────────────────────────────────
+  const agentClients  = contactRecords.filter(c => c.isClient === true);
+  const agentContacts = contactRecords.filter(c => c.contactType === 'agent');
+
   return (
     <div data-theme="light" className="h-screen flex bg-base-100 overflow-hidden">
       {isFirstLogin && <ProfileSetupModal />}
@@ -472,7 +476,7 @@ function AppInner() {
               <ComplianceManager
                 templates={complianceTemplates}
                 onSave={persistCompliance}
-                agentClients={contactRecords.filter(c => c.isClient === true)}
+                agentClients={agentClients}
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
               />
@@ -538,7 +542,8 @@ function AppInner() {
           onAdd={handleAdd}
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
-          agentClients={contactRecords.filter(c => c.isClient === true)}
+          agentClients={agentClients}
+          agentContacts={agentContacts}
           ddMasterItems={ddMasterItems}
         />
       )}

@@ -10,7 +10,8 @@ interface Props {
   onAdd: (deal: Deal) => void;
   onClose: () => void;
   complianceTemplates?: ComplianceTemplate[];
-  agentClients?: ContactRecord[];
+  agentClients?: ContactRecord[];    // contacts with isClient === true
+  agentContacts?: ContactRecord[];   // contacts with contactType === 'agent'
   ddMasterItems?: DDMasterItem[];
 }
 
@@ -61,25 +62,67 @@ const formatDisplayDate = (dateStr: string): string => {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+// ─── Verification Card ────────────────────────────────────────────────────────
+interface VerifyCardProps {
+  contact: ContactRecord;
+  label: string;
+  extraNote?: React.ReactNode;
+}
+const VerifyCard: React.FC<VerifyCardProps> = ({ contact, label, extraNote }) => (
+  <div className="mt-3 p-3 rounded-xl border-2 border-primary/30 bg-primary/5 space-y-2">
+    <div className="flex items-center gap-2 mb-1">
+      <CheckCircle2 size={14} className="text-primary" />
+      <span className="text-xs font-semibold text-primary uppercase tracking-wide">{label}</span>
+    </div>
+    <div className="flex items-center gap-2 text-sm text-base-content">
+      <User size={13} className="text-base-content/40 flex-none" />
+      <span className="font-semibold">{contact.fullName}</span>
+    </div>
+    {contact.company && (
+      <div className="flex items-center gap-2 text-sm text-base-content/70">
+        <Building2 size={13} className="text-base-content/40 flex-none" />
+        <span>{contact.company}</span>
+      </div>
+    )}
+    {contact.email && (
+      <div className="flex items-center gap-2 text-sm text-base-content/70">
+        <Mail size={13} className="text-base-content/40 flex-none" />
+        <span>{contact.email}</span>
+      </div>
+    )}
+    {contact.phone && (
+      <div className="flex items-center gap-2 text-sm text-base-content/70">
+        <Phone size={13} className="text-base-content/40 flex-none" />
+        <span>{contact.phone}</span>
+      </div>
+    )}
+    {!contact.company && !contact.email && !contact.phone && (
+      <span className="text-xs text-base-content/40 italic">No additional details on file</span>
+    )}
+    {extraNote && <div className="pt-1 border-t border-primary/20">{extraNote}</div>}
+  </div>
+);
+
 // ─── Disambiguation Modal ─────────────────────────────────────────────────────
 interface DisambigModalProps {
   candidates: ContactRecord[];
+  title: string;
   onSelect: (c: ContactRecord) => void;
   onCancel: () => void;
 }
-const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, onSelect, onCancel }) => (
+const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSelect, onCancel }) => (
   <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
     <div className="bg-base-200 rounded-2xl border border-base-300 shadow-2xl w-full max-w-md">
       <div className="flex items-center justify-between p-4 border-b border-base-300">
         <div className="flex items-center gap-2">
           <AlertCircle size={18} className="text-warning" />
-          <h3 className="font-bold text-base-content">Multiple Clients Found</h3>
+          <h3 className="font-bold text-base-content">{title}</h3>
         </div>
         <button onClick={onCancel} className="btn btn-ghost btn-sm btn-square"><X size={14} /></button>
       </div>
       <div className="p-4">
         <p className="text-sm text-base-content/60 mb-4">
-          There are <span className="font-semibold text-base-content">{candidates.length} clients</span> with this name. Please select the correct one:
+          There are <span className="font-semibold text-base-content">{candidates.length} contacts</span> with this name. Please select the correct one:
         </p>
         <div className="space-y-3">
           {candidates.map(c => (
@@ -127,7 +170,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, onSelect, onC
 );
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────
-export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
+export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, agentContacts, ddMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
@@ -136,48 +179,59 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
-    agentName: '', agentClientId: '',
+    agentContactId: '',   // selected agent from agentContacts
+    agentClientId: '',    // selected client from agentClients
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
-  // Disambiguation state
-  const [disambigCandidates, setDisambigCandidates] = useState<ContactRecord[] | null>(null);
+
+  // Disambiguation state — separate for agent and client
+  const [disambigAgentCandidates, setDisambigAgentCandidates] = useState<ContactRecord[] | null>(null);
+  const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
 
-  // When client is selected from dropdown
-  const handleClientSelect = (selectedId: string) => {
-    if (!selectedId) {
-      setForm(p => ({ ...p, agentClientId: '' }));
-      return;
+  // ── Agent selection ──────────────────────────────────────────────────────────
+  const handleAgentSelect = (selectedId: string) => {
+    if (!selectedId) { setForm(p => ({ ...p, agentContactId: '' })); return; }
+    const chosen = agentContacts?.find(c => c.id === selectedId);
+    if (!chosen) return;
+    const sameName = agentContacts?.filter(
+      c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
+    ) ?? [];
+    if (sameName.length > 1) {
+      setDisambigAgentCandidates(sameName);
+    } else {
+      setForm(p => ({ ...p, agentContactId: selectedId }));
     }
+  };
+
+  const handleAgentDisambigSelect = (c: ContactRecord) => {
+    setForm(p => ({ ...p, agentContactId: c.id }));
+    setDisambigAgentCandidates(null);
+  };
+
+  // ── Client selection ─────────────────────────────────────────────────────────
+  const handleClientSelect = (selectedId: string) => {
+    if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
     const chosen = agentClients?.find(c => c.id === selectedId);
     if (!chosen) return;
-
-    // Check for duplicate names
     const sameName = agentClients?.filter(
       c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
     ) ?? [];
-
     if (sameName.length > 1) {
-      // Show disambiguation popup instead of auto-selecting
-      setDisambigCandidates(sameName);
+      setDisambigClientCandidates(sameName);
     } else {
       setForm(p => ({ ...p, agentClientId: selectedId }));
     }
   };
 
-  const handleDisambigSelect = (c: ContactRecord) => {
+  const handleClientDisambigSelect = (c: ContactRecord) => {
     setForm(p => ({ ...p, agentClientId: c.id }));
-    setDisambigCandidates(null);
-  };
-
-  const handleDisambigCancel = () => {
-    setDisambigCandidates(null);
-    setForm(p => ({ ...p, agentClientId: '' }));
+    setDisambigClientCandidates(null);
   };
 
   const canAdvance = (): boolean => {
@@ -187,7 +241,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       case 3: return true;
       case 4: return true;
       case 5: return !!form.closingDate;
-      case 6: return !!form.agentName.trim();
+      case 6: return true; // both agent and client are optional dropdowns
       case 7: return true;
       default: return true;
     }
@@ -198,7 +252,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (!canAdvance()) {
       if (step === 1) setError('Address and city are required.');
       if (step === 5) setError('Closing date is required.');
-      if (step === 6) setError('Agent name is required.');
       return;
     }
     if (step === 6) runAIReview();
@@ -218,7 +271,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const res = await fetch('/api/ai?action=guided-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealData: form }),
+        body: JSON.stringify({ dealData: { ...form, agentName: selectedAgent?.fullName ?? '' } }),
       });
       if (!res.ok) throw new Error('AI review failed');
       const data: AIReview = await res.json();
@@ -232,6 +285,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleCreate = () => {
     const isMF = form.propertyType === 'multi-family';
+    const agentName = selectedAgent?.fullName ?? '';
+
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
       type: 'mf_addendum',
@@ -244,7 +299,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }] : [];
 
     const initLog: ActivityEntry[] = [
-      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state} — Agent: ${form.agentName}`, user: 'TC Staff', type: 'deal_created' },
+      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state}${agentName ? ` — Agent: ${agentName}` : ''}`, user: 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
     ];
 
@@ -257,7 +312,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionType as TransactionType,
       contractDate: form.contractDate, closingDate: form.closingDate,
-      agentId: generateId(), agentName: form.agentName.trim(),
+      agentId: selectedAgent?.id ?? generateId(),
+      agentName,
       agentClientId: form.agentClientId || undefined,
       contacts: [], notes: '',
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
@@ -283,23 +339,36 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     onAdd(deal);
   };
 
-  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Agent Info', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Agent & Client', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
     warning: { bg: 'bg-yellow-50 border-yellow-200', icon: <AlertTriangle size={16} className="text-yellow-500" />, text: 'text-yellow-700' },
     error: { bg: 'bg-red-50 border-red-200', icon: <AlertTriangle size={16} className="text-red-500" />, text: 'text-red-700' },
   };
+
+  const selectedAgent = agentContacts?.find(c => c.id === form.agentContactId) ?? null;
   const selectedClient = agentClients?.find(c => c.id === form.agentClientId) ?? null;
 
   return (
     <>
-      {/* Disambiguation Modal */}
-      {disambigCandidates && (
+      {/* Agent Disambiguation Modal */}
+      {disambigAgentCandidates && (
         <DisambigModal
-          candidates={disambigCandidates}
-          onSelect={handleDisambigSelect}
-          onCancel={handleDisambigCancel}
+          candidates={disambigAgentCandidates}
+          title="Multiple Agents Found"
+          onSelect={handleAgentDisambigSelect}
+          onCancel={() => { setDisambigAgentCandidates(null); setForm(p => ({ ...p, agentContactId: '' })); }}
+        />
+      )}
+
+      {/* Client Disambiguation Modal */}
+      {disambigClientCandidates && (
+        <DisambigModal
+          candidates={disambigClientCandidates}
+          title="Multiple Clients Found"
+          onSelect={handleClientDisambigSelect}
+          onCancel={() => { setDisambigClientCandidates(null); setForm(p => ({ ...p, agentClientId: '' })); }}
         />
       )}
 
@@ -478,69 +547,78 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 6 */}
+            {/* Step 6 — Agent & Client (dropdowns only, no free text) */}
             {step === 6 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-base-content">Agent Information</h3>
-                <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Agent Name *</label>
-                  <input className="input input-bordered w-full" value={form.agentName} onChange={f('agentName')} placeholder="Agent full name" autoFocus />
-                </div>
-                {agentClients && agentClients.length > 0 && (
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Our Client (optional)</label>
-                    <select
-                      className="select select-bordered w-full"
-                      value={form.agentClientId}
-                      onChange={e => handleClientSelect(e.target.value)}
-                    >
-                      <option value="">-- Select Client --</option>
-                      {agentClients.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.fullName}{c.company ? ` — ${c.company}` : ''}
-                        </option>
-                      ))}
-                    </select>
+              <div className="space-y-5">
+                <h3 className="text-lg font-bold text-base-content">Agent & Client</h3>
 
-                    {/* Client Verification Card */}
-                    {selectedClient && (
-                      <div className="mt-3 p-3 rounded-xl border-2 border-primary/30 bg-primary/5 space-y-2">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CheckCircle2 size={14} className="text-primary" />
-                          <span className="text-xs font-semibold text-primary uppercase tracking-wide">Client Confirmed</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-base-content">
-                          <User size={13} className="text-base-content/40 flex-none" />
-                          <span className="font-semibold">{selectedClient.fullName}</span>
-                        </div>
-                        {selectedClient.company && (
-                          <div className="flex items-center gap-2 text-sm text-base-content/70">
-                            <Building2 size={13} className="text-base-content/40 flex-none" />
-                            <span>{selectedClient.company}</span>
-                          </div>
-                        )}
-                        {selectedClient.email && (
-                          <div className="flex items-center gap-2 text-sm text-base-content/70">
-                            <Mail size={13} className="text-base-content/40 flex-none" />
-                            <span>{selectedClient.email}</span>
-                          </div>
-                        )}
-                        {selectedClient.phone && (
-                          <div className="flex items-center gap-2 text-sm text-base-content/70">
-                            <Phone size={13} className="text-base-content/40 flex-none" />
-                            <span>{selectedClient.phone}</span>
-                          </div>
-                        )}
-                        {complianceTemplates && (() => {
-                          const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id));
-                          return tpl ? (
-                            <p className="text-xs text-green-600 pt-1 border-t border-primary/20">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
-                          ) : null;
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* ── Agent dropdown ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block">Agent (optional)</label>
+                  {agentContacts && agentContacts.length > 0 ? (
+                    <>
+                      <select
+                        className="select select-bordered w-full"
+                        value={form.agentContactId}
+                        onChange={e => handleAgentSelect(e.target.value)}
+                      >
+                        <option value="">-- Select Agent --</option>
+                        {agentContacts.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.fullName}{c.company ? ` — ${c.company}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedAgent && (
+                        <VerifyCard contact={selectedAgent} label="Agent Confirmed" />
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-base-300 text-sm text-base-content/40 text-center">
+                      No agent contacts found. Add agents in the Contacts Directory first.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Client dropdown ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block">Our Client (optional)</label>
+                  {agentClients && agentClients.length > 0 ? (
+                    <>
+                      <select
+                        className="select select-bordered w-full"
+                        value={form.agentClientId}
+                        onChange={e => handleClientSelect(e.target.value)}
+                      >
+                        <option value="">-- Select Client --</option>
+                        {agentClients.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.fullName}{c.company ? ` — ${c.company}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedClient && (
+                        <VerifyCard
+                          contact={selectedClient}
+                          label="Client Confirmed"
+                          extraNote={(() => {
+                            if (!complianceTemplates) return null;
+                            const tpl = complianceTemplates.find(t =>
+                              (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id)
+                            );
+                            return tpl
+                              ? <p className="text-xs text-green-600">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
+                              : null;
+                          })()}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-base-300 text-sm text-base-content/40 text-center">
+                      No client contacts found. Mark contacts as "Is Client" in the Contacts Directory first.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -615,8 +693,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <span className="font-medium">{formatDisplayDate(form.contractDate)}</span>
                     <span className="text-base-content/50">Closing Date:</span>
                     <span className="font-medium">{formatDisplayDate(form.closingDate)}</span>
-                    <span className="text-base-content/50">Agent:</span>
-                    <span className="font-medium">{form.agentName}</span>
+                    {selectedAgent && (
+                      <><span className="text-base-content/50">Agent:</span><span className="font-medium">{selectedAgent.fullName}{selectedAgent.company ? ` — ${selectedAgent.company}` : ''}</span></>
+                    )}
                     {selectedClient && (
                       <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}</span></>
                     )}
