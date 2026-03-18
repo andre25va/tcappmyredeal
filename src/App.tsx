@@ -475,7 +475,7 @@ function AppInner() {
               <ComplianceManager
                 templates={complianceTemplates}
                 onSave={persistCompliance}
-                agentClients={contactRecords.filter(c => c.contactType === 'agent')}
+                agentClients={contactRecords.filter(c => c.isClient === true)}
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
               />
@@ -541,7 +541,7 @@ function AppInner() {
           onAdd={handleAdd}
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
-          agentClients={contactRecords.filter(c => c.contactType === 'agent')}
+          agentClients={contactRecords.filter(c => c.isClient === true)}
           ddMasterItems={ddMasterItems}
         />
       )}

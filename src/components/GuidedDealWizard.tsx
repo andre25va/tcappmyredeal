@@ -390,13 +390,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
               {agentClients && agentClients.length > 0 && (
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Agent Client (optional)</label>
+                  <label className="text-xs text-base-content/50 mb-1 block">Our Client (optional)</label>
                   <select
                     className="select select-bordered w-full"
                     value={form.agentClientId}
                     onChange={e => setForm(p => ({ ...p, agentClientId: e.target.value }))}
                   >
-                    <option value="">-- Select Agent Client --</option>
+                    <option value="">-- Select Client --</option>
                     {agentClients.map(c => (
                       <option key={c.id} value={c.id}>{c.fullName}{c.company ? ` — ${c.company}` : ''}</option>
                     ))}
