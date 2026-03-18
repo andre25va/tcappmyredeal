@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink, FileText, Send } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
@@ -27,6 +27,84 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   return 'both';
 };
 
+
+// ── Deal Sheet Email Compose Modal ───────────────────────────────────────────
+const DealSheetEmailModal: React.FC<{
+  deal: Deal;
+  contact: Contact;
+  onClose: () => void;
+}> = ({ deal, contact, onClose }) => {
+  const address = (deal as any).address || 'Property';
+  const firstName = contact.name.split(' ')[0];
+  const defaultSubject = `Transaction Deal Sheet – ${address}`;
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    'Please find your transaction deal sheet summary below:',
+    '',
+    `📍 Property:   ${(deal as any).address || 'N/A'}`,
+    `🔑 MLS #:      ${(deal as any).mlsNumber || 'N/A'}`,
+    `💰 Sale Price: ${(deal as any).price ? '$' + Number((deal as any).price).toLocaleString() : 'N/A'}`,
+    `📋 Stage:      ${deal.stage || 'N/A'}`,
+    (deal as any).closeDate
+      ? `📅 Close Date: ${new Date((deal as any).closeDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+      : '',
+    '',
+    "Please don't hesitate to reach out if you have any questions.",
+    '',
+    'Best regards,',
+    'Transaction Coordinator',
+  ].filter(Boolean);
+  const defaultBody = lines.join('\n');
+
+  const [to, setTo] = React.useState(contact.email || '');
+  const [subject, setSubject] = React.useState(defaultSubject);
+  const [body, setBody] = React.useState(defaultBody);
+
+  const handleSend = () => {
+    const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailtoUrl, '_blank');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-4 flex items-center gap-3">
+          <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center flex-none">
+            <FileText size={18} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-white text-sm leading-tight">Send Deal Sheet</p>
+            <p className="text-xs text-white/70 truncate">{address}</p>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost btn-xs btn-square text-white hover:bg-white/20"><X size={14} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">To</label>
+            <input className="input input-bordered input-sm w-full" value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@email.com" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Subject</label>
+            <input className="input input-bordered input-sm w-full" value={subject} onChange={e => setSubject(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Message</label>
+            <textarea className="textarea textarea-bordered w-full text-sm resize-none font-mono" rows={9} value={body} onChange={e => setBody(e.target.value)} />
+          </div>
+        </div>
+        <div className="px-5 pb-4 flex gap-2">
+          <button onClick={onClose} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+          <button onClick={handleSend} disabled={!to.trim()} className="btn btn-primary btn-sm flex-1 gap-1.5">
+            <Send size={13} /> Send Deal Sheet
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Full contact info popup ──────────────────────────────────────────────────
 const ContactPopup: React.FC<{
   contact: Contact;
@@ -36,9 +114,10 @@ const ContactPopup: React.FC<{
   onRemove: () => void;
   dealId: string;
   dealState?: string;
+  deal?: Deal;
   onCallStarted?: (callData: CallStartedData) => void;
   onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
-}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, onCallStarted, onEdit }) => {
+}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -49,6 +128,17 @@ const ContactPopup: React.FC<{
     notes: cr?.notes || '',
   });
   const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
+  const [emailMenuOpen, setEmailMenuOpen] = useState(false);
+  const [sendSheetOpen, setSendSheetOpen] = useState(false);
+  const emailMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (emailMenuRef.current && !emailMenuRef.current.contains(e.target as Node)) setEmailMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Fetch license lookup URL for the deal's state
   useEffect(() => {
@@ -182,8 +272,40 @@ const ContactPopup: React.FC<{
           {contact.email && (
             <div className="flex items-center gap-3">
               <Mail size={14} className="text-gray-400 flex-none" />
-              <a href={`mailto:${contact.email}`} className="text-sm text-primary hover:underline truncate">{contact.email}</a>
+              <div className="relative flex-1 min-w-0" ref={emailMenuRef}>
+                <button
+                  onClick={() => setEmailMenuOpen(o => !o)}
+                  className="flex items-center gap-1 text-sm text-primary hover:underline max-w-full"
+                >
+                  <span className="truncate">{contact.email}</span>
+                  <ChevronDown size={12} className="flex-none opacity-60" />
+                </button>
+                {emailMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-[70] bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden w-52">
+                    <a
+                      href={`mailto:${contact.email}`}
+                      className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-sm text-black transition-colors"
+                      onClick={() => setEmailMenuOpen(false)}
+                    >
+                      <Mail size={13} className="text-gray-400 flex-none" />
+                      <span>Send Email</span>
+                    </a>
+                    {deal && (
+                      <button
+                        onClick={() => { setEmailMenuOpen(false); setSendSheetOpen(true); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-blue-50 text-sm text-black text-left transition-colors border-t border-gray-100"
+                      >
+                        <FileText size={13} className="text-blue-500 flex-none" />
+                        <span>Send Deal Sheet</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+          {sendSheetOpen && deal && contact.email && (
+            <DealSheetEmailModal deal={deal} contact={contact} onClose={() => setSendSheetOpen(false)} />
           )}
           {contact.phone && (
             <div className="flex items-center gap-3">
@@ -875,6 +997,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}
           dealId={deal.id}
           dealState={dealState}
+          deal={deal}
           onCallStarted={onCallStarted}
           onEdit={async (updates) => editContact(popupContact.id, updates)}
         />
