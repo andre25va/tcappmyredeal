@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save } from 'lucide-react';
+import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2 } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
+import { supabase } from '../lib/supabase';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 
@@ -27,81 +28,199 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
 };
 
 // ── Full contact info popup ──────────────────────────────────────────────────
-const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: () => void; onToggleNotif: () => void; onRemove: () => void; dealId: string; onCallStarted?: (callData: CallStartedData) => void }> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, onCallStarted }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-    <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-      {/* Header */}
-      <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center gap-3">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-none ${roleAvatarBg(contact.role)}`}>
-          {getInitials(contact.name)}
+const ContactPopup: React.FC<{
+  contact: Contact;
+  cr?: ContactRecord;
+  onClose: () => void;
+  onToggleNotif: () => void;
+  onRemove: () => void;
+  dealId: string;
+  onCallStarted?: (callData: CallStartedData) => void;
+  onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
+}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, onCallStarted, onEdit }) => {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: contact.name,
+    phone: contact.phone || '',
+    email: contact.email || '',
+    company: contact.company || cr?.company || '',
+    notes: cr?.notes || '',
+  });
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      await onEdit(form);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditing(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-none ${roleAvatarBg(contact.role)}`}>
+              {getInitials(form.name || contact.name)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-black text-base leading-tight">Edit Contact</p>
+              <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
+            </div>
+            <button onClick={() => setEditing(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+          </div>
+          {/* Edit form */}
+          <div className="px-5 py-4 space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Full Name</label>
+              <input
+                className="input input-bordered input-sm w-full"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Full name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Phone</label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="Phone"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Email</label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="Email"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Company</label>
+              <input
+                className="input input-bordered input-sm w-full"
+                value={form.company}
+                onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                placeholder="Company"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Notes</label>
+              <textarea
+                className="textarea textarea-bordered w-full text-sm resize-none"
+                rows={2}
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Notes..."
+              />
+            </div>
+          </div>
+          {/* Footer */}
+          <div className="px-5 pb-4 flex gap-2">
+            <button onClick={() => setEditing(false)} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !form.name.trim()}
+              className="btn btn-primary btn-sm flex-1 gap-1.5"
+            >
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              Save Changes
+            </button>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-black text-base leading-tight">{contact.name}</p>
-          <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
-        </div>
-        <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
       </div>
-      {/* Body */}
-      <div className="px-5 py-4 space-y-3">
-        {contact.email && (
-          <div className="flex items-center gap-3">
-            <Mail size={14} className="text-gray-400 flex-none" />
-            <a href={`mailto:${contact.email}`} className="text-sm text-primary hover:underline truncate">{contact.email}</a>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center gap-3">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-none ${roleAvatarBg(contact.role)}`}>
+            {getInitials(contact.name)}
           </div>
-        )}
-        {contact.phone && (
-          <div className="flex items-center gap-3">
-            <Phone size={14} className="text-gray-400 flex-none" />
-            <a href={`tel:${contact.phone}`} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
-            <CallButton
-              phoneNumber={contact.phone}
-              contactName={contact.name}
-              contactId={contact.id}
-              dealId={dealId}
-              size="sm"
-              variant="icon"
-              onCallStarted={(callId) => onCallStarted?.({
-                contactName: contact.name,
-                contactPhone: contact.phone!,
-                contactId: contact.id,
-                dealId,
-                callSid: callId,
-                startedAt: new Date().toISOString(),
-              })}
-            />
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-black text-base leading-tight">{contact.name}</p>
+            <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
           </div>
-        )}
-        {(contact.company || cr?.company) && (
-          <div className="flex items-center gap-3">
-            <Building2 size={14} className="text-gray-400 flex-none" />
-            <span className="text-sm text-black">{contact.company || cr?.company}</span>
-          </div>
-        )}
-        {cr?.notes && (
-          <div className="pt-1 border-t border-gray-100">
-            <p className="text-xs text-gray-400 mb-0.5">Notes</p>
-            <p className="text-sm text-black">{cr.notes}</p>
-          </div>
-        )}
-        <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-          {contact.inNotificationList
-            ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
-            : <><BellOff size={13} className="text-gray-300" /><span className="text-xs text-gray-400">Not on notification list</span></>
-          }
+          <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
         </div>
-      </div>
-      {/* Actions */}
-      <div className="px-5 pb-4 flex gap-2">
-        <button onClick={() => { onToggleNotif(); onClose(); }} className="btn btn-sm btn-outline flex-1 gap-1.5">
-          {contact.inNotificationList ? <><BellOff size={12} />Remove Notif</> : <><Bell size={12} />Add Notif</>}
-        </button>
-        <button onClick={() => { onRemove(); onClose(); }} className="btn btn-sm btn-error btn-outline gap-1.5">
-          <Trash2 size={12} /> Remove
-        </button>
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3">
+          {contact.email && (
+            <div className="flex items-center gap-3">
+              <Mail size={14} className="text-gray-400 flex-none" />
+              <a href={`mailto:${contact.email}`} className="text-sm text-primary hover:underline truncate">{contact.email}</a>
+            </div>
+          )}
+          {contact.phone && (
+            <div className="flex items-center gap-3">
+              <Phone size={14} className="text-gray-400 flex-none" />
+              <a href={`tel:${contact.phone}`} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
+              <CallButton
+                phoneNumber={contact.phone}
+                contactName={contact.name}
+                contactId={contact.id}
+                dealId={dealId}
+                size="sm"
+                variant="icon"
+                onCallStarted={(callId) => onCallStarted?.({
+                  contactName: contact.name,
+                  contactPhone: contact.phone!,
+                  contactId: contact.id,
+                  dealId,
+                  callSid: callId,
+                  startedAt: new Date().toISOString(),
+                })}
+              />
+            </div>
+          )}
+          {(contact.company || cr?.company) && (
+            <div className="flex items-center gap-3">
+              <Building2 size={14} className="text-gray-400 flex-none" />
+              <span className="text-sm text-black">{contact.company || cr?.company}</span>
+            </div>
+          )}
+          {cr?.notes && (
+            <div className="pt-1 border-t border-gray-100">
+              <p className="text-xs text-gray-400 mb-0.5">Notes</p>
+              <p className="text-sm text-black">{cr.notes}</p>
+            </div>
+          )}
+          <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+            {contact.inNotificationList
+              ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
+              : <><BellOff size={13} className="text-gray-300" /><span className="text-xs text-gray-400">Not on notification list</span></>
+            }
+          </div>
+        </div>
+        {/* Actions */}
+        <div className="px-5 pb-4 flex gap-2">
+          <button onClick={() => setEditing(true)} className="btn btn-sm btn-outline gap-1.5">
+            <Edit2 size={12} /> Edit
+          </button>
+          <button onClick={() => { onToggleNotif(); onClose(); }} className="btn btn-sm btn-outline flex-1 gap-1.5">
+            {contact.inNotificationList ? <><BellOff size={12} />Remove Notif</> : <><Bell size={12} />Add Notif</>}
+          </button>
+          <button onClick={() => { onRemove(); onClose(); }} className="btn btn-sm btn-error btn-outline gap-1.5">
+            <Trash2 size={12} /> Remove
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── Searchable contact picker ────────────────────────────────────────────────
 const ContactPicker: React.FC<{
@@ -583,6 +702,45 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     });
   };
 
+  // Edit contact — saves to contacts directory + updates deal state
+  const editContact = async (
+    contactId: string,
+    updates: { name: string; phone: string; email: string; company: string; notes: string }
+  ) => {
+    const contact = deal.contacts.find(c => c.id === contactId);
+    if (!contact) return;
+
+    // Update the contacts directory record if linked
+    if (contact.directoryId) {
+      const nameParts = updates.name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || null;
+      await supabase.from('contacts').update({
+        first_name: firstName,
+        last_name: lastName,
+        phone: updates.phone || null,
+        email: updates.email || null,
+        company: updates.company || null,
+        notes: updates.notes || null,
+      }).eq('id', contact.directoryId);
+    }
+
+    // Update deal state
+    onUpdate({
+      ...deal,
+      contacts: deal.contacts.map(c =>
+        c.id === contactId
+          ? { ...c, name: updates.name, phone: updates.phone, email: updates.email, company: updates.company }
+          : c
+      ),
+      activityLog: [
+        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: 'TC Staff', type: 'contact_added' },
+        ...deal.activityLog,
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
   const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy'));
   const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell'));
   const notifList = deal.contacts.filter(c => c.inNotificationList);
@@ -605,11 +763,15 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           <div className="px-4 pb-3 flex flex-wrap gap-2 border-t border-primary/10 pt-3">
             {notifList.length === 0 && <p className="text-xs text-gray-400">No contacts on notification list.</p>}
             {notifList.map(c => (
-              <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-gray-200 shadow-sm">
+              <button
+                key={c.id}
+                onClick={() => setPopupContactId(c.id)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-gray-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all"
+              >
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(c.role)}`}>{getInitials(c.name)}</div>
                 <span className="text-xs font-medium text-black">{c.name}</span>
                 <span className={`badge badge-xs ${roleBadge(c.role)}`}>{roleLabel(c.role)}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -649,6 +811,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}
           dealId={deal.id}
           onCallStarted={onCallStarted}
+          onEdit={async (updates) => editContact(popupContact.id, updates)}
         />
       )}
 
