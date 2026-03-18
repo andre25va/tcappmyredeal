@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 import { RefreshCw, ChevronDown, ChevronUp, Phone } from 'lucide-react';
 import { CallButton } from './CallButton';
 import { Deal } from '../types';
@@ -6,20 +7,12 @@ import { Deal } from '../types';
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
 const fmtDateTime = (iso: string) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
+    const d = new Date(iso);
   const date = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   return `${date} ${time}`;
 };
 
-const getSupabase = async () => {
-  const { createClient } = await import('@supabase/supabase-js');
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Missing Supabase config');
-  return createClient(url, key);
-};
 
 const channelIcon: Record<string, string> = { voice: '🎙️', sms: '📱', email: '📧', whatsapp: '📱' };
 
@@ -44,7 +37,7 @@ export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCall
 
   const loadData = useCallback(async () => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
 
       const [evRes, crRes, vuRes] = await Promise.all([
         sb.from('communication_events')
@@ -88,7 +81,7 @@ export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCall
 
   const updateChangeRequest = async (id: string, status: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       const updates: Record<string, unknown> = { status };
       if (status === 'approved' || status === 'rejected') updates.reviewed_at = new Date().toISOString();
       await sb.from('change_requests').update(updates).eq('id', id);

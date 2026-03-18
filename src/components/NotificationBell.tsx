@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
 import { Bell, MessageSquare, Mail, X } from 'lucide-react';
 
 interface Notification {
@@ -13,38 +14,19 @@ interface Notification {
   deal_id: string | null;
 }
 
-interface CallStartedData {
-  contactName: string;
-  contactPhone: string;
-  contactId?: string;
-  dealId?: string;
-  callSid?: string;
-  startedAt: string;
-}
-
 interface NotificationBellProps {
   onNavigate?: (view: string, id?: string) => void;
-  onCallStarted?: (callData: CallStartedData) => void;
 }
 
-export function NotificationBell({ onNavigate, onCallStarted: _onCallStarted }: NotificationBellProps) {
+export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const getSupabase = async () => {
-    const { createClient } = await import('@supabase/supabase-js');
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    if (!url || !key) return null;
-    return createClient(url, key);
-  };
-
   const fetchNotifications = async () => {
     try {
-      const supabase = await getSupabase();
-      if (!supabase) return;
+      const supabase = supabase;
       const { data } = await supabase
         .from('notifications')
         .select('*')
@@ -75,8 +57,7 @@ export function NotificationBell({ onNavigate, onCallStarted: _onCallStarted }: 
 
   const deleteNotification = async (id: string) => {
     try {
-      const supabase = await getSupabase();
-      if (!supabase) return;
+      const supabase = supabase;
       await supabase.from('notifications').delete().eq('id', id);
       setNotifications(prev => prev.filter(n => n.id !== id));
       setUnreadCount(prev => {
@@ -88,8 +69,7 @@ export function NotificationBell({ onNavigate, onCallStarted: _onCallStarted }: 
 
   const clearAll = async () => {
     try {
-      const supabase = await getSupabase();
-      if (!supabase) return;
+      const supabase = supabase;
       const ids = notifications.map(n => n.id);
       if (ids.length > 0) await supabase.from('notifications').delete().in('id', ids);
       setNotifications([]);

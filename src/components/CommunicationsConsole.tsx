@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 'lucide-react';
 import { CallButton } from './CallButton';
 
@@ -18,13 +19,6 @@ const fmtDateTime = (iso: string) => {
   return `${date} ${time}`;
 };
 
-const getSupabase = async () => {
-  const { createClient } = await import('@supabase/supabase-js');
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Missing Supabase config');
-  return createClient(url, key);
-};
 
 /* ── types ────────────────────────────────────────────────────────────── */
 
@@ -68,7 +62,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const loadData = useCallback(async () => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       const cutoff = timeFilterCutoff();
 
       // Voice Updates
@@ -139,7 +133,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const updateVoiceReview = async (id: string, status: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       await sb.from('voice_deal_updates').update({ review_status: status }).eq('id', id);
       loadData();
     } catch (err) { console.error('updateVoiceReview error:', err); }
@@ -147,7 +141,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const updateCallbackStatus = async (id: string, status: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       const updates: Record<string, unknown> = { status };
       if (status === 'completed') updates.completed_at = new Date().toISOString();
       await sb.from('callback_requests').update(updates).eq('id', id);
@@ -157,7 +151,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const updateChangeRequest = async (id: string, status: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       const updates: Record<string, unknown> = { status };
       if (status === 'approved' || status === 'rejected') updates.reviewed_at = new Date().toISOString();
       await sb.from('change_requests').update(updates).eq('id', id);
@@ -167,7 +161,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const loadContacts = async () => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       const { data } = await sb.from('contacts').select('id, first_name, last_name, phone').order('first_name').limit(200);
       setContacts(data || []);
     } catch { /* silent */ }
@@ -175,7 +169,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const linkCallToContact = async (callId: string, contactId: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       await sb.from('call_log').update({ caller_contact_id: contactId }).eq('id', callId);
       setLinkingCallId(null);
       setContactSearch('');
@@ -185,7 +179,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const dismissCall = async (callId: string) => {
     try {
-      const sb = await getSupabase();
+      const sb = supabase;
       await sb.from('call_log').update({ caller_contact_id: 'dismissed' }).eq('id', callId);
       loadData();
     } catch (err) { console.error('dismissCall error:', err); }
