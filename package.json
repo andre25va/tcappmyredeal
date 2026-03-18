@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "tsx server/index.ts",
+    "server:dev": "tsx watch server/index.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -15,7 +17,9 @@
     "daisyui": "^4.12.23",
     "@supabase/supabase-js": "^2.47.0",
     "imapflow": "^1.0.169",
-    "twilio": "^5.3.5"
+    "twilio": "^5.3.5",
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
@@ -26,6 +30,9 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "tsx": "^4.7.0"
   }
 }
