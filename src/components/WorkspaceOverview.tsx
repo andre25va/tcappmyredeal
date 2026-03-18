@@ -9,6 +9,7 @@ import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
 import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { generateTasksForMilestone, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
 import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,
@@ -29,10 +30,10 @@ interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: Cont
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
 
-const log = (deal: Deal, action: string, detail: string): Deal => ({
+const log = (deal: Deal, action: string, detail: string, userName = 'TC Staff'): Deal => ({
   ...deal,
   activityLog: [
-    { id: generateId(), timestamp: new Date().toISOString(), action, detail, user: 'TC Staff', type: 'status_change' },
+    { id: generateId(), timestamp: new Date().toISOString(), action, detail, user: userName, type: 'status_change' },
     ...deal.activityLog,
   ],
   updatedAt: new Date().toISOString(),
@@ -241,7 +242,8 @@ const AgentEditSection: React.FC<{
 const MilestoneStepper: React.FC<{
   deal: Deal;
   onUpdate: (d: Deal) => void;
-}> = ({ deal, onUpdate }) => {
+  userName?: string;
+}> = ({ deal, onUpdate, userName = 'TC Staff' }) => {
   const current = deal.milestone ?? 'contract-received';
   const currentIdx = MILESTONE_ORDER.indexOf(current);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -261,7 +263,7 @@ const MilestoneStepper: React.FC<{
       timestamp: new Date().toISOString(),
       action: 'Milestone advanced',
       detail: `Deal moved to "${MILESTONE_LABELS[targetMilestone]}" — ${newTasks.length} task(s) auto-generated.`,
-      user: 'TC Staff',
+      user: userName,
       type: 'status_change' as const,
     };
     onUpdate({
@@ -427,7 +429,7 @@ const MilestoneStepper: React.FC<{
                       id: generateId(),
                       timestamp: new Date().toISOString(),
                       action: `Deal archived${archiveReason ? ` — ${archiveReason}` : ''}`,
-                      user: 'TC Staff',
+                      user: userName,
                       type: 'status_change' as ActivityType,
                     }, ...deal.activityLog],
                     updatedAt: new Date().toISOString(),
@@ -476,7 +478,7 @@ const MilestoneStepper: React.FC<{
                     timestamp: new Date().toISOString(),
                     action: 'Deal unarchived',
                     detail: `Deal restored from Archived to "${MILESTONE_LABELS[unarchiveTo]}".`,
-                    user: 'TC Staff',
+                    user: userName,
                     type: 'status_change' as const,
                   };
                   onUpdate({
@@ -500,6 +502,8 @@ const MilestoneStepper: React.FC<{
 };
 
 export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
+  const { profile } = useAuth();
+  const userName = profile?.name || 'TC Staff';
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
@@ -553,7 +557,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const handleCancel = () => setShowModal(false);
 
   const handleSave = () => {
-    const updated = log(deal, 'Deal updated', `Status: ${statusLabel(fields.status as DealStatus)}, Closing: ${formatDate(fields.closingDate)}`);
+    const updated = log(deal, 'Deal updated', `Status: ${statusLabel(fields.status as DealStatus)}, Closing: ${formatDate(fields.closingDate)}`, userName);
     onUpdate({
       ...updated,
       status: fields.status as DealStatus,
@@ -591,7 +595,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     onUpdate({
       ...deal,
       reminders: [...deal.reminders, reminder],
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Reminder set: "${reminder.title}" due ${formatDate(reminder.dueDate)}`, user: 'TC Staff', type: 'reminder_set' }, ...deal.activityLog],
+      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Reminder set: "${reminder.title}" due ${formatDate(reminder.dueDate)}`, user: userName, type: 'reminder_set' }, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
     setNewReminderTitle('');
@@ -628,7 +632,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       <SmartSuggestions deal={deal} allDeals={allDeals} />
 
       {/* ─── Milestone Stepper ─── */}
-      <MilestoneStepper deal={deal} onUpdate={onUpdate} />
+      <MilestoneStepper deal={deal} onUpdate={onUpdate} userName={userName} />
 
       {/* ─── Key Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

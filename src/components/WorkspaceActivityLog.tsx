@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus, FileText, CheckSquare, Users, AlertTriangle, CheckCircle2,
   Bell, Pencil, MessageSquare, ArrowRightLeft
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { generateId } from '../utils/helpers';
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; }
@@ -42,9 +43,15 @@ const ALL_TYPES: { value: ActivityType | 'all'; label: string }[] = [
 ];
 
 export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
+  const { profile } = useAuth();
   const [filter, setFilter] = useState<ActivityType | 'all'>('all');
   const [note, setNote] = useState('');
-  const [staffName, setStaffName] = useState('TC Staff');
+  const [staffName, setStaffName] = useState(profile?.name || 'TC Staff');
+
+  // Sync staffName when profile loads (auth may resolve after mount)
+  useEffect(() => {
+    if (profile?.name) setStaffName(profile.name);
+  }, [profile?.name]);
 
   const addNote = () => {
     if (!note.trim()) return;
