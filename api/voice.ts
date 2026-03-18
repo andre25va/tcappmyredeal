@@ -735,9 +735,15 @@ async function handleInbound(req: VercelRequest, res: VercelResponse) {
 
   res.setHeader('Content-Type', 'text/xml');
 
-  if (caller) {
-    // All known clients get the AI voice assistant scoped to their data
+  if (caller && caller.clientAccount) {
+    // Only contacts with a client account get the AI voice assistant
     return handleClientAIInbound(req, res, caller);
+  } else if (caller && !caller.clientAccount) {
+    // Known contact but NOT a TC client — polite voicemail
+    const name = caller.contact.first_name;
+    const greeting = say(`Hi ${name}, thank you for calling My ReDeal Transaction Services. This line is reserved for TC client accounts. Please reach out to your transaction coordinator directly. Goodbye!`);
+    res.end(`<?xml version="1.0" encoding="UTF-8"?><Response>${greeting}<Hangup/></Response>`);
+    return;
   } else {
     // Unknown caller
     const greeting = say('Thank you for calling My ReDeal Transaction Services. We don\'t recognize this number. Please leave a message with your name, phone number, and the property address you\'re calling about, and we\'ll get back to you shortly.');
