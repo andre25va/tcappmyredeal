@@ -3,7 +3,7 @@ import {
   Users, FileDown, Plus, Pencil, Trash2, X, Check,
   Download, Building2, ClipboardList, Globe, Shield,
   UserCheck, AlertCircle, Mail, GripVertical, MoreVertical, Star,
-  Copy, CheckCheck, Ban,
+  Copy, CheckCheck, Ban, Link, ExternalLink, Search,
 } from 'lucide-react';
 import { AppUser, UserRole, Deal, ContactRecord, MlsEntry, ComplianceTemplate, EmailTemplate, ConfirmationButton, ComplianceMasterItem, DDMasterItem } from '../types';
 import { generateId } from '../utils/helpers';
@@ -25,7 +25,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -886,11 +886,295 @@ function ComplianceChecklistTab({ items, onSave }: ComplianceChecklistTabProps) 
   );
 }
 
+// ── License Lookup Links Tab ──────────────────────────────────────────────────
+interface StateLicenseLink {
+  state_code: string;
+  state_name: string;
+  lookup_url: string | null;
+  notes: string | null;
+  updated_at: string | null;
+}
+
+function LicenseLinksTab() {
+  const [states, setStates] = React.useState<StateLicenseLink[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const [editingCode, setEditingCode] = React.useState<string | null>(null);
+  const [editUrl, setEditUrl] = React.useState('');
+  const [saving, setSaving] = React.useState<string | null>(null);
+  const [savedCode, setSavedCode] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const token = localStorage.getItem('tc_token') || '';
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const res = await fetch('/api/license-links', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load');
+      setStates(data.states || []);
+    } catch (e: any) {
+      setFetchError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const startEdit = (s: StateLicenseLink) => {
+    setEditingCode(s.state_code);
+    setEditUrl(s.lookup_url || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingCode(null);
+    setEditUrl('');
+  };
+
+  const saveLink = async (stateCode: string) => {
+    setSaving(stateCode);
+    try {
+      const res = await fetch('/api/license-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ state_code: stateCode, lookup_url: editUrl.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      setStates(prev => prev.map(s =>
+        s.state_code === stateCode ? { ...s, lookup_url: editUrl.trim() || null, updated_at: new Date().toISOString() } : s
+      ));
+      setEditingCode(null);
+      setEditUrl('');
+      setSavedCode(stateCode);
+      setTimeout(() => setSavedCode(null), 2500);
+    } catch (e: any) {
+      // keep editing open on error
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const filteredStates = states.filter(s =>
+    s.state_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.state_code.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const configuredCount = states.filter(s => s.lookup_url).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <span className="loading loading-spinner loading-md text-primary" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="max-w-xl mx-auto mt-8 bg-error/10 border border-error/20 rounded-xl p-4 text-sm text-error flex items-center gap-2">
+        <AlertCircle size={16} className="flex-none" /> {fetchError}
+        <button className="btn btn-xs btn-ghost ml-auto" onClick={load}>Retry</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto flex flex-col gap-5">
+      {/* Header + stats */}
+      <div>
+        <h2 className="text-base font-bold text-black">Agent License Lookup Links</h2>
+        <p className="text-xs text-black/50 mt-0.5">
+          Store the state licensing portal URL for each state where your agents operate.
+          Click the search icon on any configured row to open the portal directly.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="flex gap-3 flex-1">
+          <div className="stat bg-base-200 rounded-xl p-3 flex-1 min-w-[80px]">
+            <div className="stat-title text-xs">Total States</div>
+            <div className="stat-value text-2xl">{states.length}</div>
+          </div>
+          <div className="stat bg-success/10 rounded-xl p-3 flex-1 min-w-[80px]">
+            <div className="stat-title text-xs text-success/70">Configured</div>
+            <div className="stat-value text-2xl text-success">{configuredCount}</div>
+          </div>
+          <div className="stat bg-base-200 rounded-xl p-3 flex-1 min-w-[80px]">
+            <div className="stat-title text-xs text-base-content/50">Remaining</div>
+            <div className="stat-value text-2xl text-base-content/30">{states.length - configuredCount}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" />
+        <input
+          className="input input-bordered input-sm w-full pl-8"
+          placeholder="Filter states…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      {/* States table */}
+      <div className="border border-base-300 rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-base-300">
+              <th className="w-16 px-4 py-2.5 text-left text-xs font-semibold text-black/50">State</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-black/50">Lookup URL</th>
+              <th className="w-28 px-4 py-2.5 text-right text-xs font-semibold text-black/50">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStates.length === 0 && (
+              <tr>
+                <td colSpan={3} className="text-center py-10 text-black/30 text-xs">
+                  No states match your search.
+                </td>
+              </tr>
+            )}
+            {filteredStates.map((s, idx) => {
+              const isEditing = editingCode === s.state_code;
+              const isSaving  = saving === s.state_code;
+              const justSaved = savedCode === s.state_code;
+              const hasUrl    = !!s.lookup_url;
+
+              return (
+                <tr
+                  key={s.state_code}
+                  className={`border-b border-base-300 last:border-0 transition-colors ${
+                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                  } ${isEditing ? 'bg-blue-50/60' : ''}`}
+                >
+                  {/* State */}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-xs text-black">{s.state_code}</span>
+                      <span className="text-[11px] text-black/40">{s.state_name}</span>
+                    </div>
+                  </td>
+
+                  {/* URL */}
+                  <td className="px-4 py-3">
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        className="input input-bordered input-xs w-full font-mono text-xs"
+                        placeholder="https://…"
+                        value={editUrl}
+                        onChange={e => setEditUrl(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveLink(s.state_code);
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                      />
+                    ) : hasUrl ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Link size={10} className="text-primary shrink-0" />
+                        <span className="text-xs text-base-content/60 font-mono truncate max-w-xs" title={s.lookup_url!}>
+                          {s.lookup_url}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-black/20 italic">No URL set</span>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      {isEditing ? (
+                        <>
+                          <button
+                            className="btn btn-success btn-xs gap-1"
+                            onClick={() => saveLink(s.state_code)}
+                            disabled={isSaving}
+                          >
+                            {isSaving
+                              ? <span className="loading loading-spinner loading-xs" />
+                              : <Check size={11} />}
+                            Save
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={cancelEdit}>
+                            <X size={11} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {justSaved && (
+                            <span className="text-[10px] text-success font-medium flex items-center gap-0.5">
+                              <CheckCheck size={10} /> Saved
+                            </span>
+                          )}
+                          {hasUrl && (
+                            <a
+                              href={s.lookup_url!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-ghost btn-xs"
+                              title="Open lookup portal"
+                            >
+                              <ExternalLink size={12} className="text-primary" />
+                            </a>
+                          )}
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            title={hasUrl ? 'Edit URL' : 'Add URL'}
+                            onClick={() => startEdit(s)}
+                          >
+                            <Pencil size={12} className="text-base-content/40" />
+                          </button>
+                          {hasUrl && (
+                            <button
+                              className="btn btn-ghost btn-xs"
+                              title="Clear URL"
+                              onClick={async () => {
+                                setSaving(s.state_code);
+                                try {
+                                  await fetch('/api/license-links', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ state_code: s.state_code, lookup_url: null }),
+                                  });
+                                  setStates(prev => prev.map(st =>
+                                    st.state_code === s.state_code ? { ...st, lookup_url: null } : st
+                                  ));
+                                } finally { setSaving(null); }
+                              }}
+                            >
+                              <Trash2 size={12} className="text-error/40 hover:text-error" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-black/30 text-center">
+        {configuredCount} of {states.length} states configured · Click the pencil to add or edit a URL · Press Enter to save quickly
+      </p>
+    </div>
+  );
+}
+
 
 // ── Access & Users Tab ────────────────────────────────────────────────────────
 
 interface AllowedUser {
-  id: string;           // allowed_phones.id (access record ID)
+  id: string;
   phone: string;
   name: string;
   role: string;
@@ -898,7 +1182,7 @@ interface AllowedUser {
   is_demo: boolean;
   is_active: boolean;
   created_at: string;
-  profile_id: string | null;  // profiles.id — canonical ID in audit logs
+  profile_id: string | null;
   last_login: string | null;
   active_sessions: number;
 }
@@ -969,7 +1253,6 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Phone */}
           <div>
             <label className="label py-0.5">
               <span className="label-text text-xs font-medium">Phone Number *</span>
@@ -989,7 +1272,6 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
             {phoneError && <p className="text-xs text-error mt-0.5">{phoneError}</p>}
           </div>
 
-          {/* Name */}
           <div>
             <label className="label py-0.5"><span className="label-text text-xs font-medium">Full Name *</span></label>
             <input
@@ -1000,7 +1282,6 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
             />
           </div>
 
-          {/* Role */}
           <div>
             <label className="label py-0.5"><span className="label-text text-xs font-medium">Role</span></label>
             <select className="select select-bordered select-sm w-full" value={role} onChange={e => setRole(e.target.value)}>
@@ -1011,7 +1292,6 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
             </select>
           </div>
 
-          {/* Email for OTP */}
           <div>
             <label className="label py-0.5">
               <span className="label-text text-xs font-medium">Email for OTP</span>
@@ -1027,7 +1307,6 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
             <p className="text-xs text-base-content/40 mt-0.5">If set, user can receive their login code by email instead of SMS.</p>
           </div>
 
-          {/* Demo toggle */}
           <label className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer">
             <input
               type="checkbox"
@@ -1180,7 +1459,6 @@ function AccessUsersTab() {
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-5">
-      {/* Info banner */}
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
         <Shield size={14} className="text-blue-500 mt-0.5 shrink-0" />
         <p className="text-xs text-blue-700 leading-relaxed">
@@ -1190,7 +1468,6 @@ function AccessUsersTab() {
         </p>
       </div>
 
-      {/* Action error */}
       {actionError && (
         <div className="flex items-center gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2 text-xs text-error">
           <AlertCircle size={13} className="flex-none" /> {actionError}
@@ -1198,7 +1475,6 @@ function AccessUsersTab() {
         </div>
       )}
 
-      {/* Stats + Add button */}
       <div className="flex items-center gap-4">
         <div className="flex-1 flex gap-3 flex-wrap">
           <div className="stat bg-base-200 rounded-xl p-3 flex-1 min-w-[80px]">
@@ -1230,7 +1506,6 @@ function AccessUsersTab() {
         </button>
       </div>
 
-      {/* User list */}
       {users.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-base-content/40">
           <UserCheck size={40} strokeWidth={1.5} />
@@ -1258,7 +1533,6 @@ function AccessUsersTab() {
                 }`}
               >
                 <div className="flex items-center gap-3 p-3">
-                  {/* Avatar with online indicator */}
                   <div className="relative flex-none">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
@@ -1275,7 +1549,6 @@ function AccessUsersTab() {
                     )}
                   </div>
 
-                  {/* Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm text-base-content">{u.name}</span>
@@ -1290,7 +1563,6 @@ function AccessUsersTab() {
                       )}
                     </div>
 
-                    {/* Phone + Email */}
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       <span className="text-xs text-base-content/60 font-mono">{formatPhoneDisplay(u.phone)}</span>
                       {u.email && (
@@ -1298,7 +1570,6 @@ function AccessUsersTab() {
                       )}
                     </div>
 
-                    {/* User ID row */}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {u.profile_id ? (
                         <div className="flex items-center gap-1.5 bg-base-200 rounded-lg px-2 py-0.5">
@@ -1308,7 +1579,7 @@ function AccessUsersTab() {
                           <button
                             className="flex items-center gap-0.5 text-[10px] text-base-content/30 hover:text-primary transition-colors"
                             onClick={() => copyUserId(u.profile_id!)}
-                            title="Copy full User ID (used in audit logs)"
+                            title="Copy full User ID"
                           >
                             {copiedId === u.profile_id
                               ? <><CheckCheck size={9} className="text-success" /><span className="text-success font-medium">Copied!</span></>
@@ -1331,13 +1602,11 @@ function AccessUsersTab() {
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-0.5 flex-none">
                     <button
-                      className="btn btn-xs btn-ghost tooltip tooltip-left"
-                      data-tip={u.is_active ? 'Revoke access' : 'Restore access'}
-                      onClick={() => setRevokeTarget(u)}
+                      className="btn btn-xs btn-ghost"
                       title={u.is_active ? 'Revoke access' : 'Restore access'}
+                      onClick={() => setRevokeTarget(u)}
                     >
                       <Ban size={13} className={u.is_active ? 'text-base-content/30 hover:text-warning' : 'text-success'} />
                     </button>
@@ -1363,7 +1632,6 @@ function AccessUsersTab() {
         </div>
       )}
 
-      {/* Add/Edit modal */}
       {showForm && (
         <UserAccessForm
           user={editUser}
@@ -1373,17 +1641,15 @@ function AccessUsersTab() {
         />
       )}
 
-      {/* Delete confirm */}
       <ConfirmModal
         isOpen={deleteTarget !== null}
         title="Remove user access?"
-        message={`${deleteTarget?.name ?? 'This user'} will be permanently removed from the whitelist and their sessions invalidated. They will not be able to log in until re-added.`}
+        message={`${deleteTarget?.name ?? 'This user'} will be permanently removed from the whitelist and their sessions invalidated.`}
         confirmLabel="Remove Access"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* Revoke/Restore confirm */}
       <ConfirmModal
         isOpen={revokeTarget !== null}
         title={revokeTarget?.is_active ? 'Revoke access?' : 'Restore access?'}
@@ -1419,20 +1685,17 @@ export const SettingsView: React.FC<Props> = ({
     setTimeout(() => setDownloaded(null), 2000);
   };
 
-  /* ── Users CRUD ── */
   const saveUser = (u: AppUser) => {
     const exists = users.find(x => x.id === u.id);
     onSaveUsers(exists ? users.map(x => x.id === u.id ? u : x) : [...users, u]);
     setShowForm(false); setEditUser(undefined);
   };
 
-
   const confirmDelete = (id: string) => {
     onSaveUsers(users.filter(u => u.id !== id));
     setDeleteId(null);
   };
 
-  /* ── CSV exports ── */
   const exportTransactions = () => {
     const headers = ['Address', 'City', 'State', 'Zip', 'MLS #', 'Status', 'Side',
       'Property Type', 'List Price', 'Contract Price', 'Contract Date', 'Closing Date',
@@ -1483,7 +1746,6 @@ export const SettingsView: React.FC<Props> = ({
     flash('compliance');
   };
 
-  /* ── Report cards config ── */
   const reports = [
     {
       key: 'transactions',
@@ -1536,9 +1798,10 @@ export const SettingsView: React.FC<Props> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-6 pt-4 flex-none border-b border-base-300">
+      <div className="flex gap-1 px-6 pt-4 flex-none border-b border-base-300 overflow-x-auto">
         {[
           { id: 'team' as SettingsTab,                  label: 'Access & Users',        icon: <Shield size={14}/> },
+          { id: 'license-links' as SettingsTab,         label: 'License Lookup',        icon: <Link size={14}/> },
           { id: 'email-templates' as SettingsTab,      label: 'Email Templates',       icon: <Mail size={14}/> },
           { id: 'dd-checklist' as SettingsTab,         label: 'Due Diligence',         icon: <ClipboardList size={14}/> },
           { id: 'compliance-checklist' as SettingsTab, label: 'Compliance Checklist',  icon: <Shield size={14}/> },
@@ -1547,7 +1810,7 @@ export const SettingsView: React.FC<Props> = ({
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
               ${tab === t.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-base-content/50 hover:text-base-content'}`}
@@ -1559,33 +1822,17 @@ export const SettingsView: React.FC<Props> = ({
 
       {/* Content */}
       <div className={`flex-1 ${tab === 'email-templates' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`}>
-        {/* ── COMPLIANCE CHECKLIST TAB ── */}
         {tab === 'dd-checklist' && (
-          <DDChecklistTab
-            items={ddMasterItems}
-            onSave={onSaveDdMasterItems!}
-          />
+          <DDChecklistTab items={ddMasterItems} onSave={onSaveDdMasterItems!} />
         )}
-
         {tab === 'compliance-checklist' && (
-          <ComplianceChecklistTab
-            items={complianceMasterItems}
-            onSave={onSaveComplianceMasterItems}
-          />
+          <ComplianceChecklistTab items={complianceMasterItems} onSave={onSaveComplianceMasterItems} />
         )}
-
-        {/* ── ACCESS & USERS TAB ── */}
         {tab === 'team' && <AccessUsersTab />}
-
-        {/* ── EMAIL TEMPLATES TAB ── */}
+        {tab === 'license-links' && <LicenseLinksTab />}
         {tab === 'email-templates' && (
-          <EmailTemplatesTab
-            emailTemplates={emailTemplates}
-            onSave={onSaveEmailTemplates}
-          />
+          <EmailTemplatesTab emailTemplates={emailTemplates} onSave={onSaveEmailTemplates} />
         )}
-
-        {/* ── REPORTS TAB ── */}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
             <div className="bg-base-200 rounded-xl p-4 flex items-start gap-3">
@@ -1595,7 +1842,6 @@ export const SettingsView: React.FC<Props> = ({
                 Downloads happen instantly in your browser.
               </p>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {reports.map(r => (
                 <div key={r.key} className={`rounded-xl border p-5 flex flex-col gap-3 ${r.color}`}>
@@ -1620,8 +1866,6 @@ export const SettingsView: React.FC<Props> = ({
                 </div>
               ))}
             </div>
-
-            {/* Quick note */}
             <div className="text-center text-xs text-base-content/35 pt-2">
               All exports reflect live data — re-export anytime for the latest snapshot.
             </div>
@@ -1629,7 +1873,6 @@ export const SettingsView: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Add/Edit modal */}
       {showForm && (
         <UserForm
           user={editUser}
@@ -1638,11 +1881,10 @@ export const SettingsView: React.FC<Props> = ({
         />
       )}
 
-      {/* Delete confirm */}
       <ConfirmModal
         isOpen={deleteId !== null}
         title="Remove this user?"
-        message={`${users.find(u => u.id === deleteId)?.name ?? 'This user'} will be removed from the team list. This does not affect any completed checklist entries.`}
+        message={`${users.find(u => u.id === deleteId)?.name ?? 'This user'} will be removed from the team list.`}
         confirmLabel="Remove"
         onConfirm={() => { if (deleteId) confirmDelete(deleteId); }}
         onCancel={() => setDeleteId(null)}
