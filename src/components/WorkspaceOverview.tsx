@@ -40,9 +40,99 @@ const log = (deal: Deal, action: string, detail: string): Deal => ({
 
 const emptyAgent = (): AgentContact => ({ name: '', phone: '', email: '', isOurClient: false });
 
+/* ─── Agent Contact Popup ─── */
+interface AgentPopupProps {
+  label: string;
+  agent: AgentContact;
+  dealId: string;
+  onClose: () => void;
+  onCallStarted?: (data: CallStartedData) => void;
+}
 
+const AgentContactPopup: React.FC<AgentPopupProps> = ({ label, agent, dealId, onClose, onCallStarted }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          {agent.isOurClient && (
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)] flex-none" />
+          )}
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none">
+              {label}{agent.isOurClient && <span className="ml-1.5 text-red-500">· Our Client</span>}
+            </p>
+            <p className="font-bold text-base text-black mt-0.5">{agent.name || 'No agent set'}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="btn btn-ghost btn-sm btn-square">
+          <X size={16} />
+        </button>
+      </div>
 
-/* ─── Agent display card (view mode only) ─── */
+      {/* Body */}
+      <div className="px-5 py-4 space-y-3">
+        {agent.phone ? (
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <div className="flex items-center gap-2 min-w-0">
+              <Phone size={14} className="text-gray-400 flex-none" />
+              <span className="text-sm font-medium text-black">{formatPhone(agent.phone)}</span>
+            </div>
+            <CallButton
+              phoneNumber={agent.phone}
+              contactName={agent.name || 'Unknown'}
+              dealId={dealId}
+              size="md"
+              variant="icon"
+              onCallStarted={(callSid) => {
+                onCallStarted?.({
+                  contactName: agent.name || 'Unknown',
+                  contactPhone: agent.phone || '',
+                  dealId,
+                  callSid,
+                  startedAt: new Date().toISOString(),
+                });
+                onClose();
+              }}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <Phone size={14} className="text-gray-300 flex-none" />
+            <span className="text-sm text-gray-400 italic">No phone on file</span>
+          </div>
+        )}
+
+        {agent.email ? (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <Mail size={14} className="text-gray-400 flex-none" />
+            <a
+              href={`mailto:${agent.email}`}
+              className="text-sm font-medium text-primary hover:underline truncate"
+              onClick={e => e.stopPropagation()}
+            >
+              {agent.email}
+            </a>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <Mail size={14} className="text-gray-300 flex-none" />
+            <span className="text-sm text-gray-400 italic">No email on file</span>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="px-5 pb-4">
+        <button onClick={onClose} className="btn btn-sm btn-ghost w-full text-gray-400">Close</button>
+      </div>
+    </div>
+  </div>
+);
+
 /* ─── Agent edit section inside modal ─── */
 const AgentEditSection: React.FC<{
   label: string;
@@ -69,7 +159,6 @@ const AgentEditSection: React.FC<{
       )}
     </div>
 
-    {/* Dropdown — Agent Clients auto-flagged */}
     <div>
       <label className="text-[10px] text-base-content/40 mb-1 block uppercase tracking-wide">Select Agent</label>
       <select
@@ -90,7 +179,6 @@ const AgentEditSection: React.FC<{
         }}
       >
         <option value="">— clear / none —</option>
-        {/* Agent Clients first */}
         {agentOptions.filter(x => x.isClient).length > 0 && (
           <optgroup label="⭐ Agent Clients (Our Clients)">
             {agentOptions.filter(x => x.isClient).map(cr => (
@@ -108,7 +196,6 @@ const AgentEditSection: React.FC<{
       </select>
     </div>
 
-    {/* Read-only info preview after selection */}
     {draft.name && (
       <div className="rounded-lg bg-base-300/50 border border-base-300 p-3 space-y-1.5">
         <div className="flex items-center gap-2">
@@ -129,7 +216,6 @@ const AgentEditSection: React.FC<{
         )}
       </div>
     )}
-    {/* hidden spacer to keep structure consistent with old 3-col grid removal */}
     <div className="hidden">
       <div>
         <label className="text-[10px] text-base-content/40 mb-0.5 block">Full Name</label>
@@ -200,7 +286,6 @@ const MilestoneStepper: React.FC<{
         </span>
       </div>
 
-      {/* Step dots - horizontal scrollable */}
       <div className="flex items-center gap-1 overflow-x-auto overflow-y-visible scrollbar-none pb-1 pt-8 -mt-8">
         {mainSteps.map((m, i) => {
           const isDone = i < currentIdx && !isArchived;
@@ -230,7 +315,6 @@ const MilestoneStepper: React.FC<{
                 >
                   {isDone ? <Check size={12} /> : i + 1}
                 </button>
-                {/* Tooltip */}
                 {hoveredIdx === i && (
                   <div
                     className="absolute bottom-full mb-2 z-50 pointer-events-none"
@@ -251,7 +335,6 @@ const MilestoneStepper: React.FC<{
         })}
       </div>
 
-      {/* Confirmation panel */}
       {confirmIdx !== null && (
         <div className="mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
           <p className="text-xs font-semibold text-base-content mb-2">
@@ -272,7 +355,6 @@ const MilestoneStepper: React.FC<{
         </div>
       )}
 
-      {/* Archive button */}
       {!isArchived && !isTerminalMilestone(current) && (
         <div className="mt-2 flex justify-end">
           <button
@@ -284,7 +366,6 @@ const MilestoneStepper: React.FC<{
         </div>
       )}
 
-      {/* Unarchive button */}
       {isArchived && (
         <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
           <p className="text-xs font-semibold text-base-content mb-1">This deal is archived.</p>
@@ -302,7 +383,6 @@ const MilestoneStepper: React.FC<{
         </div>
       )}
 
-      {/* Archive confirmation modal */}
       {showArchiveConfirm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowArchiveConfirm(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
@@ -365,7 +445,6 @@ const MilestoneStepper: React.FC<{
         </div>
       )}
 
-      {/* Unarchive modal */}
       {showUnarchive && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowUnarchive(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
@@ -424,13 +503,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
+  const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
 
-  // Open modal when parent fires Edit Deal button
   useEffect(() => {
     if (editTrigger && editTrigger > 0) openModal();
   }, [editTrigger]);
 
-  // Modal draft state
   const [fields, setFields] = useState({
     status: deal.status,
     contractPrice: String(deal.contractPrice),
@@ -566,7 +644,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               <span className="text-[11px] text-base-content/50 truncate">{s.label}</span>
             </div>
             <p className={`font-bold text-sm whitespace-nowrap truncate group-hover:whitespace-normal group-hover:truncate-none ${s.color}`}>{s.value}</p>
-            {/* Hover tooltip for full value */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block z-20 pointer-events-none">
               <div className={`bg-gray-900 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl`}>
                 <span className="text-gray-400 mr-1">{s.label}:</span>{s.value}
@@ -595,18 +672,20 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
         {deal.notes && <div className="col-span-3"><span className="text-base-content/50 text-xs">Notes</span><p className="text-base-content/80">{deal.notes}</p></div>}
       </div>
 
-      {/* ─── Agent Rows (clickable → Contacts tab) ─── */}
+      {/* ─── Agent Rows ─── */}
       <div>
-        <h3 className="font-semibold text-sm text-black flex items-center gap-2 mb-2">
+        <button
+          className="font-semibold text-sm text-black flex items-center gap-2 mb-2 hover:text-primary transition-colors"
+          onClick={onGoToContacts}
+        >
           <Users size={14} className="opacity-60" /> Agents
           <span className="text-[10px] text-base-content/40 font-normal">— click to view all deal contacts</span>
-        </h3>
+        </button>
         <div className="flex flex-col gap-2">
           {agentPanels.map(p => (
-            <button
+            <div
               key={p.label}
-              onClick={onGoToContacts}
-              className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all text-left w-full group"
+              className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
             >
               {/* Red dot for our client */}
               <div className="flex-none w-5 flex items-center justify-center">
@@ -615,42 +694,66 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                   : <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
                 }
               </div>
-              {/* Label + Name */}
-              <div className="flex-1 min-w-0">
+
+              {/* Label + Name — clicking here goes to Contacts tab */}
+              <button
+                className="flex-1 min-w-0 text-left"
+                onClick={onGoToContacts}
+              >
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">
                   {p.label}{p.agent?.isOurClient && <span className="ml-1.5 text-red-500">· Our Client</span>}
                 </p>
                 <p className="text-sm font-semibold text-black truncate">
                   {p.agent?.name || <span className="italic text-gray-300 font-normal">Not set</span>}
                 </p>
-              </div>
-              {/* Phone */}
+              </button>
+
+              {/* Phone number + Call button — always visible */}
               {p.agent?.phone && (
-                <span className="text-xs text-gray-400 whitespace-nowrap flex-none hidden sm:flex sm:items-center sm:gap-1.5">
-                  {formatPhone(p.agent.phone)}
-                  <span onClick={e => e.stopPropagation()}>
-                    <CallButton
-                      phoneNumber={p.agent.phone}
-                      contactName={p.agent.name || 'Unknown'}
-                      dealId={deal.id}
-                      size="sm"
-                      variant="icon"
-                      onCallStarted={(callId) => onCallStarted?.({
-                        contactName: p.agent?.name || 'Unknown',
-                        contactPhone: p.agent?.phone || '',
-                        dealId: deal.id,
-                        callSid: callId,
-                        startedAt: new Date().toISOString(),
-                      })}
-                    />
+                <div className="flex items-center gap-1.5 flex-none">
+                  <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">
+                    {formatPhone(p.agent.phone)}
                   </span>
-                </span>
+                  <CallButton
+                    phoneNumber={p.agent.phone}
+                    contactName={p.agent.name || 'Unknown'}
+                    dealId={deal.id}
+                    size="sm"
+                    variant="icon"
+                    onCallStarted={(callSid) => onCallStarted?.({
+                      contactName: p.agent?.name || 'Unknown',
+                      contactPhone: p.agent?.phone || '',
+                      dealId: deal.id,
+                      callSid,
+                      startedAt: new Date().toISOString(),
+                    })}
+                  />
+                </div>
               )}
-              <ChevronRight size={14} className="text-gray-300 flex-none group-hover:text-primary transition-colors" />
-            </button>
+
+              {/* Arrow — opens agent detail popup */}
+              <button
+                onClick={() => p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent })}
+                className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
+                title="View contact details"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           ))}
         </div>
       </div>
+
+      {/* ─── Agent Contact Popup ─── */}
+      {agentPopup && agentPopup.agent && (
+        <AgentContactPopup
+          label={agentPopup.label}
+          agent={agentPopup.agent}
+          dealId={deal.id}
+          onClose={() => setAgentPopup(null)}
+          onCallStarted={onCallStarted}
+        />
+      )}
 
       {/* ─── Reminders ─── */}
       <div className="bg-base-200 rounded-xl border border-base-300 p-3">
@@ -692,12 +795,10 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
           );
         })}
 
-        {/* Completed reminders (collapsed) */}
         {deal.reminders.filter(r => r.completed).length > 0 && (
           <p className="text-xs text-gray-400 mt-1">+ {deal.reminders.filter(r => r.completed).length} completed</p>
         )}
 
-        {/* Add reminder quick form */}
         {showAddReminder ? (
           <div className="flex gap-1.5 mt-2 flex-wrap">
             <input
@@ -734,7 +835,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-base-300">
 
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-base-300 flex-none">
               <div>
                 <h2 className="font-bold text-base-content text-lg">Edit Deal</h2>
@@ -745,10 +845,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </button>
             </div>
 
-            {/* Modal Body — scrollable */}
             <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
 
-              {/* Property Info */}
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Property Info</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -789,7 +887,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 </div>
               </section>
 
-              {/* Transaction Details */}
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Transaction Details</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
@@ -834,7 +931,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 </div>
               </section>
 
-              {/* Agents */}
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Agents</h3>
                 <div className="space-y-3">
@@ -845,7 +941,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
             </div>
 
-            {/* Modal Footer */}
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-base-300 flex-none bg-base-200/50 rounded-b-2xl">
               <button onClick={handleCancel} className="btn btn-sm btn-ghost gap-1.5">
                 <X size={13} /> Cancel Changes
