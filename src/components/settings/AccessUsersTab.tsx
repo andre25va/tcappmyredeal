@@ -152,7 +152,8 @@ export function AccessUsersTab() {
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
-  const token = localStorage.getItem('tc_token') || '';
+  // Use tc_session (the correct auth key)
+  const token = localStorage.getItem('tc_session') || '';
 
   const loadUsers = React.useCallback(async () => {
     setLoading(true); setFetchError(null);

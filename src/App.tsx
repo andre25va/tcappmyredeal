@@ -189,7 +189,6 @@ function AppInner() {
         setTasksPending(count || 0);
       } catch { /* silent */ }
     };
-    };
     fetchTaskCount();
     const t = setInterval(fetchTaskCount, 60000);
     return () => clearInterval(t);
@@ -200,7 +199,6 @@ function AppInner() {
     if (!profile) return;
     const fetchVoiceCount = async () => {
       try {
-        // Count pending voice updates + open callbacks + pending change requests
         const [vuRes, cbRes, crRes] = await Promise.all([
           supabase.from('voice_deal_updates').select('id', { count: 'exact', head: true }).eq('review_status', 'pending'),
           supabase.from('callback_requests').select('id', { count: 'exact', head: true }).eq('status', 'open'),
@@ -351,10 +349,8 @@ function AppInner() {
 
   return (
     <div data-theme="light" className="h-screen flex bg-base-100 overflow-hidden">
-      {/* Profile setup on first login */}
       {isFirstLogin && <ProfileSetupModal />}
 
-      {/* Left sidebar */}
       <Sidebar
         onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
         onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
@@ -373,9 +369,7 @@ function AppInner() {
         voicePending={voicePending}
       />
 
-      {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* Desktop top bar */}
         <div className="hidden md:flex items-center flex-none">
           <div className="flex-1">
             <Topbar
@@ -392,7 +386,6 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        {/* Mobile top bar */}
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
@@ -404,7 +397,6 @@ function AppInner() {
           </button>
         </div>
 
-        {/* View content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {view === 'dashboard' && (
             <div className="flex-1 overflow-auto">
@@ -490,8 +482,8 @@ function AppInner() {
 
           {view === 'inbox' && (
             <div className="flex-1 overflow-hidden">
-              <Inbox 
-                onSelectDeal={handleSelectDeal} 
+              <Inbox
+                onSelectDeal={handleSelectDeal}
                 initialConversationId={inboxInitConvId}
                 initialChannel={inboxInitChannel}
                 onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
@@ -502,9 +494,7 @@ function AppInner() {
           {view === 'tasks' && (
             <div className="flex-1 overflow-hidden">
               <CommTasksView
-                onOpenInbox={(channel, phone, email) => {
-                  setView('inbox');
-                }}
+                onOpenInbox={(channel, phone, email) => { setView('inbox'); }}
                 onSelectDeal={handleSelectDeal}
               />
             </div>
@@ -554,7 +544,6 @@ function AppInner() {
         />
       )}
 
-      {/* AI Chat — floating widget available on all views */}
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
         onSetView={(v) => setView(v as any)}

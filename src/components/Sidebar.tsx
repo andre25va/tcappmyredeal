@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
+// ── App version — update this string with each deployment ──────────────────
+export const APP_VERSION = 'v2026.03.18.3';
+
 export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'workflows';
 
 interface SidebarProps {
@@ -111,7 +114,7 @@ function SidebarInner({
               className="btn btn-ghost btn-xs btn-square text-base-content/50 hover:text-base-content hover:bg-base-300 flex-none"
             >
               <ChevronLeft size={15} />
-            </button>
+          </button>
           )}
           {isMobileOverlay && (
             <button onClick={onCloseMobile} className="btn btn-ghost btn-xs btn-square ml-auto">
@@ -266,7 +269,6 @@ function SidebarInner({
         <div className={`mt-1 pt-2 border-t border-base-300 ${ collapsed && !isMobileOverlay ? 'flex flex-col items-center gap-1.5 w-full' : ''}`}>
           {collapsed && !isMobileOverlay ? (
             <>
-              {/* Avatar */}
               <div
                 title={displayName}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm"
@@ -274,7 +276,6 @@ function SidebarInner({
               >
                 {initials}
               </div>
-              {/* Sign out */}
               <button
                 onClick={() => setLogoutConfirm(true)}
                 title="Sign out"
@@ -285,21 +286,18 @@ function SidebarInner({
             </>
           ) : (
             <div className="flex items-center gap-2">
-              {/* Avatar */}
               <div
                 className="w-7 h-7 rounded-full flex-none flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
                 style={{ backgroundColor: avatarColor }}
               >
                 {initials}
               </div>
-              {/* Name + role */}
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-base-content/80 truncate leading-tight">{displayName}</div>
                 {isDemo && (
                   <div className="text-[10px] text-base-content/40 leading-tight">Demo view</div>
                 )}
               </div>
-              {/* Sign out button */}
               <button
                 onClick={() => setLogoutConfirm(true)}
                 title="Sign out"
@@ -310,6 +308,13 @@ function SidebarInner({
             </div>
           )}
         </div>
+
+        {/* ── Version tag ── */}
+        {(!collapsed || isMobileOverlay) && (
+          <div className="text-center">
+            <span className="text-[9px] text-base-content/20 font-mono">{APP_VERSION}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Logout confirmation modal ── */}
