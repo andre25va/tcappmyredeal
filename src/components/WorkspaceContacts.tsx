@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2 } from 'lucide-react';
+import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
@@ -35,9 +35,10 @@ const ContactPopup: React.FC<{
   onToggleNotif: () => void;
   onRemove: () => void;
   dealId: string;
+  dealState?: string;
   onCallStarted?: (callData: CallStartedData) => void;
   onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
-}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, onCallStarted, onEdit }) => {
+}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, onCallStarted, onEdit }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -47,6 +48,25 @@ const ContactPopup: React.FC<{
     company: contact.company || cr?.company || '',
     notes: cr?.notes || '',
   });
+  const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
+
+  // Fetch license lookup URL for the deal's state
+  useEffect(() => {
+    if (!dealState) return;
+    supabase
+      .from('state_license_links')
+      .select('lookup_url')
+      .eq('state_code', dealState)
+      .single()
+      .then(({ data }) => {
+        if (data?.lookup_url) setLicenseUrl(data.lookup_url);
+      });
+  }, [dealState]);
+
+  // MLS memberships matching the deal's state
+  const stateMls = dealState && cr?.mlsMemberships?.length
+    ? cr.mlsMemberships.filter(m => m.stateCode === dealState)
+    : [];
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
@@ -156,6 +176,7 @@ const ContactPopup: React.FC<{
           </div>
           <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
         </div>
+
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
           {contact.email && (
@@ -198,6 +219,36 @@ const ContactPopup: React.FC<{
               <p className="text-sm text-black">{cr.notes}</p>
             </div>
           )}
+
+          {/* ── State-matched MLS memberships ── */}
+          {stateMls.length > 0 && (
+            <div className="pt-1 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-400 mb-1.5 flex items-center gap-1.5">
+                <Building2 size={11} />
+                MLS Membership · {dealState}
+              </p>
+              <div className="space-y-1.5">
+                {stateMls.map((mls) => (
+                  <div key={mls.id} className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                    <p className="text-sm font-semibold text-blue-900">{mls.mlsName}</p>
+                    {mls.mlsMemberNumber && (
+                      <p className="text-xs text-blue-600 mt-0.5">Member # {mls.mlsMemberNumber}</p>
+                    )}
+                    {mls.mlsCode && (
+                      <p className="text-xs text-blue-500">Code: {mls.mlsCode}</p>
+                    )}
+                    {mls.boardName && (
+                      <p className="text-xs text-gray-500 mt-0.5">{mls.boardName}</p>
+                    )}
+                    <span className={`badge badge-xs mt-1 ${
+                      mls.status === 'active' ? 'badge-success' : 'badge-warning'
+                    }`}>{mls.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
             {contact.inNotificationList
               ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
@@ -205,17 +256,31 @@ const ContactPopup: React.FC<{
             }
           </div>
         </div>
+
         {/* Actions */}
-        <div className="px-5 pb-4 flex gap-2">
-          <button onClick={() => setEditing(true)} className="btn btn-sm btn-outline gap-1.5">
-            <Edit2 size={12} /> Edit
-          </button>
-          <button onClick={() => { onToggleNotif(); onClose(); }} className="btn btn-sm btn-outline flex-1 gap-1.5">
-            {contact.inNotificationList ? <><BellOff size={12} />Remove Notif</> : <><Bell size={12} />Add Notif</>}
-          </button>
-          <button onClick={() => { onRemove(); onClose(); }} className="btn btn-sm btn-error btn-outline gap-1.5">
-            <Trash2 size={12} /> Remove
-          </button>
+        <div className="px-5 pb-4 space-y-2">
+          {/* Look Up License button — only if state has a portal URL */}
+          {licenseUrl && (
+            <a
+              href={licenseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-sm btn-outline w-full gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50 hover:border-blue-400"
+            >
+              <ExternalLink size={12} /> Look Up License · {dealState}
+            </a>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(true)} className="btn btn-sm btn-outline gap-1.5">
+              <Edit2 size={12} /> Edit
+            </button>
+            <button onClick={() => { onToggleNotif(); onClose(); }} className="btn btn-sm btn-outline flex-1 gap-1.5">
+              {contact.inNotificationList ? <><BellOff size={12} />Remove Notif</> : <><Bell size={12} />Add Notif</>}
+            </button>
+            <button onClick={() => { onRemove(); onClose(); }} className="btn btn-sm btn-error btn-outline gap-1.5">
+              <Trash2 size={12} /> Remove
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -630,7 +695,6 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   };
 
   const addFromDirectory = async (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => {
-    // Lenders are ALWAYS on the buy side — enforce regardless of where user clicked
     const effectiveSide = cr.contactType === 'lender' ? 'buy' : side;
     const dealSide = effectiveSide === 'buy' ? 'buyer' : effectiveSide === 'sell' ? 'listing' : 'both' as any;
     const dealRole = contactTypeToParticipantRole(cr.contactType);
@@ -702,7 +766,6 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     });
   };
 
-  // Edit contact — saves to contacts directory + updates deal state
   const editContact = async (
     contactId: string,
     updates: { name: string; phone: string; email: string; company: string; notes: string }
@@ -710,7 +773,6 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     const contact = deal.contacts.find(c => c.id === contactId);
     if (!contact) return;
 
-    // Update the contacts directory record if linked
     if (contact.directoryId) {
       const nameParts = updates.name.trim().split(' ');
       const firstName = nameParts[0] || '';
@@ -725,7 +787,6 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       }).eq('id', contact.directoryId);
     }
 
-    // Update deal state
     onUpdate({
       ...deal,
       contacts: deal.contacts.map(c =>
@@ -747,6 +808,9 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
   const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
+
+  // Normalize deal state to 2-letter uppercase code
+  const dealState = deal.state?.trim().toUpperCase().slice(0, 2) || undefined;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
@@ -810,6 +874,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           onToggleNotif={() => toggleNotif(popupContact.id)}
           onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}
           dealId={deal.id}
+          dealState={dealState}
           onCallStarted={onCallStarted}
           onEdit={async (updates) => editContact(popupContact.id, updates)}
         />
