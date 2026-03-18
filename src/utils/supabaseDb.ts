@@ -867,21 +867,43 @@ export async function upsertContactLicense(license: {
   issueDate?: string;
   expirationDate?: string;
 }): Promise<string> {
-  const row = {
-    id: license.id || crypto.randomUUID(),
-    contact_id: license.contactId,
-    state_code: license.stateCode,
-    license_type: license.licenseType,
-    license_number: license.licenseNumber,
-    status: license.status,
-    broker_organization_id: license.brokerOrganizationId || null,
-    issue_date: license.issueDate || null,
-    expiration_date: license.expirationDate || null,
-    updated_at: new Date().toISOString(),
-  };
-  const { error } = await supabase.from('contact_licenses').upsert(row, { onConflict: 'id' });
-  if (error) throw error;
-  return row.id;
+  const now = new Date().toISOString();
+
+  if (license.id) {
+    const { error: updateErr } = await supabase
+      .from('contact_licenses')
+      .update({
+        state_code: license.stateCode,
+        license_type: license.licenseType,
+        license_number: license.licenseNumber,
+        status: license.status,
+        broker_organization_id: license.brokerOrganizationId || null,
+        issue_date: license.issueDate || null,
+        expiration_date: license.expirationDate || null,
+        updated_at: now,
+      })
+      .eq('id', license.id);
+    if (updateErr) throw updateErr;
+    return license.id;
+  }
+
+  const newId = crypto.randomUUID();
+  const { error: insertErr } = await supabase
+    .from('contact_licenses')
+    .insert({
+      id: newId,
+      contact_id: license.contactId,
+      state_code: license.stateCode,
+      license_type: license.licenseType,
+      license_number: license.licenseNumber,
+      status: license.status,
+      broker_organization_id: license.brokerOrganizationId || null,
+      issue_date: license.issueDate || null,
+      expiration_date: license.expirationDate || null,
+      updated_at: now,
+    });
+  if (insertErr) throw insertErr;
+  return newId;
 }
 
 export async function deleteContactLicenseRecord(id: string): Promise<void> {
@@ -901,22 +923,47 @@ export async function upsertContactMls(mls: {
   status?: string;
   brokerOrganizationId?: string;
 }): Promise<string> {
-  const row = {
-    id: mls.id || crypto.randomUUID(),
-    contact_id: mls.contactId,
-    mls_name: mls.mlsName,
-    mls_code: mls.mlsCode || null,
-    mls_member_number: mls.mlsMemberNumber,
-    office_mls_number: mls.officeMlsNumber || null,
-    board_name: mls.boardName || null,
-    state_code: mls.stateCode || null,
-    status: mls.status || 'active',
-    broker_organization_id: mls.brokerOrganizationId || null,
-    updated_at: new Date().toISOString(),
-  };
-  const { error } = await supabase.from('contact_mls_memberships').upsert(row, { onConflict: 'id' });
-  if (error) throw error;
-  return row.id;
+  const now = new Date().toISOString();
+
+  // If we have an existing id, try UPDATE first
+  if (mls.id) {
+    const { error: updateErr } = await supabase
+      .from('contact_mls_memberships')
+      .update({
+        mls_name: mls.mlsName,
+        mls_code: mls.mlsCode || null,
+        mls_member_number: mls.mlsMemberNumber,
+        office_mls_number: mls.officeMlsNumber || null,
+        board_name: mls.boardName || null,
+        state_code: mls.stateCode || null,
+        status: mls.status || 'active',
+        broker_organization_id: mls.brokerOrganizationId || null,
+        updated_at: now,
+      })
+      .eq('id', mls.id);
+    if (updateErr) throw updateErr;
+    return mls.id;
+  }
+
+  // New entry — INSERT (ignore duplicate composite key by using ON CONFLICT DO NOTHING then fetch)
+  const newId = crypto.randomUUID();
+  const { error: insertErr } = await supabase
+    .from('contact_mls_memberships')
+    .insert({
+      id: newId,
+      contact_id: mls.contactId,
+      mls_name: mls.mlsName,
+      mls_code: mls.mlsCode || null,
+      mls_member_number: mls.mlsMemberNumber,
+      office_mls_number: mls.officeMlsNumber || null,
+      board_name: mls.boardName || null,
+      state_code: mls.stateCode || null,
+      status: mls.status || 'active',
+      broker_organization_id: mls.brokerOrganizationId || null,
+      updated_at: now,
+    });
+  if (insertErr) throw insertErr;
+  return newId;
 }
 
 export async function deleteContactMlsRecord(id: string): Promise<void> {
