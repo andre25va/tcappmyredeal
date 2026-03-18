@@ -5,6 +5,7 @@ import {
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
   Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip
 } from 'lucide-react';
+import { CallButton } from './CallButton';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ interface InboxProps {
   initialConversationId?: string;
   initialChannel?: 'sms' | 'email' | 'whatsapp';
   onInitHandled?: () => void;
+  onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string }) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -307,7 +309,7 @@ function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, onInitHandled }) => {
+export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, onInitHandled, onCallStarted }) => {
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -1264,6 +1266,21 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
               {p.name.charAt(0).toUpperCase()}
             </div>
           ))}
+          {selectedConv.participants.length > 0 && selectedConv.participants[0].phone && (
+            <CallButton
+              phoneNumber={selectedConv.participants[0].phone}
+              contactName={selectedConv.participants[0].name || selectedConv.participants[0].phone}
+              size="sm"
+              variant="icon"
+              deals={[]}
+              onCallStarted={(callId) => onCallStarted?.({
+                contactName: selectedConv.participants[0].name || selectedConv.participants[0].phone,
+                contactPhone: selectedConv.participants[0].phone,
+                callSid: callId,
+                startedAt: new Date().toISOString(),
+              })}
+            />
+          )}
         </div>
       </div>
 
