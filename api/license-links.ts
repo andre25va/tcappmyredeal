@@ -33,6 +33,7 @@ async function requireAdmin(token: string): Promise<{ ok: boolean; error?: strin
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -70,4 +71,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+  } catch (err: any) {
+    console.error('[license-links] unhandled error:', err);
+    return res.status(500).json({ error: err?.message || 'Internal server error' });
+  }
 }

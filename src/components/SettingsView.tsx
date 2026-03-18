@@ -1007,7 +1007,7 @@ function LicenseLinksTab() {
   const [activeState, setActiveState] = React.useState<StateLicenseLink | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const token = localStorage.getItem('tc_token') || '';
+  const token = localStorage.getItem('tc_session') || '';
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -1395,7 +1395,7 @@ function AccessUsersTab() {
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
 
-  const token = localStorage.getItem('tc_token') || '';
+  const token = localStorage.getItem('tc_session') || '';
 
   const loadUsers = React.useCallback(async () => {
     setLoading(true);

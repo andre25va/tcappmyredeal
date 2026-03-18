@@ -26,13 +26,12 @@ import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
 import { AIReports } from './components/AIReports';
-import { WorkflowsPage } from './components/WorkflowsPage';
 import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAudit } from './hooks/useAudit';
+import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
-import { ActiveCallOverlay } from './components/ActiveCallOverlay';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -64,29 +63,6 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
-  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
-  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
-
-  // ── Active call state (V6-C) ───────────────────────────────────────────────
-  const [activeCall, setActiveCall] = useState<{
-    contactName: string;
-    contactPhone: string;
-    contactId?: string;
-    dealId?: string;
-    callSid?: string;
-    startedAt: string;
-  } | null>(null);
-  const [isCallMinimized, setIsCallMinimized] = useState(false);
-
-  const handleCallStarted = (callData: typeof activeCall) => {
-    setActiveCall(callData);
-    setIsCallMinimized(false);
-  };
-
-  const handleCallEnded = () => {
-    setActiveCall(null);
-    setIsCallMinimized(false);
-  };
 
   const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -206,17 +182,13 @@ function AppInner() {
     if (!profile) return;
     const fetchTaskCount = async () => {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const url = import.meta.env.VITE_SUPABASE_URL;
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        if (!url || !key) return;
-        const sb = createClient(url, key);
-        const { count } = await sb
+        const { count } = await supabase
           .from('comm_tasks')
           .select('id', { count: 'exact', head: true })
           .neq('status', 'done');
         setTasksPending(count || 0);
       } catch { /* silent */ }
+    };
     };
     fetchTaskCount();
     const t = setInterval(fetchTaskCount, 60000);
@@ -228,17 +200,11 @@ function AppInner() {
     if (!profile) return;
     const fetchVoiceCount = async () => {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const url = import.meta.env.VITE_SUPABASE_URL;
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        if (!url || !key) return;
-        const sb = createClient(url, key);
-
         // Count pending voice updates + open callbacks + pending change requests
         const [vuRes, cbRes, crRes] = await Promise.all([
-          sb.from('voice_deal_updates').select('id', { count: 'exact', head: true }).eq('review_status', 'pending'),
-          sb.from('callback_requests').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-          sb.from('change_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending_review'),
+          supabase.from('voice_deal_updates').select('id', { count: 'exact', head: true }).eq('review_status', 'pending'),
+          supabase.from('callback_requests').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+          supabase.from('change_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending_review'),
         ]);
         setVoicePending((vuRes.count || 0) + (cbRes.count || 0) + (crRes.count || 0));
       } catch { /* silent */ }
@@ -335,6 +301,8 @@ function AppInner() {
     setView(v);
   };
 
+  const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
+  const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
   const handleNotificationNavigate = (navView: string, id?: string) => {
     if (navView === 'inbox' && id) {
@@ -424,40 +392,16 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-
-        {/* Mobile top bar — menu button on RIGHT to avoid iOS Safari back-button overlap */}
-        <div
-          className="md:hidden flex items-center px-3 border-b border-base-300 bg-base-200 flex-none gap-2"
-          style={{
-            paddingTop: 'env(safe-area-inset-top, 0px)',
-            height: 'calc(3rem + env(safe-area-inset-top, 0px))',
-          }}
-        >
-          {/* Title — flex-1 so it fills available space */}
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
+          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard'
-              : view === 'transactions' ? 'Transactions'
-              : view === 'contacts' ? 'Contacts'
-              : view === 'mls' ? 'MLS'
-              : view === 'compliance' ? 'Compliance'
-              : view === 'inbox' ? 'Inbox'
-              : view === 'tasks' ? 'Comm Tasks'
-              : view === 'voice' ? 'Voice'
-              : view === 'reports' ? 'AI Reports'
-              : view === 'workflows' ? 'Workflows'
-              : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
           </span>
-
-          {/* + New Deal */}
+          <NotificationBell onNavigate={handleNotificationNavigate} />
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
             + New Deal
           </button>
-
-          {/* Notification bell */}
-          <NotificationBell onNavigate={handleNotificationNavigate} />
-
-          {/* Hamburger — rightmost, away from iOS Safari back-button zone */}
-          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
         </div>
 
         {/* View content */}
@@ -500,7 +444,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -522,7 +466,6 @@ function AppInner() {
                 onDirectoryChanged={() => {
                   loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
-                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -552,7 +495,6 @@ function AppInner() {
                 initialConversationId={inboxInitConvId}
                 initialChannel={inboxInitChannel}
                 onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
-                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -564,14 +506,13 @@ function AppInner() {
                   setView('inbox');
                 }}
                 onSelectDeal={handleSelectDeal}
-                onCallStarted={handleCallStarted}
               />
             </div>
           )}
 
           {view === 'voice' && (
             <div className="flex-1 overflow-hidden">
-              <CommunicationsConsole onSelectDeal={handleSelectDeal} onCallStarted={handleCallStarted} />
+              <CommunicationsConsole onSelectDeal={handleSelectDeal} />
             </div>
           )}
 
@@ -579,10 +520,6 @@ function AppInner() {
             <div className="flex-1 overflow-auto">
               <AIReports deals={deals} />
             </div>
-          )}
-
-          {view === 'workflows' && (
-            <WorkflowsPage />
           )}
 
           {view === 'settings' && (
@@ -617,25 +554,10 @@ function AppInner() {
         />
       )}
 
-      {/* Active Call Overlay (V6-C) — persists across navigation */}
-      {activeCall && (
-        <ActiveCallOverlay
-          isActive={!!activeCall}
-          callData={activeCall}
-          deal={activeCall.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
-          onEndCall={handleCallEnded}
-          onMinimize={() => setIsCallMinimized(!isCallMinimized)}
-          isMinimized={isCallMinimized}
-          onAddNote={() => {}}
-          onCreateTask={() => {}}
-        />
-      )}
-
       {/* AI Chat — floating widget available on all views */}
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
         onSetView={(v) => setView(v as any)}
-        onCallStarted={handleCallStarted}
       />
     </div>
   );
