@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
   Home, DollarSign, Scale, ClipboardCheck,
-  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles,
+  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles, ExternalLink,
 } from 'lucide-react';
 import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership } from '../types';
 import {
@@ -17,6 +17,7 @@ import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 import { ClientOnboardingWizard } from './ClientOnboardingWizard';
 import { CallButton } from './CallButton';
+import { supabase } from '../lib/supabase';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -250,6 +251,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [onboardSending, setOnboardSending] = useState(false);
   const [onboardToast, setOnboardToast] = useState('');
 
+  // License lookup URL cache (stateCode → url)
+  const licenseUrlCacheRef = useRef<Record<string, string>>({});
+  const [licenseUrls, setLicenseUrls] = useState<Record<string, string>>({});
+
   function openSendOnboarding(c: ContactRecord) {
     const msg = `Hi ${c.firstName}! I'm Andre, your Transaction Coordinator at MyReDeal. I'll be managing your deals from contract to close — I'll send updates here. Reply anytime with questions! 🏠`;
     setOnboardMsg(msg);
@@ -409,6 +414,26 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       licenses: prev.licenses.filter((_, i) => i !== idx),
     }));
   };
+
+  const fetchLicenseUrl = (stateCode: string) => {
+    if (!stateCode || stateCode in licenseUrlCacheRef.current) return;
+    licenseUrlCacheRef.current[stateCode] = '';
+    supabase
+      .from('state_license_links')
+      .select('lookup_url')
+      .eq('state_code', stateCode)
+      .single()
+      .then(({ data }) => {
+        const url = data?.lookup_url || '';
+        licenseUrlCacheRef.current[stateCode] = url;
+        setLicenseUrls(prev => ({ ...prev, [stateCode]: url }));
+      });
+  };
+
+  // Prefetch URLs for existing licenses when editing
+  useEffect(() => {
+    form.licenses.forEach(l => { if (l.stateCode) fetchLicenseUrl(l.stateCode); });
+  }, [modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMls = () => {
     setForm(prev => ({
@@ -822,7 +847,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                         <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="label py-0"><span className="label-text text-[10px]">State</span></label>
-                            <select className="select select-xs select-bordered w-full" value={lic.stateCode} onChange={e => updateLicense(idx, { stateCode: e.target.value })}>
+                            <select className="select select-xs select-bordered w-full" value={lic.stateCode} onChange={e => { updateLicense(idx, { stateCode: e.target.value }); fetchLicenseUrl(e.target.value); }}>
                               <option value="">—</option>
                               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
@@ -855,6 +880,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                             <input className="input input-xs input-bordered w-full" type="date" value={lic.expirationDate} onChange={e => updateLicense(idx, { expirationDate: e.target.value })} />
                           </div>
                         </div>
+                        {lic.stateCode && licenseUrls[lic.stateCode] && (
+                          <div className="mt-2">
+                            <a
+                              href={licenseUrls[lic.stateCode]}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-xs btn-outline gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-400"
+                            >
+                              <ExternalLink size={10} /> Look Up License · {lic.stateCode}
+                            </a>
+                          </div>
+                        )}
                       </div>
                     ))}
                     {form.licenses.length === 0 && (
