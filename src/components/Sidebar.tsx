@@ -1,96 +1,153 @@
 import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, Users, FileText, Phone, Bell,
-  Settings, ChevronRight, Building2, ClipboardList,
-  MessageSquare, Sparkles, ListTodo, X,
+  Home, FileText, Users, MessageSquare, Settings,
+  Phone, Bell, ChevronDown, ChevronUp, BarChart2,
+  BookOpen, Building2, Shield, Zap,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+const APP_VERSION = 'v2026.03.18.5';
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  badge?: number;
+  children?: NavItem[];
+}
 
 interface Props {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  onClose?: () => void;
-  isMobile?: boolean;
+  unreadCount?: number;
+  taskCount?: number;
+  onCallStarted?: () => void;
 }
 
-const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'transactions', label: 'Transactions', icon: FileText },
-  { id: 'contacts', label: 'Contacts', icon: Users },
-  { id: 'mls', label: 'MLS', icon: Building2 },
-  { id: 'inbox', label: 'Inbox', icon: MessageSquare },
-  { id: 'voice', label: 'Voice', icon: Phone },
-  { id: 'tasks', label: 'Comm Tasks', icon: ListTodo },
-  { id: 'ai-reports', label: 'AI Reports', icon: Sparkles },
-  { id: 'compliance', label: 'Compliance', icon: ClipboardList },
-  { id: 'settings', label: 'Settings', icon: Settings },
-];
+export function Sidebar({ activeTab, onTabChange, unreadCount = 0, taskCount = 0, onCallStarted }: Props) {
+  const [expanded, setExpanded] = useState<string[]>(['deals']);
 
-export function Sidebar({ activeTab, onTabChange, onClose, isMobile }: Props) {
-  const [profile, setProfile] = useState<{ name: string; role: string } | null>(null);
+  const toggle = (id: string) => {
+    setExpanded(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        supabase
-          .from('profiles')
-          .select('name, role')
-          .eq('id', data.user.id)
-          .single()
-          .then(({ data: p }) => {
-            if (p) setProfile(p);
-          });
-      }
-    });
-  }, []);
+  const navItems: NavItem[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: <Home size={18} /> },
+    {
+      id: 'deals',
+      label: 'Deals',
+      icon: <FileText size={18} />,
+      children: [
+        { id: 'deals', label: 'All Deals', icon: <FileText size={16} /> },
+        { id: 'pipeline', label: 'Pipeline', icon: <BarChart2 size={16} /> },
+      ],
+    },
+    {
+      id: 'contacts-group',
+      label: 'Contacts',
+      icon: <Users size={18} />,
+      children: [
+        { id: 'contacts', label: 'Directory', icon: <BookOpen size={16} /> },
+        { id: 'organizations', label: 'Organizations', icon: <Building2 size={16} /> },
+      ],
+    },
+    {
+      id: 'comms-group',
+      label: 'Communications',
+      icon: <MessageSquare size={18} />,
+      badge: unreadCount,
+      children: [
+        { id: 'inbox', label: 'Inbox', icon: <MessageSquare size={16} />, badge: unreadCount },
+        { id: 'calls', label: 'Call Log', icon: <Phone size={16} /> },
+      ],
+    },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={18} />, badge: taskCount },
+    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
+  ];
+
+  function renderItem(item: NavItem, depth = 0) {
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = expanded.includes(item.id);
+    const isActive = activeTab === item.id;
+    const childActive = hasChildren && item.children!.some(c => c.id === activeTab);
+
+    if (hasChildren) {
+      return (
+        <div key={item.id}>
+          <button
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              childActive
+                ? 'bg-primary/10 text-primary'
+                : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
+            }`}
+            onClick={() => toggle(item.id)}
+          >
+            <div className="flex items-center gap-2">
+              {item.icon}
+              <span>{item.label}</span>
+              {item.badge ? (
+                <span className="badge badge-primary badge-xs">{item.badge}</span>
+              ) : null}
+            </div>
+            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {isExpanded && (
+            <div className="ml-4 mt-1 space-y-1">
+              {item.children!.map(child => renderItem(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={item.id}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          isActive
+            ? 'bg-primary text-primary-content'
+            : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
+        }`}
+        onClick={() => onTabChange(item.id)}
+      >
+        <div className="flex items-center gap-2">
+          {item.icon}
+          <span>{item.label}</span>
+        </div>
+        {item.badge ? (
+          <span className={`badge badge-xs ${
+            isActive ? 'badge-primary-content' : 'badge-primary'
+          }`}>{item.badge}</span>
+        ) : null}
+      </button>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-base-200 border-r border-base-300">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-base-300">
-        <div>
-          <div className="font-bold text-base text-base-content">TC Command</div>
-          <div className="text-xs text-base-content/50">Transaction Coordinator</div>
+    <div className="flex flex-col h-full bg-base-100 border-r border-base-300 w-56">
+      {/* Logo */}
+      <div className="px-4 py-4 border-b border-base-300">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <Zap size={16} className="text-primary-content" />
+          </div>
+          <div>
+            <div className="font-bold text-sm text-base-content">TC Command</div>
+            <div className="text-xs text-base-content/50">MyReDeal</div>
+          </div>
         </div>
-        {isMobile && onClose && (
-          <button className="btn btn-ghost btn-sm btn-circle" onClick={onClose}>
-            <X size={18} />
-          </button>
-        )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-2">
-        {NAV_ITEMS.map(item => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => { onTabChange(item.id); onClose?.(); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-primary text-primary-content'
-                  : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'
-              }`}
-            >
-              <Icon size={18} />
-              <span className="flex-1 text-left">{item.label}</span>
-              {isActive && <ChevronRight size={14} />}
-            </button>
-          );
-        })}
+      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+        {navItems.map(item => renderItem(item))}
       </nav>
 
-      {/* Footer */}
-      <div className="px-4 py-3 border-t border-base-300">
-        {profile && (
-          <div className="mb-2">
-            <div className="text-xs font-semibold text-base-content truncate">{profile.name}</div>
-            <div className="text-[10px] text-base-content/40 capitalize">{profile.role}</div>
-          </div>
-        )}
-        <div className="text-[9px] font-mono text-base-content/20 select-none">v2026.03.18.5</div>
+      {/* Version footer */}
+      <div className="px-4 py-2 border-t border-base-300">
+        <span className="font-mono text-[10px] text-base-content/30">{APP_VERSION}</span>
       </div>
     </div>
   );

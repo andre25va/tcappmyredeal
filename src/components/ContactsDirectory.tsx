@@ -39,6 +39,15 @@ const TIMEZONES = [
   { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
 ];
 
+const MLS_RELATIONSHIPS = [
+  { value: 'member', label: 'Member' },
+  { value: 'associate_member', label: 'Associate Member' },
+  { value: 'affiliate', label: 'Affiliate' },
+  { value: 'subscriber', label: 'Subscriber' },
+  { value: 'participant', label: 'Participant' },
+  { value: 'mls_only', label: 'MLS Only' },
+];
+
 type CategoryKey = 'agent' | 'lender' | 'title' | 'attorney' | 'inspector' | 'buyer_seller' | 'tc' | 'other';
 
 interface CategoryDef {
@@ -156,6 +165,7 @@ interface EditMls {
   boardName: string;
   stateCode: string;
   status: string;
+  relationship: string;
 }
 
 function blankForm(role: ContactRole = 'agent'): EditForm {
@@ -209,6 +219,7 @@ function contactToForm(c: ContactRecord): EditForm {
       boardName: m.boardName ?? '',
       stateCode: m.stateCode ?? '',
       status: m.status,
+      relationship: (m as any).relationship ?? 'member',
     })),
   };
 }
@@ -475,6 +486,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         boardName: '',
         stateCode: '',
         status: 'active',
+        relationship: 'member',
       }],
     }));
   };
@@ -516,13 +528,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       return;
     }
     setSaving(true);
-    // Capture wizard trigger conditions before clearing form
     const isNewClient = form.contactType === 'agent' && form.isClient && !form.originalIsClient;
     const savedFormId = form.id;
     try {
       const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
 
-      // 1. Save contact record
       await saveContactRecord({
         id: form.id,
         firstName: form.firstName.trim(),
@@ -535,7 +545,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         notes: form.notes.trim() || undefined,
       });
 
-      // 2. Handle licenses (only for agents)
       if (form.contactType === 'agent') {
         for (const id of deletedLicenseIds) {
           await deleteContactLicenseRecord(id);
@@ -565,11 +574,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             boardName: mls.boardName || undefined,
             stateCode: mls.stateCode || undefined,
             status: mls.status || 'active',
+            relationship: mls.relationship || 'member',
           });
         }
       }
 
-      // 3. Handle client account toggle (agents only)
       let effectiveClientAccountId = form.clientAccountId;
       if (form.contactType === 'agent') {
         if (form.isClient && !form.originalIsClient) {
@@ -580,7 +589,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         }
       }
 
-      // 4. Sync phone → contact_phone_channels for client contacts
       const rawPhone = form.phone.trim();
       if (rawPhone && effectiveClientAccountId) {
         const digits = rawPhone.replace(/\D/g, '');
@@ -667,7 +675,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         </div>
       </div>
 
-      {/* Category Cards (when no category selected) */}
+      {/* Category Cards */}
       {!activeCategory && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
           {CATEGORIES.map(cat => (
@@ -684,7 +692,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         </div>
       )}
 
-      {/* Table View (when category selected or search active) */}
+      {/* Table View */}
       {(activeCategory || search.trim()) && (
         <div className="overflow-x-auto">
           <table className="table table-sm w-full">
@@ -776,7 +784,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         </div>
       )}
 
-      {/* Full list when no category and no search */}
       {!activeCategory && !search.trim() && contacts.length > 0 && (
         <div className="mt-2">
           <p className="text-xs text-base-content/40 mb-2">Click a category above to view contacts, or use search.</p>
@@ -971,7 +978,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   )}
                   <div className="space-y-2">
                     {form.mlsMemberships.map((mls, idx) => {
-                      // Find the matching entry id for the current mlsName (for controlled select)
                       const matchedEntry = mlsDirectory.find(e => e.name === mls.mlsName);
                       const selectedEntryId = matchedEntry?.id ?? '';
                       return (
@@ -983,7 +989,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                             <Trash2 size={12} />
                           </button>
 
-                          {/* Row 1: MLS Name (dropdown) + Member # */}
+                          {/* Row 1: MLS Name + Relationship */}
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="label py-0"><span className="label-text text-[10px]">MLS Name *</span></label>
@@ -1001,6 +1007,22 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                               </select>
                             </div>
                             <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">Relationship *</span></label>
+                              <select
+                                className="select select-xs select-bordered w-full"
+                                value={mls.relationship}
+                                onChange={e => updateMls(idx, { relationship: e.target.value })}
+                              >
+                                {MLS_RELATIONSHIPS.map(r => (
+                                  <option key={r.value} value={r.value}>{r.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Row 2: Member # + Status */}
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div>
                               <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
                               <input
                                 className="input input-xs input-bordered w-full"
@@ -1008,21 +1030,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                                 onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })}
                                 placeholder="Your member ID"
                               />
-                            </div>
-                          </div>
-
-                          {/* Row 2: State (auto-filled, editable) + Status */}
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            <div>
-                              <label className="label py-0"><span className="label-text text-[10px]">State (auto-filled)</span></label>
-                              <select
-                                className="select select-xs select-bordered w-full"
-                                value={mls.stateCode}
-                                onChange={e => updateMls(idx, { stateCode: e.target.value })}
-                              >
-                                <option value="">—</option>
-                                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
                             </div>
                             <div>
                               <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
@@ -1036,6 +1043,14 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                               </select>
                             </div>
                           </div>
+
+                          {/* Row 3: State (auto-filled) */}
+                          {mls.stateCode && (
+                            <div className="mt-2">
+                              <span className="text-[10px] text-base-content/50">State: </span>
+                              <span className="badge badge-xs badge-outline">{mls.stateCode}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1090,7 +1105,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* ── Quick Send Onboarding Modal ───────────────────────────── */}
+      {/* Quick Send Onboarding Modal */}
       {sendOnboardingTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md">
