@@ -150,6 +150,13 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
   ];
 
+  const handleEditDeal = () => {
+    // Always switch to overview first so WorkspaceOverview is mounted
+    // React batches both state updates → WorkspaceOverview mounts with new editTrigger → modal opens
+    if (tab !== 'overview') setTab('overview');
+    setEditTrigger(n => n + 1);
+  };
+
   return (
     <div className="flex flex-col h-full bg-base-100">
 
@@ -245,7 +252,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <span className="hidden sm:inline">Sheet</span>
             </button>
             <button
-              onClick={() => setEditTrigger(n => n + 1)}
+              onClick={handleEditDeal}
               className="btn btn-sm btn-primary btn-outline gap-1.5"
             >
               <Pencil size={13} /> Edit Deal
