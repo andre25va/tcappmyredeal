@@ -111,6 +111,13 @@ function getInitials(name: string): string {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// ── MLS Entry type (from mls_entries table) ──────────────────────────────────
+interface MlsEntry {
+  id: string;
+  name: string;
+  state: string;
+}
+
 // ── Blank forms ──────────────────────────────────────────────────────────────
 
 interface EditForm {
@@ -230,6 +237,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(null);
 
+  // MLS directory entries (from mls_entries table)
+  const [mlsDirectory, setMlsDirectory] = useState<MlsEntry[]>([]);
+
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -297,6 +307,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       setOnboardSending(false);
     }
   }
+
+  // ── Load MLS directory ───────────────────────────────────────────────────────
+  useEffect(() => {
+    supabase
+      .from('mls_entries')
+      .select('id, name, state')
+      .order('state', { ascending: true })
+      .order('name', { ascending: true })
+      .then(({ data }) => {
+        if (data) setMlsDirectory(data as MlsEntry[]);
+      });
+  }, []);
 
   // ── Load data ────────────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -464,6 +486,19 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     }));
   };
 
+  // When an MLS entry is selected from the directory, auto-fill state
+  const selectMlsEntry = (idx: number, entryId: string) => {
+    const entry = mlsDirectory.find(e => e.id === entryId);
+    if (!entry) {
+      updateMls(idx, { mlsName: '' });
+      return;
+    }
+    updateMls(idx, {
+      mlsName: entry.name,
+      stateCode: entry.state || '',
+    });
+  };
+
   const removeMls = (idx: number) => {
     const mls = form.mlsMemberships[idx];
     if (!mls.isNew) setDeletedMlsIds(prev => [...prev, mls.id]);
@@ -538,10 +573,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       let effectiveClientAccountId = form.clientAccountId;
       if (form.contactType === 'agent') {
         if (form.isClient && !form.originalIsClient) {
-          // Promote to client — capture new account id for phone sync below
           effectiveClientAccountId = await createClientAccountForContact(form.id, fullName);
         } else if (!form.isClient && form.originalIsClient && form.clientAccountId) {
-          // Demote from client
           effectiveClientAccountId = undefined;
           await removeClientAccountForContact(form.id, form.clientAccountId);
         }
@@ -557,7 +590,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
       await refresh();
 
-      // 4. If this is a NEW client, trigger onboarding wizard
       if (isNewClient) {
         const allContacts = await loadContactsFull();
         const savedContact = allContacts.find(c => c.id === savedFormId);
@@ -932,51 +964,81 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       <Plus size={12} /> Add MLS
                     </button>
                   </div>
+                  {mlsDirectory.length === 0 && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-2">
+                      No MLS entries found. Add MLS organizations in Settings → MLS Directory first.
+                    </p>
+                  )}
                   <div className="space-y-2">
-                    {form.mlsMemberships.map((mls, idx) => (
-                      <div key={mls.id} className="border border-base-300 rounded-lg p-3 relative">
-                        <button
-                          className="btn btn-ghost btn-xs btn-circle absolute top-1 right-1 text-error"
-                          onClick={() => removeMls(idx)}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">MLS Name</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsName} onChange={e => updateMls(idx, { mlsName: e.target.value })} />
+                    {form.mlsMemberships.map((mls, idx) => {
+                      // Find the matching entry id for the current mlsName (for controlled select)
+                      const matchedEntry = mlsDirectory.find(e => e.name === mls.mlsName);
+                      const selectedEntryId = matchedEntry?.id ?? '';
+                      return (
+                        <div key={mls.id} className="border border-base-300 rounded-lg p-3 relative">
+                          <button
+                            className="btn btn-ghost btn-xs btn-circle absolute top-1 right-1 text-error"
+                            onClick={() => removeMls(idx)}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+
+                          {/* Row 1: MLS Name (dropdown) + Member # */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">MLS Name *</span></label>
+                              <select
+                                className="select select-xs select-bordered w-full"
+                                value={selectedEntryId}
+                                onChange={e => selectMlsEntry(idx, e.target.value)}
+                              >
+                                <option value="">— Select MLS —</option>
+                                {mlsDirectory.map(entry => (
+                                  <option key={entry.id} value={entry.id}>
+                                    {entry.state ? `[${entry.state}] ` : ''}{entry.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
+                              <input
+                                className="input input-xs input-bordered w-full"
+                                value={mls.mlsMemberNumber}
+                                onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })}
+                                placeholder="Your member ID"
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">MLS Code</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsCode} onChange={e => updateMls(idx, { mlsCode: e.target.value })} />
-                          </div>
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.mlsMemberNumber} onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })} />
+
+                          {/* Row 2: State (auto-filled, editable) + Status */}
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">State (auto-filled)</span></label>
+                              <select
+                                className="select select-xs select-bordered w-full"
+                                value={mls.stateCode}
+                                onChange={e => updateMls(idx, { stateCode: e.target.value })}
+                              >
+                                <option value="">—</option>
+                                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
+                              <select
+                                className="select select-xs select-bordered w-full"
+                                value={mls.status}
+                                onChange={e => updateMls(idx, { status: e.target.value })}
+                              >
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 mt-2">
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">Board Name</span></label>
-                            <input className="input input-xs input-bordered w-full" value={mls.boardName} onChange={e => updateMls(idx, { boardName: e.target.value })} />
-                          </div>
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">State</span></label>
-                            <select className="select select-xs select-bordered w-full" value={mls.stateCode} onChange={e => updateMls(idx, { stateCode: e.target.value })}>
-                              <option value="">—</option>
-                              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
-                            <select className="select select-xs select-bordered w-full" value={mls.status} onChange={e => updateMls(idx, { status: e.target.value })}>
-                              <option value="active">Active</option>
-                              <option value="inactive">Inactive</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {form.mlsMemberships.length === 0 && (
                       <p className="text-xs text-base-content/40 text-center py-3">No MLS memberships added yet</p>
                     )}
@@ -1028,13 +1090,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* Client Onboarding Wizard */}
-
       {/* ── Quick Send Onboarding Modal ───────────────────────────── */}
       {sendOnboardingTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md">
-            {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-base-300">
               <div className="flex items-center gap-2">
                 <SendHorizontal size={18} className="text-primary" />
@@ -1049,7 +1108,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Channel selector */}
               <div>
                 <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2 block">Send via</label>
                 <div className="flex gap-2">
@@ -1072,7 +1130,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                     ✉️ Email
                   </button>
                 </div>
-                {/* Show destination */}
                 <p className="text-xs text-base-content/40 mt-1 ml-1">
                   {onboardChannel === 'email'
                     ? `→ ${sendOnboardingTarget.email || 'No email on file'}`
@@ -1080,7 +1137,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 </p>
               </div>
 
-              {/* Message editor */}
               <div>
                 <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2 block">Message</label>
                 <textarea
@@ -1091,7 +1147,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 />
               </div>
 
-              {/* Toast */}
               {onboardToast && (
                 <div className={`text-sm font-medium px-3 py-2 rounded-lg ${onboardToast.startsWith('✓') ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
                   {onboardToast}
@@ -1099,7 +1154,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
               )}
             </div>
 
-            {/* Footer */}
             <div className="flex gap-2 p-4 border-t border-base-300">
               <button className="btn btn-ghost btn-sm flex-1" onClick={() => setSendOnboardingTarget(null)}>
                 Cancel
