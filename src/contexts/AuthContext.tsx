@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedToken = localStorage.getItem(SESSION_KEY);
     if (!storedToken) { setLoading(false); return; }
 
-    fetch('/api/auth/session', {
+    fetch('/api/auth?action=session', {
       headers: { Authorization: `Bearer ${storedToken}` },
     })
       .then(r => r.json())
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) return;
     const interval = setInterval(async () => {
       try {
-        const r = await fetch('/api/auth/session', {
+        const r = await fetch('/api/auth?action=session', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await r.json();
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const tok = localStorage.getItem(SESSION_KEY);
     if (tok) {
       try {
-        await fetch('/api/auth/logout', {
+        await fetch('/api/auth?action=logout', {
           method: 'POST',
           headers: { Authorization: `Bearer ${tok}` },
         });
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback(async (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => {
     const tok = localStorage.getItem(SESSION_KEY);
     if (!tok) return;
-    const resp = await fetch('/api/auth/update-profile', {
+    const resp = await fetch('/api/auth?action=update-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
       body: JSON.stringify(updates),
