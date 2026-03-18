@@ -39,15 +39,6 @@ const TIMEZONES = [
   { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
 ];
 
-const MLS_RELATIONSHIPS = [
-  { value: 'member', label: 'Member' },
-  { value: 'associate_member', label: 'Associate Member' },
-  { value: 'affiliate', label: 'Affiliate' },
-  { value: 'subscriber', label: 'Subscriber' },
-  { value: 'participant', label: 'Participant' },
-  { value: 'mls_only', label: 'MLS Only' },
-];
-
 type CategoryKey = 'agent' | 'lender' | 'title' | 'attorney' | 'inspector' | 'buyer_seller' | 'tc' | 'other';
 
 interface CategoryDef {
@@ -156,16 +147,13 @@ interface EditLicense {
   expirationDate: string;
 }
 
+// Simplified: only MLS selection + agent MLS ID
 interface EditMls {
   id: string;
   isNew: boolean;
   mlsName: string;
-  mlsCode: string;
-  mlsMemberNumber: string;
-  boardName: string;
-  stateCode: string;
-  status: string;
-  relationship: string;
+  mlsMemberNumber: string; // Agent's MLS ID
+  stateCode: string;       // auto-filled from mls_entries
 }
 
 function blankForm(role: ContactRole = 'agent'): EditForm {
@@ -214,12 +202,8 @@ function contactToForm(c: ContactRecord): EditForm {
       id: m.id,
       isNew: false,
       mlsName: m.mlsName,
-      mlsCode: m.mlsCode ?? '',
       mlsMemberNumber: m.mlsMemberNumber,
-      boardName: m.boardName ?? '',
       stateCode: m.stateCode ?? '',
-      status: m.status,
-      relationship: (m as any).relationship ?? 'member',
     })),
   };
 }
@@ -481,12 +465,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         id: crypto.randomUUID(),
         isNew: true,
         mlsName: '',
-        mlsCode: '',
         mlsMemberNumber: '',
-        boardName: '',
         stateCode: '',
-        status: 'active',
-        relationship: 'member',
       }],
     }));
   };
@@ -498,11 +478,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     }));
   };
 
-  // When an MLS entry is selected from the directory, auto-fill state
+  // When an MLS entry is selected, auto-fill name + state
   const selectMlsEntry = (idx: number, entryId: string) => {
     const entry = mlsDirectory.find(e => e.id === entryId);
     if (!entry) {
-      updateMls(idx, { mlsName: '' });
+      updateMls(idx, { mlsName: '', stateCode: '' });
       return;
     }
     updateMls(idx, {
@@ -569,12 +549,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             id: mls.isNew ? undefined : mls.id,
             contactId: form.id,
             mlsName: mls.mlsName,
-            mlsCode: mls.mlsCode || undefined,
             mlsMemberNumber: mls.mlsMemberNumber,
-            boardName: mls.boardName || undefined,
             stateCode: mls.stateCode || undefined,
-            status: mls.status || 'active',
-            relationship: mls.relationship || 'member',
+            status: 'active',
           });
         }
       }
@@ -989,10 +966,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                             <Trash2 size={12} />
                           </button>
 
-                          {/* Row 1: MLS Name + Relationship */}
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* MLS dropdown */}
                             <div>
-                              <label className="label py-0"><span className="label-text text-[10px]">MLS Name *</span></label>
+                              <label className="label py-0"><span className="label-text text-[10px]">MLS *</span></label>
                               <select
                                 className="select select-xs select-bordered w-full"
                                 value={selectedEntryId}
@@ -1006,48 +983,23 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                                 ))}
                               </select>
                             </div>
-                            <div>
-                              <label className="label py-0"><span className="label-text text-[10px]">Relationship *</span></label>
-                              <select
-                                className="select select-xs select-bordered w-full"
-                                value={mls.relationship}
-                                onChange={e => updateMls(idx, { relationship: e.target.value })}
-                              >
-                                {MLS_RELATIONSHIPS.map(r => (
-                                  <option key={r.value} value={r.value}>{r.label}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
 
-                          {/* Row 2: Member # + Status */}
-                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            {/* Agent MLS ID */}
                             <div>
-                              <label className="label py-0"><span className="label-text text-[10px]">Member #</span></label>
+                              <label className="label py-0"><span className="label-text text-[10px]">Agent MLS ID</span></label>
                               <input
                                 className="input input-xs input-bordered w-full"
+                                placeholder="e.g. 12345678"
                                 value={mls.mlsMemberNumber}
                                 onChange={e => updateMls(idx, { mlsMemberNumber: e.target.value })}
-                                placeholder="Your member ID"
                               />
-                            </div>
-                            <div>
-                              <label className="label py-0"><span className="label-text text-[10px]">Status</span></label>
-                              <select
-                                className="select select-xs select-bordered w-full"
-                                value={mls.status}
-                                onChange={e => updateMls(idx, { status: e.target.value })}
-                              >
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                              </select>
                             </div>
                           </div>
 
-                          {/* Row 3: State (auto-filled) */}
+                          {/* State badge (auto-filled, read-only) */}
                           {mls.stateCode && (
-                            <div className="mt-2">
-                              <span className="text-[10px] text-base-content/50">State: </span>
+                            <div className="mt-1.5">
+                              <span className="text-[10px] text-base-content/40">State: </span>
                               <span className="badge badge-xs badge-outline">{mls.stateCode}</span>
                             </div>
                           )}
