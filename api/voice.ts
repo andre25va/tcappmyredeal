@@ -102,7 +102,7 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
     if (dealIds.length > 0) {
       const { data: deals } = await supabase
         .from('deals')
-        .select('id, property_address, pipeline_stage, closing_date, city, state, contract_price, transaction_type, status')
+        .select('id, property_address, pipeline_stage, closing_date, city, state, purchase_price, transaction_type, status')
         .in('id', dealIds);
       activeDeals = deals || [];
     }
@@ -176,7 +176,7 @@ async function handleAdminQuery(req: VercelRequest, res: VercelResponse) {
   try {
     // Pull ALL deals — no status filter (admin wants full picture)
     const [dealsRes, contactsRes, tasksRes] = await Promise.all([
-      supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, contract_price, transaction_type, status').limit(50),
+      supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, purchase_price, transaction_type, status').limit(50),
       supabase.from('contacts').select('id, first_name, last_name, email, contact_type, company').limit(100),
       supabase.from('comm_tasks').select('id, title, status, priority, due_date, deal_id').eq('status', 'pending').limit(30),
     ]);
@@ -191,7 +191,7 @@ Do NOT offer to send anything — the system handles that at the end of the call
 
 CURRENT DATABASE SNAPSHOT:
 === DEALS (${deals.length} total) ===
-${deals.map((d: any) => `- ${d.property_address}${d.city ? `, ${d.city}` : ''}${d.state ? `, ${d.state}` : ''} | Stage: ${d.pipeline_stage || 'N/A'} | Type: ${d.transaction_type || 'N/A'} | Closing: ${d.closing_date || 'TBD'} | Price: $${d.contract_price?.toLocaleString() || 'N/A'} | Status: ${d.status || 'active'}`).join('\n')}
+${deals.map((d: any) => `- ${d.property_address}${d.city ? `, ${d.city}` : ''}${d.state ? `, ${d.state}` : ''} | Stage: ${d.pipeline_stage || 'N/A'} | Type: ${d.transaction_type || 'N/A'} | Closing: ${d.closing_date || 'TBD'} | Price: $${d.purchase_price?.toLocaleString() || 'N/A'} | Status: ${d.status || 'active'}`).join('\n')}
 
 === CONTACTS (${contacts.length} total) ===
 ${contacts.map((c: any) => `- ${c.first_name} ${c.last_name} | Type: ${c.contact_type}${c.company ? ` | ${c.company}` : ''}${c.email ? ` | ${c.email}` : ''}`).join('\n')}
@@ -363,7 +363,7 @@ async function getPhoneForContact(contactId: string): Promise<string> {
 async function getFullDeal(dealId: string): Promise<any | null> {
   const { data } = await supabase
     .from('deals')
-    .select('id, property_address, city, state, pipeline_stage, closing_date, contract_price, transaction_type, status, legal_description, mls_number')
+    .select('id, property_address, city, state, pipeline_stage, closing_date, purchase_price, transaction_type, status, legal_description, mls_number')
     .eq('id', dealId)
     .single();
   return data || null;
@@ -372,7 +372,7 @@ async function getFullDeal(dealId: string): Promise<any | null> {
 async function getDealParticipants(dealId: string): Promise<string> {
   const { data: participants } = await supabase
     .from('deal_participants')
-    .select('role, contact_id, is_client_side, contacts(first_name, last_name, email, contact_type, company)')
+    .select('deal_role, contact_id, is_client_side, contacts(first_name, last_name, email, contact_type, company)')
     .eq('deal_id', dealId);
 
   if (!participants || participants.length === 0) return 'No participants on file.';
@@ -380,7 +380,7 @@ async function getDealParticipants(dealId: string): Promise<string> {
   return (participants as any[]).map(p => {
     const c = p.contacts;
     if (!c) return null;
-    const role = p.role || c.contact_type || 'Contact';
+    const role = p.deal_role || c.contact_type || 'Contact';
     const client = p.is_client_side ? ' (our client)' : '';
     return `${c.first_name} ${c.last_name} — ${role}${c.company ? `, ${c.company}` : ''}${client}`;
   }).filter(Boolean).join('\n');
@@ -390,8 +390,8 @@ function buildDealSummaryEmail(deal: any, participantsText: string, recipientNam
   const closing = deal.closing_date
     ? new Date(deal.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
     : 'TBD';
-  const price = deal.contract_price
-    ? `$${Number(deal.contract_price).toLocaleString()}`
+  const price = deal.purchase_price
+    ? `$${Number(deal.purchase_price).toLocaleString()}`
     : 'Not set';
   const location = [deal.city, deal.state].filter(Boolean).join(', ');
   const callDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -575,7 +575,7 @@ ${deal.mls_number ? `MLS#: ${deal.mls_number}` : ''}
 Type: ${deal.transaction_type || 'N/A'}
 Stage: ${deal.pipeline_stage || 'N/A'}
 Closing Date: ${closing}
-Contract Price: ${deal.contract_price ? `$${Number(deal.contract_price).toLocaleString()}` : 'Not set'}
+Contract Price: ${deal.purchase_price ? `$${Number(deal.purchase_price).toLocaleString()}` : 'Not set'}
 
 TRANSACTION TEAM:
 ${participantsText}`;
