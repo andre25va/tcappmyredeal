@@ -16,6 +16,7 @@ import {
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 import { ClientOnboardingWizard } from './ClientOnboardingWizard';
+import { CallButton } from './CallButton';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -206,13 +207,23 @@ function contactToForm(c: ContactRecord): EditForm {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
+}
+
 interface Props {
   triggerAdd?: 'agent' | 'contact' | null;
   onTriggerHandled?: () => void;
   onDirectoryChanged?: () => void;
+  onCallStarted?: (callData: CallStartedData) => void;
 }
 
-export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged }: Props) {
+export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted }: Props) {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -660,6 +671,23 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   </td>
                   <td>
                     <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      {c.phone && (
+                        <CallButton
+                          phoneNumber={c.phone}
+                          contactName={c.fullName}
+                          contactId={c.id}
+                          deals={[]}
+                          size="sm"
+                          variant="icon"
+                          onCallStarted={(callId) => onCallStarted?.({
+                            contactName: c.fullName,
+                            contactPhone: c.phone,
+                            contactId: c.id,
+                            callSid: callId,
+                            startedAt: new Date().toISOString(),
+                          })}
+                        />
+                      )}
                       <button className="btn btn-ghost btn-xs" onClick={() => openEdit(c)} title="Edit">
                         <Pencil size={13} />
                       </button>

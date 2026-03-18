@@ -32,6 +32,7 @@ import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAudit } from './hooks/useAudit';
 import { NotificationBell } from './components/NotificationBell';
+import { ActiveCallOverlay } from './components/ActiveCallOverlay';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -65,6 +66,27 @@ function AppInner() {
   const [voicePending, setVoicePending]     = useState(0);
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
+
+  // ── Active call state (V6-C) ───────────────────────────────────────────────
+  const [activeCall, setActiveCall] = useState<{
+    contactName: string;
+    contactPhone: string;
+    contactId?: string;
+    dealId?: string;
+    callSid?: string;
+    startedAt: string;
+  } | null>(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+
+  const handleCallStarted = (callData: typeof activeCall) => {
+    setActiveCall(callData);
+    setIsCallMinimized(false);
+  };
+
+  const handleCallEnded = () => {
+    setActiveCall(null);
+    setIsCallMinimized(false);
+  };
 
   const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
   const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
@@ -454,7 +476,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -476,6 +498,7 @@ function AppInner() {
                 onDirectoryChanged={() => {
                   loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
+                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -516,6 +539,7 @@ function AppInner() {
                   setView('inbox');
                 }}
                 onSelectDeal={handleSelectDeal}
+                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -565,6 +589,20 @@ function AppInner() {
           complianceTemplates={complianceTemplates}
           agentClients={contactRecords.filter(c => c.contactType === 'agent')}
           ddMasterItems={ddMasterItems}
+        />
+      )}
+
+      {/* Active Call Overlay (V6-C) — persists across navigation */}
+      {activeCall && (
+        <ActiveCallOverlay
+          isActive={!!activeCall}
+          callData={activeCall}
+          deal={activeCall.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
+          onEndCall={handleCallEnded}
+          onMinimize={() => setIsCallMinimized(!isCallMinimized)}
+          isMinimized={isCallMinimized}
+          onAddNote={() => {}}
+          onCreateTask={() => {}}
         />
       )}
 

@@ -4,8 +4,18 @@ import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealPartic
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
+import { CallButton } from './CallButton';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; }
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
+}
+
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onCallStarted?: (callData: CallStartedData) => void; }
 
 // Which side a role defaults to
 const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
@@ -17,7 +27,7 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
 };
 
 // ── Full contact info popup ──────────────────────────────────────────────────
-const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: () => void; onToggleNotif: () => void; onRemove: () => void }> = ({ contact, cr, onClose, onToggleNotif, onRemove }) => (
+const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: () => void; onToggleNotif: () => void; onRemove: () => void; dealId: string; onCallStarted?: (callData: CallStartedData) => void }> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, onCallStarted }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
     <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
       {/* Header */}
@@ -43,6 +53,22 @@ const ContactPopup: React.FC<{ contact: Contact; cr?: ContactRecord; onClose: ()
           <div className="flex items-center gap-3">
             <Phone size={14} className="text-gray-400 flex-none" />
             <a href={`tel:${contact.phone}`} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
+            <CallButton
+              phoneNumber={contact.phone}
+              contactName={contact.name}
+              contactId={contact.id}
+              dealId={dealId}
+              size="sm"
+              variant="icon"
+              onCallStarted={(callId) => onCallStarted?.({
+                contactName: contact.name,
+                contactPhone: contact.phone!,
+                contactId: contact.id,
+                dealId,
+                callSid: callId,
+                startedAt: new Date().toISOString(),
+              })}
+            />
           </div>
         )}
         {(contact.company || cr?.company) && (
@@ -467,7 +493,7 @@ const SideSection: React.FC<SideSectionProps> = ({
 };
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [] }) => {
+export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);
@@ -621,6 +647,8 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           onClose={() => setPopupContactId(null)}
           onToggleNotif={() => toggleNotif(popupContact.id)}
           onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}
+          dealId={deal.id}
+          onCallStarted={onCallStarted}
         />
       )}
 

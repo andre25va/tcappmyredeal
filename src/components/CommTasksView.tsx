@@ -6,6 +6,7 @@ import {
   MessageCircle, Smartphone, AtSign,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { CallButton } from './CallButton';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,9 +49,19 @@ interface Deal {
   propertyAddress?: string;
 }
 
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
+}
+
 interface CommTasksViewProps {
   onOpenInbox?: (channel: Channel, contactPhone?: string, contactEmail?: string) => void;
   onSelectDeal?: (id: string) => void;
+  onCallStarted?: (callData: CallStartedData) => void;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -365,9 +376,10 @@ interface TaskCardProps {
   onDelete: (id: string) => void;
   onSend: (task: CommTask) => void;
   onSelectDeal?: (id: string) => void;
+  onCallStarted?: (callData: CallStartedData) => void;
 }
 
-function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal }: TaskCardProps) {
+function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal, onCallStarted }: TaskCardProps) {
   const overdue = task.status !== 'done' && isDueOverdue(task.due_date);
   const sourceBadge = SOURCE_BADGES[task.source];
 
@@ -443,6 +455,22 @@ function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal }: Task
                   ) : (
                     task.contact_email && <span className="text-gray-400">{task.contact_email}</span>
                   )}
+                  {task.contact_phone && (
+                    <CallButton
+                      phoneNumber={task.contact_phone}
+                      contactName={task.contact_name}
+                      dealId={task.deal_id}
+                      size="sm"
+                      variant="icon"
+                      onCallStarted={(callId) => onCallStarted?.({
+                        contactName: task.contact_name!,
+                        contactPhone: task.contact_phone!,
+                        dealId: task.deal_id,
+                        callSid: callId,
+                        startedAt: new Date().toISOString(),
+                      })}
+                    />
+                  )}
                 </div>
               )}
               {task.deal_address && (
@@ -514,7 +542,7 @@ function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal }: Task
 
 // ─── Main View ───────────────────────────────────────────────────────────────
 
-export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps) {
+export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: CommTasksViewProps) {
   const [tasks, setTasks] = useState<CommTask[]>([]);
   const [contacts, setContacts] = useState<ContactInfo[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -784,6 +812,7 @@ export function CommTasksView({ onOpenInbox, onSelectDeal }: CommTasksViewProps)
               onDelete={deleteTask}
               onSend={handleSend}
               onSelectDeal={onSelectDeal}
+              onCallStarted={onCallStarted}
             />
           ))
         )}

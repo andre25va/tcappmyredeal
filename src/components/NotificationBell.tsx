@@ -13,11 +13,21 @@ interface Notification {
   deal_id: string | null;
 }
 
-interface NotificationBellProps {
-  onNavigate?: (view: string, id?: string) => void;
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
 }
 
-export function NotificationBell({ onNavigate }: NotificationBellProps) {
+interface NotificationBellProps {
+  onNavigate?: (view: string, id?: string) => void;
+  onCallStarted?: (callData: CallStartedData) => void;
+}
+
+export function NotificationBell({ onNavigate, onCallStarted: _onCallStarted }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);

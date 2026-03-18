@@ -7,6 +7,7 @@ import { DraftFollowUp } from './DraftFollowUp';
 import { SmartSuggestions } from './SmartSuggestions';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
+import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder } from '../types';
 import { generateTasksForMilestone, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
 import {
@@ -14,7 +15,16 @@ import {
   closingCountdown, generateId
 } from '../utils/helpers';
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; allDeals?: any[]; }
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
+}
+
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -410,7 +420,7 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [] }) => {
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
@@ -616,8 +626,24 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </div>
               {/* Phone */}
               {p.agent?.phone && (
-                <span className="text-xs text-gray-400 whitespace-nowrap flex-none hidden sm:block">
+                <span className="text-xs text-gray-400 whitespace-nowrap flex-none hidden sm:flex sm:items-center sm:gap-1.5">
                   {formatPhone(p.agent.phone)}
+                  <span onClick={e => e.stopPropagation()}>
+                    <CallButton
+                      phoneNumber={p.agent.phone}
+                      contactName={p.agent.name || 'Unknown'}
+                      dealId={deal.id}
+                      size="sm"
+                      variant="icon"
+                      onCallStarted={(callId) => onCallStarted?.({
+                        contactName: p.agent?.name || 'Unknown',
+                        contactPhone: p.agent?.phone || '',
+                        dealId: deal.id,
+                        callSid: callId,
+                        startedAt: new Date().toISOString(),
+                      })}
+                    />
+                  </span>
                 </span>
               )}
               <ChevronRight size={14} className="text-gray-300 flex-none group-hover:text-primary transition-colors" />

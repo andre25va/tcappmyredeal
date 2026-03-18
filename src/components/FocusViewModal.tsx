@@ -1,10 +1,21 @@
 import React, { useState } from 'react';
 import { X, Copy, Check, MapPin, Hash, Users, ShoppingCart, Tag, Phone, Mail, Building2 } from 'lucide-react';
 import { Deal, Contact } from '../types';
+import { CallButton } from './CallButton';
+
+interface CallStartedData {
+  contactName: string;
+  contactPhone: string;
+  contactId?: string;
+  dealId?: string;
+  callSid?: string;
+  startedAt: string;
+}
 
 interface Props {
   deal: Deal;
   onClose: () => void;
+  onCallStarted?: (callData: CallStartedData) => void;
 }
 
 function useCopy() {
@@ -55,8 +66,8 @@ const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   );
 };
 
-const ContactCard: React.FC<{ contact: Contact; copied: string | null; onCopy: (t: string, k: string) => void }> = ({
-  contact, copied, onCopy,
+const ContactCard: React.FC<{ contact: Contact; copied: string | null; onCopy: (t: string, k: string) => void; dealId: string; onCallStarted?: (callData: CallStartedData) => void }> = ({
+  contact, copied, onCopy, dealId, onCallStarted,
 }) => (
   <div className="flex flex-col gap-0.5 py-2 border-b border-base-200 last:border-0">
     <div className="flex items-center gap-2">
@@ -73,6 +84,22 @@ const ContactCard: React.FC<{ contact: Contact; copied: string | null; onCopy: (
         <Phone size={10} />
         <span>{contact.phone}</span>
         <CopyBtn text={contact.phone} copyKey={`phone-${contact.id}`} copied={copied} onCopy={onCopy} />
+        <CallButton
+          phoneNumber={contact.phone}
+          contactName={contact.name}
+          contactId={contact.id}
+          dealId={dealId}
+          size="sm"
+          variant="icon"
+          onCallStarted={(callId) => onCallStarted?.({
+            contactName: contact.name,
+            contactPhone: contact.phone!,
+            contactId: contact.id,
+            dealId,
+            callSid: callId,
+            startedAt: new Date().toISOString(),
+          })}
+        />
       </div>
     )}
     {contact.email && (
@@ -85,7 +112,7 @@ const ContactCard: React.FC<{ contact: Contact; copied: string | null; onCopy: (
   </div>
 );
 
-export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
+export const FocusViewModal: React.FC<Props> = ({ deal, onClose, onCallStarted }) => {
   const { copied, copy } = useCopy();
   const side = deal.transactionType ?? 'buyer';
 
@@ -181,7 +208,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
                   {sideLabel}
                 </div>
                 {ourContacts.map(c => (
-                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} />
+                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} dealId={deal.id} onCallStarted={onCallStarted} />
                 ))}
               </div>
             )}
@@ -195,7 +222,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
                   {otherLabel}
                 </div>
                 {otherContacts.map(c => (
-                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} />
+                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} dealId={deal.id} onCallStarted={onCallStarted} />
                 ))}
               </div>
             )}
@@ -206,7 +233,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose }) => {
                   Both Sides
                 </div>
                 {bothContacts.map(c => (
-                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} />
+                  <ContactCard key={c.id} contact={c} copied={copied} onCopy={copy} dealId={deal.id} onCallStarted={onCallStarted} />
                 ))}
               </div>
             )}
