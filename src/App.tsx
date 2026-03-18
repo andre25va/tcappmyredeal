@@ -48,7 +48,6 @@ function AppInner() {
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen]         = useState(false);
 
   const [deals, setDeals]                   = useState<Deal[]>([]);
@@ -348,31 +347,26 @@ function AppInner() {
     );
   }
 
+  // ── Sidebar props — TypeScript will error at build time if any required prop is missing ──
+  const sidebarProps = {
+    view,
+    onSetView: handleSetView,
+    mobileOpen,
+    onCloseMobile: () => setMobileOpen(false),
+    inboxUnread,
+    tasksPending,
+    voicePending,
+    onLogout: logout,
+    userName: profile.name,
+    userRole: profile.role,
+    userInitials: profile.initials,
+  };
+
   return (
     <div data-theme="light" className="h-screen flex bg-base-100 overflow-hidden">
       {isFirstLogin && <ProfileSetupModal />}
 
-      <Sidebar
-        view={view}
-        onSetView={handleSetView}
-        onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
-        onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
-        onAddDeal={() => setShowAdd(true)}
-        dealCount={deals.length}
-        pendingAlerts={totalPending}
-        onAmberClick={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(c => !c)}
-        mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
-        inboxUnread={inboxUnread}
-        tasksPending={tasksPending}
-        voicePending={voicePending}
-        onLogout={logout}
-        userName={profile.name}
-        userRole={profile.role}
-        userInitials={profile.initials}
-      />
+      <Sidebar {...sidebarProps} />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <div className="hidden md:flex items-center flex-none">

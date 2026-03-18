@@ -21,25 +21,20 @@ export type View =
   | 'voice'
   | 'reports';
 
+// ─── Only props that Sidebar ACTUALLY uses ────────────────────────────────────
+// Making onLogout + userName required so TypeScript catches missing props at
+// build time instead of silently rendering nothing.
 interface SidebarProps {
   view: View;
   onSetView: (v: View) => void;
-  onAddAgentClient?: () => void;
-  onAddContact?: () => void;
-  onAddDeal?: () => void;
-  dealCount?: number;
-  pendingAlerts?: number;
-  onAmberClick?: () => void;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
   inboxUnread?: number;
   tasksPending?: number;
   voicePending?: number;
-  // User info + logout
-  onLogout?: () => void;
-  userName?: string;
+  // Required — build will fail if App.tsx forgets these
+  onLogout: () => void;
+  userName: string;
   userRole?: string;
   userInitials?: string;
 }
@@ -57,7 +52,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
   </button>
 );
 
-const APP_VERSION = 'v2026.03.18.10';
+const APP_VERSION = 'v2026.03.18.11';
 
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard',     label: 'Dashboard',     icon: <LayoutDashboard size={18} /> },
@@ -158,26 +153,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User info + Logout */}
         <div className="px-3 py-3 border-t border-base-300">
-          {(userName || userInitials) && (
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
-                {userInitials ?? '?'}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-base-content truncate">{userName}</p>
-                {userRole && <p className="text-xs text-base-content/40 capitalize">{userRole}</p>}
-              </div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
+              {userInitials ?? userName.slice(0, 2).toUpperCase()}
             </div>
-          )}
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
-            >
-              <LogOut size={15} />
-              <span>Log Out</span>
-            </button>
-          )}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-base-content truncate">{userName}</p>
+              {userRole && <p className="text-xs text-base-content/40 capitalize">{userRole}</p>}
+            </div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
+          >
+            <LogOut size={15} />
+            <span>Log Out</span>
+          </button>
         </div>
 
         {/* Version */}
