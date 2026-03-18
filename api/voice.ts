@@ -907,6 +907,98 @@ async function handleCallStatus(req: VercelRequest, res: VercelResponse) {
   return res.status(200).send('OK');
 }
 
+// ── Outbound Call Handlers (V6-B) ─────────────────────────────────────────────
+
+async function handleOutboundConnect(req: VercelRequest, res: VercelResponse) {
+  const attemptId = req.query.attemptId as string;
+  const clientPhone = req.query.clientPhone as string;
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  if (!clientPhone) {
+    return res.send(twiml(say(VOICE_CONFIG.outbound.noClientPhone), '<Hangup/>'));
+  }
+
+  // Update staff leg status
+  if (attemptId) {
+    await supabase.from('callback_attempts')
+      .update({ staff_leg_status: 'answered', connected_at: new Date().toISOString() })
+      .eq('id', attemptId);
+  }
+
+  // Say connecting message, then dial client
+  const connectMsg = say(VOICE_CONFIG.outbound.connecting);
+  const statusUrl = `${APP_URL}/api/voice?route=outbound-dial-status&attemptId=${encodeURIComponent(attemptId || '')}`;
+  const dial = `<Dial callerId="${TWILIO_PHONE}" action="${escapeXml(statusUrl)}" method="POST" timeout="30"><Number>${escapeXml(clientPhone)}</Number></Dial>`;
+
+  return res.send(twiml(connectMsg, dial));
+}
+
+async function handleOutboundDialStatus(req: VercelRequest, res: VercelResponse) {
+  const { DialCallSid, DialCallStatus, DialCallDuration } = req.body;
+  const attemptId = req.query.attemptId as string;
+
+  res.setHeader('Content-Type', 'text/xml');
+
+  if (attemptId) {
+    const outcome = DialCallStatus === 'completed' ? 'completed'
+      : DialCallStatus === 'busy' ? 'busy'
+      : DialCallStatus === 'no-answer' ? 'no_answer'
+      : DialCallStatus === 'failed' ? 'failed'
+      : 'unknown';
+
+    await supabase.from('callback_attempts').update({
+      client_call_sid: DialCallSid || null,
+      client_leg_status: DialCallStatus || 'unknown',
+      outcome,
+      duration_seconds: DialCallDuration ? parseInt(DialCallDuration) : null,
+      ended_at: new Date().toISOString(),
+    }).eq('id', attemptId);
+
+    // If this was from a callback_request, update that too
+    const { data: attempt } = await supabase.from('callback_attempts')
+      .select('callback_request_id')
+      .eq('id', attemptId)
+      .single();
+
+    if (attempt?.callback_request_id && outcome === 'completed') {
+      await supabase.from('callback_requests').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      }).eq('id', attempt.callback_request_id);
+    }
+  }
+
+  // After client hangs up, play post-call message to TC
+  if (DialCallStatus === 'completed') {
+    return res.send(twiml(say(VOICE_CONFIG.outbound.callEnded), '<Hangup/>'));
+  } else if (DialCallStatus === 'busy') {
+    return res.send(twiml(say(VOICE_CONFIG.outbound.clientBusy), '<Hangup/>'));
+  } else if (DialCallStatus === 'no-answer') {
+    return res.send(twiml(say(VOICE_CONFIG.outbound.clientNoAnswer), '<Hangup/>'));
+  } else {
+    return res.send(twiml(say(VOICE_CONFIG.outbound.clientFailed), '<Hangup/>'));
+  }
+}
+
+async function handleOutboundParentStatus(req: VercelRequest, res: VercelResponse) {
+  const { CallStatus } = req.body;
+  const attemptId = req.query.attemptId as string;
+
+  if (attemptId && CallStatus) {
+    // Only update if TC didn't answer (failed/no-answer/busy)
+    if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
+      await supabase.from('callback_attempts').update({
+        staff_leg_status: CallStatus,
+        outcome: `staff_${CallStatus}`,
+        ended_at: new Date().toISOString(),
+      }).eq('id', attemptId);
+    }
+  }
+
+  return res.status(200).send('OK');
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -935,6 +1027,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'client-deal-select': return handleClientDealSelect(req, res);
       case 'client-ai-wrapup': return handleClientAIWrapup(req, res);
       case 'client-deal-email-confirm': return handleClientDealEmailConfirm(req, res);
+      case 'outbound-connect': return handleOutboundConnect(req, res);
+      case 'outbound-dial-status': return handleOutboundDialStatus(req, res);
+      case 'outbound-parent-status': return handleOutboundParentStatus(req, res);
       default:
         // Unknown route — hang up gracefully
         res.setHeader('Content-Type', 'text/xml');

@@ -9,11 +9,11 @@ export const FEATURE_FLAGS = {
   clientVoiceAI: true,
 
   // Outbound callbacks (V6)
-  outboundCallbacks: false,  // Enable when V6-B is complete
+  outboundCallbacks: true,   // V6-B complete
   callbackQueue: false,       // Enable when V6-C is complete
   
   // Smart tasks (V6)
-  smartTaskCreation: false,   // Enable when V6-B OpenAI integration is done
+  smartTaskCreation: true,    // V6-B OpenAI integration complete
   preCAllBrief: false,        // Enable when V6-C is built
   postCallNotes: false,       // Enable when V6-C is built
   

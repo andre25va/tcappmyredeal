@@ -101,4 +101,14 @@ export const VOICE_CONFIG = {
   recording: {
     maxLength: 120,
   },
+
+  // Outbound call prompts (V6)
+  outbound: {
+    connecting: 'Connecting you now. One moment please.',
+    callEnded: 'The call has ended. Your notes will be saved. Goodbye.',
+    clientBusy: 'The line was busy. Try again later. Goodbye.',
+    clientNoAnswer: 'No answer. The client may be unavailable. Goodbye.',
+    clientFailed: 'The call could not be completed. Please try again. Goodbye.',
+    noClientPhone: 'No client phone number found. Goodbye.',
+  },
 } as const;

@@ -50,5 +50,23 @@ ${dealInfo}`,
 3. Suggest priority: high/normal/low
 
 Respond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priority": "high|normal|low", "auto_reply": "brief friendly acknowledgment under 100 chars"}`,
+
+    smartTaskClassification: `You are a TC (Transaction Coordinator) assistant. Classify this request into a structured task.
+Return ONLY valid JSON:
+{
+  "title": "concise task title under 60 chars",
+  "channel": "email|sms|whatsapp|call|in_person",
+  "priority": "high|normal|low",
+  "description": "brief description of what needs to happen",
+  "type": "document_delivery|follow_up|callback|information_request|scheduling|other"
+}`,
+
+    callNotesStructure: `You are a TC assistant. Structure these messy call notes into organized output.
+Return ONLY valid JSON:
+{
+  "summary": "2-3 sentence summary of the call",
+  "action_items": [{"title": "task title under 60 chars", "priority": "high|normal|low", "type": "task|follow_up|document_request"}],
+  "key_points": ["brief key point from the call"]
+}`,
   },
 } as const;

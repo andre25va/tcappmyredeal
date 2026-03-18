@@ -508,6 +508,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (bodyUpper === 'CALL ME') {
       await supabase.from('callback_requests').insert({
         caller_contact_id: matchedContact?.id || null,
+        deal_id: relatedDeal?.id || null,
         phone_e164: fromE164,
         requested_by_channel: 'sms',
         reason: 'Requested via SMS CALL ME command',
@@ -523,6 +524,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         source_ref: MessageSid,
       });
       await sendTwilioReply(fromPhone, '✅ Callback requested! A team member will call you back shortly. 📞', isWhatsApp);
+
+      // Create notification for TC
+      await supabase.from('notifications').insert({
+        type: 'sms',
+        title: `📞 Callback Requested: ${contactName}`,
+        body: `${contactName} (${fromPhone}) wants a callback. Deal: ${relatedDeal?.property_address || 'None'}`,
+        from_name: contactName,
+        from_identifier: fromPhone,
+        deal_id: relatedDeal?.id || null,
+        contact_id: matchedContact?.id || null,
+      });
+
       res.setHeader('Content-Type', 'text/xml');
       return res.send('<Response></Response>');
     }
