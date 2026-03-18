@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 
 // ── App version — update this string with each deployment ──────────────────
-export const APP_VERSION = 'v2026.03.18.3';
+export const APP_VERSION = 'v2026.03.18.4';
 
 export type View = 'dashboard' | 'transactions' | 'contacts' | 'mls' | 'compliance' | 'settings' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'workflows';
 
