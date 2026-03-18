@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { SMS_CONFIG } from '../../src/config/sms.config';
+import { AI_CONFIG } from '../../src/config/ai.config';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -13,16 +15,16 @@ async function classifyMessage(contactName: string, dealAddress: string | null, 
     method: 'POST',
     headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 200,
+      model: AI_CONFIG.models.classification,
+      max_tokens: AI_CONFIG.maxTokens.classification,
       messages: [
         {
           role: 'system',
-          content: `You are a TC (Transaction Coordinator) assistant. Analyze inbound messages from clients and determine:\n1. Does this message contain a REQUEST or ACTION needed? (yes/no)\n2. If yes, write a concise task title (under 60 chars) for the TC to act on.\n3. Suggest priority: high/normal/low\n\nRespond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priority": "high|normal|low", "auto_reply": "brief friendly acknowledgment under 100 chars"}`,
+          content: SMS_CONFIG.aiClassification.systemPrompt,
         },
         {
           role: 'user',
-          content: `Contact: ${contactName}${dealAddress ? ` (Deal: ${dealAddress})` : ''}\nMessage: "${messageBody}"`,
+          content: SMS_CONFIG.aiClassification.userPromptTemplate(contactName, dealAddress, messageBody),
         },
       ],
     }),
@@ -31,7 +33,7 @@ async function classifyMessage(contactName: string, dealAddress: string | null, 
   try {
     return JSON.parse(data.choices[0].message.content);
   } catch {
-    return { needs_task: false, auto_reply: 'Got it! I\'ll get back to you shortly.' };
+    return { needs_task: false, auto_reply: SMS_CONFIG.aiClassification.fallbackReply };
   }
 }
 
@@ -425,7 +427,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // HELP command
     if (bodyUpper === 'HELP') {
-      await sendTwilioReply(fromPhone, '📋 TC Command:\n• OPEN FILES - list your active deals\n• STATUS <address> - get deal update\n• CALL ME - request a callback\n• Or just text us anything! 🏠', isWhatsApp);
+      await sendTwilioReply(fromPhone, SMS_CONFIG.responses.help, isWhatsApp);
       res.setHeader('Content-Type', 'text/xml');
       return res.send('<Response></Response>');
     }
@@ -433,7 +435,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // OPEN FILES command
     if (bodyUpper === 'OPEN FILES') {
       if (!matchedContact) {
-        await sendTwilioReply(fromPhone, "We don't recognize this number. Please text us your name and we'll get you set up! 🏠", isWhatsApp);
+        await sendTwilioReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
       } else {
         const { data: parts } = await supabase
           .from('deal_participants').select('deal_id').eq('contact_id', matchedContact.id);
@@ -448,12 +450,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const closing = d.closing_date ? new Date(d.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : 'TBD';
               return `${i + 1}. ${d.property_address} (${d.pipeline_stage}) - Closing: ${closing}`;
             }).join('\n');
-            await sendTwilioReply(fromPhone, `📂 Your active files:\n${list}\n\nReply STATUS <address> for details.`, isWhatsApp);
+            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.openFilesHeader + list + SMS_CONFIG.responses.openFilesFooter, isWhatsApp);
           } else {
-            await sendTwilioReply(fromPhone, 'No active files found. Text us if you need help! 🏠', isWhatsApp);
+            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
           }
         } else {
-          await sendTwilioReply(fromPhone, 'No active files found. Text us if you need help! 🏠', isWhatsApp);
+          await sendTwilioReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
         }
       }
       await supabase.from('communication_events').insert({
@@ -486,11 +488,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const summary = `📋 ${match.property_address}\nStatus: ${match.pipeline_stage}\nClosing: ${closing}\nCity: ${match.city || ''}, ${match.state || ''}\n\nText us if you have questions! 🏠`;
             await sendTwilioReply(fromPhone, summary, isWhatsApp);
           } else {
-            await sendTwilioReply(fromPhone, `Couldn't find a deal matching "${Body.trim().substring(7)}". Try OPEN FILES to see your active deals.`, isWhatsApp);
+            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.statusNotFound(Body.trim().substring(7)), isWhatsApp);
           }
         }
       } else {
-        await sendTwilioReply(fromPhone, "We don't recognize this number. Text us your name and we'll get you set up! 🏠", isWhatsApp);
+        await sendTwilioReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
       }
       await supabase.from('communication_events').insert({
         contact_id: matchedContact?.id || null,
@@ -523,7 +525,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         summary: 'CALL ME command - callback requested',
         source_ref: MessageSid,
       });
-      await sendTwilioReply(fromPhone, '✅ Callback requested! A team member will call you back shortly. 📞', isWhatsApp);
+      await sendTwilioReply(fromPhone, SMS_CONFIG.responses.callMeConfirm, isWhatsApp);
 
       // Create notification for TC
       await supabase.from('notifications').insert({
@@ -682,7 +684,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 6. Auto-reply
-    const autoReply = ai.auto_reply || 'Thanks for reaching out! We\'ll get back to you shortly. 🏠';
+    const autoReply = ai.auto_reply || SMS_CONFIG.responses.defaultAutoReply;
     await sendTwilioReply(fromPhone, autoReply, isWhatsApp);
 
     const WA_FROM = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';

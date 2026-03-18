@@ -39,6 +39,8 @@ const TRIGGER_OPTIONS = [
   { value: 'deal_inactivity',label: '⏰ Deal Inactive',     desc: 'Fires when no activity for N days' },
   { value: 'new_contact',    label: '👤 New Contact',       desc: 'Fires when a contact is created' },
   { value: 'manual',         label: '▶️ Manual',            desc: 'Triggered manually by TC' },
+  { value: 'callback_request', label: '📞 Callback Requested', desc: 'Fires when a client requests a callback' },
+  { value: 'call_completed',   label: '📱 Call Completed',     desc: 'Fires when an outbound call ends' },
 ];
 
 const ACTION_OPTIONS = [
@@ -48,6 +50,8 @@ const ACTION_OPTIONS = [
   { value: 'send_email',         label: '📧 Send Email' },
   { value: 'flag_deal',          label: '🚩 Flag Deal' },
   { value: 'create_deal',        label: '🏠 Create Draft Deal' },
+  { value: 'request_callback', label: '📞 Request Callback' },
+  { value: 'initiate_call',    label: '📱 Initiate Call' },
 ];
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -57,6 +61,8 @@ const TRIGGER_LABELS: Record<string, string> = {
   deal_inactivity: '⏰ Deal Inactive',
   new_contact: '👤 New Contact',
   manual: '▶️ Manual',
+  callback_request: '📞 Callback Requested',
+  call_completed: '📱 Call Completed',
 };
 
 const STATUS_STYLES: Record<string, string> = {

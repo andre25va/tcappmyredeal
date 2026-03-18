@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Phone, Loader2 } from 'lucide-react';
 import { DealPickerPopup } from './DealPickerPopup';
+import { FEATURE_FLAGS } from '../config/feature.flags';
 
 interface CallButtonProps {
   phoneNumber: string;
@@ -33,6 +34,9 @@ export const CallButton: React.FC<CallButtonProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+
+  // Feature flag gate — disable all call buttons with one flag flip
+  if (!FEATURE_FLAGS.outboundCallbacks) return null;
 
   const initiateCall = async (selectedDealId?: string) => {
     setLoading(true);

@@ -10,15 +10,20 @@ export const FEATURE_FLAGS = {
 
   // Outbound callbacks (V6)
   outboundCallbacks: true,   // V6-B complete
-  callbackQueue: false,       // Enable when V6-C is complete
+  callbackQueue: true,        // V6-C complete
+  callbackWorkflows: true,    // V6-D callback workflow rules
   
   // Smart tasks (V6)
   smartTaskCreation: true,    // V6-B OpenAI integration complete
-  preCAllBrief: false,        // Enable when V6-C is built
-  postCallNotes: false,       // Enable when V6-C is built
+  preCallBrief: true,         // V6-C complete
+  postCallNotes: true,        // V6-C complete
   
   // Communications Console (V6)
-  communicationsConsole: false, // Enable when V6-C UI is built
+  communicationsConsole: true, // V6-C UI complete
+
+  // Call UI (V6-C)
+  deliveryMethodPicker: true, // V6-C mid-call delivery selection
+  activeCallOverlay: true,    // V6-C call overlay UI
 
   // Existing features
   smsOnboarding: true,

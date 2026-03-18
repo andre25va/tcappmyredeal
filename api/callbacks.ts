@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { AI_CONFIG } from '../src/config/ai.config';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
@@ -253,22 +254,16 @@ async function handleNotesPost(req: VercelRequest, res: VercelResponse) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: AI_CONFIG.models.smartTask,
           messages: [
             {
               role: 'system',
-              content: `You are a TC assistant. Structure these messy call notes into organized output.
-Return ONLY valid JSON:
-{
-  "summary": "2-3 sentence summary of the call",
-  "action_items": [{"title": "task title under 60 chars", "priority": "high|normal|low", "type": "task|follow_up|document_request"}],
-  "key_points": ["brief key point from the call"]
-}`,
+              content: AI_CONFIG.prompts.callNotesStructure,
             },
             { role: 'user', content: rawNotes },
           ],
           max_tokens: 400,
-          temperature: 0.3,
+          temperature: AI_CONFIG.temperature.smartTask,
         }),
       });
 
@@ -388,27 +383,19 @@ async function handleSmartTask(req: VercelRequest, res: VercelResponse) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: AI_CONFIG.models.smartTask,
         messages: [
           {
             role: 'system',
-            content: `You are a TC (Transaction Coordinator) assistant. Classify this request into a structured task.
-Return ONLY valid JSON:
-{
-  "title": "concise task title under 60 chars",
-  "channel": "email|sms|whatsapp|call|in_person",
-  "priority": "high|normal|low",
-  "description": "brief description of what needs to happen",
-  "type": "document_delivery|follow_up|callback|information_request|scheduling|other"
-}`,
+            content: AI_CONFIG.prompts.smartTaskClassification,
           },
           {
             role: 'user',
             content: `Request: "${request}"${dealAddress ? `\nDeal: ${dealAddress}` : ''}${contactName ? `\nContact: ${contactName}` : ''}`,
           },
         ],
-        max_tokens: 300,
-        temperature: 0.3,
+        max_tokens: AI_CONFIG.maxTokens.smartTask,
+        temperature: AI_CONFIG.temperature.smartTask,
       }),
     });
 

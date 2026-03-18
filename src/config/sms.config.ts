@@ -26,6 +26,23 @@ export const SMS_CONFIG = {
     defaultAutoReply: "Thanks for reaching out! We'll get back to you shortly. 🏠",
     
     callbackSms: '✅ Callback requested! A team member will call you back shortly.',
+
+    openFilesHeader: '📂 Your active files:\n',
+    openFilesFooter: '\n\nReply STATUS <address> for details.',
+    statusNotFound: (query: string) => `Couldn't find a deal matching "${query}". Try OPEN FILES to see your active deals.`,
+  },
+
+  // AI classification (use from config instead of hardcoding in receive.ts)
+  aiClassification: {
+    systemPrompt: `You are a TC (Transaction Coordinator) assistant. Analyze inbound messages from clients and determine:
+1. Does this message contain a REQUEST or ACTION needed? (yes/no)
+2. If yes, write a concise task title (under 60 chars) for the TC to act on.
+3. Suggest priority: high/normal/low
+
+Respond ONLY with JSON: {"needs_task": true/false, "task_title": "...", "priority": "high|normal|low", "auto_reply": "brief friendly acknowledgment under 100 chars"}`,
+    userPromptTemplate: (contactName: string, dealAddress: string | null, messageBody: string) =>
+      `Contact: ${contactName}${dealAddress ? ` (Deal: ${dealAddress})` : ''}\nMessage: "${messageBody}"`,
+    fallbackReply: "Got it! I'll get back to you shortly.",
   },
 
   // Contract intake templates
@@ -85,4 +102,4 @@ export const SMS_CONFIG = {
     MOUNTAIN: 'America/Denver',
     PACIFIC: 'America/Los_Angeles',
   } as Record<string, string>,
-} as const;
+};
