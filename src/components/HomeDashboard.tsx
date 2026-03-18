@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import {
   Building2, TrendingUp, AlertTriangle, CheckSquare, Calendar,
   MapPin, Users, Clock, FileText, Activity, Home, DollarSign,
-  ChevronRight, Flame, Target, BarChart2, Zap
+  ChevronRight, Flame, Target, BarChart2, Zap, XCircle
 } from 'lucide-react';
 import { Deal, DealStatus, DealMilestone } from '../types';
 import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
@@ -22,7 +22,6 @@ const STATUS_META: Record<DealStatus, { label: string; color: string; bg: string
   closed:         { label: 'Closed',          color: 'text-black',  bg: 'bg-green-500',   order: 4 },
   terminated:     { label: 'Terminated',      color: 'text-red-400',    bg: 'bg-red-500',     order: 5 },
 };
-
 
 function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max === 0 ? 0 : Math.round((value / max) * 100);
@@ -57,52 +56,58 @@ function KPICard({ icon, label, value, sub, color, onClick }:
 export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeals, onGoToAlerts }) => {
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisYearStart  = new Date(now.getFullYear(), 0, 1);
 
   const stats = useMemo(() => {
-    const active = deals.filter(d => d.status !== 'closed' && d.status !== 'terminated');
+    const active = deals.filter(d => d.status !== 'closed' && d.status !== 'terminated' && d.milestone !== 'archived');
     const closedThisMonth = deals.filter(d =>
       d.status === 'closed' && new Date(d.closingDate) >= thisMonthStart
     );
     const terminated = deals.filter(d => d.status === 'terminated');
+    const terminatedThisYear = terminated.filter(d =>
+      new Date(d.updatedAt ?? d.closingDate ?? d.contractDate) >= thisYearStart
+    );
 
     const totalActiveVolume = active.reduce((s, d) => s + d.contractPrice, 0);
     const totalClosedVolume = closedThisMonth.reduce((s, d) => s + d.contractPrice, 0);
+    const totalTerminatedVolume = terminated.reduce((s, d) => s + d.contractPrice, 0);
 
-    // Pipeline by status
+    // Pipeline by status (exclude archived from active counts)
     const pipeline = (['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'] as DealStatus[])
       .map(status => ({
         status,
-        count: deals.filter(d => d.status === status).length,
-        volume: deals.filter(d => d.status === status).reduce((s, d) => s + d.contractPrice, 0),
+        count: deals.filter(d => d.status === status && (status === 'terminated' || d.milestone !== 'archived')).length,
+        volume: deals.filter(d => d.status === status && (status === 'terminated' || d.milestone !== 'archived')).reduce((s, d) => s + d.contractPrice, 0),
       }));
 
     // Amber alerts
     const allPending = deals.flatMap(d =>
-      d.documentRequests.filter(r => r.status === 'pending').map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
+      d.status !== 'terminated' && d.milestone !== 'archived'
+        ? d.documentRequests.filter(r => r.status === 'pending').map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
+        : []
     );
     const highAlerts = allPending.filter(r => r.urgency === 'high');
-    const medAlerts = allPending.filter(r => r.urgency === 'medium');
+    const medAlerts  = allPending.filter(r => r.urgency === 'medium');
 
-    // Closing timeline (next 30 days)
-    const closingSoon = deals
-      .filter(d => d.status !== 'closed' && d.status !== 'terminated')
+    // Closing timeline (next 30 days, active only)
+    const closingSoon = active
       .map(d => ({ ...d, daysLeft: daysUntil(d.closingDate) }))
       .filter(d => d.daysLeft >= 0 && d.daysLeft <= 30)
       .sort((a, b) => a.daysLeft - b.daysLeft);
 
-    const closingThisWeek = closingSoon.filter(d => d.daysLeft <= 7);
+    const closingThisWeek  = closingSoon.filter(d => d.daysLeft <= 7);
     const closingThisMonth = closingSoon.filter(d => d.daysLeft > 7 && d.daysLeft <= 30);
 
-    // Checklist health
-    const allDDItems = deals.flatMap(d => d.dueDiligenceChecklist);
-    const allCompItems = deals.flatMap(d => d.complianceChecklist);
-    const ddPct = allDDItems.length === 0 ? 100 : Math.round(allDDItems.filter(i => i.completed).length / allDDItems.length * 100);
+    // Checklist health (active deals only)
+    const allDDItems   = active.flatMap(d => d.dueDiligenceChecklist);
+    const allCompItems = active.flatMap(d => d.complianceChecklist);
+    const ddPct   = allDDItems.length   === 0 ? 100 : Math.round(allDDItems.filter(i => i.completed).length   / allDDItems.length   * 100);
     const compPct = allCompItems.length === 0 ? 100 : Math.round(allCompItems.filter(i => i.completed).length / allCompItems.length * 100);
     const overdueItems = [...allDDItems, ...allCompItems].filter(
       i => !i.completed && i.dueDate && new Date(i.dueDate) < now
     );
 
-    // By state
+    // By state (active only)
     const byState: Record<string, { count: number; volume: number }> = {};
     active.forEach(d => {
       if (!byState[d.state]) byState[d.state] = { count: 0, volume: 0 };
@@ -111,7 +116,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     });
     const stateList = Object.entries(byState).sort((a, b) => b[1].count - a[1].count);
 
-    // By agent
+    // By agent (active only)
     const byAgent: Record<string, { count: number; volume: number }> = {};
     active.forEach(d => {
       if (!byAgent[d.agentName]) byAgent[d.agentName] = { count: 0, volume: 0 };
@@ -120,15 +125,15 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     });
     const agentList = Object.entries(byAgent).sort((a, b) => b[1].count - a[1].count);
 
-    // By property type
+    // By property type (active only)
     const byType: Record<string, number> = {};
     active.forEach(d => {
       byType[d.propertyType] = (byType[d.propertyType] || 0) + 1;
     });
 
-    // Today's reminders
+    // Today's reminders (active only)
     const todayStr = now.toISOString().slice(0, 10);
-    const todayReminders = deals.flatMap(d =>
+    const todayReminders = active.flatMap(d =>
       d.reminders.filter(r => !r.completed && r.dueDate <= todayStr)
         .map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
     );
@@ -139,7 +144,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 8);
 
-    // Avg days to close (closed deals)
+    // Avg days to close
     const closedDeals = deals.filter(d => d.status === 'closed');
     const avgDaysToClose = closedDeals.length === 0 ? 0 :
       Math.round(closedDeals.reduce((s, d) => {
@@ -147,7 +152,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
         return s + days;
       }, 0) / closedDeals.length);
 
-    // Milestone funnel
+    // Milestone funnel (active only)
     const MILESTONE_ORDER: DealMilestone[] = [
       'contract-received', 'emd-due', 'inspections-due', 'appraisal-ordered',
       'appraisal-received', 'title-opened', 'loan-commitment', 'closing-scheduled',
@@ -155,20 +160,20 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     ];
     const milestoneFunnel = MILESTONE_ORDER.map(m => ({
       milestone: m,
-      count: deals.filter(d => d.milestone === m && d.milestone !== 'archived').length,
+      count: active.filter(d => d.milestone === m).length,
     })).filter(m => m.count > 0);
 
-    // Task KPIs
-    const allTasks = deals.flatMap(d => d.tasks ?? []);
+    // Task KPIs (active deals only)
+    const allTasks = active.flatMap(d => d.tasks ?? []);
     const todayStr2 = now.toISOString().slice(0, 10);
-    const overdueTasks = allTasks.filter(t => !t.completedAt && t.dueDate < todayStr2);
-    const tasksDueToday = allTasks.filter(t => !t.completedAt && t.dueDate === todayStr2);
-    const completedTasks = allTasks.filter(t => !!t.completedAt);
+    const overdueTasks     = allTasks.filter(t => !t.completedAt && t.dueDate < todayStr2);
+    const tasksDueToday    = allTasks.filter(t => !t.completedAt && t.dueDate === todayStr2);
+    const completedTasks   = allTasks.filter(t => !!t.completedAt);
     const taskCompletionPct = allTasks.length === 0 ? 100 : Math.round(completedTasks.length / allTasks.length * 100);
 
     return {
-      active, closedThisMonth, terminated,
-      totalActiveVolume, totalClosedVolume,
+      active, closedThisMonth, terminated, terminatedThisYear,
+      totalActiveVolume, totalClosedVolume, totalTerminatedVolume,
       pipeline, allPending, highAlerts, medAlerts,
       closingSoon, closingThisWeek, closingThisMonth,
       ddPct, compPct, overdueItems,
@@ -222,7 +227,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
       <div className="p-5 space-y-5 max-w-[1600px] mx-auto w-full">
 
         {/* ── TOP KPI CARDS ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-3">
           <KPICard
             icon={<Building2 size={16} />}
             label="Active Deals"
@@ -252,6 +257,14 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             sub={stats.closingThisWeek.length > 0 ? `Next: ${stats.closingThisWeek[0]?.propertyAddress?.split(' ').slice(0,3).join(' ')}` : 'None this week'}
             color="text-black"
             onClick={onGoToDeals}
+          />
+          <KPICard
+            icon={<XCircle size={16} />}
+            label="Fell Apart"
+            value={stats.terminated.length}
+            sub={stats.terminated.length > 0 ? `${formatCurrency(stats.totalTerminatedVolume)} lost vol.` : 'None this year'}
+            color={stats.terminated.length > 0 ? 'text-red-500' : 'text-base-content/40'}
+            onClick={stats.terminated.length > 0 ? onGoToDeals : undefined}
           />
           <KPICard
             icon={<AlertTriangle size={16} />}
@@ -344,12 +357,11 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {/* Urgency breakdown */}
                   <div className="flex gap-2">
                     {[
                       { label: 'High', count: stats.highAlerts.length, color: 'bg-error', text: 'text-error' },
-                      { label: 'Med', count: stats.medAlerts.length, color: 'bg-amber-500', text: 'text-amber-500' },
-                      { label: 'Low', count: stats.allPending.length - stats.highAlerts.length - stats.medAlerts.length, color: 'bg-info', text: 'text-info' },
+                      { label: 'Med',  count: stats.medAlerts.length,  color: 'bg-amber-500', text: 'text-amber-500' },
+                      { label: 'Low',  count: stats.allPending.length - stats.highAlerts.length - stats.medAlerts.length, color: 'bg-info', text: 'text-info' },
                     ].map(u => (
                       <div key={u.label} className="flex-1 bg-base-300 rounded-lg p-2 text-center">
                         <p className={`text-lg font-bold ${u.text}`}>{u.count}</p>
@@ -357,8 +369,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                       </div>
                     ))}
                   </div>
-
-                  {/* Top pending items */}
                   <div className="space-y-1.5 max-h-32 overflow-y-auto">
                     {[...stats.highAlerts, ...stats.medAlerts].slice(0, 4).map((r: any) => (
                       <div
@@ -382,6 +392,38 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             </div>
           </div>
         </div>
+
+        {/* ── FELL APART DEALS (if any) ── */}
+        {stats.terminated.length > 0 && (
+          <div className="card bg-red-50 border border-red-200">
+            <div className="card-body p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-sm flex items-center gap-2 text-red-700">
+                  <XCircle size={15} className="text-red-500" /> Fell Apart / Canceled Deals
+                </h2>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-red-400">{stats.terminated.length} deal{stats.terminated.length !== 1 ? 's' : ''} · {formatCurrency(stats.totalTerminatedVolume)} lost volume</span>
+                  <button onClick={() => { onGoToDeals(); }} className="btn btn-error btn-xs">View in List →</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                {stats.terminated.slice(0, 8).map((deal: any) => (
+                  <div
+                    key={deal.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-white border border-red-200 cursor-pointer hover:bg-red-50"
+                    onClick={() => { onSelectDeal(deal.id); onGoToDeals(); }}
+                  >
+                    <XCircle size={14} className="text-red-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{deal.propertyAddress}</p>
+                      <p className="text-[10px] text-base-content/40">{deal.agentName} · {formatCurrency(deal.contractPrice)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── MILESTONE FUNNEL ── */}
         {stats.milestoneFunnel.length > 0 && (
@@ -425,10 +467,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                       {stats.ddPct}%
                     </span>
                   </div>
-                  <ProgressBar
-                    value={stats.ddPct} max={100}
-                    color={stats.ddPct >= 80 ? 'bg-success' : stats.ddPct >= 50 ? 'bg-warning' : 'bg-error'}
-                  />
+                  <ProgressBar value={stats.ddPct} max={100} color={stats.ddPct >= 80 ? 'bg-success' : stats.ddPct >= 50 ? 'bg-warning' : 'bg-error'} />
                 </div>
                 <div>
                   <div className="flex justify-between mb-1.5">
@@ -437,10 +476,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                       {stats.compPct}%
                     </span>
                   </div>
-                  <ProgressBar
-                    value={stats.compPct} max={100}
-                    color={stats.compPct >= 80 ? 'bg-success' : stats.compPct >= 50 ? 'bg-warning' : 'bg-error'}
-                  />
+                  <ProgressBar value={stats.compPct} max={100} color={stats.compPct >= 80 ? 'bg-success' : stats.compPct >= 50 ? 'bg-warning' : 'bg-error'} />
                 </div>
                 <div className="divider my-1 text-[10px] text-base-content/30">Overdue Items</div>
                 {stats.overdueItems.length === 0 ? (
@@ -472,7 +508,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
               ) : (
                 <div className="space-y-1.5 max-h-52 overflow-y-auto">
                   {stats.closingSoon.map((deal: any) => {
-                    const urgency = deal.daysLeft <= 3 ? 'text-error' : deal.daysLeft <= 7 ? 'text-warning' : 'text-success';
+                    const urgency   = deal.daysLeft <= 3 ? 'text-error' : deal.daysLeft <= 7 ? 'text-warning' : 'text-success';
                     const bgUrgency = deal.daysLeft <= 3 ? 'bg-error/10 border-error/30' : deal.daysLeft <= 7 ? 'bg-warning/10 border-warning/30' : 'bg-base-300/60 border-transparent';
                     const meta = STATUS_META[deal.status as DealStatus];
                     return (
@@ -481,7 +517,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                         className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer hover:opacity-90 transition-all ${bgUrgency}`}
                         onClick={() => { onSelectDeal(deal.id); onGoToDeals(); }}
                       >
-                        {/* Days counter */}
                         <div className={`w-10 h-10 rounded-lg flex flex-col items-center justify-center shrink-0 ${deal.daysLeft <= 3 ? 'bg-error/20' : deal.daysLeft <= 7 ? 'bg-warning/20' : 'bg-base-300'}`}>
                           <span className={`text-sm font-black leading-none ${urgency}`}>{deal.daysLeft}</span>
                           <span className="text-[8px] text-base-content/40 leading-none">days</span>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, XCircle } from 'lucide-react';
 import { Deal, DealStatus, ContactRecord } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
@@ -24,7 +24,6 @@ const STATUS_FILTERS: { label: string; value: DealStatus | 'all' }[] = [
   { label: 'Closed',   value: 'closed' },
 ];
 
-// Neutral grey cards — buyer/seller only affects badges and dots
 const cardBase     = 'bg-gray-50 border-gray-200';
 const cardSelected = 'bg-gray-100 border-gray-300';
 
@@ -51,7 +50,8 @@ const renderDealCard = (
   onSelect: (id: string) => void,
   styles: typeof sideStylesConst,
 ) => {
-  const isArchived = deal.milestone === 'archived';
+  const isArchived   = deal.milestone === 'archived';
+  const isTerminated = deal.status === 'terminated';
   const side      = deal.transactionType ?? 'buyer';
   const sideKey   = (side === 'buyer' || side === 'seller') ? side : 'buyer';
   const sideStyle = styles[sideKey];
@@ -65,10 +65,9 @@ const renderDealCard = (
       key={deal.id}
       className={`relative w-full text-left p-3 rounded-xl border transition-all group ${
         isSelected ? sideStyle.cardSelected : sideStyle.card
-      } hover:opacity-90 ${isArchived ? 'opacity-60' : ''}`}
+      } hover:opacity-90 ${(isArchived || isTerminated) ? 'opacity-60' : ''}`}
       onClick={() => onSelect(deal.id)}
     >
-
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
@@ -76,13 +75,17 @@ const renderDealCard = (
           <p className="text-xs text-base-content/50 truncate">{deal.city}, {deal.state} {deal.zipCode}</p>
         </div>
         <div className="flex items-center gap-1 flex-none">
-          {!isArchived && pending > 0 && (
+          {!isArchived && !isTerminated && pending > 0 && (
             <div className="flex items-center gap-0.5 bg-amber-500 px-1.5 py-0.5 rounded-full shadow-sm">
               <AlertTriangle size={10} className="text-white" />
               <span className="text-white text-xs font-bold">{pending}</span>
             </div>
           )}
-          {isArchived ? (
+          {isTerminated ? (
+            <span className="flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full border bg-red-100 text-red-600 border-red-300">
+              <XCircle size={9} /> FELL APART
+            </span>
+          ) : isArchived ? (
             <span className="flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full border bg-gray-100 text-gray-500 border-gray-300">
               <Archive size={9} /> ARCHIVED
             </span>
@@ -95,7 +98,7 @@ const renderDealCard = (
         </div>
       </div>
 
-      {/* Archive reason */}
+      {/* Archive / termination reason */}
       {isArchived && deal.archiveReason && (
         <p className="text-xs text-gray-500 mb-1 italic">
           {deal.archiveReason.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
@@ -111,7 +114,7 @@ const renderDealCard = (
       </div>
 
       {/* Milestone badge */}
-      {deal.milestone && (
+      {deal.milestone && !isTerminated && (
         <div className="mb-1.5">
           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${MILESTONE_COLORS[deal.milestone]}`}>
             {MILESTONE_LABELS[deal.milestone]}
@@ -119,8 +122,8 @@ const renderDealCard = (
         </div>
       )}
 
-      {/* Price + Countdown */}
-      {!isArchived && (
+      {/* Price + Countdown (active only) */}
+      {!isArchived && !isTerminated && (
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-base-content">{formatCurrency(deal.contractPrice)}</span>
           <div className={`flex items-center gap-1 text-xs font-medium ${countdown.color}`}>
@@ -129,14 +132,14 @@ const renderDealCard = (
           </div>
         </div>
       )}
-      {isArchived && (
+      {(isArchived || isTerminated) && (
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-base-content">{formatCurrency(deal.contractPrice)}</span>
         </div>
       )}
 
-      {/* DD Progress */}
-      {!isArchived && (
+      {/* DD Progress (active only) */}
+      {!isArchived && !isTerminated && (
         <div className="flex items-center gap-2 mb-2">
           <progress
             className={`progress h-1 flex-1 ${side === 'buyer' ? 'progress-info' : 'progress-success'}`}
@@ -150,7 +153,7 @@ const renderDealCard = (
       {/* View button */}
       <div className="flex justify-end">
         <button
-          className={`btn btn-xs ${side === 'buyer' ? 'btn-info' : 'btn-success'} btn-outline gap-1`}
+          className={`btn btn-xs ${isTerminated ? 'btn-error btn-outline' : side === 'buyer' ? 'btn-info' : 'btn-success'} btn-outline gap-1`}
           onClick={e => { e.stopPropagation(); onSelect(deal.id); }}
         >
           View <span className="text-[10px]">→</span>
@@ -165,8 +168,8 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
   const [showArchived, setShowArchived] = useState(false);
+  const [showCanceled, setShowCanceled] = useState(false);
 
-  // Reset local filters when amber filter activates
   React.useEffect(() => {
     if (amberFilter) {
       setSearch('');
@@ -176,7 +179,9 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   }, [amberFilter]);
 
   const filtered = deals.filter(d => {
-    // archived deals only shown when showArchived toggle is on
+    // Canceled/terminated deals only shown when showCanceled toggle is on
+    if (d.status === 'terminated') return showCanceled;
+    // Archived deals only shown when showArchived toggle is on
     if (d.milestone === 'archived') return showArchived;
 
     const q = search.toLowerCase();
@@ -195,7 +200,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
     return matchSearch && matchStatus && matchSide && matchAmber;
   });
 
-  // Clearing any manual filter also clears the amber filter
   const handleFilterChange = (val: DealStatus | 'all') => {
     setFilter(val);
     if (amberFilter) onClearAmberFilter?.();
@@ -209,19 +213,19 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
     if (amberFilter) onClearAmberFilter?.();
   };
 
-  // Split into closing-this-week and others
   const closingThisWeek = filtered.filter(d => {
-    if (d.milestone === 'archived') return false;
+    if (d.milestone === 'archived' || d.status === 'terminated') return false;
     const days = daysUntil(d.closingDate);
     return days >= 0 && days <= 7;
   });
   const otherDeals = filtered.filter(d => !closingThisWeek.includes(d));
 
+  const canceledCount = deals.filter(d => d.status === 'terminated').length;
+  const archivedCount = deals.filter(d => d.milestone === 'archived').length;
+
   return (
     <>
       <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80">
-        {/* Search + Filters */}
-        {/* Amber Alert Filter Banner */}
         {amberFilter && (
           <div className="flex items-center gap-2 px-3 py-2 bg-amber-500 border-b border-amber-600">
             <AlertTriangle size={13} className="text-white flex-none" />
@@ -249,7 +253,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
             />
           </label>
 
-          {/* Buyer / Seller toggle */}
           <div className="flex gap-1">
             {(['all', 'buyer', 'seller'] as const).map(s => (
               <button
@@ -270,7 +273,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
             ))}
           </div>
 
-          {/* Status filters */}
           <div className="flex gap-1 flex-wrap">
             {STATUS_FILTERS.map(f => (
               <button
@@ -283,28 +285,36 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
             ))}
           </div>
 
-          {/* Archived toggle */}
-          <div className="flex items-center justify-between pt-1">
+          {/* Archived + Canceled toggles */}
+          <div className="flex items-center gap-1 pt-1">
             <button
-              className={`btn btn-xs gap-1 ${showArchived ? 'btn-warning' : 'btn-ghost text-gray-400'}`}
+              className={`btn btn-xs gap-1 flex-1 ${showArchived ? 'btn-warning' : 'btn-ghost text-gray-400'}`}
               onClick={() => setShowArchived(v => !v)}
             >
               <Archive size={10} />
-              {showArchived ? 'Hide Archived' : 'Show Archived'}
-              {deals.filter(d => d.milestone === 'archived').length > 0 && (
-                <span className="badge badge-xs">{deals.filter(d => d.milestone === 'archived').length}</span>
+              Archived
+              {archivedCount > 0 && (
+                <span className="badge badge-xs">{archivedCount}</span>
+              )}
+            </button>
+            <button
+              className={`btn btn-xs gap-1 flex-1 ${showCanceled ? 'btn-error' : 'btn-ghost text-gray-400'}`}
+              onClick={() => setShowCanceled(v => !v)}
+            >
+              <XCircle size={10} />
+              Canceled
+              {canceledCount > 0 && (
+                <span className="badge badge-xs badge-error">{canceledCount}</span>
               )}
             </button>
           </div>
         </div>
 
-        {/* Deal Cards */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {filtered.length === 0 && (
             <div className="text-center text-base-content/30 text-sm py-10">No deals found</div>
           )}
 
-          {/* Closing This Week section */}
           {closingThisWeek.length > 0 && (
             <>
               <div className="flex items-center gap-2 px-1 py-1">
@@ -322,22 +332,20 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
           {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
         </div>
 
-        {/* Footer */}
         <div className="p-2 border-t border-base-300">
           <div className="flex items-center justify-center gap-3 text-xs text-base-content/30">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-              {deals.filter(d => d.transactionType === 'buyer').length} Buyer
+              {deals.filter(d => d.transactionType === 'buyer' && d.status !== 'terminated' && d.milestone !== 'archived').length} Buyer
             </span>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-              {deals.filter(d => d.transactionType === 'seller').length} Seller
+              {deals.filter(d => d.transactionType === 'seller' && d.status !== 'terminated' && d.milestone !== 'archived').length} Seller
             </span>
             <span>{filtered.length} shown</span>
           </div>
         </div>
       </div>
-
     </>
   );
 };
