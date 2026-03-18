@@ -69,8 +69,6 @@ async function handleHistory(req: Request, res: Response) {
     .order('started_at', { ascending: false })
     .limit(limit);
 
-  // If contactId is provided, we need to filter via callback_requests
-  // Supabase doesn't support filtering on nested joins easily, so we do a two-step approach
   if (contactId) {
     const { data: requestIds } = await supabase
       .from('callback_requests')
@@ -175,10 +173,11 @@ async function handleInitiate(req: Request, res: Response) {
   }
 
   // 5. Initiate Twilio call TO the TC's phone
+  // FIX: Use ? (not &) to start query string in voice URLs
   try {
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Calls.json`;
-    const voiceUrl = `${TELEPHONY_URL}/voice/outbound-connect&attemptId=${encodeURIComponent(attemptId)}&clientPhone=${encodeURIComponent(clientPhone)}`;
-    const statusUrl = `${TELEPHONY_URL}/voice/outbound-parent-status&attemptId=${encodeURIComponent(attemptId)}`;
+    const voiceUrl = `${TELEPHONY_URL}/voice/outbound-connect?attemptId=${encodeURIComponent(attemptId)}&clientPhone=${encodeURIComponent(clientPhone)}`;
+    const statusUrl = `${TELEPHONY_URL}/voice/outbound-parent-status?attemptId=${encodeURIComponent(attemptId)}`;
 
     const params = new URLSearchParams({
       To: tcPhone,
@@ -200,7 +199,6 @@ async function handleInitiate(req: Request, res: Response) {
     const twilioData = await twilioRes.json() as any;
 
     if (!twilioRes.ok) {
-      // Update attempt as failed
       await supabase.from('callback_attempts').update({
         outcome: 'failed',
         staff_leg_status: 'failed',
@@ -211,7 +209,6 @@ async function handleInitiate(req: Request, res: Response) {
       return res.status(500).json({ error: 'Failed to initiate Twilio call', details: twilioData });
     }
 
-    // 6. Update attempt with staff call SID
     await supabase.from('callback_attempts').update({
       staff_call_sid: twilioData.sid,
       staff_leg_status: 'initiated',
@@ -244,7 +241,6 @@ async function handleNotesPost(req: Request, res: Response) {
   let aiSummary: string | null = null;
   let followUpTasks: any[] = [];
 
-  // AI processing if requested
   if (processWithAI && rawNotes.length > 10) {
     try {
       const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -256,10 +252,7 @@ async function handleNotesPost(req: Request, res: Response) {
         body: JSON.stringify({
           model: AI_CONFIG.models.smartTask,
           messages: [
-            {
-              role: 'system',
-              content: AI_CONFIG.prompts.callNotesStructure,
-            },
+            { role: 'system', content: AI_CONFIG.prompts.callNotesStructure },
             { role: 'user', content: rawNotes },
           ],
           max_tokens: 400,
@@ -275,7 +268,6 @@ async function handleNotesPost(req: Request, res: Response) {
         aiSummary = parsed.summary || null;
         followUpTasks = parsed.action_items || [];
       } catch {
-        // AI returned non-JSON — store raw
         aiSummary = content;
       }
     } catch (err) {
@@ -283,7 +275,6 @@ async function handleNotesPost(req: Request, res: Response) {
     }
   }
 
-  // Save to call_notes
   const { data: note, error: noteError } = await supabase
     .from('call_notes')
     .insert({
@@ -303,7 +294,6 @@ async function handleNotesPost(req: Request, res: Response) {
     return res.status(500).json({ error: 'Failed to save call notes', details: noteError.message });
   }
 
-  // Create comm_tasks for action items
   const createdTasks: any[] = [];
   for (const item of followUpTasks) {
     const { data: task } = await supabase
@@ -324,11 +314,7 @@ async function handleNotesPost(req: Request, res: Response) {
     if (task) createdTasks.push(task);
   }
 
-  return res.status(200).json({
-    success: true,
-    note,
-    createdTasks,
-  });
+  return res.status(200).json({ success: true, note, createdTasks });
 }
 
 async function handleNotesGet(req: Request, res: Response) {
@@ -362,7 +348,6 @@ async function handleSmartTask(req: Request, res: Response) {
     return res.status(400).json({ error: 'request and profileId are required' });
   }
 
-  // Get context for AI
   let dealAddress = '';
   let contactName = '';
 
@@ -385,10 +370,7 @@ async function handleSmartTask(req: Request, res: Response) {
       body: JSON.stringify({
         model: AI_CONFIG.models.smartTask,
         messages: [
-          {
-            role: 'system',
-            content: AI_CONFIG.prompts.smartTaskClassification,
-          },
+          { role: 'system', content: AI_CONFIG.prompts.smartTaskClassification },
           {
             role: 'user',
             content: `Request: "${request}"${dealAddress ? `\nDeal: ${dealAddress}` : ''}${contactName ? `\nContact: ${contactName}` : ''}`,
@@ -409,7 +391,6 @@ async function handleSmartTask(req: Request, res: Response) {
       return res.status(500).json({ error: 'AI returned invalid JSON', raw: content });
     }
 
-    // Create comm_task
     const { data: task, error: taskError } = await supabase
       .from('comm_tasks')
       .insert({
@@ -432,11 +413,7 @@ async function handleSmartTask(req: Request, res: Response) {
       return res.status(500).json({ error: 'Failed to create task', details: taskError.message });
     }
 
-    return res.status(200).json({
-      success: true,
-      task,
-      classification: classified,
-    });
+    return res.status(200).json({ success: true, task, classification: classified });
   } catch (err: any) {
     return res.status(500).json({ error: 'Smart task creation failed', details: err.message });
   }

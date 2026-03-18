@@ -40,6 +40,8 @@ function say(text: string): string {
   return `<Say voice="${VOICE_CONFIG.voice}">${escapeXml(text)}</Say>`;
 }
 
+// NOTE: opts.action must be in the form "route-name?param1=val1&param2=val2"
+// Using ? (not &) to start query string so Express can parse req.query correctly.
 function gather(opts: { action: string; numDigits?: number; timeout?: number; input?: string }, ...inner: string[]): string {
   const url = `${TELEPHONY_URL}/voice/${opts.action}`;
   const nd = opts.numDigits ? ` numDigits="${opts.numDigits}"` : '';
@@ -63,7 +65,6 @@ async function sendSms(to: string, body: string) {
 
 async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext | null> {
   try {
-    // 1. Look up phone channel
     const { data: channel } = await supabase
       .from('contact_phone_channels')
       .select('id, contact_id, client_account_id')
@@ -74,7 +75,6 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
 
     if (!channel) return null;
 
-    // 2. Get contact
     const { data: contact } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, email')
@@ -83,7 +83,6 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
 
     if (!contact) return null;
 
-    // 3. Get client account if linked
     let clientAccount: any = null;
     if (channel.client_account_id) {
       const { data: ca } = await supabase
@@ -94,7 +93,6 @@ async function identifyCallerByPhone(phoneE164: string): Promise<CallerContext |
       clientAccount = ca;
     }
 
-    // 4. Get deals via deal_participants — no status filter (fetch all)
     const { data: participants } = await supabase
       .from('deal_participants')
       .select('deal_id')
@@ -136,7 +134,7 @@ async function handleAdminInbound(req: Request, res: Response, phone: string) {
   res.setHeader('Content-Type', 'text/xml');
   const greeting = say(VOICE_CONFIG.admin.greeting);
   const gatherBlock = gather(
-    { action: `admin-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
+    { action: `admin-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
     greeting
   );
   const fallback = say(VOICE_CONFIG.admin.noInput) + '<Hangup/>';
@@ -154,19 +152,17 @@ async function handleAdminQuery(req: Request, res: Response) {
   if (!question) {
     const retry = say(VOICE_CONFIG.admin.retry);
     const gatherBlock = gather(
-      { action: `admin-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
+      { action: `admin-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
       retry
     );
     return res.send(twiml(gatherBlock, say(VOICE_CONFIG.admin.noInputFinal), '<Hangup/>'));
   }
 
-  // Detect "done" — route to wrap-up
   if (VOICE_CONFIG.donePhrases.some(p => question.toLowerCase().includes(p))) {
     return handleAdminWrapup(req, res, phone, callSid);
   }
 
   try {
-    // Pull ALL deals — no status filter (admin wants full picture)
     const [dealsRes, contactsRes, tasksRes] = await Promise.all([
       supabase.from('deals').select('id, property_address, city, state, pipeline_stage, closing_date, purchase_price, transaction_type, status').limit(50),
       supabase.from('contacts').select('id, first_name, last_name, email, contact_type, company').limit(100),
@@ -208,7 +204,6 @@ ${tasks.length > 0 ? tasks.map((t: any) => `- ${t.title} | Priority: ${t.priorit
     const aiData = await aiRes.json() as any;
     const answer = aiData.choices?.[0]?.message?.content || VOICE_CONFIG.general.noAnswer;
 
-    // Store Q&A in DB for end-of-call email summary (keyed by CallSid)
     await supabase.from('communication_events').insert({
       contact_id: null,
       channel: 'voice',
@@ -221,11 +216,10 @@ ${tasks.length > 0 ? tasks.map((t: any) => `- ${t.title} | Priority: ${t.priorit
 
     const responseVoice = say(answer);
     const followUp = gather(
-      { action: `admin-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: VOICE_CONFIG.followUpTimeout },
+      { action: `admin-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, input: 'speech', timeout: VOICE_CONFIG.followUpTimeout },
       say(VOICE_CONFIG.admin.followUp)
     );
-    // Fallback when they hang up or say nothing — skip to wrap-up
-    const fallback = `<Redirect method="POST">${escapeXml(`${TELEPHONY_URL}/voice/admin-wrapup&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`)}</Redirect>`;
+    const fallback = `<Redirect method="POST">${escapeXml(`${TELEPHONY_URL}/voice/admin-wrapup?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`)}</Redirect>`;
 
     return res.send(twiml(responseVoice, followUp, fallback));
 
@@ -243,7 +237,7 @@ async function handleAdminWrapup(req: Request, res: Response, phone?: string, ca
 
   const prompt = say(VOICE_CONFIG.admin.wrapupPrompt);
   const gatherBlock = gather(
-    { action: `admin-email-confirm&phone=${encodeURIComponent(_phone)}&callSid=${encodeURIComponent(_callSid)}`, input: 'speech dtmf', timeout: VOICE_CONFIG.wrapupTimeout },
+    { action: `admin-email-confirm?phone=${encodeURIComponent(_phone)}&callSid=${encodeURIComponent(_callSid)}`, input: 'speech dtmf', timeout: VOICE_CONFIG.wrapupTimeout },
     prompt
   );
   const fallback = say(VOICE_CONFIG.admin.wrapupDecline) + '<Hangup/>';
@@ -270,7 +264,6 @@ async function handleAdminEmailConfirm(req: Request, res: Response) {
         .eq('event_type', 'admin_voice_qa')
         .order('created_at', { ascending: true });
 
-      console.log(`admin-email-confirm: found ${events?.length || 0} Q&A events for callSid=${callSid}`);
       if (events && events.length > 0) {
         const callDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         const callTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' });
@@ -298,31 +291,20 @@ async function handleAdminEmailConfirm(req: Request, res: Response) {
         const adminEmailBody = await adminEmailRes.json() as any;
         if (!adminEmailRes.ok) {
           console.error('Resend admin voice email FAILED:', JSON.stringify(adminEmailBody));
-          return res.send(twiml(
-            say(VOICE_CONFIG.admin.emailFailed),
-            '<Hangup/>'
-          ));
+          return res.send(twiml(say(VOICE_CONFIG.admin.emailFailed), '<Hangup/>'));
         }
-        console.log('Resend admin voice email sent OK, id:', adminEmailBody.id);
-
-        return res.send(twiml(
-          say(VOICE_CONFIG.admin.emailSent),
-          '<Hangup/>'
-        ));
+        return res.send(twiml(say(VOICE_CONFIG.admin.emailSent), '<Hangup/>'));
       }
     } catch (err) {
       console.error('admin-email-confirm error:', err);
     }
   }
 
-  return res.send(twiml(
-    say(VOICE_CONFIG.admin.wrapupDecline),
-    '<Hangup/>'
-  ));
+  return res.send(twiml(say(VOICE_CONFIG.admin.wrapupDecline), '<Hangup/>'));
 }
 
 
-// ── Client AI Voice Flow (Simplified) ────────────────────────────────────────
+// ── Client AI Voice Flow ──────────────────────────────────────────────────────
 
 async function getPhoneForContact(contactId: string): Promise<string> {
   const { data } = await supabase
@@ -370,28 +352,24 @@ async function handleClientAIInbound(req: Request, res: Response, caller: Caller
   res.setHeader('Content-Type', 'text/xml');
 
   if (dealCount === 0) {
-    return res.send(twiml(
-      say(VOICE_CONFIG.client.greetingNoDeals(firstName)),
-      '<Hangup/>'
-    ));
+    return res.send(twiml(say(VOICE_CONFIG.client.greetingNoDeals(firstName)), '<Hangup/>'));
   }
 
   if (dealCount === 1) {
     const deal = caller.activeDeals[0];
     const greeting = say(VOICE_CONFIG.client.greetingSingle(firstName, deal.property_address));
     const gatherBlock = gather(
-      { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}&dealId=${encodeURIComponent(deal.id)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
+      { action: `client-ai-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}&dealId=${encodeURIComponent(deal.id)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
       greeting
     );
     const fallback = say(VOICE_CONFIG.client.noInput) + '<Hangup/>';
     return res.send(twiml(gatherBlock, fallback));
   }
 
-  // Multiple deals — pick one
   const listText = caller.activeDeals.map((d, i) => `Press ${i + 1} for ${d.property_address}.`).join(' ');
   const menu = say(VOICE_CONFIG.client.greetingMultiple(firstName, dealCount, listText));
   const gatherBlock = gather(
-    { action: `client-deal-select&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout, input: 'dtmf' },
+    { action: `client-deal-select?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(CallSid || '')}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout, input: 'dtmf' },
     menu
   );
   const fallback = say(VOICE_CONFIG.client.noSelection) + '<Hangup/>';
@@ -415,7 +393,7 @@ async function handleClientDealSelect(req: Request, res: Response) {
     const listText = caller.activeDeals.map((d, i) => `Press ${i + 1} for ${d.property_address}.`).join(' ');
     const retry = say(VOICE_CONFIG.client.invalidSelection(listText));
     const gatherBlock = gather(
-      { action: `client-deal-select&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout, input: 'dtmf' },
+      { action: `client-deal-select?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout, input: 'dtmf' },
       retry
     );
     return res.send(twiml(gatherBlock, say(VOICE_CONFIG.client.noSelection), '<Hangup/>'));
@@ -424,7 +402,7 @@ async function handleClientDealSelect(req: Request, res: Response) {
   const deal = caller.activeDeals[idx];
   const prompt = say(VOICE_CONFIG.client.dealSelected(deal.property_address));
   const gatherBlock = gather(
-    { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(deal.id)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
+    { action: `client-ai-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(deal.id)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
     prompt
   );
   const fallback = say(VOICE_CONFIG.client.noInputFinal) + '<Hangup/>';
@@ -443,7 +421,7 @@ async function handleClientAIQuery(req: Request, res: Response) {
   if (!question) {
     const retry = say(VOICE_CONFIG.client.retry);
     const gatherBlock = gather(
-      { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
+      { action: `client-ai-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`, input: 'speech', timeout: VOICE_CONFIG.speechTimeout },
       retry
     );
     return res.send(twiml(gatherBlock, say(VOICE_CONFIG.client.noInputFinal), '<Hangup/>'));
@@ -496,7 +474,6 @@ ${participantsText}`;
     const aiData = await aiRes.json() as any;
     const answer = aiData.choices?.[0]?.message?.content || VOICE_CONFIG.general.noAnswerClient;
 
-    // Store Q&A for end-of-call email
     await supabase.from('communication_events').insert({
       contact_id: caller?.contact.id || null,
       channel: 'voice',
@@ -509,10 +486,10 @@ ${participantsText}`;
 
     const responseVoice = say(answer);
     const followUp = gather(
-      { action: `client-ai-query&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`, input: 'speech', timeout: VOICE_CONFIG.followUpTimeout },
+      { action: `client-ai-query?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`, input: 'speech', timeout: VOICE_CONFIG.followUpTimeout },
       say(VOICE_CONFIG.client.followUp)
     );
-    const fallback = `<Redirect method="POST">${escapeXml(`${TELEPHONY_URL}/voice/client-ai-wrapup&phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`)}</Redirect>`;
+    const fallback = `<Redirect method="POST">${escapeXml(`${TELEPHONY_URL}/voice/client-ai-wrapup?phone=${encodeURIComponent(phone)}&callSid=${encodeURIComponent(callSid)}&dealId=${encodeURIComponent(dealId)}`)}</Redirect>`;
 
     return res.send(twiml(responseVoice, followUp, fallback));
 
@@ -531,7 +508,7 @@ async function handleClientAIWrapup(req: Request, res: Response, phone?: string,
 
   const prompt = say(VOICE_CONFIG.client.wrapupPrompt);
   const gatherBlock = gather(
-    { action: `client-deal-email-confirm&phone=${encodeURIComponent(_phone)}&callSid=${encodeURIComponent(_callSid)}&dealId=${encodeURIComponent(_dealId)}`, input: 'speech dtmf', timeout: VOICE_CONFIG.wrapupTimeout },
+    { action: `client-deal-email-confirm?phone=${encodeURIComponent(_phone)}&callSid=${encodeURIComponent(_callSid)}&dealId=${encodeURIComponent(_dealId)}`, input: 'speech dtmf', timeout: VOICE_CONFIG.wrapupTimeout },
     prompt
   );
   const fallback = say(VOICE_CONFIG.client.wrapupDecline) + '<Hangup/>';
@@ -601,17 +578,10 @@ async function handleClientDealEmailConfirm(req: Request, res: Response) {
     const emailBody = await emailRes.json() as any;
     if (!emailRes.ok) {
       console.error('Resend client deal email FAILED:', JSON.stringify(emailBody));
-      return res.send(twiml(
-        say(VOICE_CONFIG.client.emailFailed),
-        '<Hangup/>'
-      ));
+      return res.send(twiml(say(VOICE_CONFIG.client.emailFailed), '<Hangup/>'));
     }
 
-    console.log('Client deal summary email sent OK, id:', emailBody.id);
-    return res.send(twiml(
-      say(VOICE_CONFIG.client.emailSent(deal.property_address)),
-      '<Hangup/>'
-    ));
+    return res.send(twiml(say(VOICE_CONFIG.client.emailSent(deal.property_address)), '<Hangup/>'));
 
   } catch (err) {
     console.error('client-deal-email-confirm error:', err);
@@ -623,14 +593,12 @@ async function handleInbound(req: Request, res: Response) {
   const { From, CallSid } = req.body;
   const fromE164 = normalizeToE164(From || '');
 
-  // Admin voice AI flow — Andre Vargas gets full database query assistant
   if (fromE164 === VOICE_CONFIG.admin.phone) {
     return handleAdminInbound(req, res, fromE164);
   }
 
   const caller = await identifyCallerByPhone(fromE164);
 
-  // Log communication event
   await supabase.from('communication_events').insert({
     contact_id: caller?.contact.id || null,
     channel: 'voice',
@@ -644,18 +612,15 @@ async function handleInbound(req: Request, res: Response) {
   res.setHeader('Content-Type', 'text/xml');
 
   if (caller && caller.clientAccount) {
-    // Only contacts with a client account get the AI voice assistant
     return handleClientAIInbound(req, res, caller);
   } else if (caller && !caller.clientAccount) {
-    // Known contact but NOT a TC client — polite voicemail
     const name = caller.contact.first_name;
     const greeting = say(VOICE_CONFIG.nonClient.known(name));
     res.end(`<?xml version="1.0" encoding="UTF-8"?><Response>${greeting}<Hangup/></Response>`);
     return;
   } else {
-    // Unknown caller
     const greeting = say(VOICE_CONFIG.nonClient.unknown);
-    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete&phone=${encodeURIComponent(fromE164)}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status&phone=${encodeURIComponent(fromE164)}`)}" recordingStatusCallbackMethod="POST"/>`;
+    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete?phone=${encodeURIComponent(fromE164)}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status?phone=${encodeURIComponent(fromE164)}`)}" recordingStatusCallbackMethod="POST"/>`;
 
     await supabase.from('communication_events').insert({
       contact_id: null,
@@ -686,46 +651,40 @@ async function handleIntent(req: Request, res: Response) {
   } else if (input === '2' || speech.includes('update') || speech.includes('message') || speech.includes('record')) {
     mode = 'record';
   } else if (input === '3' || speech.includes('callback') || speech.includes('call me')) {
-    // Callback flow
     const prompt = say(VOICE_CONFIG.ivr.callbackReasonPrompt);
-    const gatherBlock = gather({ action: `callback-confirm&phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
+    const gatherBlock = gather({ action: `callback-confirm?phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
     const fallback = say(VOICE_CONFIG.ivr.callbackSkip) + '<Hangup/>';
     return res.send(twiml(gatherBlock, fallback));
   } else if (input === '0') {
-    // Repeat menu
     const menu = say(VOICE_CONFIG.ivr.menuRepeat);
-    const gatherBlock = gather({ action: `intent&phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, menu);
+    const gatherBlock = gather({ action: `intent?phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, menu);
     const fallback = say(VOICE_CONFIG.ivr.menuFallback) + '<Hangup/>';
     return res.send(twiml(gatherBlock, fallback));
   } else {
     const retry = say(VOICE_CONFIG.ivr.menuError);
-    const gatherBlock = gather({ action: `intent&phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, retry);
+    const gatherBlock = gather({ action: `intent?phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, retry);
     const fallback = say(VOICE_CONFIG.general.goodbye) + '<Hangup/>';
     return res.send(twiml(gatherBlock, fallback));
   }
 
-  // Deal selection for status or record modes
   if (mode && caller && caller.activeDeals.length === 1) {
     const deal = caller.activeDeals[0];
     if (mode === 'status') {
       return handleStatusTextDirect(res, deal, phone);
     } else {
-      // Record mode — prompt to record
       const prompt = say(VOICE_CONFIG.ivr.recordPrompt(deal.property_address));
-      const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete&phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status&phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" recordingStatusCallbackMethod="POST"/>`;
+      const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete?phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status?phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" recordingStatusCallbackMethod="POST"/>`;
       return res.send(twiml(prompt, record));
     }
   } else if (mode && caller && caller.activeDeals.length > 1) {
-    // Multiple deals — list them
     const listing = caller.activeDeals.map((d, i) => `Press ${i + 1} for ${d.property_address}.`).join(' ');
     const prompt = say(`You have ${caller.activeDeals.length} active files. ${listing}`);
-    const gatherBlock = gather({ action: `deal-select&mode=${mode}&phone=${encodeURIComponent(phone)}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
+    const gatherBlock = gather({ action: `deal-select?mode=${mode}&phone=${encodeURIComponent(phone)}`, numDigits: 1, timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
     const fallback = say(VOICE_CONFIG.client.noSelection) + '<Hangup/>';
     return res.send(twiml(gatherBlock, fallback));
   } else if (mode) {
-    // No caller or no deals
     const msg = say(VOICE_CONFIG.ivr.noDeals);
-    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete&phone=${encodeURIComponent(phone)}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status&phone=${encodeURIComponent(phone)}`)}" recordingStatusCallbackMethod="POST"/>`;
+    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete?phone=${encodeURIComponent(phone)}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status?phone=${encodeURIComponent(phone)}`)}" recordingStatusCallbackMethod="POST"/>`;
     return res.send(twiml(msg, record));
   }
 }
@@ -753,7 +712,7 @@ async function handleDealSelect(req: Request, res: Response) {
     return handleStatusTextDirect(res, deal, phone);
   } else if (mode === 'record') {
     const prompt = say(VOICE_CONFIG.ivr.recordPrompt(deal.property_address));
-    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete&phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status&phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" recordingStatusCallbackMethod="POST"/>`;
+    const record = `<Record action="${escapeXml(`${TELEPHONY_URL}/voice/record-complete?phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" method="POST" maxLength="${VOICE_CONFIG.recording.maxLength}" transcribe="false" recordingStatusCallback="${escapeXml(`${TELEPHONY_URL}/voice/recording-status?phone=${encodeURIComponent(phone)}&dealId=${deal.id}`)}" recordingStatusCallbackMethod="POST"/>`;
     return res.send(twiml(prompt, record));
   } else {
     return res.send(twiml(say(VOICE_CONFIG.general.goodbye), '<Hangup/>'));
@@ -765,7 +724,7 @@ async function handleStatusTextDirect(res: Response, deal: any, phone: string) {
   await sendSms(phone, summary);
 
   const thanksMsg = say(VOICE_CONFIG.ivr.statusSent(deal.property_address));
-  const gatherBlock = gather({ action: `intent&phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: 5 }, thanksMsg);
+  const gatherBlock = gather({ action: `intent?phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: 5 }, thanksMsg);
   const fallback = say(VOICE_CONFIG.ivr.menuFallback) + '<Hangup/>';
 
   res.setHeader('Content-Type', 'text/xml');
@@ -796,12 +755,8 @@ async function handleStatusText(req: Request, res: Response) {
 }
 
 async function handleRecordComplete(req: Request, res: Response) {
-  // Recording action callback — the recording is done
   res.setHeader('Content-Type', 'text/xml');
-  return res.send(twiml(
-    say(VOICE_CONFIG.ivr.recordComplete),
-    '<Hangup/>'
-  ));
+  return res.send(twiml(say(VOICE_CONFIG.ivr.recordComplete), '<Hangup/>'));
 }
 
 async function handleRecordingStatus(req: Request, res: Response) {
@@ -814,10 +769,8 @@ async function handleRecordingStatus(req: Request, res: Response) {
   }
 
   try {
-    // Identify caller
     const caller = phone ? await identifyCallerByPhone(phone) : null;
 
-    // POST to AI pipeline for async processing
     await fetch(`${VERCEL_URL}/api/ai?action=process-recording`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -842,9 +795,8 @@ async function handleCallbackReason(req: Request, res: Response) {
 
   res.setHeader('Content-Type', 'text/xml');
 
-  // First time — gather reason
   const prompt = say(VOICE_CONFIG.ivr.callbackReasonPrompt);
-  const gatherBlock = gather({ action: `callback-confirm&phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
+  const gatherBlock = gather({ action: `callback-confirm?phone=${encodeURIComponent(phone)}`, input: 'dtmf speech', timeout: VOICE_CONFIG.dtmfTimeout }, prompt);
   const fallback = say(VOICE_CONFIG.ivr.callbackSkip) + '<Hangup/>';
   return res.send(twiml(gatherBlock, fallback));
 }
@@ -856,7 +808,6 @@ async function handleCallbackConfirm(req: Request, res: Response) {
 
   const caller = await identifyCallerByPhone(phone);
 
-  // Create callback request
   await supabase.from('callback_requests').insert({
     caller_contact_id: caller?.contact.id || null,
     deal_id: caller?.activeDeals[0]?.id || null,
@@ -867,10 +818,8 @@ async function handleCallbackConfirm(req: Request, res: Response) {
     status: 'open',
   });
 
-  // Send SMS confirmation
   await sendSms(phone, SMS_CONFIG.responses.callbackSms);
 
-  // Log communication event
   await supabase.from('communication_events').insert({
     contact_id: caller?.contact.id || null,
     channel: 'voice',
@@ -882,22 +831,16 @@ async function handleCallbackConfirm(req: Request, res: Response) {
   });
 
   res.setHeader('Content-Type', 'text/xml');
-  return res.send(twiml(
-    say(VOICE_CONFIG.ivr.callbackConfirm),
-    '<Hangup/>'
-  ));
+  return res.send(twiml(say(VOICE_CONFIG.ivr.callbackConfirm), '<Hangup/>'));
 }
 
 async function handleCallStatus(req: Request, res: Response) {
   const { CallSid, CallDuration, CallStatus } = req.body;
 
   try {
-    // Only update the GENERAL inbound call event — never overwrite Q&A records
     await supabase
       .from('communication_events')
-      .update({
-        metadata: { duration: CallDuration, callStatus: CallStatus },
-      })
+      .update({ metadata: { duration: CallDuration, callStatus: CallStatus } })
       .eq('source_ref', CallSid)
       .eq('event_type', 'general');
   } catch (err) {
@@ -919,16 +862,14 @@ async function handleOutboundConnect(req: Request, res: Response) {
     return res.send(twiml(say(VOICE_CONFIG.outbound.noClientPhone), '<Hangup/>'));
   }
 
-  // Update staff leg status
   if (attemptId) {
     await supabase.from('callback_attempts')
       .update({ staff_leg_status: 'answered', connected_at: new Date().toISOString() })
       .eq('id', attemptId);
   }
 
-  // Say connecting message, then dial client
   const connectMsg = say(VOICE_CONFIG.outbound.connecting);
-  const statusUrl = `${TELEPHONY_URL}/voice/outbound-dial-status&attemptId=${encodeURIComponent(attemptId || '')}`;
+  const statusUrl = `${TELEPHONY_URL}/voice/outbound-dial-status?attemptId=${encodeURIComponent(attemptId || '')}`;
   const dial = `<Dial callerId="${TWILIO_PHONE}" action="${escapeXml(statusUrl)}" method="POST" timeout="30"><Number>${escapeXml(clientPhone)}</Number></Dial>`;
 
   return res.send(twiml(connectMsg, dial));
@@ -955,7 +896,6 @@ async function handleOutboundDialStatus(req: Request, res: Response) {
       ended_at: new Date().toISOString(),
     }).eq('id', attemptId);
 
-    // If this was from a callback_request, update that too
     const { data: attempt } = await supabase.from('callback_attempts')
       .select('callback_request_id')
       .eq('id', attemptId)
@@ -969,7 +909,6 @@ async function handleOutboundDialStatus(req: Request, res: Response) {
     }
   }
 
-  // After client hangs up, play post-call message to TC
   if (DialCallStatus === 'completed') {
     return res.send(twiml(say(VOICE_CONFIG.outbound.callEnded), '<Hangup/>'));
   } else if (DialCallStatus === 'busy') {
@@ -986,7 +925,6 @@ async function handleOutboundParentStatus(req: Request, res: Response) {
   const attemptId = req.query.attemptId as string;
 
   if (attemptId && CallStatus) {
-    // Only update if TC didn't answer (failed/no-answer/busy)
     if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
       await supabase.from('callback_attempts').update({
         staff_leg_status: CallStatus,

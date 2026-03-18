@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Phone, PhoneOff, Minimize2, Maximize2, Mic, MicOff, Pause, Play,
   Plus, FileText, StickyNote, MessageCircle, Mail, MapPin, Users,
-  Clock, Loader2, X,
+  Clock, Loader2, ChevronRight, CalendarDays, Building2, Edit3, ChevronDown, X,
 } from 'lucide-react';
 import { Deal } from '../types';
 
@@ -15,6 +15,8 @@ interface CallData {
   startedAt: string;
 }
 
+export type EmailTemplate = 'deal-snapshot' | 'contract-dates' | 'key-contacts' | 'custom';
+
 interface ActiveCallOverlayProps {
   isActive: boolean;
   callData: CallData | null;
@@ -23,8 +25,36 @@ interface ActiveCallOverlayProps {
   onMinimize: () => void;
   onAddNote: (note: string) => void;
   onCreateTask: (description: string) => void;
+  onSendEmail?: (template: EmailTemplate, deal?: Deal, contactName?: string) => void;
   isMinimized: boolean;
 }
+
+const EMAIL_TEMPLATES: { id: EmailTemplate; label: string; icon: React.ReactNode; desc: string }[] = [
+  {
+    id: 'deal-snapshot',
+    label: 'Deal Snapshot',
+    icon: <Building2 size={13} />,
+    desc: 'Stage, closing date, price & pending docs',
+  },
+  {
+    id: 'contract-dates',
+    label: 'Contract Dates',
+    icon: <CalendarDays size={13} />,
+    desc: 'All key deadlines & milestone dates',
+  },
+  {
+    id: 'key-contacts',
+    label: 'Key Contacts',
+    icon: <Users size={13} />,
+    desc: 'Transaction team directory',
+  },
+  {
+    id: 'custom',
+    label: 'Custom Email',
+    icon: <Edit3 size={13} />,
+    desc: 'Write your own message',
+  },
+];
 
 function useCallTimer(startedAt: string | undefined) {
   const [elapsed, setElapsed] = useState(0);
@@ -51,6 +81,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
   onMinimize,
   onAddNote,
   onCreateTask,
+  onSendEmail,
   isMinimized,
 }) => {
   const [notes, setNotes] = useState('');
@@ -59,9 +90,24 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [taskDesc, setTaskDesc] = useState('');
   const [taskSaving, setTaskSaving] = useState(false);
+  const [showEmailMenu, setShowEmailMenu] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const emailMenuRef = useRef<HTMLDivElement>(null);
 
   const timer = useCallTimer(callData?.startedAt);
+
+  // Close email menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (emailMenuRef.current && !emailMenuRef.current.contains(e.target as Node)) {
+        setShowEmailMenu(false);
+      }
+    }
+    if (showEmailMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showEmailMenu]);
 
   if (!isActive || !callData) return null;
 
@@ -73,6 +119,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
     setNotes('');
     setIsMuted(false);
     setIsOnHold(false);
+    setShowEmailMenu(false);
   };
 
   const handleCreateTask = async () => {
@@ -84,6 +131,13 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
       setShowTaskInput(false);
     } finally {
       setTaskSaving(false);
+    }
+  };
+
+  const handleEmailTemplate = (template: EmailTemplate) => {
+    setShowEmailMenu(false);
+    if (onSendEmail) {
+      onSendEmail(template, deal, callData.contactName);
     }
   };
 
@@ -158,7 +212,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
           </div>
         )}
 
-        {/* 3-column body (or simplified if no deal) */}
+        {/* 3-column body */}
         <div className={`grid gap-0 ${deal ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
           {/* Column 1: Quick Actions */}
           <div className="border-b md:border-b-0 md:border-r border-base-200 p-3">
@@ -166,6 +220,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
               ⚡ Quick Actions
             </h4>
             <div className="space-y-1">
+              {/* Create Task */}
               <button
                 onClick={() => setShowTaskInput(!showTaskInput)}
                 className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs"
@@ -194,22 +249,71 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
                   </button>
                 </div>
               )}
+
+              {/* Open Docs */}
               <button className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs">
                 <FileText size={13} /> Open Docs
               </button>
-              <button className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs">
+
+              {/* Add Note */}
+              <button
+                onClick={() => notesRef.current?.focus()}
+                className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs"
+              >
                 <StickyNote size={13} /> Add Note
               </button>
+
+              {/* Send Text */}
               <button className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs">
                 <MessageCircle size={13} /> Send Text
               </button>
-              <button className="btn btn-sm btn-ghost w-full justify-start gap-2 text-xs">
-                <Mail size={13} /> Send Email
-              </button>
+
+              {/* Send Email — dropdown trigger */}
+              <div className="relative" ref={emailMenuRef}>
+                <button
+                  onClick={() => setShowEmailMenu(!showEmailMenu)}
+                  className={`btn btn-sm btn-ghost w-full justify-start gap-2 text-xs ${
+                    showEmailMenu ? 'bg-base-200' : ''
+                  }`}
+                >
+                  <Mail size={13} /> Send Email
+                  <ChevronDown
+                    size={11}
+                    className={`ml-auto transition-transform ${
+                      showEmailMenu ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Email template dropdown */}
+                {showEmailMenu && (
+                  <div className="absolute left-0 top-full mt-1 w-56 bg-base-100 border border-base-300 rounded-xl shadow-xl z-50 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-base-200">
+                      <p className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider">
+                        Choose Template
+                      </p>
+                    </div>
+                    {EMAIL_TEMPLATES.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        onClick={() => handleEmailTemplate(tpl.id)}
+                        className="w-full flex items-start gap-2.5 px-3 py-2.5 hover:bg-base-200 transition-colors text-left"
+                      >
+                        <span className="text-primary mt-0.5 flex-none">{tpl.icon}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-base-content">{tpl.label}</p>
+                          <p className="text-[10px] text-base-content/50 truncate">{tpl.desc}</p>
+                        </div>
+                        <ChevronRight size={11} className="text-base-content/30 flex-none ml-auto mt-1" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Column 2: Deal Snapshot (only if deal) */}
+          {/* Column 2: Deal Snapshot */}
           {deal && (
             <div className="border-b md:border-b-0 md:border-r border-base-200 p-3">
               <h4 className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -240,17 +344,16 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
                 )}
               </div>
 
-              {/* Missing items */}
-              {deal.documentRequests?.filter(d => d.status === 'pending').length > 0 && (
+              {deal.documentRequests?.filter((d: any) => d.status === 'pending').length > 0 && (
                 <div className="mt-3">
                   <p className="text-[10px] font-bold text-warning uppercase tracking-wider mb-1">
                     ⚠️ Pending Docs
                   </p>
                   <div className="space-y-0.5">
                     {deal.documentRequests
-                      .filter(d => d.status === 'pending')
+                      .filter((d: any) => d.status === 'pending')
                       .slice(0, 3)
-                      .map(d => (
+                      .map((d: any) => (
                         <p key={d.id} className="text-[11px] text-base-content/60 truncate">
                           • {d.label}
                         </p>
@@ -261,7 +364,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
             </div>
           )}
 
-          {/* Column 3: Deal Team (only if deal) */}
+          {/* Column 3: Deal Team */}
           {deal && (
             <div className="p-3">
               <h4 className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -269,7 +372,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
               </h4>
               <div className="space-y-1.5 max-h-36 overflow-y-auto">
                 {participants.length > 0
-                  ? participants.slice(0, 8).map((p) => (
+                  ? participants.slice(0, 8).map((p: any) => (
                       <div key={p.id} className="flex items-center gap-2 text-xs">
                         <span className="font-medium text-base-content truncate flex-1">
                           {p.contactName || 'Unknown'}
@@ -288,7 +391,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
                         )}
                       </div>
                     ))
-                  : dealContacts.slice(0, 8).map((c) => (
+                  : dealContacts.slice(0, 8).map((c: any) => (
                       <div key={c.id} className="flex items-center gap-2 text-xs">
                         <span className="font-medium text-base-content truncate flex-1">
                           {c.name}
