@@ -19,6 +19,7 @@ type NavigateTo =
 interface AIChatProps {
   onNavigateToDeal?: (dealId: string) => void;
   onSetView?: (view: string) => void;
+  onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string }) => void;
 }
 
 const QUICK_ACTIONS = [
@@ -28,7 +29,7 @@ const QUICK_ACTIONS = [
   { label: '📅 Closing Soon', prompt: 'What deals are closing soon?' },
 ];
 
-export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView }) => {
+export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView, onCallStarted: _onCallStarted }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');

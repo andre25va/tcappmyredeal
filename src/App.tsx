@@ -528,6 +528,7 @@ function AppInner() {
                 initialConversationId={inboxInitConvId}
                 initialChannel={inboxInitChannel}
                 onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
+                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -546,7 +547,7 @@ function AppInner() {
 
           {view === 'voice' && (
             <div className="flex-1 overflow-hidden">
-              <CommunicationsConsole onSelectDeal={handleSelectDeal} />
+              <CommunicationsConsole onSelectDeal={handleSelectDeal} onCallStarted={handleCallStarted} />
             </div>
           )}
 
@@ -610,6 +611,7 @@ function AppInner() {
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
         onSetView={(v) => setView(v as any)}
+        onCallStarted={handleCallStarted}
       />
     </div>
   );

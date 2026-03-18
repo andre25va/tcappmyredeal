@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronUp, Phone } from 'lucide-react';
+import { CallButton } from './CallButton';
 import { Deal } from '../types';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -29,9 +30,10 @@ type ChannelFilter = 'all' | 'voice' | 'sms' | 'email';
 interface DealCommTimelineProps {
   deal: Deal;
   onUpdate: (deal: Deal) => void;
+  onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string; dealId?: string }) => void;
 }
 
-export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal }) => {
+export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCallStarted }) => {
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -181,6 +183,23 @@ export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal }) => {
                           <div className="flex items-center gap-2 flex-wrap">
                             {dirBadge}
                             {ev.contact && <span className="text-xs font-medium text-base-content">{contactName(ev.contact)}</span>}
+                          {ev.contact?.phone && (
+                            <CallButton
+                              phoneNumber={ev.contact.phone}
+                              contactName={contactName(ev.contact)}
+                              contactId={ev.contact.id}
+                              dealId={deal.id}
+                              size="sm"
+                              variant="icon"
+                              onCallStarted={(callId) => onCallStarted?.({
+                                contactName: contactName(ev.contact),
+                                contactPhone: ev.contact.phone,
+                                callSid: callId,
+                                startedAt: new Date().toISOString(),
+                                dealId: deal.id,
+                              })}
+                            />
+                          )}
                             <span className="text-xs text-base-content/40">{fmtDateTime(ev.created_at)}</span>
                           </div>
                           {ev.summary && <p className="text-xs text-base-content/70 mt-1">{ev.summary}</p>}

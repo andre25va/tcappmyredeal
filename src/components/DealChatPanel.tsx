@@ -10,6 +10,7 @@ import type { DealChatMessage, DealChatAction } from '../ai/types';
 interface Props {
   deal: Deal;
   onUpdate: (deal: Deal) => void;
+  onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string }) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -21,7 +22,7 @@ const QUICK_PROMPTS = [
   { label: '\ud83d\udd0d Recent changes', prompt: 'What has changed recently on this file?' },
 ];
 
-export const DealChatPanel: React.FC<Props> = ({ deal, onUpdate }) => {
+export const DealChatPanel: React.FC<Props> = ({ deal, onUpdate, onCallStarted: _onCallStarted }) => {
   const [messages, setMessages] = useState<DealChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

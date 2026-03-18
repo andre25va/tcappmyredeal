@@ -294,8 +294,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
         {tab === 'timeline'   && <DealTimeline deal={deal} />}
-        {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
-        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
+        {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} onCallStarted={onCallStarted ? (cd) => onCallStarted({ ...cd, dealId: deal.id }) : undefined} />}
+        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} onCallStarted={onCallStarted ? (cd) => onCallStarted({ ...cd, dealId: deal.id }) : undefined} />}
         {tab === 'ai-emails' && (
           <div className="p-4">
             {emailsLoading && dealEmails.length === 0 ? (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 'lucide-react';
+import { CallButton } from './CallButton';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -32,11 +33,12 @@ type TimeFilter = '24h' | '7d' | '30d' | 'all';
 
 interface CommunicationsConsoleProps {
   onSelectDeal?: (dealId: string) => void;
+  onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string; dealId?: string }) => void;
 }
 
 /* ── component ───────────────────────────────────────────────────────── */
 
-export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ onSelectDeal }) => {
+export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ onSelectDeal, onCallStarted }) => {
   const [activeTab, setActiveTab] = useState<TabId>('voice');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('7d');
   const [loading, setLoading] = useState(true);
@@ -270,6 +272,23 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
             {/* Action buttons */}
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-base-200">
+              {v.caller_contact?.phone && (
+                <CallButton
+                  phoneNumber={v.caller_contact.phone}
+                  contactName={contactName(v.caller_contact)}
+                  contactId={v.caller_contact?.id}
+                  dealId={v.deals?.id}
+                  size="sm"
+                  variant="button"
+                  onCallStarted={(callId) => onCallStarted?.({
+                    contactName: contactName(v.caller_contact),
+                    contactPhone: v.caller_contact.phone,
+                    callSid: callId,
+                    startedAt: new Date().toISOString(),
+                    dealId: v.deals?.id,
+                  })}
+                />
+              )}
               <button onClick={() => updateVoiceReview(v.id, 'reviewed')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Mark Reviewed</button>
               <button onClick={() => updateVoiceReview(v.id, 'dismissed')} className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/50">🗑️ Dismiss</button>
             </div>
@@ -304,6 +323,23 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
               </div>
             </div>
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-base-200">
+              {cb.contact?.phone && (
+                <CallButton
+                  phoneNumber={cb.contact.phone}
+                  contactName={contactName(cb.contact)}
+                  contactId={cb.contact?.id}
+                  dealId={cb.deals?.id}
+                  size="sm"
+                  variant="button"
+                  onCallStarted={(callId) => onCallStarted?.({
+                    contactName: contactName(cb.contact),
+                    contactPhone: cb.contact.phone,
+                    callSid: callId,
+                    startedAt: new Date().toISOString(),
+                    dealId: cb.deals?.id,
+                  })}
+                />
+              )}
               <button onClick={() => updateCallbackStatus(cb.id, 'completed')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Complete</button>
               <button onClick={() => updateCallbackStatus(cb.id, 'dismissed')} className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/50">🗑️ Dismiss</button>
             </div>
