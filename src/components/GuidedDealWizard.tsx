@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
@@ -85,9 +85,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const canAdvance = (): boolean => {
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim());
-      case 2: return true; // already has default
-      case 3: return true; // already has default
-      case 4: return true; // optional fields
+      case 2: return true;
+      case 3: return true;
+      case 4: return true;
       case 5: return !!form.closingDate;
       case 6: return !!form.agentName.trim();
       case 7: return true;
@@ -104,7 +104,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       return;
     }
     if (step === 6) {
-      // Moving to AI Review — trigger review
       runAIReview();
     }
     if (step < TOTAL_STEPS) setStep(step + 1);
@@ -203,6 +202,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     warning: { bg: 'bg-yellow-50 border-yellow-200', icon: <AlertTriangle size={16} className="text-yellow-500" />, text: 'text-yellow-700' },
     error: { bg: 'bg-red-50 border-red-200', icon: <AlertTriangle size={16} className="text-red-500" />, text: 'text-red-700' },
   };
+
+  // Get selected client object
+  const selectedClient = agentClients?.find(c => c.id === form.agentClientId) ?? null;
 
   return (
     <div className="fixed inset-0 bg-base-100/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -398,17 +400,49 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   >
                     <option value="">-- Select Client --</option>
                     {agentClients.map(c => (
-                      <option key={c.id} value={c.id}>{c.fullName}{c.company ? ` — ${c.company}` : ''}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.fullName}{c.company ? ` — ${c.company}` : ''}
+                      </option>
                     ))}
                   </select>
-                  {form.agentClientId && complianceTemplates && (() => {
-                    const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(form.agentClientId!));
-                    return tpl ? (
-                      <p className="text-xs text-green-600 mt-1">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
-                    ) : (
-                      <p className="text-xs text-gray-400 mt-1">No compliance template set up for this client yet</p>
-                    );
-                  })()}
+
+                  {/* Client Verification Card */}
+                  {selectedClient && (
+                    <div className="mt-3 p-3 rounded-xl border-2 border-primary/30 bg-primary/5 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle2 size={14} className="text-primary" />
+                        <span className="text-xs font-semibold text-primary uppercase tracking-wide">Client Verified</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-base-content">
+                        <User size={13} className="text-base-content/40 flex-none" />
+                        <span className="font-semibold">{selectedClient.fullName}</span>
+                      </div>
+                      {selectedClient.company && (
+                        <div className="flex items-center gap-2 text-sm text-base-content/70">
+                          <Building2 size={13} className="text-base-content/40 flex-none" />
+                          <span>{selectedClient.company}</span>
+                        </div>
+                      )}
+                      {selectedClient.email && (
+                        <div className="flex items-center gap-2 text-sm text-base-content/70">
+                          <Mail size={13} className="text-base-content/40 flex-none" />
+                          <span>{selectedClient.email}</span>
+                        </div>
+                      )}
+                      {selectedClient.phone && (
+                        <div className="flex items-center gap-2 text-sm text-base-content/70">
+                          <Phone size={13} className="text-base-content/40 flex-none" />
+                          <span>{selectedClient.phone}</span>
+                        </div>
+                      )}
+                      {complianceTemplates && (() => {
+                        const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id));
+                        return tpl ? (
+                          <p className="text-xs text-green-600 pt-1 border-t border-primary/20">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -493,6 +527,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <span className="font-medium">{formatDisplayDate(form.closingDate)}</span>
                   <span className="text-base-content/50">Agent:</span>
                   <span className="font-medium">{form.agentName}</span>
+                  {selectedClient && (
+                    <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}</span></>
+                  )}
                 </div>
               </div>
             </div>
