@@ -5,7 +5,7 @@ import {
   FilePlus, CheckCircle2, Circle, MoreVertical,
 } from 'lucide-react';
 import { MlsEntry, MlsDocument } from '../types';
-import { generateId } from '../utils/helpers';
+// generateId removed - using crypto.randomUUID() for UUID-compatible IDs
 import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
@@ -78,7 +78,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
     } else {
       const ne: MlsEntry = {
         ...entryForm,
-        id: generateId(),
+        id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         documents: [],
       };
@@ -115,7 +115,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
         ),
       };
     } else {
-      const nd: MlsDocument = { ...docForm, id: generateId() };
+      const nd: MlsDocument = { ...docForm, id: crypto.randomUUID() };
       updated = { ...selectedEntry, documents: [nd, ...(selectedEntry.documents ?? [])] };
     }
     onUpdate(mls.map(m => m.id === updated.id ? updated : m));
