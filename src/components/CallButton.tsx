@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Phone, Loader2 } from 'lucide-react';
 import { DealPickerPopup } from './DealPickerPopup';
 import { FEATURE_FLAGS } from '../config/feature.flags';
+import { TELEPHONY_URL } from '../lib/telephony';
 
 interface CallButtonProps {
   phoneNumber: string;
@@ -42,7 +43,7 @@ export const CallButton: React.FC<CallButtonProps> = ({
     setLoading(true);
     setShowPicker(false);
     try {
-      const res = await fetch('/api/callbacks?action=initiate', {
+      const res = await fetch(`${TELEPHONY_URL}/callbacks/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
