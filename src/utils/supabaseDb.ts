@@ -990,6 +990,45 @@ export async function deletePhoneChannel(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Sync a client contact's phone number into contact_phone_channels.
+ * Upserts by contact_id — safe to call on every contact save.
+ * Only call when the contact is a client (has a clientAccountId).
+ */
+export async function syncPhoneChannel(
+  contactId: string,
+  clientAccountId: string,
+  phoneE164: string,
+): Promise<void> {
+  // Find existing row for this contact so we can upsert on the same id
+  const { data: existing } = await supabase
+    .from('contact_phone_channels')
+    .select('id')
+    .eq('contact_id', contactId)
+    .maybeSingle();
+
+  const { error } = await supabase.from('contact_phone_channels').upsert(
+    {
+      id: existing?.id ?? crypto.randomUUID(),
+      contact_id: contactId,
+      client_account_id: clientAccountId,
+      phone_e164: phoneE164,
+      label: 'mobile',
+      is_verified: true,
+      can_call_in: true,
+      can_receive_texts: true,
+      can_request_updates: true,
+      can_submit_voice_updates: true,
+      can_request_callback: true,
+      is_primary: true,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw error;
+}
+
 // ── VOICE DEAL UPDATES (Phase 5) ────────────────────────────────────────────
 
 export async function loadVoiceDealUpdates(filters?: { dealId?: string; status?: string }): Promise<VoiceDealUpdate[]> {

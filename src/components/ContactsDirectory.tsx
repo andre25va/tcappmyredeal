@@ -11,6 +11,7 @@ import {
   upsertContactLicense, deleteContactLicenseRecord,
   upsertContactMls, deleteContactMlsRecord,
   createClientAccountForContact, removeClientAccountForContact,
+  syncPhoneChannel,
 } from '../utils/supabaseDb';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
@@ -488,14 +489,24 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       }
 
       // 3. Handle client account toggle (agents only)
+      let effectiveClientAccountId = form.clientAccountId;
       if (form.contactType === 'agent') {
         if (form.isClient && !form.originalIsClient) {
-          // Promote to client
-          await createClientAccountForContact(form.id, fullName);
+          // Promote to client — capture new account id for phone sync below
+          effectiveClientAccountId = await createClientAccountForContact(form.id, fullName);
         } else if (!form.isClient && form.originalIsClient && form.clientAccountId) {
           // Demote from client
+          effectiveClientAccountId = undefined;
           await removeClientAccountForContact(form.id, form.clientAccountId);
         }
+      }
+
+      // 4. Sync phone → contact_phone_channels for client contacts
+      const rawPhone = form.phone.trim();
+      if (rawPhone && effectiveClientAccountId) {
+        const digits = rawPhone.replace(/\D/g, '');
+        const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+        await syncPhoneChannel(form.id, effectiveClientAccountId, e164);
       }
 
       await refresh();
