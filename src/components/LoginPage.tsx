@@ -58,7 +58,7 @@ export function LoginPage() {
     if (!phoneReady) { setError('Enter a valid 10-digit phone number.'); return; }
     setLoading(true);
     try {
-      const resp = await fetch('/api/auth/request-otp', {
+      const resp = await fetch('/api/auth?action=request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneDigits }),
@@ -81,7 +81,7 @@ export function LoginPage() {
     setDemoLoading(true);
     setError('');
     try {
-      const resp = await fetch('/api/auth/demo-login', {
+      const resp = await fetch('/api/auth?action=demo-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -102,7 +102,7 @@ export function LoginPage() {
     setEmailLoading(true);
     setError('');
     try {
-      const resp = await fetch('/api/auth/request-otp', {
+      const resp = await fetch('/api/auth?action=request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneDigits, delivery: 'email' }),
@@ -148,7 +148,7 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const resp = await fetch('/api/auth/verify-otp', {
+      const resp = await fetch('/api/auth?action=verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneDigits, code: fullCode, force: forceLogin }),
@@ -191,7 +191,7 @@ export function LoginPage() {
     setEmailHint('');
     setLoading(true);
     try {
-      const resp = await fetch('/api/auth/request-otp', {
+      const resp = await fetch('/api/auth?action=request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneDigits }),
