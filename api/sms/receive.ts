@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { SMS_CONFIG } from '../../src/config/sms.config';
-import { AI_CONFIG } from '../../src/config/ai.config';
+import { SMS_CONFIG, AI_CONFIG } from '../_config';
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,

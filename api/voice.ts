@@ -1,9 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { VOICE_CONFIG } from '../src/config/voice.config';
-import { AI_CONFIG } from '../src/config/ai.config';
-import { SMS_CONFIG } from '../src/config/sms.config';
-import { EMAIL_CONFIG } from '../src/config/email.config';
+import { VOICE_CONFIG, AI_CONFIG, SMS_CONFIG, EMAIL_CONFIG, FEATURE_FLAGS } from './_config';
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
