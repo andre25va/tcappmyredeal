@@ -11,7 +11,6 @@ interface Props {
   onClose: () => void;
   complianceTemplates?: ComplianceTemplate[];
   agentClients?: ContactRecord[];    // contacts with isClient === true
-  agentContacts?: ContactRecord[];   // contacts with contactType === 'agent'
   ddMasterItems?: DDMasterItem[];
 }
 
@@ -170,7 +169,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
 );
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────
-export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, agentContacts, ddMasterItems }) => {
+export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
@@ -179,7 +178,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
-    agentContactId: '',   // selected agent from agentContacts
     agentClientId: '',    // selected client from agentClients
   });
   const [error, setError] = useState('');
@@ -187,32 +185,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
 
-  // Disambiguation state — separate for agent and client
-  const [disambigAgentCandidates, setDisambigAgentCandidates] = useState<ContactRecord[] | null>(null);
+  // Disambiguation state — client only
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
-
-  // ── Agent selection ──────────────────────────────────────────────────────────
-  const handleAgentSelect = (selectedId: string) => {
-    if (!selectedId) { setForm(p => ({ ...p, agentContactId: '' })); return; }
-    const chosen = agentContacts?.find(c => c.id === selectedId);
-    if (!chosen) return;
-    const sameName = agentContacts?.filter(
-      c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
-    ) ?? [];
-    if (sameName.length > 1) {
-      setDisambigAgentCandidates(sameName);
-    } else {
-      setForm(p => ({ ...p, agentContactId: selectedId }));
-    }
-  };
-
-  const handleAgentDisambigSelect = (c: ContactRecord) => {
-    setForm(p => ({ ...p, agentContactId: c.id }));
-    setDisambigAgentCandidates(null);
-  };
 
   // ── Client selection ─────────────────────────────────────────────────────────
   const handleClientSelect = (selectedId: string) => {
@@ -241,7 +218,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       case 3: return true;
       case 4: return true;
       case 5: return !!form.closingDate;
-      case 6: return true; // both agent and client are optional dropdowns
+      case 6: return !!form.agentClientId;  // Our Client is required
       case 7: return true;
       default: return true;
     }
@@ -252,6 +229,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (!canAdvance()) {
       if (step === 1) setError('Address and city are required.');
       if (step === 5) setError('Closing date is required.');
+      if (step === 6) setError('Please select a client to continue.');
       return;
     }
     if (step === 6) runAIReview();
@@ -271,7 +249,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const res = await fetch('/api/ai?action=guided-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealData: { ...form, agentName: selectedAgent?.fullName ?? '' } }),
+        body: JSON.stringify({ dealData: { ...form } }),
       });
       if (!res.ok) throw new Error('AI review failed');
       const data: AIReview = await res.json();
@@ -285,7 +263,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleCreate = () => {
     const isMF = form.propertyType === 'multi-family';
-    const agentName = selectedAgent?.fullName ?? '';
 
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
@@ -299,7 +276,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }] : [];
 
     const initLog: ActivityEntry[] = [
-      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state}${agentName ? ` — Agent: ${agentName}` : ''}`, user: 'TC Staff', type: 'deal_created' },
+      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state}`, user: 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
     ];
 
@@ -312,8 +289,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionType as TransactionType,
       contractDate: form.contractDate, closingDate: form.closingDate,
-      agentId: selectedAgent?.id ?? generateId(),
-      agentName,
+      agentId: generateId(),
+      agentName: '',
       agentClientId: form.agentClientId || undefined,
       contacts: [], notes: '',
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
@@ -339,7 +316,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     onAdd(deal);
   };
 
-  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Agent & Client', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -347,21 +324,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     error: { bg: 'bg-red-50 border-red-200', icon: <AlertTriangle size={16} className="text-red-500" />, text: 'text-red-700' },
   };
 
-  const selectedAgent = agentContacts?.find(c => c.id === form.agentContactId) ?? null;
   const selectedClient = agentClients?.find(c => c.id === form.agentClientId) ?? null;
 
   return (
     <>
-      {/* Agent Disambiguation Modal */}
-      {disambigAgentCandidates && (
-        <DisambigModal
-          candidates={disambigAgentCandidates}
-          title="Multiple Agents Found"
-          onSelect={handleAgentDisambigSelect}
-          onCancel={() => { setDisambigAgentCandidates(null); setForm(p => ({ ...p, agentContactId: '' })); }}
-        />
-      )}
-
       {/* Client Disambiguation Modal */}
       {disambigClientCandidates && (
         <DisambigModal
@@ -547,42 +513,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 6 — Agent & Client (dropdowns only, no free text) */}
+            {/* Step 6 — Our Client (required) */}
             {step === 6 && (
               <div className="space-y-5">
-                <h3 className="text-lg font-bold text-base-content">Agent & Client</h3>
+                <h3 className="text-lg font-bold text-base-content">Our Client</h3>
 
-                {/* ── Agent dropdown ── */}
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Agent (optional)</label>
-                  {agentContacts && agentContacts.length > 0 ? (
-                    <>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.agentContactId}
-                        onChange={e => handleAgentSelect(e.target.value)}
-                      >
-                        <option value="">-- Select Agent --</option>
-                        {agentContacts.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.fullName}{c.company ? ` — ${c.company}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedAgent && (
-                        <VerifyCard contact={selectedAgent} label="Agent Confirmed" />
-                      )}
-                    </>
-                  ) : (
-                    <div className="p-3 rounded-xl border border-dashed border-base-300 text-sm text-base-content/40 text-center">
-                      No agent contacts found. Add agents in the Contacts Directory first.
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Client dropdown ── */}
-                <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Our Client (optional)</label>
+                  <label className="text-xs text-base-content/50 mb-1 block">Our Client *</label>
                   {agentClients && agentClients.length > 0 ? (
                     <>
                       <select
@@ -693,11 +630,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <span className="font-medium">{formatDisplayDate(form.contractDate)}</span>
                     <span className="text-base-content/50">Closing Date:</span>
                     <span className="font-medium">{formatDisplayDate(form.closingDate)}</span>
-                    {selectedAgent && (
-                      <><span className="text-base-content/50">Agent:</span><span className="font-medium">{selectedAgent.fullName}{selectedAgent.company ? ` — ${selectedAgent.company}` : ''}</span></>
-                    )}
                     {selectedClient && (
-                      <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}</span></>
+                      <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}{selectedClient.company ? ` — ${selectedClient.company}` : ''}</span></>
                     )}
                   </div>
                 </div>
