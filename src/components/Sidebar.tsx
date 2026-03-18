@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Settings, Phone,
   Building2, ClipboardList, Bell, ChevronRight, Menu, X,
-  BookOpen, ChevronDown,
+  BookOpen, LogOut,
 } from 'lucide-react';
 
 export type View =
@@ -21,6 +21,7 @@ interface SidebarProps {
   view: View;
   onSetView: (v: View) => void;
   onAddAgentClient?: () => void;
+  onLogout?: () => void;
   unreadCount?: number;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -39,7 +40,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void }> = ({ onClick })
   </button>
 );
 
-const APP_VERSION = 'v2026.03.18.8';
+const APP_VERSION = 'v2026.03.18.9';
 
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard',     label: 'Dashboard',     icon: <LayoutDashboard size={18} /> },
@@ -56,6 +57,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode }[] = [
 export const Sidebar: React.FC<SidebarProps> = ({
   view,
   onSetView,
+  onLogout,
   unreadCount = 0,
   mobileOpen = false,
   onMobileClose,
@@ -127,10 +129,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* User info */}
-        {(userName || userInitials) && (
-          <div className="px-3 py-2 border-t border-base-300">
-            <div className="flex items-center gap-2">
+        {/* User info + Logout */}
+        <div className="px-3 py-3 border-t border-base-300">
+          {(userName || userInitials) && (
+            <div className="flex items-center gap-2 mb-2">
               <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
                 {userInitials ?? '?'}
               </div>
@@ -139,8 +141,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {userRole && <p className="text-xs text-base-content/40 capitalize">{userRole}</p>}
               </div>
             </div>
-          </div>
-        )}
+          )}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
+            >
+              <LogOut size={15} />
+              <span>Log Out</span>
+            </button>
+          )}
+        </div>
 
         {/* Version */}
         <div className="px-4 py-2 border-t border-base-300">
