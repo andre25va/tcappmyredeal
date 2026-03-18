@@ -81,9 +81,13 @@ export function useDealEmails(deal: Deal): UseDealEmailsReturn {
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<EmailStats>({ total: 0, highConfidence: 0, aiClassified: 0, grayZone: 0 });
   const abortRef = useRef<AbortController | null>(null);
+  // Keep a ref to the latest deal so fetchEmails can access it without being a dependency
+  const dealRef = useRef<Deal>(deal);
+  dealRef.current = deal;
 
   const fetchEmails = useCallback(async (skipCache = false) => {
-    const dealId = deal.id;
+    const currentDeal = dealRef.current;
+    const dealId = currentDeal.id;
 
     // Check cache
     if (!skipCache) {
@@ -98,7 +102,7 @@ export function useDealEmails(deal: Deal): UseDealEmailsReturn {
     }
 
     // Build request body from deal record
-    const record = dealToRecord(deal);
+    const record = dealToRecord(currentDeal);
 
     const body = {
       addresses: record.addressVariants || [],
@@ -126,11 +130,17 @@ export function useDealEmails(deal: Deal): UseDealEmailsReturn {
       });
 
       if (!res.ok) {
-        const text = await res.text().catch(() => 'Unknown error');
-        throw new Error(`Email fetch failed (${res.status}): ${text}`);
+        // Silently handle expected failures (Gmail not configured, etc.)
+        console.warn(`[useDealEmails] Email fetch returned ${res.status} — skipping`);
+        return;
       }
 
       const data = await res.json();
+      // If server says Gmail isn't configured, just silently return empty
+      if (data.warning) {
+        console.info('[useDealEmails]', data.warning);
+        return;
+      }
       const apiEmails: EmailApiItem[] = data.emails || [];
       const mapped = apiEmails.map(mapToRawEmail);
       const emailStats = computeStats(apiEmails);
@@ -143,13 +153,16 @@ export function useDealEmails(deal: Deal): UseDealEmailsReturn {
       setStats(emailStats);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message || 'Failed to fetch emails');
+      // Silently suppress — email is an enhancement, not core functionality
+      console.warn('[useDealEmails] Email fetch error:', err.message);
     } finally {
       setLoading(false);
     }
-  }, [deal]);
+  // ✅ FIX: Only depend on deal.id — not the full deal object
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal.id]);
 
-  // Fetch on mount / deal change
+  // Fetch on mount / deal ID change only
   useEffect(() => {
     fetchEmails();
     return () => {

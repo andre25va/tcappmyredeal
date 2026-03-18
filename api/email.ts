@@ -80,7 +80,13 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ error: 'Gmail not configured' });
+  if (!GMAIL_APP_PASSWORD) return res.status(200).json({
+    emails: [],
+    total: 0,
+    addresses: [],
+    stats: { hardAccepted: 0, grayZone: 0, aiAccepted: 0, hardRejected: 0, totalScanned: 0 },
+    warning: 'Gmail not configured on this server.',
+  });
 
   const addressParam = req.query.addresses as string;
   if (!addressParam) return res.status(400).json({ error: 'addresses param required' });
@@ -193,7 +199,13 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ error: 'Gmail not configured' });
+  if (!GMAIL_APP_PASSWORD) return res.status(200).json({
+    emails: [],
+    total: 0,
+    addresses: [],
+    stats: { hardAccepted: 0, grayZone: 0, aiAccepted: 0, hardRejected: 0, totalScanned: 0 },
+    warning: 'Gmail not configured on this server.',
+  });
 
   const { uid, thread_id, folder = 'INBOX' } = req.query;
   const client = new ImapFlow({
@@ -553,7 +565,13 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ error: 'Gmail not configured' });
+  if (!GMAIL_APP_PASSWORD) return res.status(200).json({
+    emails: [],
+    total: 0,
+    addresses: [],
+    stats: { hardAccepted: 0, grayZone: 0, aiAccepted: 0, hardRejected: 0, totalScanned: 0 },
+    warning: 'Gmail not configured on this server.',
+  });
 
   const params = req.method === 'POST' ? req.body : req.query;
   const addressParam = params.addresses as string;
