@@ -5,21 +5,20 @@
 
 import express from 'express';
 import cors from 'cors';
-import { voiceRouter } from './routes/voice';
-import { smsReceiveRouter } from './routes/sms-receive';
-import { callbacksRouter } from './routes/callbacks';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ── Middleware ─────────────────────────────────────────────────────────────────
+console.log('🚂 Starting TC Command Telephony server...');
+console.log(`   PORT=${PORT}`);
+console.log(`   NODE_ENV=${process.env.NODE_ENV}`);
+console.log(`   SUPABASE_URL=${process.env.SUPABASE_URL ? 'set' : 'MISSING'}`);
+console.log(`   TWILIO_ACCOUNT_SID=${process.env.TWILIO_ACCOUNT_SID ? 'set' : 'MISSING'}`);
+console.log(`   OPENAI_API_KEY=${process.env.OPENAI_API_KEY ? 'set' : 'MISSING'}`);
 
-// Twilio sends form-encoded POST bodies
+// ── Middleware ─────────────────────────────────────────────────────────────────
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-
-// CORS — only needed for callbacks (called from frontend)
-// Voice and SMS are Twilio→server only (no browser origin)
 app.use(cors({
   origin: [
     'https://tcappmyredeal.vercel.app',
@@ -31,7 +30,6 @@ app.use(cors({
 }));
 
 // ── Health Check ──────────────────────────────────────────────────────────────
-
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -41,24 +39,50 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Routes (loaded with error handling) ─────────────────────────────────────
+async function loadRoutes() {
+  try {
+    console.log('Loading voice routes...');
+    const { voiceRouter } = await import('./routes/voice.js');
+    app.use('/voice', voiceRouter);
+    console.log('✅ Voice routes loaded');
+  } catch (e) {
+    console.error('❌ Failed to load voice routes:', e);
+  }
 
-app.use('/voice', voiceRouter);
-app.use('/sms', smsReceiveRouter);
-app.use('/callbacks', callbacksRouter);
+  try {
+    console.log('Loading SMS routes...');
+    const { smsReceiveRouter } = await import('./routes/sms-receive.js');
+    app.use('/sms', smsReceiveRouter);
+    console.log('✅ SMS routes loaded');
+  } catch (e) {
+    console.error('❌ Failed to load SMS routes:', e);
+  }
+
+  try {
+    console.log('Loading callback routes...');
+    const { callbacksRouter } = await import('./routes/callbacks.js');
+    app.use('/callbacks', callbacksRouter);
+    console.log('✅ Callback routes loaded');
+  } catch (e) {
+    console.error('❌ Failed to load callback routes:', e);
+  }
+}
 
 // ── 404 Handler ───────────────────────────────────────────────────────────────
-
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found', service: 'tc-command-telephony' });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-
-app.listen(PORT, () => {
-  console.log(`🚀 TC Command Telephony server running on port ${PORT}`);
-  console.log(`   Health: http://localhost:${PORT}/health`);
-  console.log(`   Voice:  POST /voice/:route`);
-  console.log(`   SMS:    POST /sms/receive`);
-  console.log(`   Calls:  GET/POST /callbacks/:action`);
+loadRoutes().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 TC Command Telephony server running on port ${PORT}`);
+  });
+}).catch((e) => {
+  console.error('Fatal startup error:', e);
+  // Still start the server so health check works
+  app.listen(PORT, () => {
+    console.log(`⚠️ Server started with errors on port ${PORT}`);
+  });
 });
