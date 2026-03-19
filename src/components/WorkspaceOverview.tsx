@@ -777,26 +777,19 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 </p>
               </button>
 
-              {/* Phone number + Call button — always visible */}
+              {/* Phone number + phone icon — opens popup with live call + email */}
               {p.agent?.phone && (
                 <div className="flex items-center gap-1.5 flex-none">
                   <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">
                     {formatPhone(p.agent.phone)}
                   </span>
-                  <CallButton
-                    phoneNumber={p.agent.phone}
-                    contactName={p.agent.name || 'Unknown'}
-                    dealId={deal.id}
-                    size="sm"
-                    variant="icon"
-                    onCallStarted={(callSid) => onCallStarted?.({
-                      contactName: p.agent?.name || 'Unknown',
-                      contactPhone: p.agent?.phone || '',
-                      dealId: deal.id,
-                      callSid,
-                      startedAt: new Date().toISOString(),
-                    })}
-                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent }); }}
+                    className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
+                    title={`View ${p.agent?.name || 'agent'} contact info`}
+                  >
+                    <Phone size={14} />
+                  </button>
                 </div>
               )}
 
