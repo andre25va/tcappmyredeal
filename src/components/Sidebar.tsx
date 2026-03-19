@@ -93,8 +93,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           // Amber badge for email-review to stand out from error-red
           const isEmailQueue = item.view === 'email-review';
           return (
+            <React.Fragment key={item.view}>
             <button
-              key={item.view}
               onClick={() => { onSetView(item.view); onCloseMobile(); }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-0.5 relative ${
                 active
@@ -139,6 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
             )}
+            </React.Fragment>
           );
         })}
       </nav>
