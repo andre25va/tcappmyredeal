@@ -47,6 +47,17 @@ export const CallButton: React.FC<CallButtonProps> = ({
       return;
     }
 
+    // Use E.164 phone if available, fall back to raw phone
+    const staffPhone =
+      (profile as any).login_phone_e164 ||
+      (profile as any).phone ||
+      '';
+
+    if (!staffPhone) {
+      console.warn('CallButton: no staff phone on profile — cannot initiate callback');
+      return;
+    }
+
     setLoading(true);
     setShowPicker(false);
     try {
@@ -57,6 +68,7 @@ export const CallButton: React.FC<CallButtonProps> = ({
           contactId: contactId || undefined,
           contactName,
           contactPhone: phoneNumber,
+          staffPhone,
           dealId: selectedDealId || undefined,
           profileId: profile.id,
           requestedBy: 'tc-app',
