@@ -18,13 +18,10 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   isFirstLogin: boolean;
-  kickedOut: boolean;
-  kickedOutMessage: string;
   login: (token: string, profile: TCProfile, firstLogin?: boolean) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => Promise<void>;
   clearFirstLogin: () => void;
-  clearKickedOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -36,8 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
-  const [kickedOut, setKickedOut] = useState(false);
-  const [kickedOutMessage, setKickedOutMessage] = useState('');
 
   // Validate session on mount
   useEffect(() => {
@@ -54,10 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(data.profile);
         } else {
           localStorage.removeItem(SESSION_KEY);
-          if (data.reason === 'other_device') {
-            setKickedOut(true);
-            setKickedOutMessage('You were signed out because your account was accessed on another device.');
-          }
+
         }
       })
       .catch(() => localStorage.removeItem(SESSION_KEY))
@@ -77,10 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(SESSION_KEY);
           setToken(null);
           setProfile(null);
-          if (data.reason === 'other_device') {
-            setKickedOut(true);
-            setKickedOutMessage('You were signed out because your account was accessed on another device.');
-          }
+
         }
       } catch { /* silent network error */ }
     }, 2 * 60 * 1000);
@@ -92,8 +81,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(tok);
     setProfile(prof);
     setIsFirstLogin(firstLogin);
-    setKickedOut(false);
-    setKickedOutMessage('');
   }, []);
 
   const logout = useCallback(async () => {
@@ -125,12 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearFirstLogin = useCallback(() => setIsFirstLogin(false), []);
-  const clearKickedOut = useCallback(() => { setKickedOut(false); setKickedOutMessage(''); }, []);
 
   return (
     <AuthContext.Provider value={{
-      profile, token, loading, isFirstLogin, kickedOut, kickedOutMessage,
-      login, logout, updateProfile, clearFirstLogin, clearKickedOut,
+      profile, token, loading, isFirstLogin,
+      login, logout, updateProfile, clearFirstLogin,
     }}>
       {children}
     </AuthContext.Provider>

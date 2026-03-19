@@ -15,7 +15,7 @@ function formatPhoneDisplay(raw: string) {
 }
 
 export function LoginPage() {
-  const { login, kickedOut, kickedOutMessage, clearKickedOut } = useAuth();
+  const { login } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -203,19 +203,7 @@ export function LoginPage() {
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-4"
     >
       {/* ── Kicked-out banner ── */}
-      {kickedOut && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm">
-          <div className="alert alert-warning shadow-lg flex gap-2">
-            <AlertTriangle size={16} className="flex-none" />
-            <span className="text-sm flex-1">{kickedOutMessage}</span>
-            <button onClick={clearKickedOut} className="btn btn-ghost btn-xs">✕</button>
-          </div>
-        </div>
-      )}
-
-
-
-      <div className="w-full max-w-sm">
+<div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg mb-4">
