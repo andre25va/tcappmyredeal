@@ -309,6 +309,10 @@ function NeedReplyCheckbox({ checked, onChange }: { checked: boolean; onChange: 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+const TC_LABEL_LINKED = 'Label_29';
+const TC_LABEL_NEEDS_REVIEW = 'Label_30';
+const TC_LABEL_UNMATCHED = 'Label_31';
+
 export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, onInitHandled, onCallStarted }) => {
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -333,6 +337,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [emailNeedReply, setEmailNeedReply] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(true);
   const [othersOpen, setOthersOpen] = useState(true);
+  const [emailSubTab, setEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched'>('all');
 
   // Compose email state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -746,6 +751,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     ? emailThreads.filter(t => emailReplyFlags[t.id])
     : emailThreads
   ).filter(t => {
+    if (tab === 'email' && emailSubTab !== 'all') {
+      const targetLabel = emailSubTab === 'linked' ? TC_LABEL_LINKED : emailSubTab === 'needs_review' ? TC_LABEL_NEEDS_REVIEW : TC_LABEL_UNMATCHED;
+      if (!t.labelIds?.includes(targetLabel)) return false;
+    }
     if (!search) return true;
     const q = search.toLowerCase();
     return t.subject.toLowerCase().includes(q) || t.from.toLowerCase().includes(q) || t.snippet.toLowerCase().includes(q);
@@ -774,6 +783,48 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   // ── Conversation List Panel ──────────────────────────────────────────────────
 
   const showEmailList = tab === 'email' || tab === 'waiting';
+
+  const renderEmailRow = (thread: EmailThread) => {
+    const active = selectedEmailThread?.id === thread.id;
+    const senderName = parseFromName(thread.from);
+    const isWaiting = emailReplyFlags[thread.id];
+    return (
+      <button
+        key={thread.id}
+        onClick={() => handleSelectEmailThread(thread)}
+        className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''} ${isWaiting ? 'bg-amber-50/50' : ''}`}
+      >
+        <div className="flex items-start gap-2.5">
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${thread.isUnread ? 'bg-green-100 text-green-700' : isWaiting ? 'bg-amber-100 text-amber-700' : 'bg-base-200 text-base-content/50'}`}>
+            {isWaiting ? <Clock size={16} /> : senderName.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'font-bold text-base-content' : 'font-medium text-base-content/75'}`}>
+                {senderName}
+              </span>
+              {isWaiting && (
+                <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
+                  <Clock size={8} /> waiting
+                </span>
+              )}
+              {thread.hasAttachment && <Paperclip size={11} className="text-base-content/30 flex-none" />}
+              {thread.isUnread && (
+                <span className="bg-primary text-white text-[9px] font-bold rounded-full w-2 h-2 flex-none" />
+              )}
+              <span className="text-[10px] text-base-content/35 flex-none">
+                {formatEmailDate(thread.internalDate)}
+              </span>
+            </div>
+            <p className={`text-xs truncate mb-0.5 ${thread.isUnread ? 'text-base-content font-semibold' : 'text-base-content/65'}`}>
+              {thread.subject}
+            </p>
+            <p className="text-xs text-base-content/40 truncate">{thread.snippet}</p>
+          </div>
+        </div>
+      </button>
+    );
+  };
 
   const ConversationList = (
     <div className={`flex flex-col h-full border-r border-base-300 bg-base-100 ${mobileShowThread ? 'hidden md:flex' : 'flex'} md:w-80 w-full flex-none`}>
@@ -824,6 +875,33 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         </div>
       </div>
 
+      {tab === 'email' && (
+        <div className="flex border-b border-base-300 bg-base-100 px-2 gap-1 py-1.5 overflow-x-auto">
+          {([
+            { key: 'all' as const, label: '📬 All' },
+            { key: 'linked' as const, label: '🔗 Linked' },
+            { key: 'needs_review' as const, label: '⚠️ Review' },
+            { key: 'unmatched' as const, label: '❓ Unmatched' },
+          ]).map(st => {
+            const count = st.key === 'linked' ? emailThreads.filter(t => t.labelIds?.includes(TC_LABEL_LINKED)).length
+              : st.key === 'needs_review' ? emailThreads.filter(t => t.labelIds?.includes(TC_LABEL_NEEDS_REVIEW)).length
+              : st.key === 'unmatched' ? emailThreads.filter(t => t.labelIds?.includes(TC_LABEL_UNMATCHED)).length
+              : undefined;
+            return (
+              <button
+                key={st.key}
+                onClick={() => setEmailSubTab(st.key)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1 ${emailSubTab === st.key ? 'bg-primary text-white' : 'text-base-content/60 hover:bg-base-200'}`}
+              >
+                {st.label}
+                {count !== undefined && count > 0 && (
+                  <span className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 ${emailSubTab === st.key ? 'bg-white/20 text-white' : st.key === 'needs_review' ? 'bg-amber-500 text-white' : st.key === 'unmatched' ? 'bg-red-500 text-white' : 'bg-primary/20 text-primary'}`}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {/* Waiting banner */}
       {tab === 'waiting' && totalWaiting === 0 && (
         <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
@@ -858,51 +936,20 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
               <InboxIcon size={32} />
               <p className="text-sm font-medium">No emails found</p>
             </div>
+          ) : emailSubTab !== 'all' ? (
+            filteredEmails.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
+                <InboxIcon size={32} />
+                <p className="text-sm font-medium">
+                  No {emailSubTab === 'linked' ? 'linked' : emailSubTab === 'needs_review' ? 'needs review' : 'unmatched'} emails
+                </p>
+              </div>
+            ) : (
+              <>{filteredEmails.map(t => renderEmailRow(t))}</>
+            )
           ) : (() => {
             const priorityEmails = filteredEmails.filter(t => t.priority === true);
             const otherEmails = filteredEmails.filter(t => t.priority !== true);
-
-            const renderEmailRow = (thread: EmailThread) => {
-              const active = selectedEmailThread?.id === thread.id;
-              const senderName = parseFromName(thread.from);
-              const isWaiting = emailReplyFlags[thread.id];
-              return (
-                <button
-                  key={thread.id}
-                  onClick={() => handleSelectEmailThread(thread)}
-                  className={`w-full text-left px-4 py-3 border-b border-base-200 transition-colors hover:bg-base-50 ${active ? 'bg-primary/8 border-l-2 border-l-primary' : ''} ${isWaiting ? 'bg-amber-50/50' : ''}`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold ${thread.isUnread ? 'bg-green-100 text-green-700' : isWaiting ? 'bg-amber-100 text-amber-700' : 'bg-base-200 text-base-content/50'}`}>
-                      {isWaiting ? <Clock size={16} /> : senderName.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'font-bold text-base-content' : 'font-medium text-base-content/75'}`}>
-                          {senderName}
-                        </span>
-                        {isWaiting && (
-                          <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
-                            <Clock size={8} /> waiting
-                          </span>
-                        )}
-                        {thread.hasAttachment && <Paperclip size={11} className="text-base-content/30 flex-none" />}
-                        {thread.isUnread && (
-                          <span className="bg-primary text-white text-[9px] font-bold rounded-full w-2 h-2 flex-none" />
-                        )}
-                        <span className="text-[10px] text-base-content/35 flex-none">
-                          {formatEmailDate(thread.internalDate)}
-                        </span>
-                      </div>
-                      <p className={`text-xs truncate mb-0.5 ${thread.isUnread ? 'text-base-content font-semibold' : 'text-base-content/65'}`}>
-                        {thread.subject}
-                      </p>
-                      <p className="text-xs text-base-content/40 truncate">{thread.snippet}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            };
 
             return (
               <>
