@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail, AlertTriangle, MonitorSmartphone, LogIn } from 'lucide-react';
+import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type Step = 'phone' | 'otp' | 'success';
@@ -26,10 +26,6 @@ export function LoginPage() {
   const [countdown, setCountdown] = useState(0);
   const [emailHint, setEmailHint] = useState('');
   const [emailSent, setEmailSent] = useState(false);
-  // Existing session modal state
-  const [showDeviceModal, setShowDeviceModal] = useState(false);
-  const [existingDeviceLabel, setExistingDeviceLabel] = useState('');
-  const [existingDeviceLastSeen, setExistingDeviceLastSeen] = useState('');
   const [pendingOtpCode, setPendingOtpCode] = useState('');
 
   const codeRefs = [
@@ -142,8 +138,8 @@ export function LoginPage() {
     }
   };
 
-  const doVerify = async (forceLogin = false) => {
-    const fullCode = pendingOtpCode || code.join('');
+  const doVerify = async () => {
+    const fullCode = code.join('');
     if (fullCode.length < 6) { setError('Enter the 6-digit code.'); return; }
     setError('');
     setLoading(true);
@@ -151,18 +147,10 @@ export function LoginPage() {
       const resp = await fetch('/api/auth?action=verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneDigits, code: fullCode, force: forceLogin }),
+        body: JSON.stringify({ phone: phoneDigits, code: fullCode }),
       });
       const data = await resp.json();
       if (!resp.ok) { setError(data.error || 'Verification failed.'); return; }
-      // Existing session on another device?
-      if (data.hasExistingSession) {
-        setPendingOtpCode(fullCode);
-        setExistingDeviceLabel(data.deviceLabel || 'another device');
-        setExistingDeviceLastSeen(data.lastSeen || '');
-        setShowDeviceModal(true);
-        return;
-      }
       setStep('success');
       setTimeout(() => { login(data.token, data.profile, data.isFirstLogin); }, 800);
     } catch {
@@ -177,10 +165,6 @@ export function LoginPage() {
     await doVerify(false);
   };
 
-  const handleForceLogin = async () => {
-    setShowDeviceModal(false);
-    await doVerify(true);
-  };
 
   const handleResend = async () => {
     if (countdown > 0) return;
@@ -208,7 +192,7 @@ export function LoginPage() {
   };
 
   useEffect(() => {
-    if (step === 'otp' && code.join('').length === 6 && !loading && !showDeviceModal) {
+    if (step === 'otp' && code.join('').length === 6 && !loading) {
       doVerify(false);
     }
   }, [code, step]);
@@ -229,46 +213,7 @@ export function LoginPage() {
         </div>
       )}
 
-      {/* ── Existing device modal ── */}
-      {showDeviceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-none">
-                <MonitorSmartphone size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-sm">Already signed in</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Active session detected on {existingDeviceLabel}</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              You're already signed in on <strong>{existingDeviceLabel}</strong>. Continuing here will sign that device out.
-            </p>
-            {existingDeviceLastSeen && (
-              <p className="text-xs text-gray-400">
-                Last active: {new Date(existingDeviceLastSeen).toLocaleString()}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeviceModal(false)}
-                className="btn btn-outline btn-sm flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleForceLogin}
-                disabled={loading}
-                className="btn btn-primary btn-sm flex-1 gap-1"
-              >
-                {loading ? <span className="loading loading-spinner loading-xs" /> : <LogIn size={14} />}
-                Sign in here
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <div className="w-full max-w-sm">
         {/* Logo */}

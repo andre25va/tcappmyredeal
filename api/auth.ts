@@ -203,11 +203,13 @@ async function handleSession(req: VercelRequest, res: VercelResponse) {
       .single();
 
     if (!session) {
+      // Only show 'other_device' if an admin explicitly revoked access
       const { data: kicked } = await supabase
         .from('sessions')
-        .select('id')
+        .select('id, invalidated_reason')
         .eq('token', token)
         .eq('is_active', false)
+        .not('invalidated_reason', 'is', null)
         .single();
       if (kicked) {
         return res.status(401).json({ valid: false, reason: 'other_device' });
