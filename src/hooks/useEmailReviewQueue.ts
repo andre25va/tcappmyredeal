@@ -44,6 +44,31 @@ export interface ReviewQueueStats {
   total: number;
 }
 
+// ─── Address parser ────────────────────────────────────────────────────────────
+// Parses "5777 Bristol St, Bel Aire, KS 67220" into components
+export function parseAddressString(full: string): {
+  property_address: string;
+  city: string;
+  state: string;
+  zip: string;
+} {
+  const trimmed = full.trim();
+  // Try to match: "street, city, ST 12345" or "street, city ST 12345"
+  const match = trimmed.match(
+    /^(.+?),\s*([^,]+?),?\s*([A-Za-z]{2})\s*(\d{5})?$/
+  );
+  if (match) {
+    return {
+      property_address: match[1].trim(),
+      city: match[2].trim(),
+      state: match[3].toUpperCase(),
+      zip: match[4] ?? '',
+    };
+  }
+  // Fallback: store whole string as property_address
+  return { property_address: trimmed, city: '', state: '', zip: '' };
+}
+
 export function useEmailReviewQueue() {
   const [needsReview, setNeedsReview] = useState<ReviewQueueItem[]>([]);
   const [unmatched, setUnmatched] = useState<ReviewQueueItem[]>([]);
@@ -120,7 +145,6 @@ export function useEmailReviewQueue() {
   }, [fetchAll]);
 
   const confirmLink = useCallback(async (item: ReviewQueueItem, dealId: string, dealAddress: string) => {
-    // Write confirmed link
     await supabase.from('email_thread_links').upsert({
       gmail_thread_id: item.gmail_thread_id,
       deal_id: dealId,
@@ -136,7 +160,6 @@ export function useEmailReviewQueue() {
       is_unread: true,
     }, { onConflict: 'gmail_thread_id,deal_id' });
 
-    // Mark queue item confirmed
     await supabase.from('email_review_queue').update({ status: 'confirmed' }).eq('id', item.id);
     await fetchAll();
   }, [fetchAll]);
@@ -151,5 +174,76 @@ export function useEmailReviewQueue() {
     await fetchAll();
   }, [fetchAll]);
 
-  return { needsReview, unmatched, recentlyLinked, stats, loading, error, refetch: fetchAll, confirmLink, dismissItem, markNewDeal };
+  /**
+   * createAndLink — creates a new minimal deal from the email queue, links the thread to it,
+   * and marks the queue item as new_deal/confirmed.
+   *
+   * @param item        The review queue item (email)
+   * @param fullAddress Full address string e.g. "5777 Bristol St, Bel Aire, KS 67220"
+   * @param buyerName   Optional buyer name
+   * @param price       Optional purchase price (number)
+   * @returns { dealId, error }
+   */
+  const createAndLink = useCallback(async (
+    item: ReviewQueueItem,
+    fullAddress: string,
+    buyerName?: string,
+    price?: number,
+  ): Promise<{ dealId: string | null; error: string | null }> => {
+    try {
+      const parsed = parseAddressString(fullAddress);
+
+      // 1 — Create minimal deal
+      const { data: dealData, error: dealError } = await supabase
+        .from('deals')
+        .insert({
+          property_address: parsed.property_address,
+          city: parsed.city,
+          state: parsed.state,
+          zip: parsed.zip,
+          pipeline_stage: 'active',
+          status: 'active',
+          ...(buyerName ? { buyer_name: buyerName } : {}),
+          ...(price ? { purchase_price: price } : {}),
+        })
+        .select('id, property_address')
+        .single();
+
+      if (dealError) throw new Error(dealError.message);
+      const dealId = dealData.id as string;
+
+      // 2 — Link thread to new deal
+      await supabase.from('email_thread_links').upsert({
+        gmail_thread_id: item.gmail_thread_id,
+        deal_id: dealId,
+        from_email: item.from_email,
+        from_name: item.from_name,
+        subject: item.subject,
+        snippet: item.snippet,
+        received_at: item.received_at,
+        has_attachment: item.has_attachment,
+        score: 100, // manually created = high confidence
+        score_breakdown: { manual_new_deal: 100 },
+        link_method: 'manual',
+        is_unread: true,
+      }, { onConflict: 'gmail_thread_id,deal_id' });
+
+      // 3 — Mark queue item done
+      await supabase
+        .from('email_review_queue')
+        .update({ status: 'new_deal' })
+        .eq('id', item.id);
+
+      await fetchAll();
+      return { dealId, error: null };
+    } catch (err: any) {
+      return { dealId: null, error: err.message ?? 'Failed to create deal' };
+    }
+  }, [fetchAll]);
+
+  return {
+    needsReview, unmatched, recentlyLinked, stats,
+    loading, error, refetch: fetchAll,
+    confirmLink, dismissItem, markNewDeal, createAndLink,
+  };
 }

@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Inbox, Link2, RefreshCw, Sparkles, Clock, Paperclip, ExternalLink } from 'lucide-react';
+import {
+  CheckCircle, XCircle, AlertCircle, Inbox, Link2,
+  RefreshCw, Sparkles, Clock, Paperclip, ExternalLink,
+  PlusCircle, Home,
+} from 'lucide-react';
 import { useEmailReviewQueue, ReviewQueueItem } from '../hooks/useEmailReviewQueue';
 import { Deal } from '../types';
 
@@ -7,6 +11,8 @@ interface Props {
   deals: Deal[];
   onSelectDeal: (id: string) => void;
 }
+
+const NEW_DEAL_VALUE = '__new_deal__';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function relativeTime(iso: string): string {
@@ -24,20 +30,51 @@ function gmailLink(threadId: string) {
   return `https://mail.google.com/mail/u/0/#inbox/${threadId}`;
 }
 
+/** Try to parse an address hint from the AI suggestion text */
+function extractAddressHint(aiSuggestion: string | null): string {
+  if (!aiSuggestion) return '';
+  // Look for patterns like "123 Main St" or city/state combos
+  const match = aiSuggestion.match(/\d+\s+[A-Za-z0-9\s]+(?:St|Ave|Rd|Dr|Blvd|Ln|Way|Ct|Pl|Terrace|Trafficway)[^,\n]*/i);
+  return match ? match[0].trim() : '';
+}
+
 // ─── Review Card ──────────────────────────────────────────────────────────────
 const ReviewCard: React.FC<{
   item: ReviewQueueItem;
   deals: Deal[];
   onConfirm: (item: ReviewQueueItem, dealId: string, address: string) => void;
   onDismiss: (item: ReviewQueueItem) => void;
-  onMarkNewDeal: (item: ReviewQueueItem) => void;
-}> = ({ item, deals, onConfirm, onDismiss, onMarkNewDeal }) => {
+  onCreateNewDeal: (item: ReviewQueueItem, address: string, buyer: string, price?: number) => Promise<void>;
+}> = ({ item, deals, onConfirm, onDismiss, onCreateNewDeal }) => {
   const [expanded, setExpanded] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState(item.top_deal_id ?? '');
+  const [creating, setCreating] = useState(false);
+
+  // New deal inline form state
+  const [newAddress, setNewAddress] = useState(extractAddressHint(item.ai_suggestion));
+  const [newBuyer, setNewBuyer] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const selectedDeal = deals.find(d => d.id === selectedDealId);
   const topDeal = deals.find(d => d.id === item.top_deal_id);
   const runnerUp = deals.find(d => d.id === item.runner_up_deal_id);
+
+  const isNewDealSelected = selectedDealId === NEW_DEAL_VALUE;
+
+  const handleConfirmOrCreate = async () => {
+    if (isNewDealSelected) {
+      if (!newAddress.trim()) return;
+      setCreating(true);
+      setCreateError(null);
+      const price = newPrice ? parseFloat(newPrice.replace(/[^0-9.]/g, '')) : undefined;
+      await onCreateNewDeal(item, newAddress.trim(), newBuyer.trim(), price);
+      setCreating(false);
+    } else {
+      const deal = deals.find(d => d.id === selectedDealId);
+      if (deal) onConfirm(item, deal.id, deal.propertyAddress);
+    }
+  };
 
   return (
     <div className="bg-base-100 border border-base-300 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -101,7 +138,10 @@ const ReviewCard: React.FC<{
             <select
               className="select select-bordered select-sm w-full text-sm"
               value={selectedDealId}
-              onChange={e => setSelectedDealId(e.target.value)}
+              onChange={e => {
+                setSelectedDealId(e.target.value);
+                setCreateError(null);
+              }}
             >
               <option value="">— Select a deal —</option>
               {topDeal && (
@@ -121,11 +161,59 @@ const ReviewCard: React.FC<{
                   <option key={d.id} value={d.id}>{d.propertyAddress}</option>
                 ))
               }
+              {/* ─── Create New Deal option ─── */}
+              <option disabled>──────────────</option>
+              <option value={NEW_DEAL_VALUE}>➕ Create New Deal</option>
             </select>
           </div>
 
-          {/* Score breakdown */}
-          {item.score_breakdown && Object.keys(item.score_breakdown).length > 0 && (
+          {/* New Deal inline form */}
+          {isNewDealSelected && (
+            <div className="bg-base-200 rounded-lg p-3 space-y-2 border border-base-300">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Home size={13} className="text-primary" />
+                <span className="text-xs font-semibold text-base-content">New Deal Details</span>
+              </div>
+              <div>
+                <label className="text-xs text-base-content/50 mb-0.5 block">Property Address *</label>
+                <input
+                  type="text"
+                  className="input input-bordered input-sm w-full text-sm"
+                  placeholder="e.g. 5777 Bristol St, Bel Aire, KS 67220"
+                  value={newAddress}
+                  onChange={e => setNewAddress(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-base-content/50 mb-0.5 block">Buyer Name</label>
+                  <input
+                    type="text"
+                    className="input input-bordered input-sm w-full text-sm"
+                    placeholder="e.g. Justin Boswell"
+                    value={newBuyer}
+                    onChange={e => setNewBuyer(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-base-content/50 mb-0.5 block">Purchase Price</label>
+                  <input
+                    type="text"
+                    className="input input-bordered input-sm w-full text-sm"
+                    placeholder="e.g. 310000"
+                    value={newPrice}
+                    onChange={e => setNewPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+              {createError && (
+                <p className="text-xs text-error">{createError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Score breakdown (hide when creating new deal) */}
+          {!isNewDealSelected && item.score_breakdown && Object.keys(item.score_breakdown).length > 0 && (
             <div className="flex flex-wrap gap-1">
               {Object.entries(item.score_breakdown).map(([signal, pts]) => (
                 <span
@@ -142,23 +230,28 @@ const ReviewCard: React.FC<{
 
           {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              className="btn btn-success btn-xs gap-1 flex-1"
-              disabled={!selectedDealId}
-              onClick={() => {
-                const deal = deals.find(d => d.id === selectedDealId);
-                if (deal) onConfirm(item, deal.id, deal.propertyAddress);
-              }}
-            >
-              <CheckCircle size={12} />
-              Confirm Link
-            </button>
-            <button
-              className="btn btn-ghost btn-xs gap-1"
-              onClick={() => onMarkNewDeal(item)}
-            >
-              + New Deal
-            </button>
+            {isNewDealSelected ? (
+              <button
+                className="btn btn-primary btn-xs gap-1 flex-1"
+                disabled={!newAddress.trim() || creating}
+                onClick={handleConfirmOrCreate}
+              >
+                {creating
+                  ? <span className="loading loading-spinner loading-xs" />
+                  : <PlusCircle size={12} />
+                }
+                Create & Link
+              </button>
+            ) : (
+              <button
+                className="btn btn-success btn-xs gap-1 flex-1"
+                disabled={!selectedDealId}
+                onClick={handleConfirmOrCreate}
+              >
+                <CheckCircle size={12} />
+                Confirm Link
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-xs text-error gap-1"
               onClick={() => onDismiss(item)}
@@ -176,34 +269,82 @@ const ReviewCard: React.FC<{
 // ─── Unmatched Card ───────────────────────────────────────────────────────────
 const UnmatchedCard: React.FC<{
   item: ReviewQueueItem;
-  onMarkNewDeal: (item: ReviewQueueItem) => void;
+  onCreateNewDeal: (item: ReviewQueueItem, address: string, buyer: string) => Promise<void>;
   onDismiss: (item: ReviewQueueItem) => void;
-}> = ({ item, onMarkNewDeal, onDismiss }) => (
-  <div className="bg-base-100 border border-base-300 rounded-lg p-3 flex items-start gap-3 hover:shadow-sm transition-shadow">
-    <div className="flex-none mt-0.5">
-      <Inbox size={15} className="text-base-content/30" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-medium text-base-content truncate">{item.subject || '(no subject)'}</p>
-      <p className="text-xs text-base-content/50 truncate mt-0.5">{item.from_name || item.from_email} · {relativeTime(item.received_at)}</p>
-      {item.ai_suggestion && (
-        <p className="text-xs text-base-content/40 mt-1 line-clamp-2 italic">{item.ai_suggestion}</p>
+}> = ({ item, onCreateNewDeal, onDismiss }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [newAddress, setNewAddress] = useState(extractAddressHint(item.ai_suggestion));
+  const [newBuyer, setNewBuyer] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreate = async () => {
+    if (!newAddress.trim()) return;
+    setCreating(true);
+    await onCreateNewDeal(item, newAddress.trim(), newBuyer.trim());
+    setCreating(false);
+  };
+
+  return (
+    <div className="bg-base-100 border border-base-300 rounded-lg overflow-hidden hover:shadow-sm transition-shadow">
+      <div className="p-3 flex items-start gap-3">
+        <div className="flex-none mt-0.5">
+          <Inbox size={15} className="text-base-content/30" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-base-content truncate">{item.subject || '(no subject)'}</p>
+          <p className="text-xs text-base-content/50 truncate mt-0.5">{item.from_name || item.from_email} · {relativeTime(item.received_at)}</p>
+          {item.ai_suggestion && (
+            <p className="text-xs text-base-content/40 mt-1 line-clamp-2 italic">{item.ai_suggestion}</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 flex-none">
+          <button
+            className="btn btn-primary btn-xs text-xs gap-1"
+            onClick={() => setShowForm(s => !s)}
+          >
+            <PlusCircle size={11} /> New Deal
+          </button>
+          <button className="btn btn-ghost btn-xs text-error text-xs" onClick={() => onDismiss(item)}>Junk</button>
+          <a
+            href={gmailLink(item.gmail_thread_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-ghost btn-xs"
+          >
+            <ExternalLink size={11} />
+          </a>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="border-t border-base-200 px-3 pb-3 pt-2 bg-base-200 space-y-2">
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full text-sm"
+            placeholder="Property address *"
+            value={newAddress}
+            onChange={e => setNewAddress(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full text-sm"
+            placeholder="Buyer name (optional)"
+            value={newBuyer}
+            onChange={e => setNewBuyer(e.target.value)}
+          />
+          <button
+            className="btn btn-primary btn-sm w-full gap-1"
+            disabled={!newAddress.trim() || creating}
+            onClick={handleCreate}
+          >
+            {creating ? <span className="loading loading-spinner loading-xs" /> : <PlusCircle size={13} />}
+            Create Deal & Link Email
+          </button>
+        </div>
       )}
     </div>
-    <div className="flex flex-col gap-1 flex-none">
-      <button className="btn btn-ghost btn-xs text-xs" onClick={() => onMarkNewDeal(item)}>New Deal</button>
-      <button className="btn btn-ghost btn-xs text-error text-xs" onClick={() => onDismiss(item)}>Junk</button>
-      <a
-        href={gmailLink(item.gmail_thread_id)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn btn-ghost btn-xs"
-      >
-        <ExternalLink size={11} />
-      </a>
-    </div>
-  </div>
-);
+  );
+};
 
 // ─── Main View ────────────────────────────────────────────────────────────────
 type Section = 'review' | 'unmatched' | 'linked';
@@ -212,13 +353,25 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
   const [section, setSection] = useState<Section>('review');
   const {
     needsReview, unmatched, recentlyLinked, stats,
-    loading, error, refetch, confirmLink, dismissItem, markNewDeal,
+    loading, error, refetch, confirmLink, dismissItem, createAndLink,
   } = useEmailReviewQueue();
 
+  const handleCreateNewDeal = async (
+    item: ReviewQueueItem,
+    address: string,
+    buyer: string,
+    price?: number,
+  ) => {
+    const { dealId, error } = await createAndLink(item, address, buyer || undefined, price);
+    if (dealId) {
+      onSelectDeal(dealId); // navigate to new deal workspace
+    }
+  };
+
   const tabs: { id: Section; label: string; count: number; color?: string }[] = [
-    { id: 'review',    label: 'Needs Review',     count: stats.needsReview,    color: 'text-amber-600' },
-    { id: 'unmatched', label: 'Unmatched',         count: stats.unmatched,      color: 'text-base-content/50' },
-    { id: 'linked',    label: 'Recently Linked',   count: stats.recentlyLinked  },
+    { id: 'review',    label: 'Needs Review',   count: stats.needsReview,   color: 'text-amber-600' },
+    { id: 'unmatched', label: 'Unmatched',       count: stats.unmatched,     color: 'text-base-content/50' },
+    { id: 'linked',    label: 'Recently Linked', count: stats.recentlyLinked },
   ];
 
   return (
@@ -295,7 +448,7 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
                 deals={deals}
                 onConfirm={confirmLink}
                 onDismiss={dismissItem}
-                onMarkNewDeal={markNewDeal}
+                onCreateNewDeal={handleCreateNewDeal}
               />
             ))
           )
@@ -312,7 +465,7 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
               <UnmatchedCard
                 key={item.id}
                 item={item}
-                onMarkNewDeal={markNewDeal}
+                onCreateNewDeal={handleCreateNewDeal}
                 onDismiss={dismissItem}
               />
             ))
