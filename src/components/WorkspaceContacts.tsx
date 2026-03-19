@@ -371,14 +371,17 @@ const ContactPopup: React.FC<{
                 dealId={dealId}
                 size="sm"
                 variant="icon"
-                onCallStarted={(callId) => onCallStarted?.({
-                  contactName: contact.name,
-                  contactPhone: contact.phone!,
-                  contactId: contact.id,
-                  dealId,
-                  callSid: callId,
-                  startedAt: new Date().toISOString(),
-                })}
+                onCallStarted={(callId) => {
+                  setLiveCallActive(true);
+                  onCallStarted?.({
+                    contactName: contact.name,
+                    contactPhone: contact.phone!,
+                    contactId: contact.id,
+                    dealId,
+                    callSid: callId,
+                    startedAt: new Date().toISOString(),
+                  });
+                }}
               />
             </div>
           )}
