@@ -16,7 +16,7 @@ import { supabase } from '../lib/supabase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type WizardStep = 'welcome' | 'communication' | 'access' | 'briefing' | 'drive' | 'done';
+type WizardStep = 'welcome' | 'communication' | 'access' | 'briefing' | 'drive' | 'instructions' | 'done';
 
 interface ClientOnboardingWizardProps {
   contact: {
@@ -41,7 +41,7 @@ function toE164(phone: string): string {
   return `+${digits}`;
 }
 
-const STEPS: WizardStep[] = ['welcome', 'communication', 'access', 'briefing', 'drive', 'done'];
+const STEPS: WizardStep[] = ['welcome', 'communication', 'access', 'briefing', 'drive', 'instructions', 'done'];
 
 const STEP_LABELS: Record<WizardStep, string> = {
   welcome: 'Welcome',
@@ -339,6 +339,26 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
     }
   }
 
+  // ── Step 6: Instructions handler ─────────────────────────────────────────────
+
+  async function handleInstructionsNext() {
+    setLoading(true);
+    try {
+      if (clientInstructions.trim()) {
+        await supabase
+          .from('contacts')
+          .update({ default_instructions: clientInstructions.trim() })
+          .eq('id', contact.id);
+        setSummary(prev => ({ ...prev, hasInstructions: true }));
+      }
+    } catch (err) {
+      console.error('Instructions step error:', err);
+    } finally {
+      setLoading(false);
+      setStep(getNextStep('instructions'));
+    }
+  }
+
   // ── Render helpers ────────────────────────────────────────────────────────────
 
   function StepIndicator() {
@@ -406,7 +426,7 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
         <div className="bg-gray-50 rounded-lg p-3 text-left">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Setup steps</p>
           <div className="space-y-1.5">
-            {(['communication', 'access', 'briefing', 'drive'] as WizardStep[]).map((s, i) => (
+            {(['communication', 'access', 'briefing', 'drive', 'instructions'] as WizardStep[]).map((s, i) => (
               <div key={s} className="flex items-center gap-2 text-sm text-gray-600">
                 <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">{i + 1}</div>
                 <span className="flex items-center gap-1.5">{STEP_ICONS[s]} {STEP_LABELS[s]}</span>
@@ -790,6 +810,51 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
     );
   }
 
+  function renderInstructions() {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-gray-800">📝 Special Instructions</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Any recurring TC instructions for {contact.firstName}'s deals?
+          </p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-amber-700 font-medium">
+            💡 These will auto-fill the Special Notes box every time you create a new deal for {contact.firstName}.
+          </p>
+        </div>
+        <div>
+          <textarea
+            className={`textarea textarea-bordered w-full transition-all ${
+              clientInstructions.trim()
+                ? 'border-red-400 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]'
+                : ''
+            }`}
+            rows={4}
+            placeholder="e.g. Always CC buyer's attorney. EMD via wire only. Call before sending any docs."
+            value={clientInstructions}
+            onChange={e => setClientInstructions(e.target.value)}
+          />
+          <p className="text-xs text-gray-400 mt-1">Optional — leave blank to skip</p>
+        </div>
+        <div className="flex gap-3">
+          <button className="btn btn-ghost btn-sm" onClick={() => setStep(getPrevStep('instructions'))}>
+            <ChevronLeft size={15} /> Back
+          </button>
+          <button
+            className="btn btn-primary btn-sm flex-1 gap-1"
+            onClick={handleInstructionsNext}
+            disabled={loading}
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+            {clientInstructions.trim() ? 'Save & Finish' : 'Skip'} <ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function SummaryRow({ icon, label, status }: { icon: string; label: string; status: boolean | null }) {
     return (
       <div className="flex items-center gap-2 text-sm">
@@ -853,6 +918,11 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
               </a>
             )}
           </div>
+          <SummaryRow
+            icon="📝"
+            label={summary.hasInstructions ? 'Special instructions saved' : 'No special instructions'}
+            status={summary.hasInstructions ?? false}
+          />
         </div>
 
         <div className="space-y-2">
@@ -905,6 +975,7 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
           {step === 'access' && renderAccess()}
           {step === 'briefing' && renderBriefing()}
           {step === 'drive' && renderDrive()}
+          {step === 'instructions' && renderInstructions()}
           {step === 'done' && renderDone()}
         </div>
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
@@ -17,7 +17,8 @@ interface Props {
 const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
   { type: 'single-family', label: 'Single Family', icon: <Home size={22} /> },
   { type: 'multi-family', label: 'Multi-Family', icon: <Building size={22} /> },
-  { type: 'condo', label: 'Condo', icon: <Building2 size={22} /> },
+  { type: 'duplex', label: 'Duplex', icon: <Building2 size={22} /> },
+  { type: 'condo', label: 'Condo', icon: <Landmark size={22} /> },
   { type: 'townhouse', label: 'Townhouse', icon: <Building size={22} /> },
   { type: 'land', label: 'Land', icon: <TreePine size={22} /> },
   { type: 'commercial', label: 'Commercial', icon: <Store size={22} /> },
@@ -174,11 +175,27 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
+    secondaryAddress: '',
+    duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',    // selected client from agentClients
+    specialNotes: '',
+    // Financing
+    loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
+    loanAmount: '', downPaymentAmount: '', downPaymentPercent: '',
+    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
+    // Contract Conditions
+    asIsSale: false, inspectionWaived: false,
+    homeWarranty: false, homeWarrantyCompany: '',
+    // Key Dates
+    inspectionDeadline: '', loanCommitmentDate: '', possessionDate: '',
+    // Parties
+    buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
+    // Commission (optional at creation)
+    listingCommission: '', buyerCommission: '', tcFee: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -190,6 +207,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
+
+  // When property type changes, reset duplex-specific fields
+  const handlePropertyTypeChange = (type: PropertyType) => {
+    setForm(p => ({
+      ...p,
+      propertyType: type,
+      duplexAddressCount: '',
+      secondaryAddress: '',
+    }));
+  };
 
   // ── Client selection ─────────────────────────────────────────────────────────
   const handleClientSelect = (selectedId: string) => {
@@ -211,10 +238,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setDisambigClientCandidates(null);
   };
 
+  const isDuplex = form.propertyType === 'duplex';
+  const hasTwoAddresses = isDuplex && form.duplexAddressCount === '2';
+
   const canAdvance = (): boolean => {
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim());
-      case 2: return true;
+      case 2: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 3: return true;
       case 4: return true;
       case 5: return !!form.closingDate;
@@ -228,6 +258,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (!canAdvance()) {
       if (step === 1) setError('Address and city are required.');
+      if (step === 2) setError('Please select whether this duplex has 1 or 2 addresses.');
       if (step === 5) setError('Closing date is required.');
       if (step === 6) setError('Please select a client to continue.');
       return;
@@ -275,24 +306,58 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       urgency: 'high',
     }] : [];
 
+    const addressDisplay = hasTwoAddresses && form.secondaryAddress.trim()
+      ? `${form.address} & ${form.secondaryAddress}, ${form.city} ${form.state}`
+      : `${form.address}, ${form.city} ${form.state}`;
+
     const initLog: ActivityEntry[] = [
-      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state}`, user: 'TC Staff', type: 'deal_created' },
+      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: addressDisplay, user: 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
+      ...(hasTwoAddresses && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
     ];
 
     const deal: Deal = {
       id: generateId(),
-      propertyAddress: form.address.trim(), city: form.city.trim(),
-      state: form.state.trim().toUpperCase(), zipCode: form.zipCode.trim(),
+      propertyAddress: form.address.trim(),
+      secondaryAddress: hasTwoAddresses && form.secondaryAddress.trim() ? form.secondaryAddress.trim() : undefined,
+      city: form.city.trim(),
+      state: form.state.trim().toUpperCase(),
+      zipCode: form.zipCode.trim(),
       mlsNumber: form.mlsNumber.trim() || `MLS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
-      propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionType as TransactionType,
-      contractDate: form.contractDate, closingDate: form.closingDate,
+      propertyType: form.propertyType,
+      status: 'contract' as DealStatus,
+      transactionType: form.transactionType as TransactionType,
+      contractDate: form.contractDate,
+      closingDate: form.closingDate,
       agentId: generateId(),
       agentName: '',
       agentClientId: form.agentClientId || undefined,
-      contacts: [], notes: '',
+      contacts: [],
+      notes: form.specialNotes.trim(),
+      // Financing
+      loanType: form.loanType || undefined,
+      loanAmount: parseFloat(form.loanAmount) || undefined,
+      downPaymentAmount: parseFloat(form.downPaymentAmount) || undefined,
+      downPaymentPercent: parseFloat(form.downPaymentPercent) || undefined,
+      earnestMoney: parseFloat(form.earnestMoney) || undefined,
+      earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
+      sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
+      // Contract Conditions
+      asIsSale: form.asIsSale,
+      inspectionWaived: form.inspectionWaived,
+      homeWarranty: form.homeWarranty,
+      homeWarrantyCompany: form.homeWarrantyCompany || undefined,
+      // Key Dates
+      inspectionDeadline: form.inspectionDeadline || undefined,
+      loanCommitmentDate: form.loanCommitmentDate || undefined,
+      possessionDate: form.possessionDate || undefined,
+      // Parties
+      buyerNames: form.buyerNames || undefined,
+      sellerNames: form.sellerNames || undefined,
+      titleCompany: form.titleCompany || undefined,
+      loanOfficer: form.loanOfficer || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
@@ -418,11 +483,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {PROP_TYPES.map(pt => (
                     <button
                       key={pt.type}
-                      onClick={() => setForm(p => ({ ...p, propertyType: pt.type }))}
+                      onClick={() => handlePropertyTypeChange(pt.type)}
                       className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-semibold text-sm transition-all ${
                         form.propertyType === pt.type
                           ? 'bg-primary/10 border-primary text-primary'
@@ -434,9 +499,84 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </button>
                   ))}
                 </div>
+
                 {isMF && (
                   <div className="alert alert-warning py-2 text-sm gap-2">
                     <AlertTriangle size={14} /> Multi-Family selected — a Multi-Family Addendum alert will be auto-created.
+                  </div>
+                )}
+
+                {/* Duplex — address count question */}
+                {isDuplex && (
+                  <div className="space-y-4 pt-3 border-t border-base-300">
+                    <div>
+                      <p className="text-sm font-semibold text-base-content mb-3">
+                        Does this duplex have <span className="text-primary">1 address</span> or <span className="text-primary">2 addresses</span>?
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setForm(p => ({ ...p, duplexAddressCount: '1', secondaryAddress: '' }))}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold text-sm transition-all ${
+                            form.duplexAddressCount === '1'
+                              ? 'bg-primary/10 border-primary text-primary'
+                              : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
+                          }`}
+                        >
+                          <Home size={16} />
+                          1 Address
+                        </button>
+                        <button
+                          onClick={() => setForm(p => ({ ...p, duplexAddressCount: '2' }))}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold text-sm transition-all ${
+                            form.duplexAddressCount === '2'
+                              ? 'bg-primary/10 border-primary text-primary'
+                              : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
+                          }`}
+                        >
+                          <Building2 size={16} />
+                          2 Addresses
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Only show second address field when 2 is selected */}
+                    {hasTwoAddresses && (
+                      <div className="space-y-3 p-4 bg-base-100 rounded-xl border border-base-300">
+                        <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Unit Addresses</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Unit A — Primary</label>
+                            <input
+                              className="input input-bordered input-sm w-full"
+                              value={form.address}
+                              onChange={f('address')}
+                              placeholder="123 Main St"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Unit B — Second</label>
+                            <input
+                              className="input input-bordered input-sm w-full"
+                              value={form.secondaryAddress}
+                              onChange={f('secondaryAddress')}
+                              placeholder="125 Main St"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-base-content/40">
+                          💡 Usually just the house number changes — e.g. 123 and 125 Main St. Both addresses will be used when matching emails to this deal.
+                        </p>
+                      </div>
+                    )}
+
+                    {form.duplexAddressCount === '1' && (
+                      <div className="p-3 bg-base-100 rounded-xl border border-base-300">
+                        <p className="text-xs text-base-content/50">
+                          Using <span className="font-semibold text-base-content">{form.address || 'the address from Step 1'}</span> as the single duplex address.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -475,8 +615,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
             {/* Step 4 */}
             {step === 4 && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
+
+                {/* MLS + Prices */}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
                   <input className="input input-bordered w-full" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
@@ -489,6 +631,99 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
                     <input className="input input-bordered w-full" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
+                  </div>
+                </div>
+
+                {/* Loan Type */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-2 block">Loan Type</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(['conventional','fha','va','usda','cash','other'] as const).map(lt => (
+                      <button
+                        key={lt}
+                        type="button"
+                        onClick={() => setForm(p => ({ ...p, loanType: p.loanType === lt ? '' : lt }))}
+                        className={`btn btn-sm rounded-full font-medium ${form.loanType === lt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                      >
+                        {lt === 'fha' ? 'FHA' : lt === 'va' ? 'VA' : lt === 'usda' ? 'USDA' : lt.charAt(0).toUpperCase() + lt.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Down Payment */}
+                {form.loanType && form.loanType !== 'cash' && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
+                      <input className="input input-bordered w-full" value={form.loanAmount} onChange={f('loanAmount')} placeholder="0" type="number" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Down Payment $</label>
+                      <input className="input input-bordered w-full" value={form.downPaymentAmount}
+                        onChange={e => {
+                          const amt = e.target.value;
+                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(1) : '';
+                          setForm(p => ({ ...p, downPaymentAmount: amt, downPaymentPercent: pct }));
+                        }}
+                        placeholder="0" type="number" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Down Payment %</label>
+                      <input className="input input-bordered w-full" value={form.downPaymentPercent}
+                        onChange={e => {
+                          const pct = e.target.value;
+                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
+                          setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt }));
+                        }}
+                        placeholder="0" type="number" step="0.1" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Earnest Money */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money $</label>
+                    <input className="input input-bordered w-full" value={form.earnestMoney} onChange={f('earnestMoney')} placeholder="0" type="number" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money Due</label>
+                    <input type="date" className="input input-bordered w-full" value={form.earnestMoneyDueDate} onChange={f('earnestMoneyDueDate')} />
+                  </div>
+                </div>
+
+                {/* Seller Concessions */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions $</label>
+                  <input className="input input-bordered w-full" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
+                </div>
+
+                {/* Contract Conditions */}
+                <div className="border-t border-base-300 pt-4">
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
+                  <div className="space-y-2">
+                    {([
+                      { key: 'asIsSale', label: 'As-Is Sale' },
+                      { key: 'inspectionWaived', label: 'Inspection Waived' },
+                    ] as const).map(({ key, label }) => (
+                      <label key={key} className="flex items-center justify-between cursor-pointer py-1">
+                        <span className="text-sm">{label}</span>
+                        <input type="checkbox" className="toggle toggle-primary toggle-sm"
+                          checked={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
+                      </label>
+                    ))}
+                    <label className="flex items-center justify-between cursor-pointer py-1">
+                      <span className="text-sm">Home Warranty</span>
+                      <input type="checkbox" className="toggle toggle-primary toggle-sm"
+                        checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
+                    </label>
+                    {form.homeWarranty && (
+                      <input className="input input-bordered w-full input-sm mt-1" value={form.homeWarrantyCompany}
+                        onChange={f('homeWarrantyCompany')} placeholder="Warranty company name" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -509,6 +744,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input type="date" className="input input-bordered w-full" value={form.closingDate} onChange={f('closingDate')} />
                     {form.closingDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.closingDate)}</p>}
                   </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Inspection Deadline</label>
+                    <input type="date" className="input input-bordered w-full" value={form.inspectionDeadline} onChange={f('inspectionDeadline')} />
+                    {form.inspectionDeadline && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.inspectionDeadline)}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Loan Commitment Date</label>
+                    <input type="date" className="input input-bordered w-full" value={form.loanCommitmentDate} onChange={f('loanCommitmentDate')} />
+                    {form.loanCommitmentDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.loanCommitmentDate)}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Possession Date</label>
+                    <input type="date" className="input input-bordered w-full" value={form.possessionDate} onChange={f('possessionDate')} />
+                    {form.possessionDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.possessionDate)}</p>}
+                  </div>
                 </div>
               </div>
             )}
@@ -516,7 +766,35 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {/* Step 6 — Our Client (required) */}
             {step === 6 && (
               <div className="space-y-5">
-                <h3 className="text-lg font-bold text-base-content">Our Client</h3>
+                <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
+
+                {/* Buyer / Seller Names */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
+                    <input className="input input-bordered w-full" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John & Jane Doe" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
+                    <input className="input input-bordered w-full" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
+                  </div>
+                </div>
+
+                {/* Title + Loan Officer */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Title Company</label>
+                    <input className="input input-bordered w-full" value={form.titleCompany} onChange={f('titleCompany')} placeholder="ABC Title Co." />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
+                    <input className="input input-bordered w-full" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
+                  </div>
+                </div>
+
+                <div className="border-t border-base-300 pt-4">
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Our Client (Required)</p>
+                </div>
 
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Our Client *</label>
@@ -555,6 +833,26 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       No client contacts found. Mark contacts as "Is Client" in the Contacts Directory first.
                     </div>
                   )}
+                </div>
+
+                {/* Special Notes */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Special Notes
+                    <span className="text-base-content/30 ml-1">(optional)</span>
+                  </label>
+                  <textarea
+                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
+                      form.specialNotes.trim()
+                        ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]'
+                        : ''
+                    }`}
+                    rows={4}
+                    value={form.specialNotes}
+                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
+                    placeholder="Any special instructions for this transaction that the TC team should know about..."
+                  />
+                  <p className="text-xs text-base-content/30 mt-1">These notes will be visible on the deal and help guide your TC team.</p>
                 </div>
               </div>
             )}
@@ -619,8 +917,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <span className="text-base-content/50">Address:</span>
                     <span className="font-medium">{form.address}, {form.city} {form.state} {form.zipCode}</span>
+                    {hasTwoAddresses && form.secondaryAddress && (
+                      <>
+                        <span className="text-base-content/50">Second Unit:</span>
+                        <span className="font-medium">{form.secondaryAddress}</span>
+                      </>
+                    )}
                     <span className="text-base-content/50">Type:</span>
-                    <span className="font-medium">{propertyTypeLabel(form.propertyType)}</span>
+                    <span className="font-medium">{propertyTypeLabel(form.propertyType)}{isDuplex ? ` (${form.duplexAddressCount === '2' ? '2 addresses' : '1 address'})` : ''}</span>
                     <span className="text-base-content/50">Side:</span>
                     <span className="font-medium capitalize">{form.transactionType}</span>
                     {form.mlsNumber && <><span className="text-base-content/50">MLS#:</span><span className="font-medium">{form.mlsNumber}</span></>}
@@ -633,7 +937,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {selectedClient && (
                       <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}{selectedClient.company ? ` — ${selectedClient.company}` : ''}</span></>
                     )}
+                    {form.buyerNames && <><span className="text-base-content/50">Buyer(s):</span><span className="font-medium">{form.buyerNames}</span></>}
+                    {form.sellerNames && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerNames}</span></>}
+                    {form.loanType && <><span className="text-base-content/50">Loan Type:</span><span className="font-medium capitalize">{form.loanType}</span></>}
+                    {form.earnestMoney && <><span className="text-base-content/50">Earnest Money:</span><span className="font-medium">${Number(form.earnestMoney).toLocaleString()}</span></>}
+                    {form.inspectionDeadline && <><span className="text-base-content/50">Inspection Deadline:</span><span className="font-medium">{formatDisplayDate(form.inspectionDeadline)}</span></>}
+                    {(form.asIsSale || form.inspectionWaived || form.homeWarranty) && (
+                      <><span className="text-base-content/50">Conditions:</span><span className="font-medium">{[form.asIsSale && 'As-Is', form.inspectionWaived && 'Insp. Waived', form.homeWarranty && 'Home Warranty'].filter(Boolean).join(' · ')}</span></>
+                    )}
                   </div>
+                  {form.specialNotes.trim() && (
+                    <div className="pt-3 border-t border-base-300">
+                      <p className="text-xs font-semibold text-base-content/50 uppercase mb-1 flex items-center gap-1">
+                        <FileText size={11} /> Special Notes
+                      </p>
+                      <p className="text-sm text-base-content/70 whitespace-pre-wrap">{form.specialNotes.trim()}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

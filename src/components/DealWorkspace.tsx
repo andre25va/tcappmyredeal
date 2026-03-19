@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
@@ -49,17 +49,10 @@ import { WorkspaceContacts } from './WorkspaceContacts';
 import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
+import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
+import { WorkspaceAmendments } from './WorkspaceAmendments';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline';
-
-interface CallStartedData {
-  contactName: string;
-  contactPhone: string;
-  contactId?: string;
-  dealId?: string;
-  callSid?: string;
-  startedAt: string;
-}
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments';
 
 interface Props {
   deal: Deal;
@@ -70,7 +63,6 @@ interface Props {
   emailTemplates?: EmailTemplate[];
   complianceTemplates?: ComplianceTemplate[];
   deals?: Deal[];
-  onCallStarted?: (callData: CallStartedData) => void;
 }
 
 /**
@@ -118,7 +110,7 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
   return null;
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [] }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState(false);
   const [copiedMls, setCopiedMls] = useState(false);
@@ -128,6 +120,9 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
   // Fetch deal emails
   const { emails: dealEmails, loading: emailsLoading, stats: emailStats } = useDealEmails(deal);
+
+  // Linked emails unread count for tab badge
+  const [linkedEmailUnread, setLinkedEmailUnread] = React.useState(0);
 
   // Reset to Overview whenever the deal changes
   useEffect(() => { setTab('overview'); }, [deal.id]);
@@ -148,14 +143,9 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
+    { id: 'linked-emails', label: 'Emails', icon: <Inbox size={13} />, badge: linkedEmailUnread > 0 ? linkedEmailUnread : undefined },
+    { id: 'amendments', label: 'Amendments', icon: <FileText size={13} /> },
   ];
-
-  const handleEditDeal = () => {
-    // Always switch to overview first so WorkspaceOverview is mounted
-    // React batches both state updates → WorkspaceOverview mounts with new editTrigger → modal opens
-    if (tab !== 'overview') setTab('overview');
-    setEditTrigger(n => n + 1);
-  };
 
   return (
     <div className="flex flex-col h-full bg-base-100">
@@ -252,7 +242,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <span className="hidden sm:inline">Sheet</span>
             </button>
             <button
-              onClick={handleEditDeal}
+              onClick={() => setEditTrigger(n => n + 1)}
               className="btn btn-sm btn-primary btn-outline gap-1.5"
             >
               <Pencil size={13} /> Edit Deal
@@ -265,7 +255,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       {showSheet && <TransactionSheet deal={deal} onClose={() => setShowSheet(false)} />}
 
       {/* Focus View Modal */}
-      {showFocusView && <FocusViewModal deal={deal} onClose={() => setShowFocusView(false)} onCallStarted={onCallStarted} />}
+      {showFocusView && <FocusViewModal deal={deal} onClose={() => setShowFocusView(false)} />}
 
       {/* Tab Bar */}
       <div className="flex-none border-b border-base-300 bg-base-200 flex items-center overflow-x-auto scrollbar-none">
@@ -293,16 +283,17 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
       {/* Tab Content */}
       <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
+
+        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
-        {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
+        {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailTemplate deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} />}
         {tab === 'timeline'   && <DealTimeline deal={deal} />}
-        {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} onCallStarted={onCallStarted ? (cd) => onCallStarted({ ...cd, dealId: deal.id }) : undefined} />}
-        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} onCallStarted={onCallStarted ? (cd) => onCallStarted({ ...cd, dealId: deal.id }) : undefined} />}
+        {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
+        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
         {tab === 'ai-emails' && (
           <div className="p-4">
             {emailsLoading && dealEmails.length === 0 ? (
@@ -314,6 +305,13 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} />
             )}
           </div>
+        )}
+        {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
+        {tab === 'linked-emails' && (
+          <WorkspaceLinkedEmails
+            deal={deal}
+            onUnreadCount={setLinkedEmailUnread}
+          />
         )}
       </div>
     </div>

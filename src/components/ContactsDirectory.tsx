@@ -130,6 +130,7 @@ interface EditForm {
   company: string;
   timezone: string;
   notes: string;
+  defaultInstructions: string;
   isClient: boolean;
   originalIsClient: boolean;
   clientAccountId?: string;
@@ -167,6 +168,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     company: '',
     timezone: '',
     notes: '',
+    defaultInstructions: '',
     isClient: false,
     originalIsClient: false,
     clientAccountId: undefined,
@@ -186,6 +188,7 @@ function contactToForm(c: ContactRecord): EditForm {
     company: c.company,
     timezone: c.timezone,
     notes: c.notes,
+    defaultInstructions: c.defaultInstructions ?? '',
     isClient: c.isClient,
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
@@ -523,6 +526,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         company: form.company.trim(),
         timezone: form.timezone || undefined,
         notes: form.notes.trim() || undefined,
+        defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -855,6 +859,27 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       </div>
                     </div>
                   </label>
+                </div>
+              )}
+
+              {/* Special Instructions (clients only) */}
+              {form.contactType === 'agent' && form.isClient && (
+                <div>
+                  <label className="label py-0">
+                    <span className="label-text text-xs font-semibold">Special Instructions</span>
+                    <span className="label-text-alt text-xs text-base-content/40">Optional — auto-fills deal notes for this client</span>
+                  </label>
+                  <textarea
+                    className={`textarea textarea-bordered textarea-sm w-full transition-all ${
+                      form.defaultInstructions.trim()
+                        ? 'border-red-400 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]'
+                        : ''
+                    }`}
+                    rows={3}
+                    placeholder="e.g. Always CC buyer's attorney. EMD via wire only. Call before sending docs."
+                    value={form.defaultInstructions}
+                    onChange={e => updateField('defaultInstructions', e.target.value)}
+                  />
                 </div>
               )}
 

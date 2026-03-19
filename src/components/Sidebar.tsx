@@ -1,14 +1,15 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox,
 } from 'lucide-react';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
-  | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings';
+  | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
+  | 'email-review';
 
-const APP_VERSION = 'v2026.03.18.16';
+const APP_VERSION = 'v2026.03.18.17';
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: string }[] = [
@@ -18,6 +19,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'mls',           label: 'MLS',          icon: <Building2 size={18} /> },
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
   { view: 'inbox',         label: 'Inbox',        icon: <MessageSquare size={18} /> },
+  { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
   { view: 'voice',         label: 'Voice',        icon: <Phone size={18} /> },
   { view: 'reports',       label: 'AI Reports',   icon: <BarChart2 size={18} /> },
@@ -33,6 +35,7 @@ interface SidebarProps {
   inboxUnread: number;
   tasksPending: number;
   voicePending: number;
+  emailQueuePending: number;
   onLogout: () => void;
   userName: string;
   userRole: string;
@@ -54,13 +57,14 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
-  inboxUnread, tasksPending, voicePending,
+  inboxUnread, tasksPending, voicePending, emailQueuePending,
   onLogout, userName, userRole, userInitials,
 }) => {
   const getBadge = (v: View): number => {
     if (v === 'inbox') return inboxUnread;
     if (v === 'tasks') return tasksPending;
     if (v === 'voice') return voicePending;
+    if (v === 'email-review') return emailQueuePending;
     return 0;
   };
 
@@ -82,6 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {NAV_ITEMS.map(item => {
           const badge = getBadge(item.view);
           const active = view === item.view;
+          // Amber badge for email-review to stand out from error-red
+          const isEmailQueue = item.view === 'email-review';
           return (
             <button
               key={item.view}
@@ -96,7 +102,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="flex-1 text-left">{item.label}</span>
               {badge > 0 && (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                  active ? 'bg-primary-content/20 text-primary-content' : 'bg-error text-error-content'
+                  active
+                    ? 'bg-primary-content/20 text-primary-content'
+                    : isEmailQueue
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-error text-error-content'
                 }`}>
                   {badge > 99 ? '99+' : badge}
                 </span>

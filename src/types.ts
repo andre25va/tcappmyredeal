@@ -62,7 +62,7 @@ export interface AppUser {
 export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'closed' | 'terminated';
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
-export type PropertyType = 'single-family' | 'multi-family' | 'condo' | 'townhouse' | 'land' | 'commercial';
+export type PropertyType = 'single-family' | 'multi-family' | 'duplex' | 'condo' | 'townhouse' | 'land' | 'commercial';
 export type ContactRole = 'agent' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
 
 // ── New relational type aliases ──────────────────────────────────────────────
@@ -312,6 +312,7 @@ export interface ContactRecord {
   organizations: OrgMemberInfo[];
   isClient: boolean;
   clientAccountId?: string;
+  defaultInstructions?: string;
 }
 
 export interface OrgMemberInfo {
@@ -382,7 +383,8 @@ export interface Deal {
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
-city: string;
+  secondaryAddress?: string;     // For duplex properties — second unit street address
+  city: string;
   state: string;
   zipCode: string;
   legalDescription?: string;
@@ -395,11 +397,51 @@ city: string;
   status: DealStatus;
   milestone: DealMilestone;
   transactionType: TransactionType;    // Phase 4: canonical (was transactionSide)
-riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
+  riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
 
   // ── Dates ──────────────────────────────────────────────────────────────────
   contractDate: string;
   closingDate: string;
+
+  // ── Parties ────────────────────────────────────────────────────────────────
+  buyerName?: string;
+  sellerName?: string;
+  titleCompanyName?: string;
+  loanOfficerName?: string;
+
+  // ── Property extras ────────────────────────────────────────────────────────
+  hoa?: boolean;
+  hoaMonthlyFee?: number;
+  surveyRequired?: boolean;
+
+  // ── Financing ──────────────────────────────────────────────────────────────
+  loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
+  loanAmount?: number;
+  downPayment?: number;
+  earnestMoneyDueDate?: string;
+  sellerConcessions?: number;
+  totalSellerCredits?: number;
+
+  // ── Contract Conditions ────────────────────────────────────────────────────
+  asIsSale?: boolean;
+  inspectionWaived?: boolean;
+  homeWarranty?: boolean;
+  homeWarrantyAmount?: number;
+  homeWarrantyPaidBy?: string;         // 'buyer'|'seller'|'split'
+  homeWarrantyCompany?: string;
+
+  // ── Key Dates (expanded) ───────────────────────────────────────────────────
+  possessionDate?: string;
+
+  // ── Commission ─────────────────────────────────────────────────────────────
+  listingCommissionType?: 'percent' | 'flat';
+  listingCommissionValue?: number;
+  buyerCommissionType?: 'percent' | 'flat';
+  buyerCommissionValue?: number;
+  tcFeeType?: 'percent' | 'flat';
+  tcFeeValue?: number;
+  commissionPaidBy?: string;           // 'seller'|'buyer'
+  tcFeePaidBy?: string;                // 'seller'|'buyer'|'listing-agent'|'buying-agent'
 
   // ── Relationships (Phase 4 relational) ─────────────────────────────────────
   primaryClientAccountId?: string;     // FK to client_accounts
@@ -432,6 +474,43 @@ riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
 
   notes: string;
   archiveReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+// ── Deal Amendments ──────────────────────────────────────────────────────────
+
+export interface DealAmendment {
+  id: string;
+  dealId: string;
+  amendmentNumber?: number;
+  amendmentDate?: string;
+  amendmentType?: string;   // 'price_change'|'date_extension'|'condition_removal'|'other'
+  description?: string;
+  newClosingDate?: string;
+  newPurchasePrice?: number;
+  documentUrl?: string;
+  fileName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Deal Documents ───────────────────────────────────────────────────────────
+
+export interface DealDocument {
+  id: string;
+  dealId: string;
+  documentType?: string;   // 'contract'|'amendment'|'addendum'|'other'
+  fileName?: string;
+  fileUrl?: string;
+  storagePath?: string;
+  source?: string;         // 'email'|'upload'
+  gmailThreadId?: string;
+  gmailMessageId?: string;
+  extractedAt?: string;
+  extractionData?: Record<string, unknown>;
+  extractionConfirmed?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -8,6 +8,8 @@
     { "source": "/api/email/attachment", "destination": "/api/email?action=attachment" },
     { "source": "/api/email/search", "destination": "/api/email?action=search" },
     { "source": "/api/email/search-classify", "destination": "/api/email?action=search-classify" },
-    { "source": "/api/ai/:action", "destination": "/api/ai?action=:action" }
+    { "source": "/api/email/inbound", "destination": "/api/email?action=inbound-webhook" },
+    { "source": "/api/ai/:action", "destination": "/api/ai?action=:action" },
+    { "source": "/api/email-link", "destination": "/api/email-link" }
   ]
 }

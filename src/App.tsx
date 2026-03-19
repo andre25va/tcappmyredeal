@@ -33,6 +33,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAudit } from './hooks/useAudit';
 import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
+import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -64,6 +65,7 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
+  const [emailQueuePending, setEmailQueuePending] = useState(0);
   const [activeCall, setActiveCall]         = useState<{contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string} | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
 
@@ -218,6 +220,23 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
+  // ── Poll email review queue pending count ────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    const fetchQueueCount = async () => {
+      try {
+        const { count } = await supabase
+          .from('email_review_queue')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+        setEmailQueuePending(count || 0);
+      } catch { /* silent */ }
+    };
+    fetchQueueCount();
+    const t = setInterval(fetchQueueCount, 60000);
+    return () => clearInterval(t);
+  }, [profile]);
+
   // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
     if (deals.length === 0) {
@@ -364,6 +383,7 @@ function AppInner() {
     inboxUnread,
     tasksPending,
     voicePending,
+    emailQueuePending,
     onLogout: logout,
     userName: profile.name,
     userRole: profile.role,
@@ -400,7 +420,7 @@ function AppInner() {
         <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
           <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
           <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
+            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
           </span>
           <NotificationBell onNavigate={handleNotificationNavigate} />
           <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
@@ -414,7 +434,7 @@ function AppInner() {
               <HomeDashboard
                 deals={deals}
                 onSelectDeal={handleSelectDeal}
-                onGoToDeals={() => { setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
+                onGoToDeals={() => { setAmberFilter(false); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
                 onGoToAlerts={() => { setAmberFilter(true); setSelectedId(null); setTxPanel('list'); setView('transactions'); }}
               />
             </div>
@@ -498,6 +518,15 @@ function AppInner() {
                 initialConversationId={inboxInitConvId}
                 initialChannel={inboxInitChannel}
                 onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
+              />
+            </div>
+          )}
+
+          {view === 'email-review' && (
+            <div className="flex-1 overflow-hidden">
+              <EmailReviewQueueView
+                deals={deals}
+                onSelectDeal={handleSelectDeal}
               />
             </div>
           )}
