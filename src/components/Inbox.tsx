@@ -193,30 +193,52 @@ function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp
 
 // ── Attachment Chips ──────────────────────────────────────────────────────────
 
-function AttachmentChips({ attachments }: { attachments: EmailAttachment[] }) {
+function AttachmentChips({ attachments, onPreviewPdf }: { 
+  attachments: EmailAttachment[];
+  onPreviewPdf?: (url: string, name: string) => void;
+}) {
   if (!attachments || attachments.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-base-200 bg-base-50">
       <div className="w-full text-[10px] text-base-content/40 font-semibold uppercase tracking-wide mb-0.5">
         <Paperclip size={10} className="inline mr-1" />{attachments.length} attachment{attachments.length > 1 ? 's' : ''}
       </div>
-      {attachments.map((att, i) => (
-        <a
-          key={i}
-          href={att.downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 bg-base-200 hover:bg-base-300 border border-base-300 rounded-xl px-3 py-2 transition-colors group"
-          title={`Open ${att.filename} in new tab`}
-        >
-          <span className="text-base">{getFileIcon(att.contentType)}</span>
-          <div className="min-w-0">
-            <div className="text-xs font-medium text-base-content truncate max-w-[140px]">{att.filename}</div>
-            <div className="text-[10px] text-base-content/40">{formatFileSize(att.size)}</div>
-          </div>
-          <ExternalLink size={11} className="text-base-content/30 group-hover:text-primary flex-none" />
-        </a>
-      ))}
+      {attachments.map((att, i) => {
+        const isPdf = att.contentType.includes('pdf');
+        if (isPdf && onPreviewPdf) {
+          return (
+            <button
+              key={i}
+              onClick={() => onPreviewPdf(att.downloadUrl, att.filename)}
+              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl px-3 py-2 transition-colors group"
+              title={`Preview ${att.filename}`}
+            >
+              <span className="text-base">📄</span>
+              <div className="min-w-0 text-left">
+                <div className="text-xs font-medium text-base-content truncate max-w-[140px]">{att.filename}</div>
+                <div className="text-[10px] text-red-400 font-medium">Click to preview</div>
+              </div>
+            </button>
+          );
+        }
+        return (
+          <a
+            key={i}
+            href={att.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-base-200 hover:bg-base-300 border border-base-300 rounded-xl px-3 py-2 transition-colors group"
+            title={`Open ${att.filename} in new tab`}
+          >
+            <span className="text-base">{getFileIcon(att.contentType)}</span>
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-base-content truncate max-w-[140px]">{att.filename}</div>
+              <div className="text-[10px] text-base-content/40">{formatFileSize(att.size)}</div>
+            </div>
+            <ExternalLink size={11} className="text-base-content/30 group-hover:text-primary flex-none" />
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -338,6 +360,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [priorityOpen, setPriorityOpen] = useState(true);
   const [othersOpen, setOthersOpen] = useState(true);
   const [emailSubTab, setEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched'>('all');
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewName, setPdfPreviewName] = useState<string | null>(null);
 
   // Compose email state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -528,6 +552,8 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     setSelectedConv(null);
     setMobileShowThread(true);
     setEmailThreads(prev => prev.map(t => t.id === thread.id ? { ...t, isUnread: false } : t));
+    setPdfPreviewUrl(null);
+    setPdfPreviewName(null);
   };
 
   const handleSendReply = async () => {
@@ -1237,7 +1263,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                   </div>
                   <EmailBodyRenderer msg={msg} />
                   {msg.attachments && msg.attachments.length > 0 && (
-                    <AttachmentChips attachments={msg.attachments} />
+                    <AttachmentChips
+                      attachments={msg.attachments}
+                      onPreviewPdf={(url, name) => { setPdfPreviewUrl(url); setPdfPreviewName(name); }}
+                    />
                   )}
                 </div>
               </React.Fragment>
@@ -1692,10 +1721,46 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     </div>
   );
 
+  // ── PDF Preview Panel ───────────────────────────────────────────────────────
+
+  const PDFPreviewPanel = pdfPreviewUrl ? (
+    <div className="flex flex-col border-l border-base-300 bg-base-100 flex-none" style={{ width: '42%', minWidth: 280 }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200 flex-none">
+        <span className="text-sm font-semibold truncate flex-1 text-base-content/80">
+          📄 {pdfPreviewName}
+        </span>
+        <a
+          href={pdfPreviewUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-ghost btn-xs gap-1"
+          title="Open in new tab"
+        >
+          <ExternalLink size={11} /> Open
+        </a>
+        <button
+          onClick={() => { setPdfPreviewUrl(null); setPdfPreviewName(null); }}
+          className="btn btn-ghost btn-xs btn-square"
+          title="Close preview"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <iframe
+          src={pdfPreviewUrl}
+          className="w-full h-full border-0"
+          title={pdfPreviewName || 'PDF Preview'}
+        />
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-base-100">
       {ConversationList}
       {ThreadPanel}
+      {PDFPreviewPanel}
       {ComposeModal}
       {EmailComposeModal}
     </div>
