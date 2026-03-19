@@ -112,21 +112,17 @@ const LiveCallPopup: React.FC<{
   onClose: () => void;
 }> = ({ contactName, contactPhone, onClose }) => {
   const [seconds, setSeconds] = React.useState(0);
-
   useEffect(() => {
     const interval = setInterval(() => setSeconds(s => s + 1), 1000);
     return () => clearInterval(interval);
   }, []);
-
   const fmt = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
     const sec = (s % 60).toString().padStart(2, '0');
     return `${m}:${sec}`;
   };
-
   return (
     <div className="fixed bottom-6 right-6 z-[100] w-72 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-      {/* Green header */}
       <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 flex items-center gap-3">
         <div className="relative flex-none">
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
@@ -142,8 +138,6 @@ const LiveCallPopup: React.FC<{
           <X size={14} />
         </button>
       </div>
-
-      {/* Body */}
       <div className="px-4 py-4 flex items-center justify-between">
         <div>
           <p className="text-xs text-gray-400 mb-0.5">Duration</p>
@@ -154,13 +148,8 @@ const LiveCallPopup: React.FC<{
           <p className="text-sm text-gray-600 font-medium">{contactPhone}</p>
         </div>
       </div>
-
-      {/* End call button */}
       <div className="px-4 pb-4">
-        <button
-          onClick={onClose}
-          className="btn btn-error btn-sm w-full gap-2"
-        >
+        <button onClick={onClose} className="btn btn-error btn-sm w-full gap-2">
           <PhoneOff size={14} /> End Call
         </button>
       </div>
@@ -382,17 +371,14 @@ const ContactPopup: React.FC<{
                 dealId={dealId}
                 size="sm"
                 variant="icon"
-                onCallStarted={(callId) => {
-                  setLiveCallActive(true);
-                  onCallStarted?.({
-                    contactName: contact.name,
-                    contactPhone: contact.phone!,
-                    contactId: contact.id,
-                    dealId,
-                    callSid: callId,
-                    startedAt: new Date().toISOString(),
-                  });
-                }}
+                onCallStarted={(callId) => onCallStarted?.({
+                  contactName: contact.name,
+                  contactPhone: contact.phone!,
+                  contactId: contact.id,
+                  dealId,
+                  callSid: callId,
+                  startedAt: new Date().toISOString(),
+                })}
               />
             </div>
           )}
