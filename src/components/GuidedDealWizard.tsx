@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
@@ -176,11 +176,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
     secondaryAddress: '',
+    duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',    // selected client from agentClients
+    specialNotes: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -192,6 +194,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
+
+  // When property type changes, reset duplex-specific fields
+  const handlePropertyTypeChange = (type: PropertyType) => {
+    setForm(p => ({
+      ...p,
+      propertyType: type,
+      duplexAddressCount: '',
+      secondaryAddress: '',
+    }));
+  };
 
   // ── Client selection ─────────────────────────────────────────────────────────
   const handleClientSelect = (selectedId: string) => {
@@ -214,11 +226,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   };
 
   const isDuplex = form.propertyType === 'duplex';
+  const hasTwoAddresses = isDuplex && form.duplexAddressCount === '2';
 
   const canAdvance = (): boolean => {
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim());
-      case 2: return true;
+      case 2: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 3: return true;
       case 4: return true;
       case 5: return !!form.closingDate;
@@ -232,6 +245,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (!canAdvance()) {
       if (step === 1) setError('Address and city are required.');
+      if (step === 2) setError('Please select whether this duplex has 1 or 2 addresses.');
       if (step === 5) setError('Closing date is required.');
       if (step === 6) setError('Please select a client to continue.');
       return;
@@ -279,20 +293,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       urgency: 'high',
     }] : [];
 
-    const addressDisplay = isDuplex && form.secondaryAddress.trim()
+    const addressDisplay = hasTwoAddresses && form.secondaryAddress.trim()
       ? `${form.address} & ${form.secondaryAddress}, ${form.city} ${form.state}`
       : `${form.address}, ${form.city} ${form.state}`;
 
     const initLog: ActivityEntry[] = [
       { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: addressDisplay, user: 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
-      ...(isDuplex && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
+      ...(hasTwoAddresses && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
     ];
 
     const deal: Deal = {
       id: generateId(),
       propertyAddress: form.address.trim(),
-      secondaryAddress: isDuplex && form.secondaryAddress.trim() ? form.secondaryAddress.trim() : undefined,
+      secondaryAddress: hasTwoAddresses && form.secondaryAddress.trim() ? form.secondaryAddress.trim() : undefined,
       city: form.city.trim(),
       state: form.state.trim().toUpperCase(),
       zipCode: form.zipCode.trim(),
@@ -308,7 +322,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       agentName: '',
       agentClientId: form.agentClientId || undefined,
       contacts: [],
-      notes: '',
+      notes: form.specialNotes.trim(),
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
@@ -438,7 +452,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   {PROP_TYPES.map(pt => (
                     <button
                       key={pt.type}
-                      onClick={() => setForm(p => ({ ...p, propertyType: pt.type }))}
+                      onClick={() => handlePropertyTypeChange(pt.type)}
                       className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-semibold text-sm transition-all ${
                         form.propertyType === pt.type
                           ? 'bg-primary/10 border-primary text-primary'
@@ -450,39 +464,84 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </button>
                   ))}
                 </div>
+
                 {isMF && (
                   <div className="alert alert-warning py-2 text-sm gap-2">
                     <AlertTriangle size={14} /> Multi-Family selected — a Multi-Family Addendum alert will be auto-created.
                   </div>
                 )}
+
+                {/* Duplex — address count question */}
                 {isDuplex && (
-                  <div className="space-y-3 pt-2 border-t border-base-300">
-                    <div className="flex items-center gap-2">
-                      <Building2 size={15} className="text-primary" />
-                      <span className="text-sm font-semibold text-base-content">Duplex — Enter Both Unit Addresses</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-base-content/50 mb-1 block">Unit A (Primary Address)</label>
-                        <input
-                          className="input input-bordered input-sm w-full"
-                          value={form.address}
-                          onChange={f('address')}
-                          placeholder="123 Main St"
-                        />
+                  <div className="space-y-4 pt-3 border-t border-base-300">
+                    <div>
+                      <p className="text-sm font-semibold text-base-content mb-3">
+                        Does this duplex have <span className="text-primary">1 address</span> or <span className="text-primary">2 addresses</span>?
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setForm(p => ({ ...p, duplexAddressCount: '1', secondaryAddress: '' }))}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold text-sm transition-all ${
+                            form.duplexAddressCount === '1'
+                              ? 'bg-primary/10 border-primary text-primary'
+                              : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
+                          }`}
+                        >
+                          <Home size={16} />
+                          1 Address
+                        </button>
+                        <button
+                          onClick={() => setForm(p => ({ ...p, duplexAddressCount: '2' }))}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold text-sm transition-all ${
+                            form.duplexAddressCount === '2'
+                              ? 'bg-primary/10 border-primary text-primary'
+                              : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
+                          }`}
+                        >
+                          <Building2 size={16} />
+                          2 Addresses
+                        </button>
                       </div>
-                      <div>
-                        <label className="text-xs text-base-content/50 mb-1 block">Unit B (Second Address)</label>
-                        <input
-                          className="input input-bordered input-sm w-full"
-                          value={form.secondaryAddress}
-                          onChange={f('secondaryAddress')}
-                          placeholder="125 Main St"
-                          autoFocus
-                        />
-                      </div>
                     </div>
-                    <p className="text-xs text-base-content/40">Both addresses will be used when matching emails to this deal.</p>
+
+                    {/* Only show second address field when 2 is selected */}
+                    {hasTwoAddresses && (
+                      <div className="space-y-3 p-4 bg-base-100 rounded-xl border border-base-300">
+                        <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Unit Addresses</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Unit A — Primary</label>
+                            <input
+                              className="input input-bordered input-sm w-full"
+                              value={form.address}
+                              onChange={f('address')}
+                              placeholder="123 Main St"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Unit B — Second</label>
+                            <input
+                              className="input input-bordered input-sm w-full"
+                              value={form.secondaryAddress}
+                              onChange={f('secondaryAddress')}
+                              placeholder="125 Main St"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-base-content/40">
+                          💡 Usually just the house number changes — e.g. 123 and 125 Main St. Both addresses will be used when matching emails to this deal.
+                        </p>
+                      </div>
+                    )}
+
+                    {form.duplexAddressCount === '1' && (
+                      <div className="p-3 bg-base-100 rounded-xl border border-base-300">
+                        <p className="text-xs text-base-content/50">
+                          Using <span className="font-semibold text-base-content">{form.address || 'the address from Step 1'}</span> as the single duplex address.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -602,6 +661,26 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
+
+                {/* Special Notes */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Special Notes
+                    <span className="text-base-content/30 ml-1">(optional)</span>
+                  </label>
+                  <textarea
+                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
+                      form.specialNotes.trim()
+                        ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]'
+                        : ''
+                    }`}
+                    rows={4}
+                    value={form.specialNotes}
+                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
+                    placeholder="Any special instructions for this transaction that the TC team should know about..."
+                  />
+                  <p className="text-xs text-base-content/30 mt-1">These notes will be visible on the deal and help guide your TC team.</p>
+                </div>
               </div>
             )}
 
@@ -665,14 +744,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <span className="text-base-content/50">Address:</span>
                     <span className="font-medium">{form.address}, {form.city} {form.state} {form.zipCode}</span>
-                    {isDuplex && form.secondaryAddress && (
+                    {hasTwoAddresses && form.secondaryAddress && (
                       <>
                         <span className="text-base-content/50">Second Unit:</span>
                         <span className="font-medium">{form.secondaryAddress}</span>
                       </>
                     )}
                     <span className="text-base-content/50">Type:</span>
-                    <span className="font-medium">{propertyTypeLabel(form.propertyType)}</span>
+                    <span className="font-medium">{propertyTypeLabel(form.propertyType)}{isDuplex ? ` (${form.duplexAddressCount === '2' ? '2 addresses' : '1 address'})` : ''}</span>
                     <span className="text-base-content/50">Side:</span>
                     <span className="font-medium capitalize">{form.transactionType}</span>
                     {form.mlsNumber && <><span className="text-base-content/50">MLS#:</span><span className="font-medium">{form.mlsNumber}</span></>}
@@ -686,6 +765,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}{selectedClient.company ? ` — ${selectedClient.company}` : ''}</span></>
                     )}
                   </div>
+                  {form.specialNotes.trim() && (
+                    <div className="pt-3 border-t border-base-300">
+                      <p className="text-xs font-semibold text-base-content/50 uppercase mb-1 flex items-center gap-1">
+                        <FileText size={11} /> Special Notes
+                      </p>
+                      <p className="text-sm text-base-content/70 whitespace-pre-wrap">{form.specialNotes.trim()}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
