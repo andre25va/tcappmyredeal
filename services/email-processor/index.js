@@ -50,11 +50,17 @@ app.post('/process-email', async (req, res) => {
       return res.json({ status: 'already_linked', deal_id: existing.deal_id });
     }
 
-    // Step 2: Load active deals
+    // Step 2: Load active deals with participant data via joins
     const { data: deals, error: dealsError } = await supabase
       .from('deals')
-      .select('id, property_address, secondary_address, buyer_name, seller_name, mls_number, lender_email, title_email, participants')
-      .eq('status', 'active');
+      .select(`
+        id, property_address, secondary_address, mls_number,
+        deal_participants(
+          deal_role,
+          contacts(full_name, email, contact_type)
+        )
+      `)
+      .not('pipeline_stage', 'in', '("closed","cancelled","withdrawn")');
 
     if (dealsError) throw dealsError;
 
@@ -172,34 +178,38 @@ Return null for any field not found. No explanation, just JSON.`
         }
       }
 
+      // Extract participant data from joined deal_participants
+      const dealParticipants = deal.deal_participants || [];
+      const allParticipantEmails = dealParticipants.map(p => (p.contacts?.email || '').toLowerCase()).filter(Boolean);
+      const allParticipantNames = dealParticipants.map(p => (p.contacts?.full_name || '').toLowerCase()).filter(Boolean);
+      const buyerNames = dealParticipants.filter(p => (p.deal_role || '').toLowerCase().includes('buyer')).map(p => (p.contacts?.full_name || '').toLowerCase()).filter(Boolean);
+      const sellerNames = dealParticipants.filter(p => (p.deal_role || '').toLowerCase().includes('seller')).map(p => (p.contacts?.full_name || '').toLowerCase()).filter(Boolean);
+      const lenderEmails = dealParticipants.filter(p => (p.deal_role || '').toLowerCase().includes('lender')).map(p => (p.contacts?.email || '').toLowerCase()).filter(Boolean);
+      const titleEmails = dealParticipants.filter(p => (p.deal_role || '').toLowerCase().includes('title')).map(p => (p.contacts?.email || '').toLowerCase()).filter(Boolean);
+
       // Participant email match (+25)
-      const participants = deal.participants || [];
-      const allEmails = participants.map(p => (p.email || '').toLowerCase());
-      if (allEmails.includes(fromEmail) || fromEmail === deal.lender_email?.toLowerCase() || fromEmail === deal.title_email?.toLowerCase()) {
+      if (allParticipantEmails.includes(fromEmail) || lenderEmails.includes(fromEmail) || titleEmails.includes(fromEmail)) {
         score += 25; breakdown.participant_email = 25;
       }
 
-      // Client name match (+20)
-      const buyerLower = (deal.buyer_name || '').toLowerCase();
-      const sellerLower = (deal.seller_name || '').toLowerCase();
-      if ((buyerLower && combinedText.includes(buyerLower)) || (sellerLower && combinedText.includes(sellerLower))) {
-        score += 20; breakdown.client_name = 20;
-      }
+      // Client name match (+20) — any participant name appears in email text
+      const clientMatch = allParticipantNames.some(name => name.length > 3 && combinedText.includes(name));
+      if (clientMatch) { score += 20; breakdown.client_name = 20; }
 
       // AI extracted buyer/seller match (+20)
-      if (extracted?.buyer_name && buyerLower) {
-        if (nameSimilarity(extracted.buyer_name.toLowerCase(), buyerLower) > 0.6) {
-          score += 20; breakdown.ai_buyer_match = 20;
-        }
+      if (extracted?.buyer_name) {
+        const extractedBuyer = extracted.buyer_name.toLowerCase();
+        const buyerMatch = buyerNames.some(b => nameSimilarity(extractedBuyer, b) > 0.6);
+        if (buyerMatch) { score += 20; breakdown.ai_buyer_match = 20; }
       }
 
       // Lender email (+20)
-      if (deal.lender_email && fromEmail === deal.lender_email.toLowerCase()) {
+      if (lenderEmails.includes(fromEmail)) {
         score += 20; breakdown.lender_email = 20;
       }
 
       // Title email (+20)
-      if (deal.title_email && fromEmail === deal.title_email.toLowerCase()) {
+      if (titleEmails.includes(fromEmail)) {
         score += 20; breakdown.title_email = 20;
       }
 
