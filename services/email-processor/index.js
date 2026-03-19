@@ -3,6 +3,28 @@ const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
 
 const app = express();
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://tcappmyredeal.vercel.app',
+  'https://tcappmyredeal-git-feat-duplex-dual-address-andre25vas-projects.vercel.app',
+  'https://tcappmyredeal-git-main-andre25vas-projects.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 const supabase = createClient(
@@ -81,19 +103,7 @@ app.post('/process-email', async (req, res) => {
           messages: [
             {
               role: 'system',
-              content: `Extract real estate transaction details from this email/document. Return JSON only:
-{
-  "address": "street address or null",
-  "city": "city or null", 
-  "state": "state or null",
-  "zip": "zip or null",
-  "mls_number": "MLS# or null",
-  "buyer_name": "buyer full name or null",
-  "seller_name": "seller full name or null",
-  "price": "sale price as number or null",
-  "close_date": "closing date YYYY-MM-DD or null"
-}
-Return null for any field not found. No explanation, just JSON.`
+              content: `Extract real estate transaction details from this email/document. Return JSON only:\n{\n  "address": "street address or null",\n  "city": "city or null", \n  "state": "state or null",\n  "zip": "zip or null",\n  "mls_number": "MLS# or null",\n  "buyer_name": "buyer full name or null",\n  "seller_name": "seller full name or null",\n  "price": "sale price as number or null",\n  "close_date": "closing date YYYY-MM-DD or null"\n}\nReturn null for any field not found. No explanation, just JSON.`
             },
             { role: 'user', content: contentForAI }
           ]
@@ -347,9 +357,6 @@ function nameSimilarity(a, b) {
 
 
 // ─── Contract Data Extraction Endpoint ───────────────────────────────────────
-// Called by WorkspaceDocuments.tsx when user clicks "Extract Data"
-// Accepts: { file_url (signed Supabase URL), file_name, deal_id, deal_address }
-// Returns: { fields: [{ key, label, value, confidence }], raw_text_preview }
 app.post('/extract-contract', async (req, res) => {
   const { file_url, file_name, deal_id, deal_address } = req.body;
 
@@ -390,7 +397,6 @@ app.post('/extract-contract', async (req, res) => {
       extractedText = fs.readFileSync(tmpTxt, 'utf8');
     } catch (e) {
       console.warn('pdftotext failed, trying fallback:', e.message);
-      // Fallback: try without -layout flag
       try {
         execSync(`pdftotext "${tmpPdf}" "${tmpTxt}"`, { timeout: 30000 });
         extractedText = fs.readFileSync(tmpTxt, 'utf8');
@@ -400,7 +406,6 @@ app.post('/extract-contract', async (req, res) => {
       }
     }
 
-    // Truncate to 6000 chars for GPT context
     const textForGPT = extractedText.slice(0, 6000);
 
     if (!textForGPT.trim()) {
@@ -408,46 +413,7 @@ app.post('/extract-contract', async (req, res) => {
     }
 
     // 3. Call GPT-4o-mini to extract structured fields
-    const prompt = `You are a real estate transaction coordinator AI. Extract key contract fields from this purchase agreement text.
-
-Return ONLY valid JSON with this exact structure (no markdown, no explanation):
-{
-  "fields": [
-    { "key": "contractPrice", "label": "Contract Price", "value": "540000", "confidence": "high" },
-    { "key": "listPrice", "label": "List Price", "value": "550000", "confidence": "high" },
-    { "key": "contractDate", "label": "Contract Date", "value": "2024-03-15", "confidence": "high" },
-    { "key": "closingDate", "label": "Closing Date", "value": "2024-04-30", "confidence": "high" },
-    { "key": "earnestMoney", "label": "Earnest Money", "value": "5000", "confidence": "medium" },
-    { "key": "earnestMoneyDueDate", "label": "Earnest Money Due", "value": "2024-03-20", "confidence": "medium" },
-    { "key": "loanType", "label": "Loan Type", "value": "conventional", "confidence": "high" },
-    { "key": "loanAmount", "label": "Loan Amount", "value": "432000", "confidence": "medium" },
-    { "key": "downPaymentAmount", "label": "Down Payment", "value": "108000", "confidence": "medium" },
-    { "key": "sellerConcessions", "label": "Seller Concessions", "value": "5000", "confidence": "medium" },
-    { "key": "inspectionDeadline", "label": "Inspection Deadline", "value": "2024-03-22", "confidence": "high" },
-    { "key": "loanCommitmentDate", "label": "Loan Commitment Date", "value": "2024-04-10", "confidence": "medium" },
-    { "key": "possessionDate", "label": "Possession Date", "value": "2024-04-30", "confidence": "medium" },
-    { "key": "buyerNames", "label": "Buyer Names", "value": "John & Jane Doe", "confidence": "high" },
-    { "key": "sellerNames", "label": "Seller Names", "value": "Bob Smith", "confidence": "high" },
-    { "key": "titleCompany", "label": "Title Company", "value": "ABC Title Co", "confidence": "medium" },
-    { "key": "loanOfficer", "label": "Loan Officer", "value": "Jane Smith - First Bank", "confidence": "low" },
-    { "key": "asIsSale", "label": "As-Is Sale", "value": "false", "confidence": "high" },
-    { "key": "inspectionWaived", "label": "Inspection Waived", "value": "false", "confidence": "high" },
-    { "key": "homeWarranty", "label": "Home Warranty", "value": "true", "confidence": "medium" }
-  ]
-}
-
-Rules:
-- Only include fields you can find with reasonable confidence
-- Dates MUST be in YYYY-MM-DD format
-- Money values are numbers only (no $ or commas): "540000" not "$540,000"
-- Loan type must be one of: conventional, fha, va, usda, cash, other
-- Boolean fields (asIsSale, inspectionWaived, homeWarranty): use "true" or "false"
-- confidence levels: "high" (clearly stated), "medium" (inferred), "low" (uncertain)
-- Skip fields you cannot find — do not guess
-${deal_address ? `- The property address is: ${deal_address}` : ''}
-
-Contract text:
-${textForGPT}`;
+    const prompt = `You are a real estate transaction coordinator AI. Extract key contract fields from this purchase agreement text.\n\nReturn ONLY valid JSON with this exact structure (no markdown, no explanation):\n{\n  "fields": [\n    { "key": "contractPrice", "label": "Contract Price", "value": "540000", "confidence": "high" },\n    { "key": "listPrice", "label": "List Price", "value": "550000", "confidence": "high" },\n    { "key": "contractDate", "label": "Contract Date", "value": "2024-03-15", "confidence": "high" },\n    { "key": "closingDate", "label": "Closing Date", "value": "2024-04-30", "confidence": "high" },\n    { "key": "earnestMoney", "label": "Earnest Money", "value": "5000", "confidence": "medium" },\n    { "key": "earnestMoneyDueDate", "label": "Earnest Money Due", "value": "2024-03-20", "confidence": "medium" },\n    { "key": "loanType", "label": "Loan Type", "value": "conventional", "confidence": "high" },\n    { "key": "loanAmount", "label": "Loan Amount", "value": "432000", "confidence": "medium" },\n    { "key": "downPaymentAmount", "label": "Down Payment", "value": "108000", "confidence": "medium" },\n    { "key": "sellerConcessions", "label": "Seller Concessions", "value": "5000", "confidence": "medium" },\n    { "key": "inspectionDeadline", "label": "Inspection Deadline", "value": "2024-03-22", "confidence": "high" },\n    { "key": "loanCommitmentDate", "label": "Loan Commitment Date", "value": "2024-04-10", "confidence": "medium" },\n    { "key": "possessionDate", "label": "Possession Date", "value": "2024-04-30", "confidence": "medium" },\n    { "key": "buyerNames", "label": "Buyer Names", "value": "John & Jane Doe", "confidence": "high" },\n    { "key": "sellerNames", "label": "Seller Names", "value": "Bob Smith", "confidence": "high" },\n    { "key": "titleCompany", "label": "Title Company", "value": "ABC Title Co", "confidence": "medium" },\n    { "key": "loanOfficer", "label": "Loan Officer", "value": "Jane Smith - First Bank", "confidence": "low" },\n    { "key": "asIsSale", "label": "As-Is Sale", "value": "false", "confidence": "high" },\n    { "key": "inspectionWaived", "label": "Inspection Waived", "value": "false", "confidence": "high" },\n    { "key": "homeWarranty", "label": "Home Warranty", "value": "true", "confidence": "medium" }\n  ]\n}\n\nRules:\n- Only include fields you can find with reasonable confidence\n- Dates MUST be in YYYY-MM-DD format\n- Money values are numbers only (no $ or commas): "540000" not "$540,000"\n- Loan type must be one of: conventional, fha, va, usda, cash, other\n- Boolean fields (asIsSale, inspectionWaived, homeWarranty): use "true" or "false"\n- confidence levels: "high" (clearly stated), "medium" (inferred), "low" (uncertain)\n- Skip fields you cannot find — do not guess\n${deal_address ? `- The property address is: ${deal_address}` : ''}\n\nContract text:\n${textForGPT}`;
 
     const aiResponse = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -466,7 +432,6 @@ ${textForGPT}`;
       return res.json({ fields: [], raw_text_preview: textForGPT.slice(0, 500) });
     }
 
-    // 4. Return result
     return res.json({
       fields: parsed.fields || [],
       raw_text_preview: extractedText.slice(0, 500),
@@ -476,7 +441,6 @@ ${textForGPT}`;
     console.error('extract-contract error:', err);
     return res.status(500).json({ error: err.message });
   } finally {
-    // Cleanup temp files
     try { fs.unlinkSync(tmpPdf); } catch (_) {}
     try { fs.unlinkSync(tmpTxt); } catch (_) {}
   }
