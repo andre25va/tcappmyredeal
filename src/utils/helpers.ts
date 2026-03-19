@@ -75,6 +75,7 @@ export const statusDot = (s: DealStatus): string => ({
 export const propertyTypeLabel = (p: PropertyType): string => ({
   'single-family': 'Single Family',
   'multi-family': 'Multi-Family',
+  'duplex': 'Duplex',
   'condo': 'Condo',
   'townhouse': 'Townhouse',
   'land': 'Land',

@@ -17,7 +17,8 @@ interface Props {
 const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
   { type: 'single-family', label: 'Single Family', icon: <Home size={22} /> },
   { type: 'multi-family', label: 'Multi-Family', icon: <Building size={22} /> },
-  { type: 'condo', label: 'Condo', icon: <Building2 size={22} /> },
+  { type: 'duplex', label: 'Duplex', icon: <Building2 size={22} /> },
+  { type: 'condo', label: 'Condo', icon: <Landmark size={22} /> },
   { type: 'townhouse', label: 'Townhouse', icon: <Building size={22} /> },
   { type: 'land', label: 'Land', icon: <TreePine size={22} /> },
   { type: 'commercial', label: 'Commercial', icon: <Store size={22} /> },
@@ -174,6 +175,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
+    secondaryAddress: '',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
@@ -210,6 +212,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setForm(p => ({ ...p, agentClientId: c.id }));
     setDisambigClientCandidates(null);
   };
+
+  const isDuplex = form.propertyType === 'duplex';
 
   const canAdvance = (): boolean => {
     switch (step) {
@@ -275,24 +279,36 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       urgency: 'high',
     }] : [];
 
+    const addressDisplay = isDuplex && form.secondaryAddress.trim()
+      ? `${form.address} & ${form.secondaryAddress}, ${form.city} ${form.state}`
+      : `${form.address}, ${form.city} ${form.state}`;
+
     const initLog: ActivityEntry[] = [
-      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: `${form.address}, ${form.city} ${form.state}`, user: 'TC Staff', type: 'deal_created' },
+      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: addressDisplay, user: 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
+      ...(isDuplex && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
     ];
 
     const deal: Deal = {
       id: generateId(),
-      propertyAddress: form.address.trim(), city: form.city.trim(),
-      state: form.state.trim().toUpperCase(), zipCode: form.zipCode.trim(),
+      propertyAddress: form.address.trim(),
+      secondaryAddress: isDuplex && form.secondaryAddress.trim() ? form.secondaryAddress.trim() : undefined,
+      city: form.city.trim(),
+      state: form.state.trim().toUpperCase(),
+      zipCode: form.zipCode.trim(),
       mlsNumber: form.mlsNumber.trim() || `MLS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
-      propertyType: form.propertyType, status: 'contract' as DealStatus, transactionType: form.transactionType as TransactionType,
-      contractDate: form.contractDate, closingDate: form.closingDate,
+      propertyType: form.propertyType,
+      status: 'contract' as DealStatus,
+      transactionType: form.transactionType as TransactionType,
+      contractDate: form.contractDate,
+      closingDate: form.closingDate,
       agentId: generateId(),
       agentName: '',
       agentClientId: form.agentClientId || undefined,
-      contacts: [], notes: '',
+      contacts: [],
+      notes: '',
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
@@ -418,7 +434,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {PROP_TYPES.map(pt => (
                     <button
                       key={pt.type}
@@ -437,6 +453,36 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 {isMF && (
                   <div className="alert alert-warning py-2 text-sm gap-2">
                     <AlertTriangle size={14} /> Multi-Family selected — a Multi-Family Addendum alert will be auto-created.
+                  </div>
+                )}
+                {isDuplex && (
+                  <div className="space-y-3 pt-2 border-t border-base-300">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={15} className="text-primary" />
+                      <span className="text-sm font-semibold text-base-content">Duplex — Enter Both Unit Addresses</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Unit A (Primary Address)</label>
+                        <input
+                          className="input input-bordered input-sm w-full"
+                          value={form.address}
+                          onChange={f('address')}
+                          placeholder="123 Main St"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Unit B (Second Address)</label>
+                        <input
+                          className="input input-bordered input-sm w-full"
+                          value={form.secondaryAddress}
+                          onChange={f('secondaryAddress')}
+                          placeholder="125 Main St"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-base-content/40">Both addresses will be used when matching emails to this deal.</p>
                   </div>
                 )}
               </div>
@@ -619,6 +665,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <span className="text-base-content/50">Address:</span>
                     <span className="font-medium">{form.address}, {form.city} {form.state} {form.zipCode}</span>
+                    {isDuplex && form.secondaryAddress && (
+                      <>
+                        <span className="text-base-content/50">Second Unit:</span>
+                        <span className="font-medium">{form.secondaryAddress}</span>
+                      </>
+                    )}
                     <span className="text-base-content/50">Type:</span>
                     <span className="font-medium">{propertyTypeLabel(form.propertyType)}</span>
                     <span className="text-base-content/50">Side:</span>

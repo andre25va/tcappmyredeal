@@ -62,7 +62,7 @@ export interface AppUser {
 export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'closed' | 'terminated';
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
-export type PropertyType = 'single-family' | 'multi-family' | 'condo' | 'townhouse' | 'land' | 'commercial';
+export type PropertyType = 'single-family' | 'multi-family' | 'duplex' | 'condo' | 'townhouse' | 'land' | 'commercial';
 export type ContactRole = 'agent' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
 
 // ── New relational type aliases ──────────────────────────────────────────────
@@ -382,7 +382,8 @@ export interface Deal {
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
-city: string;
+  secondaryAddress?: string;     // For duplex properties — second unit street address
+  city: string;
   state: string;
   zipCode: string;
   legalDescription?: string;
@@ -395,7 +396,7 @@ city: string;
   status: DealStatus;
   milestone: DealMilestone;
   transactionType: TransactionType;    // Phase 4: canonical (was transactionSide)
-riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
+  riskLevel?: string;                  // Phase 4: 'normal' | 'elevated' | 'high'
 
   // ── Dates ──────────────────────────────────────────────────────────────────
   contractDate: string;
