@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip
+  Reply, ReplyAll, Forward, ExternalLink, Inbox as InboxIcon, Paperclip, Zap
 } from 'lucide-react';
 import { CallButton } from './CallButton';
 
@@ -362,6 +362,14 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [emailSubTab, setEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched'>('all');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractionResult, setExtractionResult] = useState<Record<string, { value: string; confidence: string }> | null>(null);
+  const [showExtractionModal, setShowExtractionModal] = useState(false);
+  const [extractDealId, setExtractDealId] = useState<string | null>(null);
+  const [allDeals, setAllDeals] = useState<Deal[]>([]);
+  const [linkedDealId, setLinkedDealId] = useState<string | null>(null);
+  const [applyingExtraction, setApplyingExtraction] = useState(false);
+  const [extractionError, setExtractionError] = useState('');
 
   // Compose email state
   const [showEmailCompose, setShowEmailCompose] = useState(false);
@@ -539,6 +547,32 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     onWaitingCountChange?.(smsWaiting + emailWaiting);
   }, [conversations, emailReplyFlags, onWaitingCountChange]);
 
+  // ── Load linked deal when email thread changes ───────────────────────────────
+  useEffect(() => {
+    if (!selectedEmailThread) { setLinkedDealId(null); setExtractDealId(null); return; }
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    fetch(`${sbUrl}/rest/v1/email_thread_links?gmail_thread_id=eq.${selectedEmailThread.id}&select=deal_id&limit=1`, {
+      headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          setLinkedDealId(data[0].deal_id);
+          setExtractDealId(data[0].deal_id);
+        } else {
+          setLinkedDealId(null);
+          setExtractDealId(null);
+        }
+      })
+      .catch(() => { setLinkedDealId(null); setExtractDealId(null); });
+  }, [selectedEmailThread]);
+
+  // Load all deals when PDF preview opens (for picker)
+  useEffect(() => {
+    if (pdfPreviewUrl && allDeals.length === 0) loadAllDeals();
+  }, [pdfPreviewUrl]);
+
   // ── SMS / WA Actions ─────────────────────────────────────────────────────────
 
   const handleSelectConv = (conv: Conversation) => {
@@ -692,6 +726,98 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       if (dResp.ok) setComposeDeals(await dResp.json());
     } catch (e) {
       console.error('Failed to load compose data:', e);
+    }
+  };
+
+  const loadAllDeals = useCallback(async () => {
+    try {
+      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${sbUrl}/rest/v1/deals?select=id,property_address,city,state&pipeline_stage=neq.archived&order=property_address`,
+        { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }
+      );
+      if (resp.ok) setAllDeals(await resp.json());
+    } catch (e) {
+      console.error('Failed to load deals:', e);
+    }
+  }, []);
+
+  const handleExtractContract = async () => {
+    if (!pdfPreviewUrl) return;
+    setExtracting(true);
+    setExtractionError('');
+    try {
+      const resp = await fetch('https://daring-radiance-production.up.railway.app/extract-contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdf_url: pdfPreviewUrl }),
+      });
+      if (!resp.ok) throw new Error(`Extraction failed (${resp.status})`);
+      const data = await resp.json();
+      setExtractionResult(data.fields || data);
+      if (allDeals.length === 0) await loadAllDeals();
+      setShowExtractionModal(true);
+    } catch (e: any) {
+      setExtractionError(e.message || 'Extraction failed');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleApplyExtraction = async () => {
+    if (!extractDealId || !extractionResult) return;
+    setApplyingExtraction(true);
+    try {
+      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const FIELD_MAP: Record<string, string> = {
+        property_address: 'property_address',
+        city: 'city',
+        state: 'state',
+        purchase_price: 'purchase_price',
+        close_of_escrow: 'close_of_escrow',
+        buyer_name: 'buyer_name',
+        seller_name: 'seller_name',
+        earnest_money: 'earnest_money',
+        earnest_money_due_date: 'earnest_money_due_date',
+        loan_amount: 'loan_amount',
+        loan_type: 'loan_type',
+        down_payment_dollars: 'down_payment_dollars',
+        down_payment_percent: 'down_payment_percent',
+        title_company: 'title_company',
+        loan_officer: 'loan_officer',
+        inspection_deadline: 'inspection_deadline',
+        loan_commitment_date: 'loan_commitment_date',
+        possession_date: 'possession_date',
+        seller_concessions: 'seller_concessions',
+        listing_commission_percent: 'listing_commission_percent',
+        buyer_commission_percent: 'buyer_commission_percent',
+      };
+      const patch: Record<string, any> = {};
+      for (const [extractKey, dbKey] of Object.entries(FIELD_MAP)) {
+        const val = extractionResult[extractKey]?.value;
+        if (val !== undefined && val !== null && val !== '') patch[dbKey] = val;
+      }
+      const resp = await fetch(`${sbUrl}/rest/v1/deals?id=eq.${extractDealId}`, {
+        method: 'PATCH',
+        headers: {
+          apikey: sbKey,
+          Authorization: `Bearer ${sbKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify(patch),
+      });
+      if (!resp.ok) throw new Error('Failed to apply to deal');
+      setShowExtractionModal(false);
+      setExtractionResult(null);
+      // Navigate user to the deal
+      if (onSelectDeal && extractDealId) onSelectDeal(extractDealId);
+    } catch (e: any) {
+      console.error('Apply failed:', e);
+    } finally {
+      setApplyingExtraction(false);
     }
   };
 
@@ -1725,10 +1851,25 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
   const PDFPreviewPanel = pdfPreviewUrl ? (
     <div className="flex flex-col border-l border-base-300 bg-base-100 flex-none" style={{ width: '42%', minWidth: 280 }}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200 flex-none">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-base-300 bg-base-200 flex-none">
         <span className="text-sm font-semibold truncate flex-1 text-base-content/80">
           📄 {pdfPreviewName}
         </span>
+        {extractionError && (
+          <span className="text-[10px] text-error bg-error/10 px-2 py-1 rounded-lg flex items-center gap-1 flex-none">
+            <AlertCircle size={10} /> {extractionError}
+          </span>
+        )}
+        <button
+          onClick={handleExtractContract}
+          disabled={extracting}
+          className="btn btn-xs gap-1 rounded-lg flex-none text-white border-violet-600"
+          style={{ backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}
+          title="Extract contract data and apply to a deal"
+        >
+          {extracting ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+          {extracting ? 'Extracting...' : 'Extract to Deal'}
+        </button>
         <a
           href={pdfPreviewUrl}
           target="_blank"
@@ -1739,7 +1880,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           <ExternalLink size={11} /> Open
         </a>
         <button
-          onClick={() => { setPdfPreviewUrl(null); setPdfPreviewName(null); }}
+          onClick={() => { setPdfPreviewUrl(null); setPdfPreviewName(null); setExtractionError(''); }}
           className="btn btn-ghost btn-xs btn-square"
           title="Close preview"
         >
@@ -1756,6 +1897,147 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     </div>
   ) : null;
 
+  // ── Extraction Modal ──────────────────────────────────────────────────────────
+
+  const FIELD_LABELS: Record<string, string> = {
+    property_address: 'Property Address',
+    city: 'City',
+    state: 'State',
+    purchase_price: 'Purchase Price',
+    close_of_escrow: 'Close of Escrow',
+    buyer_name: 'Buyer Name(s)',
+    seller_name: 'Seller Name(s)',
+    earnest_money: 'Earnest Money ($)',
+    earnest_money_due_date: 'Earnest Money Due',
+    loan_amount: 'Loan Amount',
+    loan_type: 'Loan Type',
+    down_payment_dollars: 'Down Payment ($)',
+    down_payment_percent: 'Down Payment (%)',
+    title_company: 'Title Company',
+    loan_officer: 'Loan Officer',
+    inspection_deadline: 'Inspection Deadline',
+    loan_commitment_date: 'Loan Commitment Date',
+    possession_date: 'Possession Date',
+    seller_concessions: 'Seller Concessions',
+    listing_commission_percent: 'Listing Commission %',
+    buyer_commission_percent: 'Buyer Commission %',
+  };
+
+  const ExtractionModal = showExtractionModal && extractionResult ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={() => setShowExtractionModal(false)} />
+      <div className="relative z-10 bg-base-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: '90vw', maxWidth: 1100, height: '85vh' }}>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-base-300 flex-none">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-none"
+            style={{ backgroundColor: '#ede9fe' }}>
+            <Zap size={16} style={{ color: '#7c3aed' }} />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-bold text-base">Contract Extraction</h2>
+            <p className="text-xs text-base-content/50">
+              Review extracted fields · {Object.keys(extractionResult).length} fields found
+            </p>
+          </div>
+          <button onClick={() => setShowExtractionModal(false)} className="btn btn-ghost btn-sm btn-square">
+            <X size={16} />
+          </button>
+        </div>
+        {/* Body: two-column */}
+        <div className="flex flex-1 min-h-0">
+          {/* Left: PDF viewer */}
+          <div className="flex-1 min-w-0 border-r border-base-300 bg-base-200">
+            <iframe
+              src={pdfPreviewUrl || ''}
+              className="w-full h-full border-0"
+              title="Contract PDF"
+            />
+          </div>
+          {/* Right: Fields + deal picker */}
+          <div className="flex flex-col flex-none" style={{ width: 320 }}>
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {/* Deal picker */}
+              <div>
+                <label className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide mb-1.5 block">
+                  Apply to Deal
+                </label>
+                {linkedDealId ? (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                    <span className="text-base">🔗</span>
+                    <span className="text-xs font-semibold text-green-800 flex-1 truncate">
+                      {allDeals.find(d => d.id === linkedDealId)?.property_address || 'Linked deal'}
+                    </span>
+                    <button
+                      onClick={() => { setLinkedDealId(null); setExtractDealId(null); }}
+                      className="text-green-400 hover:text-green-700 transition-colors"
+                      title="Choose a different deal"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    className="select select-bordered select-sm w-full text-sm"
+                    value={extractDealId || ''}
+                    onChange={e => setExtractDealId(e.target.value || null)}
+                  >
+                    <option value="">-- Select a deal --</option>
+                    {allDeals.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.property_address}, {d.city} {d.state}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="divider text-[10px] text-base-content/40 my-0">Extracted Fields</div>
+
+              {Object.entries(extractionResult).map(([key, field]) => {
+                const label = FIELD_LABELS[key] || key.replace(/_/g, ' ');
+                const confidence = (field.confidence || 'unknown').toLowerCase();
+                const confColor = confidence === 'high' ? 'text-success' : confidence === 'medium' ? 'text-warning' : 'text-error';
+                const confBg = confidence === 'high'
+                  ? 'bg-green-50 border-green-200'
+                  : confidence === 'medium'
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-red-50 border-red-200';
+                return (
+                  <div key={key} className={`rounded-xl border px-3 py-2.5 ${confBg}`}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] font-semibold text-base-content/50 uppercase tracking-wide">{label}</span>
+                      <span className={`text-[9px] font-bold uppercase ${confColor}`}>{confidence}</span>
+                    </div>
+                    <p className="text-sm font-medium text-base-content leading-snug">
+                      {field.value || <span className="text-base-content/30 italic text-xs">not found</span>}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-4 border-t border-base-300 flex-none space-y-2">
+              <button
+                onClick={handleApplyExtraction}
+                disabled={!extractDealId || applyingExtraction}
+                className="btn w-full gap-2 rounded-xl font-semibold text-white border-0"
+                style={{ backgroundColor: !extractDealId || applyingExtraction ? undefined : '#7c3aed' }}
+              >
+                {applyingExtraction ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {applyingExtraction ? 'Applying...' : 'Apply to Deal'}
+              </button>
+              <p className="text-[10px] text-base-content/35 text-center">
+                Fields will update the deal. You can review in the deal's Overview tab.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-base-100">
       {ConversationList}
@@ -1763,6 +2045,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       {PDFPreviewPanel}
       {ComposeModal}
       {EmailComposeModal}
+      {ExtractionModal}
     </div>
   );
 };
