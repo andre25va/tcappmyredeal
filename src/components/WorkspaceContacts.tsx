@@ -364,25 +364,24 @@ const ContactPopup: React.FC<{
             <div className="flex items-center gap-3">
               <Phone size={14} className="text-gray-400 flex-none" />
               <a href={`tel:${contact.phone}`} onClick={() => setLiveCallActive(true)} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
-              <CallButton
-                phoneNumber={contact.phone}
-                contactName={contact.name}
-                contactId={contact.id}
-                dealId={dealId}
-                size="sm"
-                variant="icon"
-                onCallStarted={(callId) => {
-                  setLiveCallActive(true);
-                  onCallStarted?.({
+              <div onClick={() => setLiveCallActive(true)}>
+                <CallButton
+                  phoneNumber={contact.phone}
+                  contactName={contact.name}
+                  contactId={contact.id}
+                  dealId={dealId}
+                  size="sm"
+                  variant="icon"
+                  onCallStarted={(callId) => onCallStarted?.({
                     contactName: contact.name,
                     contactPhone: contact.phone!,
                     contactId: contact.id,
                     dealId,
                     callSid: callId,
                     startedAt: new Date().toISOString(),
-                  });
-                }}
-              />
+                  })}
+                />
+              </div>
             </div>
           )}
           {(contact.company || cr?.company) && (
