@@ -345,5 +345,142 @@ function nameSimilarity(a, b) {
   return intersection / Math.max(aWords.size, bWords.size);
 }
 
+
+// ─── Contract Data Extraction Endpoint ───────────────────────────────────────
+// Called by WorkspaceDocuments.tsx when user clicks "Extract Data"
+// Accepts: { file_url (signed Supabase URL), file_name, deal_id, deal_address }
+// Returns: { fields: [{ key, label, value, confidence }], raw_text_preview }
+app.post('/extract-contract', async (req, res) => {
+  const { file_url, file_name, deal_id, deal_address } = req.body;
+
+  if (!file_url) {
+    return res.status(400).json({ error: 'file_url is required' });
+  }
+
+  const https = require('https');
+  const http = require('http');
+  const { execSync } = require('child_process');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+
+  const tmpDir = os.tmpdir();
+  const tmpPdf = path.join(tmpDir, `contract_${Date.now()}.pdf`);
+  const tmpTxt = path.join(tmpDir, `contract_${Date.now()}.txt`);
+
+  try {
+    // 1. Download the PDF from the signed URL
+    await new Promise((resolve, reject) => {
+      const urlObj = new URL(file_url);
+      const protocol = urlObj.protocol === 'https:' ? https : http;
+      const file = fs.createWriteStream(tmpPdf);
+      protocol.get(file_url, response => {
+        response.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+      }).on('error', err => {
+        fs.unlink(tmpPdf, () => {});
+        reject(err);
+      });
+    });
+
+    // 2. Extract text with pdftotext
+    let extractedText = '';
+    try {
+      execSync(`pdftotext "${tmpPdf}" "${tmpTxt}" -layout`, { timeout: 30000 });
+      extractedText = fs.readFileSync(tmpTxt, 'utf8');
+    } catch (e) {
+      console.warn('pdftotext failed, trying fallback:', e.message);
+      // Fallback: try without -layout flag
+      try {
+        execSync(`pdftotext "${tmpPdf}" "${tmpTxt}"`, { timeout: 30000 });
+        extractedText = fs.readFileSync(tmpTxt, 'utf8');
+      } catch (e2) {
+        console.error('pdftotext completely failed:', e2.message);
+        extractedText = '';
+      }
+    }
+
+    // Truncate to 6000 chars for GPT context
+    const textForGPT = extractedText.slice(0, 6000);
+
+    if (!textForGPT.trim()) {
+      return res.json({ fields: [], raw_text_preview: '' });
+    }
+
+    // 3. Call GPT-4o-mini to extract structured fields
+    const prompt = `You are a real estate transaction coordinator AI. Extract key contract fields from this purchase agreement text.
+
+Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+{
+  "fields": [
+    { "key": "contractPrice", "label": "Contract Price", "value": "540000", "confidence": "high" },
+    { "key": "listPrice", "label": "List Price", "value": "550000", "confidence": "high" },
+    { "key": "contractDate", "label": "Contract Date", "value": "2024-03-15", "confidence": "high" },
+    { "key": "closingDate", "label": "Closing Date", "value": "2024-04-30", "confidence": "high" },
+    { "key": "earnestMoney", "label": "Earnest Money", "value": "5000", "confidence": "medium" },
+    { "key": "earnestMoneyDueDate", "label": "Earnest Money Due", "value": "2024-03-20", "confidence": "medium" },
+    { "key": "loanType", "label": "Loan Type", "value": "conventional", "confidence": "high" },
+    { "key": "loanAmount", "label": "Loan Amount", "value": "432000", "confidence": "medium" },
+    { "key": "downPaymentAmount", "label": "Down Payment", "value": "108000", "confidence": "medium" },
+    { "key": "sellerConcessions", "label": "Seller Concessions", "value": "5000", "confidence": "medium" },
+    { "key": "inspectionDeadline", "label": "Inspection Deadline", "value": "2024-03-22", "confidence": "high" },
+    { "key": "loanCommitmentDate", "label": "Loan Commitment Date", "value": "2024-04-10", "confidence": "medium" },
+    { "key": "possessionDate", "label": "Possession Date", "value": "2024-04-30", "confidence": "medium" },
+    { "key": "buyerNames", "label": "Buyer Names", "value": "John & Jane Doe", "confidence": "high" },
+    { "key": "sellerNames", "label": "Seller Names", "value": "Bob Smith", "confidence": "high" },
+    { "key": "titleCompany", "label": "Title Company", "value": "ABC Title Co", "confidence": "medium" },
+    { "key": "loanOfficer", "label": "Loan Officer", "value": "Jane Smith - First Bank", "confidence": "low" },
+    { "key": "asIsSale", "label": "As-Is Sale", "value": "false", "confidence": "high" },
+    { "key": "inspectionWaived", "label": "Inspection Waived", "value": "false", "confidence": "high" },
+    { "key": "homeWarranty", "label": "Home Warranty", "value": "true", "confidence": "medium" }
+  ]
+}
+
+Rules:
+- Only include fields you can find with reasonable confidence
+- Dates MUST be in YYYY-MM-DD format
+- Money values are numbers only (no $ or commas): "540000" not "$540,000"
+- Loan type must be one of: conventional, fha, va, usda, cash, other
+- Boolean fields (asIsSale, inspectionWaived, homeWarranty): use "true" or "false"
+- confidence levels: "high" (clearly stated), "medium" (inferred), "low" (uncertain)
+- Skip fields you cannot find — do not guess
+${deal_address ? `- The property address is: ${deal_address}` : ''}
+
+Contract text:
+${textForGPT}`;
+
+    const aiResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1500,
+      temperature: 0.1,
+    });
+
+    const raw = aiResponse.choices[0].message.content.trim();
+    let parsed;
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    } catch (e) {
+      console.error('GPT JSON parse failed:', e.message, '\nRaw:', raw.slice(0, 200));
+      return res.json({ fields: [], raw_text_preview: textForGPT.slice(0, 500) });
+    }
+
+    // 4. Return result
+    return res.json({
+      fields: parsed.fields || [],
+      raw_text_preview: extractedText.slice(0, 500),
+    });
+
+  } catch (err) {
+    console.error('extract-contract error:', err);
+    return res.status(500).json({ error: err.message });
+  } finally {
+    // Cleanup temp files
+    try { fs.unlinkSync(tmpPdf); } catch (_) {}
+    try { fs.unlinkSync(tmpTxt); } catch (_) {}
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TC Email Processor listening on port ${PORT}`));
