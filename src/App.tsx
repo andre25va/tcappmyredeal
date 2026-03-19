@@ -417,15 +417,17 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        <div className="md:hidden flex items-center h-12 px-3 border-b border-base-300 bg-base-200 flex-none gap-3" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', height: 'calc(3rem + env(safe-area-inset-top, 0px))' }}>
-          <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
-          <span className="font-bold text-sm text-base-content flex-1">
-            {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
-          </span>
-          <NotificationBell onNavigate={handleNotificationNavigate} />
-          <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
-            + New Deal
-          </button>
+        <div className="md:hidden flex-none bg-base-200 border-b border-base-300" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <div className="flex items-center h-12 px-3 gap-3">
+            <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
+            <span className="font-bold text-sm text-base-content flex-1">
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
+            </span>
+            <NotificationBell onNavigate={handleNotificationNavigate} />
+            <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
+              + New Deal
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
