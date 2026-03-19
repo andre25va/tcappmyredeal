@@ -417,7 +417,7 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        <div className="md:hidden flex-none bg-base-200 border-b border-base-300" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="md:hidden flex-none bg-base-200 border-b border-base-300 mobile-header-safe">
           <div className="flex items-center h-12 px-3 gap-3">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">

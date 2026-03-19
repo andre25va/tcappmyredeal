@@ -20,3 +20,9 @@ button, .btn, .badge, .tab, .menu a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.mobile-header-safe {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+  background-color: inherit;
+}
