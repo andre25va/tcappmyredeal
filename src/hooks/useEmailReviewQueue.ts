@@ -45,7 +45,6 @@ export interface ReviewQueueStats {
 }
 
 // ─── Address parser ────────────────────────────────────────────────────────────
-// Parses "5777 Bristol St, Bel Aire, KS 67220" into components
 export function parseAddressString(full: string): {
   property_address: string;
   city: string;
@@ -53,7 +52,6 @@ export function parseAddressString(full: string): {
   zip: string;
 } {
   const trimmed = full.trim();
-  // Try to match: "street, city, ST 12345" or "street, city ST 12345"
   const match = trimmed.match(
     /^(.+?),\s*([^,]+?),?\s*([A-Za-z]{2})\s*(\d{5})?$/
   );
@@ -65,7 +63,6 @@ export function parseAddressString(full: string): {
       zip: match[4] ?? '',
     };
   }
-  // Fallback: store whole string as property_address
   return { property_address: trimmed, city: '', state: '', zip: '' };
 }
 
@@ -83,7 +80,7 @@ export function useEmailReviewQueue() {
       setError(null);
 
       const [reviewRes, unmatchedRes, linkedRes] = await Promise.all([
-        // Needs Review: score 35-79, pending
+        // Needs Review: pending with score >= 35
         supabase
           .from('email_review_queue')
           .select('*')
@@ -92,12 +89,11 @@ export function useEmailReviewQueue() {
           .order('received_at', { ascending: false })
           .limit(50),
 
-        // Unmatched: score <35 or null, pending
+        // Unmatched: pending with score <35 OR null, PLUS new_deal detections
         supabase
           .from('email_review_queue')
           .select('*')
-          .eq('status', 'pending')
-          .or('top_deal_score.lt.35,top_deal_score.is.null')
+          .or('status.eq.new_deal,and(status.eq.pending,or(top_deal_score.lt.35,top_deal_score.is.null))')
           .order('received_at', { ascending: false })
           .limit(50),
 
@@ -140,7 +136,7 @@ export function useEmailReviewQueue() {
 
   useEffect(() => {
     fetchAll();
-    const t = setInterval(fetchAll, 60000); // refresh every minute
+    const t = setInterval(fetchAll, 60000);
     return () => clearInterval(t);
   }, [fetchAll]);
 
@@ -174,16 +170,6 @@ export function useEmailReviewQueue() {
     await fetchAll();
   }, [fetchAll]);
 
-  /**
-   * createAndLink — creates a new minimal deal from the email queue, links the thread to it,
-   * and marks the queue item as new_deal/confirmed.
-   *
-   * @param item        The review queue item (email)
-   * @param fullAddress Full address string e.g. "5777 Bristol St, Bel Aire, KS 67220"
-   * @param buyerName   Optional buyer name
-   * @param price       Optional purchase price (number)
-   * @returns { dealId, error }
-   */
   const createAndLink = useCallback(async (
     item: ReviewQueueItem,
     fullAddress: string,
@@ -193,7 +179,6 @@ export function useEmailReviewQueue() {
     try {
       const parsed = parseAddressString(fullAddress);
 
-      // 1 — Create minimal deal
       const { data: dealData, error: dealError } = await supabase
         .from('deals')
         .insert({
@@ -212,7 +197,6 @@ export function useEmailReviewQueue() {
       if (dealError) throw new Error(dealError.message);
       const dealId = dealData.id as string;
 
-      // 2 — Link thread to new deal
       await supabase.from('email_thread_links').upsert({
         gmail_thread_id: item.gmail_thread_id,
         deal_id: dealId,
@@ -222,16 +206,15 @@ export function useEmailReviewQueue() {
         snippet: item.snippet,
         received_at: item.received_at,
         has_attachment: item.has_attachment,
-        score: 100, // manually created = high confidence
+        score: 100,
         score_breakdown: { manual_new_deal: 100 },
         link_method: 'manual',
         is_unread: true,
       }, { onConflict: 'gmail_thread_id,deal_id' });
 
-      // 3 — Mark queue item done
       await supabase
         .from('email_review_queue')
-        .update({ status: 'new_deal' })
+        .update({ status: 'confirmed' })
         .eq('id', item.id);
 
       await fetchAll();
