@@ -50,8 +50,9 @@ import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
+import { WorkspaceAmendments } from './WorkspaceAmendments';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments';
 
 interface Props {
   deal: Deal;
@@ -143,6 +144,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
     { id: 'linked-emails', label: 'Emails', icon: <Inbox size={13} />, badge: linkedEmailUnread > 0 ? linkedEmailUnread : undefined },
+    { id: 'amendments', label: 'Amendments', icon: <FileText size={13} /> },
   ];
 
   return (
@@ -304,6 +306,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             )}
           </div>
         )}
+        {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
         {tab === 'linked-emails' && (
           <WorkspaceLinkedEmails
             deal={deal}
