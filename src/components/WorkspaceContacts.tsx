@@ -106,57 +106,6 @@ const DealSheetEmailModal: React.FC<{
 };
 
 // ── Live Call Popup ──────────────────────────────────────────────────────────
-const LiveCallPopup: React.FC<{
-  contactName: string;
-  contactPhone: string;
-  onClose: () => void;
-}> = ({ contactName, contactPhone, onClose }) => {
-  const [seconds, setSeconds] = React.useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => setSeconds(s => s + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
-  const fmt = (s: number) => {
-    const m = Math.floor(s / 60).toString().padStart(2, '0');
-    const sec = (s % 60).toString().padStart(2, '0');
-    return `${m}:${sec}`;
-  };
-  return (
-    <div className="fixed bottom-6 right-6 z-[100] w-72 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-      <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 flex items-center gap-3">
-        <div className="relative flex-none">
-          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
-            <PhoneCall size={18} className="text-white" />
-          </div>
-          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-white border-2 border-green-400 animate-pulse" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Live Call</p>
-          <p className="text-sm font-bold text-white truncate">{contactName}</p>
-        </div>
-        <button onClick={onClose} className="btn btn-ghost btn-xs btn-square text-white hover:bg-white/20">
-          <X size={14} />
-        </button>
-      </div>
-      <div className="px-4 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-400 mb-0.5">Duration</p>
-          <p className="text-3xl font-mono font-bold text-black tracking-tight">{fmt(seconds)}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400 mb-0.5">Number</p>
-          <p className="text-sm text-gray-600 font-medium">{contactPhone}</p>
-        </div>
-      </div>
-      <div className="px-4 pb-4">
-        <button onClick={onClose} className="btn btn-error btn-sm w-full gap-2">
-          <PhoneOff size={14} /> End Call
-        </button>
-      </div>
-    </div>
-  );
-};
-
 // ── Full contact info popup ──────────────────────────────────────────────────
 const ContactPopup: React.FC<{
   contact: Contact;
@@ -182,7 +131,6 @@ const ContactPopup: React.FC<{
   const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
   const [emailMenuOpen, setEmailMenuOpen] = useState(false);
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
-  const [liveCallActive, setLiveCallActive] = useState(false);
   const emailMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -363,8 +311,8 @@ const ContactPopup: React.FC<{
           {contact.phone && (
             <div className="flex items-center gap-3">
               <Phone size={14} className="text-gray-400 flex-none" />
-              <a href={`tel:${contact.phone}`} onClick={() => setLiveCallActive(true)} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
-              <div onClick={() => setLiveCallActive(true)}>
+              <a href={`tel:${contact.phone}`} onClick={() => onCallStarted?.({ contactName: contact.name, contactPhone: contact.phone!, contactId: contact.id, dealId, startedAt: new Date().toISOString() })} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
+              <div onClick={() => onCallStarted?.({ contactName: contact.name, contactPhone: contact.phone!, contactId: contact.id, dealId, startedAt: new Date().toISOString() })}>
                 <CallButton
                   phoneNumber={contact.phone}
                   contactName={contact.name}
@@ -460,14 +408,7 @@ const ContactPopup: React.FC<{
           </div>
         </div>
       </div>
-      {/* Live call popup */}
-      {liveCallActive && contact.phone && (
-        <LiveCallPopup
-          contactName={contact.name}
-          contactPhone={formatPhone(contact.phone)}
-          onClose={() => setLiveCallActive(false)}
-        />
-      )}
+
     </div>
   );
 };

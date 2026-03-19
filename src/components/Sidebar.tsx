@@ -8,7 +8,7 @@ export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings';
 
-const APP_VERSION = 'v2026.03.18.11';
+const APP_VERSION = 'v2026.03.18.16';
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: string }[] = [

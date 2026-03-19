@@ -22,6 +22,7 @@ import { ComplianceManager } from './components/ComplianceManager';
 import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
+import { ActiveCallOverlay } from './components/ActiveCallOverlay';
 import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
@@ -63,6 +64,8 @@ function AppInner() {
   const [inboxUnread, setInboxUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
+  const [activeCall, setActiveCall]         = useState<{contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string} | null>(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
 
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
@@ -272,6 +275,11 @@ function AppInner() {
     saveMasterItems('dd', updated).catch(console.error);
   };
 
+  const handleCallStarted = (cd: {contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string}) => {
+    setActiveCall(cd);
+    setIsCallMinimized(false);
+  };
+
   const handleUpdate = (deal: Deal) => {
     setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
     saveSingleDeal(deal).catch(console.error);
@@ -439,7 +447,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -547,6 +555,17 @@ function AppInner() {
           ddMasterItems={ddMasterItems}
         />
       )}
+
+      <ActiveCallOverlay
+        isActive={!!activeCall}
+        callData={activeCall}
+        deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
+        onEndCall={() => { setActiveCall(null); setIsCallMinimized(false); }}
+        onMinimize={() => setIsCallMinimized(prev => !prev)}
+        onAddNote={(note) => { console.log('Call note:', note); }}
+        onCreateTask={(desc) => { console.log('Call task:', desc); }}
+        isMinimized={isCallMinimized}
+      />
 
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
