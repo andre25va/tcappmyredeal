@@ -40,6 +40,8 @@ export interface InboxProps {
   onWaitingCountChange?: (count: number) => void;
   initialConversationId?: string;
   initialChannel?: 'sms' | 'email' | 'whatsapp';
+  initialEmailSubTab?: 'all' | 'linked' | 'needs_review' | 'unmatched';
   onInitHandled?: () => void;
   onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string }) => void;
+  onEmailSubTabCounts?: (counts: { needsReview: number; unmatched: number }) => void;
 }

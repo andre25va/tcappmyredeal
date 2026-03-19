@@ -36,6 +36,9 @@ interface SidebarProps {
   tasksPending: number;
   voicePending: number;
   emailQueuePending: number;
+  needsReviewCount: number;
+  unmatchedCount: number;
+  onSetInboxSubTab: (tab: 'needs_review' | 'unmatched') => void;
   onLogout: () => void;
   userName: string;
   userRole: string;
@@ -58,6 +61,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
   inboxUnread, tasksPending, voicePending, emailQueuePending,
+  needsReviewCount, unmatchedCount, onSetInboxSubTab,
   onLogout, userName, userRole, userInitials,
 }) => {
   const getBadge = (v: View): number => {
@@ -112,6 +116,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               )}
             </button>
+            {/* Inbox sub-items: Needs Review + Unmatched */}
+            {item.view === 'inbox' && (needsReviewCount > 0 || unmatchedCount > 0) && (
+              <div className="ml-5 pl-2 border-l border-base-300 space-y-0.5 mt-0.5 mb-1">
+                {needsReviewCount > 0 && (
+                  <button
+                    onClick={() => { onSetInboxSubTab('needs_review'); onCloseMobile(); }}
+                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
+                  >
+                    <span className="flex-1 text-left">⚠️ Needs Review</span>
+                    <span className="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{needsReviewCount > 99 ? '99+' : needsReviewCount}</span>
+                  </button>
+                )}
+                {unmatchedCount > 0 && (
+                  <button
+                    onClick={() => { onSetInboxSubTab('unmatched'); onCloseMobile(); }}
+                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
+                  >
+                    <span className="flex-1 text-left">❓ Unmatched</span>
+                    <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unmatchedCount > 99 ? '99+' : unmatchedCount}</span>
+                  </button>
+                )}
+              </div>
+            )}
           );
         })}
       </nav>

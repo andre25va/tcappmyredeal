@@ -24,7 +24,7 @@ const TC_LABEL_LINKED = 'Label_29';
 const TC_LABEL_NEEDS_REVIEW = 'Label_30';
 const TC_LABEL_UNMATCHED = 'Label_31';
 
-export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, onInitHandled, onCallStarted }) => {
+export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange, initialConversationId, initialChannel, initialEmailSubTab, onInitHandled, onCallStarted, onEmailSubTabCounts }) => {
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -49,6 +49,23 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [priorityOpen, setPriorityOpen] = useState(true);
   const [othersOpen, setOthersOpen] = useState(true);
   const [emailSubTab, setEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched'>('all');
+
+  // Deep-link into email sub-tab from sidebar
+  useEffect(() => {
+    if (!initialEmailSubTab) return;
+    setTab('email');
+    setEmailSubTab(initialEmailSubTab);
+    onInitHandled?.();
+  }, [initialEmailSubTab]);
+
+  // Bubble Needs Review + Unmatched counts up to App
+  useEffect(() => {
+    if (!onEmailSubTabCounts) return;
+    onEmailSubTabCounts({
+      needsReview: emailThreads.filter(t => t.labelIds?.includes(TC_LABEL_NEEDS_REVIEW)).length,
+      unmatched:   emailThreads.filter(t => t.labelIds?.includes(TC_LABEL_UNMATCHED)).length,
+    });
+  }, [emailThreads, onEmailSubTabCounts]);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);

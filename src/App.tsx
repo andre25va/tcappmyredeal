@@ -66,6 +66,9 @@ function AppInner() {
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
   const [emailQueuePending, setEmailQueuePending] = useState(0);
+  const [needsReviewCount, setNeedsReviewCount]   = useState(0);
+  const [unmatchedCount, setUnmatchedCount]        = useState(0);
+  const [inboxInitEmailSubTab, setInboxInitEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched' | undefined>(undefined);
   const [activeCall, setActiveCall]         = useState<{contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string} | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
 
@@ -384,6 +387,12 @@ function AppInner() {
     tasksPending,
     voicePending,
     emailQueuePending,
+    needsReviewCount,
+    unmatchedCount,
+    onSetInboxSubTab: (subTab: 'needs_review' | 'unmatched') => {
+      setInboxInitEmailSubTab(subTab);
+      setView('inbox');
+    },
     onLogout: logout,
     userName: profile.name,
     userRole: profile.role,
@@ -519,7 +528,12 @@ function AppInner() {
                 onSelectDeal={handleSelectDeal}
                 initialConversationId={inboxInitConvId}
                 initialChannel={inboxInitChannel}
-                onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); }}
+                initialEmailSubTab={inboxInitEmailSubTab}
+                onEmailSubTabCounts={({ needsReview, unmatched }) => {
+                  setNeedsReviewCount(needsReview);
+                  setUnmatchedCount(unmatched);
+                }}
+                onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); setInboxInitEmailSubTab(undefined); }}
               />
             </div>
           )}
