@@ -53,7 +53,7 @@ app.post('/process-email', async (req, res) => {
     // Step 2: Load active deals
     const { data: deals, error: dealsError } = await supabase
       .from('deals')
-      .select('id, address, address2, buyer_name, seller_name, mls_number, lender_email, title_email, participants')
+      .select('id, property_address, secondary_address, buyer_name, seller_name, mls_number, lender_email, title_email, participants')
       .eq('status', 'active');
 
     if (dealsError) throw dealsError;
@@ -115,8 +115,8 @@ Return null for any field not found. No explanation, just JSON.`
 
     const extractedAddressMatchesAnyDeal = extractedAddress
       ? deals.some(d => {
-          const dealAddr = (d.address || '').toLowerCase();
-          const dealAddr2 = (d.address2 || '').toLowerCase();
+          const dealAddr = (d.property_address || '').toLowerCase();
+          const dealAddr2 = (d.secondary_address || '').toLowerCase();
           return addressSimilarity(extractedAddress, dealAddr) > 0.5 ||
                  (dealAddr2 && addressSimilarity(extractedAddress, dealAddr2) > 0.5);
         })
@@ -126,8 +126,8 @@ Return null for any field not found. No explanation, just JSON.`
       let score = 0;
       const breakdown = {};
 
-      const dealAddr = (deal.address || '').toLowerCase();
-      const dealAddr2 = (deal.address2 || '').toLowerCase();
+      const dealAddr = (deal.property_address || '').toLowerCase();
+      const dealAddr2 = (deal.secondary_address || '').toLowerCase();
       const dealAddrs = [dealAddr, dealAddr2].filter(Boolean);
 
       // MLS# match (+60)
@@ -293,7 +293,7 @@ Return null for any field not found. No explanation, just JSON.`
         runner_up_deal_id: runnerUp?.deal?.id || null,
         runner_up_score: runnerScore,
         score_breakdown: top.breakdown,
-        ai_suggestion: `Best match: ${top.deal.address} (score: ${topScore})${gap < GAP_THRESHOLD ? ` — close runner-up: ${runnerUp?.deal?.address} (${runnerScore})` : ''}`,
+        ai_suggestion: `Best match: ${top.deal.property_address} (score: ${topScore})${gap < GAP_THRESHOLD ? ` — close runner-up: ${runnerUp?.deal?.property_address} (${runnerScore})` : ''}`,
         ai_extracted_address: extracted?.address || null,
         ai_extracted_buyer: extracted?.buyer_name || null,
         ai_extracted_price: extracted?.price || null
