@@ -29,6 +29,14 @@ interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: Cont
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
+const LOAN_TYPES = [
+  { value: 'conventional', label: 'Conventional' },
+  { value: 'fha', label: 'FHA' },
+  { value: 'va', label: 'VA' },
+  { value: 'usda', label: 'USDA' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'other', label: 'Other' },
+];
 
 const log = (deal: Deal, action: string, detail: string, userName = 'TC Staff'): Deal => ({
   ...deal,
@@ -513,42 +521,63 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     if (editTrigger && editTrigger > 0) openModal();
   }, [editTrigger]);
 
-  const [fields, setFields] = useState({
-    status: deal.status,
-    contractPrice: String(deal.contractPrice),
-    listPrice: String(deal.listPrice ?? ''),
-    closingDate: deal.closingDate,
-    contractDate: deal.contractDate,
-    notes: deal.notes,
-    propertyType: deal.propertyType,
-    mlsNumber: deal.mlsNumber,
-    agentName: deal.agentName,
-    propertyAddress: deal.propertyAddress,
-    city: deal.city,
-    state: deal.state,
-    zipCode: deal.zipCode,
-    legalDescription: deal.legalDescription || '',
+  const buildFields = (d: Deal) => ({
+    // Property
+    propertyAddress: d.propertyAddress,
+    city: d.city,
+    state: d.state,
+    zipCode: d.zipCode,
+    mlsNumber: d.mlsNumber,
+    propertyType: d.propertyType,
+    legalDescription: d.legalDescription || '',
+    hoa: d.hoa ?? false,
+    hoaMonthlyFee: String(d.hoaMonthlyFee ?? ''),
+    surveyRequired: d.surveyRequired ?? false,
+    // Transaction
+    status: d.status,
+    contractPrice: String(d.contractPrice),
+    listPrice: String(d.listPrice ?? ''),
+    contractDate: d.contractDate,
+    closingDate: d.closingDate,
+    possessionDate: d.possessionDate || '',
+    agentName: d.agentName,
+    notes: d.notes,
+    // Parties
+    buyerName: d.buyerName || '',
+    sellerName: d.sellerName || '',
+    titleCompanyName: d.titleCompanyName || '',
+    loanOfficerName: d.loanOfficerName || '',
+    // Financing
+    loanType: d.loanType || 'conventional',
+    loanAmount: String(d.loanAmount ?? ''),
+    downPayment: String(d.downPayment ?? ''),
+    earnestMoney: String((d as any).earnestMoney ?? ''),
+    earnestMoneyDueDate: d.earnestMoneyDueDate || '',
+    sellerConcessions: String(d.sellerConcessions ?? ''),
+    totalSellerCredits: String(d.totalSellerCredits ?? ''),
+    // Contract Conditions
+    asIsSale: d.asIsSale ?? false,
+    inspectionWaived: d.inspectionWaived ?? false,
+    homeWarranty: d.homeWarranty ?? false,
+    homeWarrantyAmount: String(d.homeWarrantyAmount ?? ''),
+    homeWarrantyPaidBy: d.homeWarrantyPaidBy || 'seller',
+    homeWarrantyCompany: d.homeWarrantyCompany || '',
+    // Commission
+    listingCommissionType: d.listingCommissionType || 'percent',
+    listingCommissionValue: String(d.listingCommissionValue ?? ''),
+    buyerCommissionType: d.buyerCommissionType || 'percent',
+    buyerCommissionValue: String(d.buyerCommissionValue ?? ''),
+    tcFeeType: d.tcFeeType || 'flat',
+    tcFeeValue: String(d.tcFeeValue ?? ''),
+    commissionPaidBy: d.commissionPaidBy || 'seller',
+    tcFeePaidBy: d.tcFeePaidBy || 'seller',
   });
+  const [fields, setFields] = useState(() => buildFields(deal));
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
   const [sellerDraft, setSellerDraft] = useState<AgentContact>(deal.sellerAgent ?? emptyAgent());
 
   const openModal = () => {
-    setFields({
-      status: deal.status,
-      contractPrice: String(deal.contractPrice),
-      listPrice: String(deal.listPrice ?? ''),
-      closingDate: deal.closingDate,
-      contractDate: deal.contractDate,
-      notes: deal.notes,
-      propertyType: deal.propertyType,
-      mlsNumber: deal.mlsNumber,
-      agentName: deal.agentName,
-      propertyAddress: deal.propertyAddress,
-      city: deal.city,
-      state: deal.state,
-      zipCode: deal.zipCode,
-      legalDescription: deal.legalDescription || '',
-    });
+    setFields(buildFields(deal));
     setBuyerDraft(deal.buyerAgent ?? emptyAgent());
     setSellerDraft(deal.sellerAgent ?? emptyAgent());
     setShowModal(true);
@@ -557,23 +586,59 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const handleCancel = () => setShowModal(false);
 
   const handleSave = () => {
+    const pf = (v: string) => parseFloat(v.replace(/[^0-9.]/g, '')) || 0;
     const updated = log(deal, 'Deal updated', `Status: ${statusLabel(fields.status as DealStatus)}, Closing: ${formatDate(fields.closingDate)}`, userName);
     onUpdate({
       ...updated,
-      status: fields.status as DealStatus,
-      contractPrice: parseFloat(fields.contractPrice.replace(/[^0-9.]/g, '')) || deal.contractPrice,
-      listPrice: parseFloat(fields.listPrice.replace(/[^0-9.]/g, '')) || deal.listPrice,
-      closingDate: fields.closingDate,
-      contractDate: fields.contractDate,
-      notes: fields.notes,
-      propertyType: fields.propertyType as PropertyType,
-      mlsNumber: fields.mlsNumber,
-      agentName: fields.agentName,
+      // Property
       propertyAddress: fields.propertyAddress,
       city: fields.city,
       state: fields.state,
       zipCode: fields.zipCode,
+      mlsNumber: fields.mlsNumber,
+      propertyType: fields.propertyType as PropertyType,
       legalDescription: fields.legalDescription,
+      hoa: fields.hoa,
+      hoaMonthlyFee: fields.hoaMonthlyFee ? pf(fields.hoaMonthlyFee) : undefined,
+      surveyRequired: fields.surveyRequired,
+      // Transaction
+      status: fields.status as DealStatus,
+      contractPrice: pf(fields.contractPrice) || deal.contractPrice,
+      listPrice: pf(fields.listPrice) || deal.listPrice,
+      contractDate: fields.contractDate,
+      closingDate: fields.closingDate,
+      possessionDate: fields.possessionDate || undefined,
+      agentName: fields.agentName,
+      notes: fields.notes,
+      // Parties
+      buyerName: fields.buyerName || undefined,
+      sellerName: fields.sellerName || undefined,
+      titleCompanyName: fields.titleCompanyName || undefined,
+      loanOfficerName: fields.loanOfficerName || undefined,
+      // Financing
+      loanType: fields.loanType || undefined,
+      loanAmount: fields.loanAmount ? pf(fields.loanAmount) : undefined,
+      downPayment: fields.downPayment ? pf(fields.downPayment) : undefined,
+      earnestMoneyDueDate: fields.earnestMoneyDueDate || undefined,
+      sellerConcessions: fields.sellerConcessions ? pf(fields.sellerConcessions) : undefined,
+      totalSellerCredits: fields.totalSellerCredits ? pf(fields.totalSellerCredits) : undefined,
+      // Contract Conditions
+      asIsSale: fields.asIsSale,
+      inspectionWaived: fields.inspectionWaived,
+      homeWarranty: fields.homeWarranty,
+      homeWarrantyAmount: fields.homeWarrantyAmount ? pf(fields.homeWarrantyAmount) : undefined,
+      homeWarrantyPaidBy: fields.homeWarrantyPaidBy || undefined,
+      homeWarrantyCompany: fields.homeWarrantyCompany || undefined,
+      // Commission
+      listingCommissionType: fields.listingCommissionType as 'percent' | 'flat',
+      listingCommissionValue: fields.listingCommissionValue ? pf(fields.listingCommissionValue) : undefined,
+      buyerCommissionType: fields.buyerCommissionType as 'percent' | 'flat',
+      buyerCommissionValue: fields.buyerCommissionValue ? pf(fields.buyerCommissionValue) : undefined,
+      tcFeeType: fields.tcFeeType as 'percent' | 'flat',
+      tcFeeValue: fields.tcFeeValue ? pf(fields.tcFeeValue) : undefined,
+      commissionPaidBy: fields.commissionPaidBy || undefined,
+      tcFeePaidBy: fields.tcFeePaidBy || undefined,
+      // Agents
       buyerAgent: buyerDraft.name ? buyerDraft : undefined,
       sellerAgent: sellerDraft.name ? sellerDraft : undefined,
     });
@@ -851,6 +916,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
             <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
 
+              {/* ── 1. PROPERTY INFO ── */}
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Property Info</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -888,12 +954,76 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       {PROP_TYPES.map(t => <option key={t} value={t}>{propertyTypeLabel(t)}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Legal Description</label>
+                    <textarea className="textarea textarea-bordered w-full text-sm" rows={2} value={fields.legalDescription}
+                      onChange={e => setFields(p => ({ ...p, legalDescription: e.target.value }))}
+                      placeholder="Legal description..." />
+                  </div>
+                  <div className="flex items-center gap-4 pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="checkbox checkbox-sm" checked={fields.hoa}
+                        onChange={e => setFields(p => ({ ...p, hoa: e.target.checked }))} />
+                      <span className="text-sm">HOA</span>
+                    </label>
+                    {fields.hoa && (
+                      <div className="flex-1">
+                        <input className="input input-bordered input-sm w-full" placeholder="Monthly fee $"
+                          value={fields.hoaMonthlyFee}
+                          onChange={e => setFields(p => ({ ...p, hoaMonthlyFee: e.target.value }))} />
+                      </div>
+                    )}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="checkbox checkbox-sm" checked={fields.surveyRequired}
+                        onChange={e => setFields(p => ({ ...p, surveyRequired: e.target.checked }))} />
+                      <span className="text-sm">Survey Required</span>
+                    </label>
+                  </div>
                 </div>
               </section>
 
+              {/* ── 2. PARTIES ── */}
+              <section>
+                <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Parties</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="Buyer full name(s)"
+                      value={fields.buyerName}
+                      onChange={e => setFields(p => ({ ...p, buyerName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="Seller full name(s)"
+                      value={fields.sellerName}
+                      onChange={e => setFields(p => ({ ...p, sellerName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Title Company</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="Title company name"
+                      value={fields.titleCompanyName}
+                      onChange={e => setFields(p => ({ ...p, titleCompanyName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="Lender or loan officer name"
+                      value={fields.loanOfficerName}
+                      onChange={e => setFields(p => ({ ...p, loanOfficerName: e.target.value }))} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-base-content/50 mb-1 block">Agents</label>
+                    <div className="space-y-2">
+                      <AgentEditSection label="Buyer Agent" draft={buyerDraft} onChange={setBuyerDraft} accent="text-info" agentOptions={agentOptions} />
+                      <AgentEditSection label="Seller Agent" draft={sellerDraft} onChange={setSellerDraft} accent="text-success" agentOptions={agentOptions} />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── 3. TRANSACTION DETAILS ── */}
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Transaction Details</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Status</label>
                     <select className="select select-bordered select-sm w-full" value={fields.status}
@@ -921,13 +1051,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                     <input type="date" className="input input-bordered input-sm w-full" value={fields.closingDate}
                       onChange={e => setFields(p => ({ ...p, closingDate: e.target.value }))} />
                   </div>
-                  <div className="col-span-2">
-                  <div className="sm:col-span-2">
-                    <label className="text-xs text-base-content/50 mb-1 block">Legal Description</label>
-                    <textarea className="textarea textarea-bordered w-full text-sm" rows={3} value={fields.legalDescription}
-                      onChange={e => setFields(p => ({ ...p, legalDescription: e.target.value }))}
-                      placeholder="Enter the property legal description..." />
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Possession Date</label>
+                    <input type="date" className="input input-bordered input-sm w-full" value={fields.possessionDate}
+                      onChange={e => setFields(p => ({ ...p, possessionDate: e.target.value }))} />
                   </div>
+                  <div className="col-span-2">
                     <label className="text-xs text-base-content/50 mb-1 block">Internal Notes</label>
                     <textarea className="textarea textarea-bordered w-full text-sm" rows={2} value={fields.notes}
                       onChange={e => setFields(p => ({ ...p, notes: e.target.value }))} />
@@ -935,11 +1064,199 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 </div>
               </section>
 
+              {/* ── 4. FINANCING ── */}
               <section>
-                <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Agents</h3>
+                <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Financing</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-base-content/50 mb-1 block">Loan Type</label>
+                    <div className="flex flex-wrap gap-2">
+                      {LOAN_TYPES.map(lt => (
+                        <button key={lt.value} type="button"
+                          className={`btn btn-xs ${fields.loanType === lt.value ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                          onClick={() => setFields(p => ({ ...p, loanType: lt.value }))}>
+                          {lt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {fields.loanType !== 'cash' && (
+                    <>
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
+                        <input className="input input-bordered input-sm w-full" placeholder="$"
+                          value={fields.loanAmount}
+                          onChange={e => setFields(p => ({ ...p, loanAmount: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Down Payment</label>
+                        <input className="input input-bordered input-sm w-full" placeholder="$"
+                          value={fields.downPayment}
+                          onChange={e => setFields(p => ({ ...p, downPayment: e.target.value }))} />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="$"
+                      value={fields.earnestMoney}
+                      onChange={e => setFields(p => ({ ...p, earnestMoney: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">EMD Due Date</label>
+                    <input type="date" className="input input-bordered input-sm w-full"
+                      value={fields.earnestMoneyDueDate}
+                      onChange={e => setFields(p => ({ ...p, earnestMoneyDueDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="$"
+                      value={fields.sellerConcessions}
+                      onChange={e => setFields(p => ({ ...p, sellerConcessions: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Total Seller Credits</label>
+                    <input className="input input-bordered input-sm w-full" placeholder="$"
+                      value={fields.totalSellerCredits}
+                      onChange={e => setFields(p => ({ ...p, totalSellerCredits: e.target.value }))} />
+                  </div>
+                </div>
+              </section>
+
+              {/* ── 5. CONTRACT CONDITIONS ── */}
+              <section>
+                <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Contract Conditions</h3>
                 <div className="space-y-3">
-                  <AgentEditSection label="Buyer Agent" draft={buyerDraft} onChange={setBuyerDraft} accent="text-info" agentOptions={agentOptions} />
-                  <AgentEditSection label="Seller Agent" draft={sellerDraft} onChange={setSellerDraft} accent="text-success" agentOptions={agentOptions} />
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="checkbox checkbox-sm checkbox-warning" checked={fields.asIsSale}
+                        onChange={e => setFields(p => ({ ...p, asIsSale: e.target.checked }))} />
+                      <span className="text-sm font-medium">As-Is Sale</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="checkbox checkbox-sm checkbox-warning" checked={fields.inspectionWaived}
+                        onChange={e => setFields(p => ({ ...p, inspectionWaived: e.target.checked }))} />
+                      <span className="text-sm font-medium">Inspection Waived</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="checkbox checkbox-sm checkbox-success" checked={fields.homeWarranty}
+                        onChange={e => setFields(p => ({ ...p, homeWarranty: e.target.checked }))} />
+                      <span className="text-sm font-medium">Home Warranty</span>
+                    </label>
+                  </div>
+                  {fields.homeWarranty && (
+                    <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300">
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Warranty Company</label>
+                        <input className="input input-bordered input-sm w-full" placeholder="Company name"
+                          value={fields.homeWarrantyCompany}
+                          onChange={e => setFields(p => ({ ...p, homeWarrantyCompany: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Amount</label>
+                        <input className="input input-bordered input-sm w-full" placeholder="$"
+                          value={fields.homeWarrantyAmount}
+                          onChange={e => setFields(p => ({ ...p, homeWarrantyAmount: e.target.value }))} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-xs text-base-content/50 mb-1 block">Paid By</label>
+                        <div className="flex gap-2">
+                          {['buyer', 'seller', 'split'].map(opt => (
+                            <button key={opt} type="button"
+                              className={`btn btn-xs capitalize ${fields.homeWarrantyPaidBy === opt ? 'btn-success' : 'btn-ghost border border-base-300'}`}
+                              onClick={() => setFields(p => ({ ...p, homeWarrantyPaidBy: opt }))}>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* ── 6. COMMISSION ── */}
+              <section>
+                <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Commission</h3>
+                <div className="space-y-3">
+                  {/* Listing Agent Commission */}
+                  <div className="p-3 rounded-xl bg-base-200/50 border border-base-300">
+                    <p className="text-xs font-semibold text-base-content/60 mb-2">Listing Agent</p>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex gap-1">
+                        {(['percent', 'flat'] as const).map(t => (
+                          <button key={t} type="button"
+                            className={`btn btn-xs ${fields.listingCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                            onClick={() => setFields(p => ({ ...p, listingCommissionType: t }))}>
+                            {t === 'percent' ? '%' : '$'}
+                          </button>
+                        ))}
+                      </div>
+                      <input className="input input-bordered input-sm flex-1"
+                        placeholder={fields.listingCommissionType === 'percent' ? '3.0' : '0.00'}
+                        value={fields.listingCommissionValue}
+                        onChange={e => setFields(p => ({ ...p, listingCommissionValue: e.target.value }))} />
+                    </div>
+                  </div>
+                  {/* Buyer Agent Commission */}
+                  <div className="p-3 rounded-xl bg-base-200/50 border border-base-300">
+                    <p className="text-xs font-semibold text-base-content/60 mb-2">Buyer Agent</p>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex gap-1">
+                        {(['percent', 'flat'] as const).map(t => (
+                          <button key={t} type="button"
+                            className={`btn btn-xs ${fields.buyerCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                            onClick={() => setFields(p => ({ ...p, buyerCommissionType: t }))}>
+                            {t === 'percent' ? '%' : '$'}
+                          </button>
+                        ))}
+                      </div>
+                      <input className="input input-bordered input-sm flex-1"
+                        placeholder={fields.buyerCommissionType === 'percent' ? '3.0' : '0.00'}
+                        value={fields.buyerCommissionValue}
+                        onChange={e => setFields(p => ({ ...p, buyerCommissionValue: e.target.value }))} />
+                    </div>
+                  </div>
+                  {/* TC Fee */}
+                  <div className="p-3 rounded-xl bg-base-200/50 border border-base-300">
+                    <p className="text-xs font-semibold text-base-content/60 mb-2">TC Fee</p>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex gap-1">
+                        {(['percent', 'flat'] as const).map(t => (
+                          <button key={t} type="button"
+                            className={`btn btn-xs ${fields.tcFeeType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                            onClick={() => setFields(p => ({ ...p, tcFeeType: t }))}>
+                            {t === 'percent' ? '%' : '$'}
+                          </button>
+                        ))}
+                      </div>
+                      <input className="input input-bordered input-sm flex-1"
+                        placeholder={fields.tcFeeType === 'percent' ? '0.5' : '500'}
+                        value={fields.tcFeeValue}
+                        onChange={e => setFields(p => ({ ...p, tcFeeValue: e.target.value }))} />
+                      <select className="select select-bordered select-sm"
+                        value={fields.tcFeePaidBy}
+                        onChange={e => setFields(p => ({ ...p, tcFeePaidBy: e.target.value }))}>
+                        <option value="seller">Seller pays</option>
+                        <option value="buyer">Buyer pays</option>
+                        <option value="listing-agent">Listing agent pays</option>
+                        <option value="buying-agent">Buying agent pays</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* Commission Paid By */}
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Commission Paid By</label>
+                    <div className="flex gap-2">
+                      {['seller', 'buyer'].map(opt => (
+                        <button key={opt} type="button"
+                          className={`btn btn-sm capitalize ${fields.commissionPaidBy === opt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                          onClick={() => setFields(p => ({ ...p, commissionPaidBy: opt }))}>
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </section>
 

@@ -403,6 +403,46 @@ export interface Deal {
   contractDate: string;
   closingDate: string;
 
+  // ── Parties ────────────────────────────────────────────────────────────────
+  buyerName?: string;
+  sellerName?: string;
+  titleCompanyName?: string;
+  loanOfficerName?: string;
+
+  // ── Property extras ────────────────────────────────────────────────────────
+  hoa?: boolean;
+  hoaMonthlyFee?: number;
+  surveyRequired?: boolean;
+
+  // ── Financing ──────────────────────────────────────────────────────────────
+  loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
+  loanAmount?: number;
+  downPayment?: number;
+  earnestMoneyDueDate?: string;
+  sellerConcessions?: number;
+  totalSellerCredits?: number;
+
+  // ── Contract Conditions ────────────────────────────────────────────────────
+  asIsSale?: boolean;
+  inspectionWaived?: boolean;
+  homeWarranty?: boolean;
+  homeWarrantyAmount?: number;
+  homeWarrantyPaidBy?: string;         // 'buyer'|'seller'|'split'
+  homeWarrantyCompany?: string;
+
+  // ── Key Dates (expanded) ───────────────────────────────────────────────────
+  possessionDate?: string;
+
+  // ── Commission ─────────────────────────────────────────────────────────────
+  listingCommissionType?: 'percent' | 'flat';
+  listingCommissionValue?: number;
+  buyerCommissionType?: 'percent' | 'flat';
+  buyerCommissionValue?: number;
+  tcFeeType?: 'percent' | 'flat';
+  tcFeeValue?: number;
+  commissionPaidBy?: string;           // 'seller'|'buyer'
+  tcFeePaidBy?: string;                // 'seller'|'buyer'|'listing-agent'|'buying-agent'
+
   // ── Relationships (Phase 4 relational) ─────────────────────────────────────
   primaryClientAccountId?: string;     // FK to client_accounts
   assignedTcUserId?: string;           // FK to profiles
@@ -434,6 +474,43 @@ export interface Deal {
 
   notes: string;
   archiveReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+// ── Deal Amendments ──────────────────────────────────────────────────────────
+
+export interface DealAmendment {
+  id: string;
+  dealId: string;
+  amendmentNumber?: number;
+  amendmentDate?: string;
+  amendmentType?: string;   // 'price_change'|'date_extension'|'condition_removal'|'other'
+  description?: string;
+  newClosingDate?: string;
+  newPurchasePrice?: number;
+  documentUrl?: string;
+  fileName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Deal Documents ───────────────────────────────────────────────────────────
+
+export interface DealDocument {
+  id: string;
+  dealId: string;
+  documentType?: string;   // 'contract'|'amendment'|'addendum'|'other'
+  fileName?: string;
+  fileUrl?: string;
+  storagePath?: string;
+  source?: string;         // 'email'|'upload'
+  gmailThreadId?: string;
+  gmailMessageId?: string;
+  extractedAt?: string;
+  extractionData?: Record<string, unknown>;
+  extractionConfirmed?: boolean;
   createdAt: string;
   updatedAt: string;
 }
