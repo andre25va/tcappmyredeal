@@ -589,7 +589,23 @@ function AppInner() {
         isActive={!!activeCall}
         callData={activeCall}
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
-        onEndCall={() => { setActiveCall(null); setIsCallMinimized(false); }}
+        onEndCall={async () => {
+          // Tell Twilio to hang up the call before dismissing the UI
+          const sid = activeCall?.callSid;
+          if (sid && sid !== 'call-initiated') {
+            try {
+              await fetch('/api/end-call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ callSid: sid }),
+              });
+            } catch (err) {
+              console.error('Failed to end call via API:', err);
+            }
+          }
+          setActiveCall(null);
+          setIsCallMinimized(false);
+        }}
         onMinimize={() => setIsCallMinimized(prev => !prev)}
         onAddNote={(note) => { console.log('Call note:', note); }}
         onCreateTask={(desc) => { console.log('Call task:', desc); }}
