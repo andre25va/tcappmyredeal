@@ -458,17 +458,15 @@ const ContactPopup: React.FC<{
           </div>
         </div>
       </div>
+      {/* Live call popup */}
+      {liveCallActive && contact.phone && (
+        <LiveCallPopup
+          contactName={contact.name}
+          contactPhone={formatPhone(contact.phone)}
+          onClose={() => setLiveCallActive(false)}
+        />
+      )}
     </div>
-
-    {/* Live call popup */}
-    {liveCallActive && contact.phone && (
-      <LiveCallPopup
-        contactName={contact.name}
-        contactPhone={formatPhone(contact.phone)}
-        onClose={() => setLiveCallActive(false)}
-      />
-    )}
-  </div>
   );
 };
 
