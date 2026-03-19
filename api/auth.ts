@@ -169,34 +169,9 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       await supabase.from('allowed_phones').update({ profile_id: profile.id }).eq('phone', normalized);
     }
 
-    if (!isDemo && !force) {
-      const { data: existingSessions } = await supabase
-        .from('sessions')
-        .select('id, ip_address, user_agent, last_used, created_at')
-        .eq('user_id', profile.id)
-        .eq('is_active', true)
-        .gt('expires_at', new Date().toISOString())
-        .order('last_used', { ascending: false })
-        .limit(1);
-      if (existingSessions && existingSessions.length > 0) {
-        const existing = existingSessions[0];
-        return res.status(200).json({
-          hasExistingSession: true,
-          deviceLabel: parseDeviceLabel(existing.user_agent || ''),
-          lastSeen: existing.last_used || existing.created_at,
-        });
-      }
-    }
 
     await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
 
-    if (!isDemo) {
-      await supabase
-        .from('sessions')
-        .update({ is_active: false })
-        .eq('user_id', profile.id)
-        .eq('is_active', true);
-    }
 
     await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', profile.id);
     const token = randomUUID();
