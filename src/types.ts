@@ -312,6 +312,7 @@ export interface ContactRecord {
   organizations: OrgMemberInfo[];
   isClient: boolean;
   clientAccountId?: string;
+  defaultInstructions?: string;
 }
 
 export interface OrgMemberInfo {
