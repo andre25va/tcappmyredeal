@@ -60,7 +60,7 @@ app.post('/process-email', async (req, res) => {
           contacts(full_name, email, contact_type)
         )
       `)
-      .not('pipeline_stage', 'in', '("closed","cancelled","withdrawn")');
+      .neq('pipeline_stage', 'archived');
 
     if (dealsError) throw dealsError;
 
@@ -241,24 +241,19 @@ Return null for any field not found. No explanation, just JSON.`
       console.log('New deal detected via AI address extraction');
       await supabase.from('email_review_queue').upsert({
         gmail_thread_id: threadId,
-        gmail_message_id: messageId,
         thread_subject: subject,
         thread_snippet: snippet,
-        thread_from_email: fromEmail,
-        thread_from_name: fromName,
+        thread_from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+        thread_date: receivedAt || new Date().toISOString(),
         has_attachment: hasAttachment,
-        is_unread: isUnread,
         received_at: receivedAt || new Date().toISOString(),
         status: 'new_deal',
         top_deal_id: null,
-        top_score: topScore,
+        top_deal_score: topScore,
         runner_up_deal_id: null,
         runner_up_score: 0,
         score_breakdown: top?.breakdown || {},
-        ai_suggestion: `New deal detected: ${extracted?.address || 'unknown address'}${extracted?.buyer_name ? `, buyer: ${extracted.buyer_name}` : ''}${extracted?.price ? `, $${extracted.price.toLocaleString()}` : ''}`,
-        ai_extracted_address: extracted?.address || null,
-        ai_extracted_buyer: extracted?.buyer_name || null,
-        ai_extracted_price: extracted?.price || null
+        ai_suggestion: `New deal detected: ${extracted?.address || 'unknown address'}${extracted?.buyer_name ? `. Buyer: ${extracted.buyer_name}` : ''}${extracted?.price ? `. Price: $${Number(extracted.price).toLocaleString()}` : ''}.`
       }, { onConflict: 'gmail_thread_id' });
 
       return res.json({ status: 'new_deal', extracted });
@@ -268,15 +263,14 @@ Return null for any field not found. No explanation, just JSON.`
       // Auto-link
       await supabase.from('email_thread_links').upsert({
         gmail_thread_id: threadId,
-        gmail_message_id: messageId,
         deal_id: top.deal.id,
         score: topScore,
         score_breakdown: top.breakdown,
         link_method: 'auto',
         thread_subject: subject,
         thread_snippet: snippet,
-        thread_from_email: fromEmail,
-        thread_from_name: fromName,
+        thread_from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+        thread_date: receivedAt || new Date().toISOString(),
         has_attachment: hasAttachment,
         is_unread: isUnread,
         linked_at: new Date().toISOString()
@@ -289,24 +283,19 @@ Return null for any field not found. No explanation, just JSON.`
       // Needs review
       await supabase.from('email_review_queue').upsert({
         gmail_thread_id: threadId,
-        gmail_message_id: messageId,
         thread_subject: subject,
         thread_snippet: snippet,
-        thread_from_email: fromEmail,
-        thread_from_name: fromName,
+        thread_from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+        thread_date: receivedAt || new Date().toISOString(),
         has_attachment: hasAttachment,
-        is_unread: isUnread,
         received_at: receivedAt || new Date().toISOString(),
         status: 'pending',
         top_deal_id: top.deal.id,
-        top_score: topScore,
+        top_deal_score: topScore,
         runner_up_deal_id: runnerUp?.deal?.id || null,
         runner_up_score: runnerScore,
         score_breakdown: top.breakdown,
-        ai_suggestion: `Best match: ${top.deal.property_address} (score: ${topScore})${gap < GAP_THRESHOLD ? ` — close runner-up: ${runnerUp?.deal?.property_address} (${runnerScore})` : ''}`,
-        ai_extracted_address: extracted?.address || null,
-        ai_extracted_buyer: extracted?.buyer_name || null,
-        ai_extracted_price: extracted?.price || null
+        ai_suggestion: `Best match: ${top.deal.property_address} (score: ${topScore})${gap < GAP_THRESHOLD ? ` — close runner-up: ${runnerUp?.deal?.property_address} (${runnerScore})` : ''}`
       }, { onConflict: 'gmail_thread_id' });
 
       return res.json({ status: 'needs_review', top_deal_id: top.deal.id, score: topScore });
@@ -315,24 +304,19 @@ Return null for any field not found. No explanation, just JSON.`
       // Unmatched
       await supabase.from('email_review_queue').upsert({
         gmail_thread_id: threadId,
-        gmail_message_id: messageId,
         thread_subject: subject,
         thread_snippet: snippet,
-        thread_from_email: fromEmail,
-        thread_from_name: fromName,
+        thread_from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+        thread_date: receivedAt || new Date().toISOString(),
         has_attachment: hasAttachment,
-        is_unread: isUnread,
         received_at: receivedAt || new Date().toISOString(),
-        status: topScore < 10 ? 'unmatched' : 'pending',
+        status: 'pending',
         top_deal_id: top?.deal?.id || null,
-        top_score: topScore,
+        top_deal_score: topScore,
         runner_up_deal_id: runnerUp?.deal?.id || null,
         runner_up_score: runnerScore,
         score_breakdown: top?.breakdown || {},
-        ai_suggestion: extractedAddress ? `No matching deal found for: ${extracted?.address}` : 'No strong deal match found',
-        ai_extracted_address: extracted?.address || null,
-        ai_extracted_buyer: extracted?.buyer_name || null,
-        ai_extracted_price: extracted?.price || null
+        ai_suggestion: extractedAddress ? `No matching deal found for: ${extracted?.address}` : 'No strong deal match found'
       }, { onConflict: 'gmail_thread_id' });
 
       return res.json({ status: 'unmatched', score: topScore });
