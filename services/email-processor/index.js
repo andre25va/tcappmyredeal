@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const app = express();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
+// v2 - forced rebuild
 const ALLOWED_ORIGINS = [
   'https://tcappmyredeal.vercel.app',
   'https://tcappmyredeal-git-feat-duplex-dual-address-andre25vas-projects.vercel.app',
