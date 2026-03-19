@@ -574,18 +574,22 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
   });
 
   const params = req.method === 'POST' ? req.body : req.query;
-  const addressParam = params.addresses as string;
-  if (!addressParam) return res.status(400).json({ error: 'addresses param required' });
-
+  // Support both POST (arrays already parsed) and GET (strings to parse)
   let addresses: string[];
-  try { addresses = JSON.parse(addressParam); }
-  catch { addresses = addressParam.split(',').map((a:string)=>a.trim()).filter(Boolean); }
+  if (Array.isArray(params.addresses)) {
+    addresses = params.addresses;
+  } else {
+    const addressParam = params.addresses as string;
+    if (!addressParam) return res.status(400).json({ error: 'addresses param required' });
+    try { addresses = JSON.parse(addressParam); }
+    catch { addresses = addressParam.split(',').map((a:string)=>a.trim()).filter(Boolean); }
+  }
 
   const mlsNumber = (params.mlsNumber as string)||'';
   const dealId    = (params.dealId    as string)||'';
-  const clientNames:       string[] = (() => { try { return JSON.parse(params.clientNames as string||'[]'); } catch { return []; } })();
-  const participantEmails: string[] = (() => { try { return JSON.parse(params.participantEmails as string||'[]'); } catch { return []; } })();
-  const linkedThreadIds:   string[] = (() => { try { return JSON.parse(params.linkedThreadIds as string||'[]'); } catch { return []; } })();
+  const clientNames:       string[] = Array.isArray(params.clientNames)       ? params.clientNames       : (() => { try { return JSON.parse(params.clientNames       as string||'[]'); } catch { return []; } })();
+  const participantEmails: string[] = Array.isArray(params.participantEmails) ? params.participantEmails : (() => { try { return JSON.parse(params.participantEmails as string||'[]'); } catch { return []; } })();
+  const linkedThreadIds:   string[] = Array.isArray(params.linkedThreadIds)   ? params.linkedThreadIds   : (() => { try { return JSON.parse(params.linkedThreadIds   as string||'[]'); } catch { return []; } })();
 
   const allVariants: string[] = [];
   for (const addr of addresses) allVariants.push(...buildAddressVariants(addr));
