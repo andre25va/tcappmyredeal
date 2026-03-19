@@ -119,7 +119,7 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
 
       if (urlErr) throw new Error('Could not generate file URL: ' + urlErr.message);
 
-      const res = await fetch('https://daring-radiance-production.up.railway.app/extract-contract', {
+      const res = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

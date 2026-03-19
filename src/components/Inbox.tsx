@@ -748,7 +748,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     setExtracting(true);
     setExtractionError('');
     try {
-      const resp = await fetch('https://daring-radiance-production.up.railway.app/extract-contract', {
+      const resp = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pdf_url: pdfPreviewUrl }),
