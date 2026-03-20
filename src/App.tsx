@@ -482,15 +482,15 @@ function AppInner() {
               {(txContainerWide || txPanel === 'list') && (
                 <div className={txContainerWide ? 'flex-none' : 'flex-1'} style={{ display: 'flex', flexDirection: 'column' }}>
                   {/* View mode toggle */}
-                  <div className="flex items-center gap-0 border-b border-base-300 bg-base-200 shrink-0">
+                  <div className="flex items-center gap-0 bg-primary shrink-0">
                     <button
-                      className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${listMode === 'deals' ? 'bg-base-100 text-base-content border-b-2 border-primary' : 'text-base-content/50 hover:text-base-content'}`}
+                      className={`flex-1 py-2 text-xs font-bold tracking-wide transition-all ${listMode === 'deals' ? 'bg-white/20 text-white border-b-2 border-white' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
                       onClick={() => setListMode('deals')}
                     >
                       By Deal
                     </button>
                     <button
-                      className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${listMode === 'agents' ? 'bg-base-100 text-base-content border-b-2 border-primary' : 'text-base-content/50 hover:text-base-content'}`}
+                      className={`flex-1 py-2 text-xs font-bold tracking-wide transition-all ${listMode === 'agents' ? 'bg-white/20 text-white border-b-2 border-white' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
                       onClick={() => setListMode('agents')}
                     >
                       By Agent
