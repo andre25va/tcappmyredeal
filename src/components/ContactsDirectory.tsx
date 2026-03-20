@@ -246,6 +246,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [timezoneError, setTimezoneError] = useState(false);
+  const [emailDup, setEmailDup] = useState<ContactRecord | null>(null);
+  const [phoneDup, setPhoneDup] = useState<ContactRecord | null>(null);
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
@@ -805,11 +807,21 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Email</span></label>
-                    <input className="input input-sm input-bordered w-full" type="email" autoComplete="off" value={form.email} onChange={e => updateField('email', e.target.value)} />
+                    <input className={`input input-sm input-bordered w-full ${emailDup ? 'input-warning' : ''}`} type="email" autoComplete="off" value={form.email} onChange={e => updateField('email', e.target.value)} />
+                    {emailDup && (
+                      <p className="text-xs text-warning font-medium mt-0.5 flex items-center gap-1">
+                        <span>⚠</span> Email already used by <span className="font-semibold">{emailDup.firstName} {emailDup.lastName}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="label py-0"><span className="label-text text-xs">Phone</span></label>
-                    <input className="input input-sm input-bordered w-full" autoComplete="off" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
+                    <input className={`input input-sm input-bordered w-full ${phoneDup ? 'input-warning' : ''}`} autoComplete="off" value={form.phone} onChange={e => updateField('phone', formatPhoneLive(e.target.value))} />
+                    {phoneDup && (
+                      <p className="text-xs text-warning font-medium mt-0.5 flex items-center gap-1">
+                        <span>⚠</span> Phone already used by <span className="font-semibold">{phoneDup.firstName} {phoneDup.lastName}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2">
