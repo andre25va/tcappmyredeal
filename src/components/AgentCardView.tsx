@@ -141,15 +141,30 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
     return true; // 'all'
   }), [deals, viewFilter]);
 
-  // Group by agentName, apply agent type filter, sort by urgency
+  // Group by "our client" agents (buyerAgent.isOurClient / sellerAgent.isOurClient)
+  // This mirrors the exact same source as the "our client" badge in WorkspaceContacts.
+  // A deal with both sides represented appears under BOTH agent tiles.
   const agentGroups = useMemo(() => {
     const map = new Map<string, { deals: Deal[]; type: 'buyer' | 'seller' | 'mixed' }>();
     filteredDeals.forEach(deal => {
-      const key = deal.agentName || 'Unknown Agent';
-      const tt = deal.transactionType ?? 'buyer';
-      const initType: 'buyer' | 'seller' | 'mixed' = (tt === 'seller') ? 'seller' : 'buyer';
-      if (!map.has(key)) map.set(key, { deals: [], type: initType });
-      map.get(key)!.deals.push(deal);
+      // Collect every "our client" agent on this deal
+      const entries: Array<{ name: string; side: 'buyer' | 'seller' }> = [];
+      if (deal.buyerAgent?.isOurClient && deal.buyerAgent.name) {
+        entries.push({ name: deal.buyerAgent.name, side: 'buyer' });
+      }
+      if (deal.sellerAgent?.isOurClient && deal.sellerAgent.name) {
+        entries.push({ name: deal.sellerAgent.name, side: 'seller' });
+      }
+      // Fallback: use agentName if no isOurClient flags are set
+      if (entries.length === 0) {
+        const fallback = deal.agentName || 'Unknown Agent';
+        const side: 'buyer' | 'seller' = (deal.transactionType === 'seller') ? 'seller' : 'buyer';
+        entries.push({ name: fallback, side });
+      }
+      entries.forEach(({ name, side }) => {
+        if (!map.has(name)) map.set(name, { deals: [], type: side });
+        map.get(name)!.deals.push(deal);
+      });
     });
 
     return Array.from(map.entries())
