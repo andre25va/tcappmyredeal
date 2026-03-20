@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bell, Clock, Mail, Save, Send, CheckCircle2,
-  AlertCircle, Loader2, X, Plus, ToggleLeft, ToggleRight,
+  AlertCircle, Loader2, X, Plus, ToggleLeft, ToggleRight, Users,
 } from 'lucide-react';
 import { loadBriefingConfig, saveBriefingConfig } from '../../utils/supabaseDb';
+import { supabase } from '../../lib/supabase';
 import type { BriefingConfig } from '../../types';
 
 const TIMEZONES = [
@@ -15,6 +16,13 @@ const TIMEZONES = [
   { value: 'America/Anchorage',    label: 'Alaska Time (AKT)' },
   { value: 'Pacific/Honolulu',     label: 'Hawaii Time (HST)' },
 ];
+
+interface AgentBriefingContact {
+  id: string;
+  fullName: string;
+  email: string;
+  briefingEnabled: boolean;
+}
 
 function EmailChipInput({
   emails,
@@ -107,6 +115,15 @@ function SectionToggle({
   );
 }
 
+function AgentAvatar({ name }: { name: string }) {
+  const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
+  return (
+    <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+      <span className="text-xs font-bold text-primary">{initials || '?'}</span>
+    </div>
+  );
+}
+
 export function BriefingConfigPanel() {
   const [config, setConfig] = useState<BriefingConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,11 +131,59 @@ export function BriefingConfigPanel() {
   const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const [agentContacts, setAgentContacts] = useState<AgentBriefingContact[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+  const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
+
   useEffect(() => {
     loadBriefingConfig()
       .then(setConfig)
       .finally(() => setLoading(false));
+
+    loadAgentContacts();
   }, []);
+
+  async function loadAgentContacts() {
+    setAgentsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, email, briefing_enabled')
+        .eq('contact_type', 'agent')
+        .eq('is_active', true)
+        .order('last_name', { ascending: true });
+
+      if (error) throw error;
+      setAgentContacts((data ?? []).map((row: any) => ({
+        id: row.id,
+        fullName: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+        email: row.email || '',
+        briefingEnabled: row.briefing_enabled ?? false,
+      })));
+    } catch (e) {
+      console.error('Failed to load agent contacts', e);
+    } finally {
+      setAgentsLoading(false);
+    }
+  }
+
+  async function toggleAgentBriefing(contactId: string, currentValue: boolean) {
+    setTogglingAgent(contactId);
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ briefing_enabled: !currentValue, updated_at: new Date().toISOString() })
+        .eq('id', contactId);
+      if (error) throw error;
+      setAgentContacts(prev =>
+        prev.map(a => a.id === contactId ? { ...a, briefingEnabled: !currentValue } : a)
+      );
+    } catch (e: any) {
+      showToast('error', 'Failed to update agent briefing: ' + (e.message || ''));
+    } finally {
+      setTogglingAgent(null);
+    }
+  }
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -161,7 +226,13 @@ export function BriefingConfigPanel() {
         throw new Error(errData.error || `Send failed (${res.status})`);
       }
 
-      showToast('success', `Test briefing sent to ${config.toAddresses.join(', ')}`);
+      const result = await res.json();
+      const agentCount = result.agentBriefings?.filter((a: any) => a.success).length ?? 0;
+      const msg = agentCount > 0
+        ? `Briefing sent! Also sent to ${agentCount} agent${agentCount > 1 ? 's' : ''}.`
+        : `Test briefing sent to ${config.toAddresses.join(', ')}`;
+      showToast('success', msg);
+
       const updated = await loadBriefingConfig();
       if (updated) setConfig(updated);
     } catch (e: any) {
@@ -190,6 +261,8 @@ export function BriefingConfigPanel() {
     );
   }
 
+  const enabledAgentCount = agentContacts.filter(a => a.briefingEnabled).length;
+
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
 
@@ -200,7 +273,7 @@ export function BriefingConfigPanel() {
           <p className="text-sm font-semibold text-primary">Daily Morning Briefing</p>
           <p className="text-xs text-base-content/60 mt-0.5 leading-relaxed">
             A daily email summary of your active deals, overdue tasks, upcoming closes,
-            and pending documents - sent automatically each morning.
+            and pending documents — sent automatically each morning.
           </p>
           {config.lastSentAt && (
             <p className="text-xs text-base-content/40 mt-1">
@@ -264,7 +337,7 @@ export function BriefingConfigPanel() {
       {/* Recipients */}
       <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-base-content flex items-center gap-2">
-          <Mail size={15} className="text-primary" /> Recipients
+          <Mail size={15} className="text-primary" /> TC Recipients
         </h3>
         <p className="text-xs text-base-content/50">Press Enter or comma to add each address.</p>
         <EmailChipInput
@@ -304,6 +377,69 @@ export function BriefingConfigPanel() {
         </div>
       </div>
 
+      {/* Per-Agent Briefings */}
+      <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-base-content flex items-center gap-2">
+            <Users size={15} className="text-primary" /> Per-Agent Briefings
+            {enabledAgentCount > 0 && (
+              <span className="badge badge-primary badge-sm">{enabledAgentCount} active</span>
+            )}
+          </h3>
+        </div>
+        <p className="text-xs text-base-content/50 leading-relaxed">
+          Each enabled agent receives a personalized morning email showing only their own active deals,
+          tasks, and pending documents. Uses the same schedule as the global briefing.
+        </p>
+
+        {agentsLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <span className="loading loading-spinner loading-sm text-primary" />
+          </div>
+        ) : agentContacts.length === 0 ? (
+          <div className="text-center py-6 text-base-content/40 text-sm">
+            No agent clients found. Add agent contacts in the Contacts directory first.
+          </div>
+        ) : (
+          <div className="divide-y divide-base-200">
+            {agentContacts.map((agent) => (
+              <div key={agent.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <AgentAvatar name={agent.fullName} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-base-content truncate">{agent.fullName}</p>
+                  {agent.email ? (
+                    <p className="text-xs text-base-content/50 truncate">{agent.email}</p>
+                  ) : (
+                    <p className="text-xs text-amber-500">No email — cannot send briefing</p>
+                  )}
+                </div>
+                {agent.briefingEnabled && (
+                  <span className="badge badge-xs bg-green-100 text-green-700 border-green-200 shrink-0">
+                    Enabled
+                  </span>
+                )}
+                <button
+                  className={`btn btn-xs gap-1 shrink-0 ${
+                    agent.briefingEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'
+                  }`}
+                  disabled={!agent.email || togglingAgent === agent.id}
+                  onClick={() => toggleAgentBriefing(agent.id, agent.briefingEnabled)}
+                  title={!agent.email ? 'Agent has no email address' : ''}
+                >
+                  {togglingAgent === agent.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : agent.briefingEnabled ? (
+                    <><ToggleRight size={13} /> On</>
+                  ) : (
+                    <><ToggleLeft size={13} /> Off</>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Actions */}
       <div className="flex items-center gap-3 pb-4">
         <button
@@ -324,7 +460,8 @@ export function BriefingConfigPanel() {
           Send Test Now
         </button>
         <span className="text-xs text-base-content/40 ml-auto">
-          {config.toAddresses.length} recipient{config.toAddresses.length !== 1 ? 's' : ''}
+          {config.toAddresses.length} TC recipient{config.toAddresses.length !== 1 ? 's' : ''}
+          {enabledAgentCount > 0 && ` · ${enabledAgentCount} agent${enabledAgentCount > 1 ? 's' : ''}`}
         </span>
       </div>
 
