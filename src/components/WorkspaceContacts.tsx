@@ -423,8 +423,56 @@ const ContactPicker: React.FC<{
   onClose: () => void;
 }> = ({ contactRecords, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
   const [search, setSearch] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newCompany, setNewCompany] = useState('');
+  const [newRole, setNewRole] = useState('agent');
   const side = presetSide;
   const ref = useRef<HTMLDivElement>(null);
+
+  const handleCreateContact = async () => {
+    if (!newName.trim()) return;
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      // Get org from profile
+      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', userId).single();
+      const orgId = profile?.organization_id;
+      const nameParts = newName.trim().split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(' ') || '';
+      const { data: newContact, error } = await supabase.from('contacts').insert({
+        first_name: firstName,
+        last_name: lastName,
+        email: newEmail || null,
+        phone: newPhone || null,
+        company: newCompany || null,
+        contact_type: newRole,
+        organization_id: orgId,
+        created_by: userId,
+      }).select().single();
+      if (error) throw error;
+      const cr: ContactRecord = {
+        id: newContact.id,
+        fullName: newName.trim(),
+        firstName,
+        lastName,
+        email: newEmail || undefined,
+        phone: newPhone || undefined,
+        company: newCompany || undefined,
+        contactType: newRole as any,
+        isClient: false,
+        directoryId: newContact.id,
+      };
+      onAdd(cr, side);
+      onClose();
+    } catch (err) {
+      console.error('Failed to create contact:', err);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
@@ -468,7 +516,7 @@ const ContactPicker: React.FC<{
       </div>
       <div className="max-h-56 overflow-y-auto">
         {filtered.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-6">No contacts found</p>
+          <p className="text-xs text-gray-400 text-center py-4">No contacts found</p>
         )}
         {filtered.map(cr => (
           <button key={cr.id} onClick={() => { onAdd(cr, side); onClose(); }}
@@ -483,6 +531,46 @@ const ContactPicker: React.FC<{
           </button>
         ))}
       </div>
+      {/* Create new contact inline */}
+      {showCreateForm ? (
+        <div className="border-t border-gray-100 p-3 space-y-2 bg-gray-50">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">New Contact</p>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone"
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email"
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company"
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          <select value={newRole} onChange={e => setNewRole(e.target.value)}
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white">
+            <option value="agent">Agent</option>
+            <option value="lender">Lender</option>
+            <option value="title">Title Officer</option>
+            <option value="inspector">Inspector</option>
+            <option value="tc">TC</option>
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
+            <option value="other">Other</option>
+          </select>
+          <div className="flex gap-2 pt-1">
+            <button onClick={handleCreateContact} disabled={!newName.trim()}
+              className="flex-1 btn btn-primary btn-xs text-white rounded-lg disabled:opacity-40">
+              Create &amp; Add
+            </button>
+            <button onClick={() => setShowCreateForm(false)} className="btn btn-ghost btn-xs rounded-lg">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowCreateForm(true)}
+          className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-gray-100 hover:bg-gray-50 transition-colors text-left">
+          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-none">
+            <UserPlus size={13} className="text-primary" />
+          </div>
+          <span className="text-sm font-medium text-primary">Create new contact</span>
+        </button>
+      )}
     </div>
   );
 };
@@ -850,6 +938,13 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       side: effectiveSide,
     };
     const isClientSideFlag = !!cr.isClient || pickerConfig?.type === 'client';
+    // Sync agent contacts to deal.buyerAgent / deal.sellerAgent so Overview shows them
+    const agentOverride: Partial<import('../types').Deal> = {};
+    if (cr.contactType === 'agent') {
+      const agentData = { name: cr.fullName, phone: cr.phone || '', email: cr.email || '', isOurClient: !!cr.isClient };
+      if (effectiveSide === 'buy') agentOverride.buyerAgent = agentData;
+      else if (effectiveSide === 'sell') agentOverride.sellerAgent = agentData;
+    }
     const newParticipant: import('../types').DealParticipant = {
       id: crypto.randomUUID() as import('../types').DealParticipant['id'],
       contactId: cr.id,
@@ -863,6 +958,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     };
     onUpdate({
       ...deal,
+      ...agentOverride,
       contacts: [...deal.contacts, contact],
       participants: [...(deal.participants || []), newParticipant],
       activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
