@@ -1,10 +1,10 @@
-import { useAuth } from '../lib/auth';
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink, FileText, Send, PhoneCall, PhoneOff } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../lib/auth';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 
@@ -57,6 +57,9 @@ const DealSheetEmailModal: React.FC<{
     'Transaction Coordinator',
   ].filter(Boolean);
   const defaultBody = lines.join('\n');
+
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
 
   const [to, setTo] = React.useState(contact.email || '');
   const [subject, setSubject] = React.useState(defaultSubject);
@@ -893,8 +896,6 @@ const SideSection: React.FC<SideSectionProps> = ({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
-  const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);

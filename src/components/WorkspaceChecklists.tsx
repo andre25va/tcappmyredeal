@@ -1,6 +1,5 @@
 import { useAuth } from '../lib/auth';
 import React, { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../lib/auth';
 import ReactDOM from 'react-dom';
 import {
   CheckCircle2, Circle, Plus, Trash2, ClipboardList, Shield,
