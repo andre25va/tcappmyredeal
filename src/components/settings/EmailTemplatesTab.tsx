@@ -21,9 +21,9 @@ const MERGE_TAGS = [
   { tag: '{{reminders}}', desc: 'Upcoming reminders / key dates' },
 ];
 
-interface TemplateFormState { name: string; subject: string; body: string; buttons: ConfirmationButton[]; }
-function emptyFormState(): TemplateFormState { return { name: '', subject: '', body: '', buttons: [] }; }
-function templateToFormState(t: EmailTemplate): TemplateFormState { return { name: t.name, subject: t.subject, body: t.body, buttons: t.buttons.map(b => ({ ...b })) }; }
+interface TemplateFormState { name: string; subject: string; body: string; buttons: ConfirmationButton[]; category: string; }
+function emptyFormState(): TemplateFormState { return { name: '', subject: '', body: '', buttons: [], category: 'General' }; }
+function templateToFormState(t: EmailTemplate): TemplateFormState { return { name: t.name, subject: t.subject, body: t.body, buttons: t.buttons.map(b => ({ ...b })), category: t.category || 'General' }; }
 
 interface EmailTemplatesTabProps { emailTemplates: EmailTemplate[]; onSave: (templates: EmailTemplate[]) => void; }
 
@@ -43,10 +43,10 @@ export function EmailTemplatesTab({ emailTemplates, onSave }: EmailTemplatesTabP
     if (!form || !form.name.trim()) return;
     const now = new Date().toISOString();
     if (isNew) {
-      const newTemplate: EmailTemplate = { id: generateId(), name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, createdAt: now, updatedAt: now };
+      const newTemplate: EmailTemplate = { id: generateId(), name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, category: form.category, createdAt: now, updatedAt: now };
       onSave([...emailTemplates, newTemplate]); setSelectedId(newTemplate.id);
     } else {
-      onSave(emailTemplates.map(t => t.id === selectedId ? { ...t, name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, updatedAt: now } : t));
+      onSave(emailTemplates.map(t => t.id === selectedId ? { ...t, name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, category: form.category, updatedAt: now } : t));
     }
     setForm(null); setIsNew(false);
   };
@@ -104,6 +104,7 @@ export function EmailTemplatesTab({ emailTemplates, onSave }: EmailTemplatesTabP
               </div>
             </div>
             <div><label className="label py-0.5"><span className="label-text text-xs font-medium">Template Name</span></label><input className="input input-bordered input-sm w-full" placeholder="e.g. Introduction Email" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><label className="label py-0.5"><span className="label-text text-xs font-medium">Category</span></label><select className="select select-bordered select-sm w-full" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{['General', 'Intro', 'Reminders', 'Document Requests', 'Closing', 'Compliance'].map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
             <div><label className="label py-0.5"><span className="label-text text-xs font-medium">Subject</span></label><input className="input input-bordered input-sm w-full font-mono text-xs" placeholder="e.g. Transaction Introduction — {{address}}" value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} /></div>
             <div><label className="label py-0.5"><span className="label-text text-xs font-medium">Body</span></label><textarea className="textarea textarea-bordered w-full font-mono text-xs" rows={16} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} spellCheck={false} /></div>
             <div className="border border-base-300 rounded-xl p-4 flex flex-col gap-3">

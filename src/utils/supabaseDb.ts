@@ -43,6 +43,11 @@ import {
   ChangeStatus,
   ChangeImpact,
   AmbiguityQueueItem,
+  ScheduledEmail,
+  EmailSendLogEntry,
+  BriefingConfig,
+  EmailType,
+  EmailSendStatus,
 } from '../types';
 
 // ─── DEAL PARTICIPANTS ──────────────────────────────────────────────────────
@@ -1355,4 +1360,295 @@ export async function buildClientDealSummary(dealId: string): Promise<string> {
   const closing = data.closing_date ? new Date(data.closing_date).toLocaleDateString() : 'TBD';
 
   return `📋 ${address}${cityState ? `, ${cityState}` : ''}\n📌 Status: ${milestone}\n📅 Closing: ${closing}`;
+}
+
+// ── SCHEDULED EMAILS ────────────────────────────────────────────────────────
+
+export async function loadScheduledEmails(
+  filters?: { dealId?: string; status?: string }
+): Promise<ScheduledEmail[]> {
+  let query = supabase
+    .from('scheduled_emails')
+    .select(`
+      id,
+      deal_id,
+      template_id,
+      to_addresses,
+      cc_addresses,
+      bcc_addresses,
+      subject,
+      body_html,
+      scheduled_at,
+      status,
+      error_message,
+      retry_count,
+      email_type,
+      created_by,
+      created_at,
+      updated_at,
+      deals ( property_address ),
+      email_templates ( name )
+    `)
+    .order('scheduled_at', { ascending: false });
+
+  if (filters?.dealId) {
+    query = query.eq('deal_id', filters.dealId);
+  }
+  if (filters?.status) {
+    query = query.eq('status', filters.status);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error loading scheduled emails:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    dealId: row.deal_id,
+    templateId: row.template_id,
+    toAddresses: row.to_addresses || [],
+    ccAddresses: row.cc_addresses || [],
+    bccAddresses: row.bcc_addresses || [],
+    subject: row.subject,
+    bodyHtml: row.body_html,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
+    errorMessage: row.error_message,
+    retryCount: row.retry_count ?? 0,
+    emailType: row.email_type,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    dealAddress: row.deals?.property_address,
+    templateName: row.email_templates?.name,
+  }));
+}
+
+export async function createScheduledEmail(email: {
+  dealId?: string;
+  templateId?: string;
+  toAddresses: string[];
+  ccAddresses?: string[];
+  bccAddresses?: string[];
+  subject: string;
+  bodyHtml: string;
+  scheduledAt: string;
+  emailType: EmailType;
+  createdBy?: string;
+}): Promise<string> {
+  const { data, error } = await supabase
+    .from('scheduled_emails')
+    .insert({
+      deal_id: email.dealId || null,
+      template_id: email.templateId || null,
+      to_addresses: email.toAddresses,
+      cc_addresses: email.ccAddresses || [],
+      bcc_addresses: email.bccAddresses || [],
+      subject: email.subject,
+      body_html: email.bodyHtml,
+      scheduled_at: email.scheduledAt,
+      status: 'pending',
+      retry_count: 0,
+      email_type: email.emailType,
+      created_by: email.createdBy || null,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Error creating scheduled email:', error);
+    throw new Error('Failed to schedule email');
+  }
+
+  return data.id;
+}
+
+export async function cancelScheduledEmail(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('scheduled_emails')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .in('status', ['pending', 'processing']);
+
+  if (error) {
+    console.error('Error cancelling scheduled email:', error);
+    throw new Error('Failed to cancel scheduled email');
+  }
+}
+
+// ── EMAIL SEND LOG ──────────────────────────────────────────────────────────
+
+export async function loadEmailSendLog(
+  filters?: { dealId?: string; limit?: number }
+): Promise<EmailSendLogEntry[]> {
+  const limit = filters?.limit ?? 50;
+
+  let query = supabase
+    .from('email_send_log')
+    .select(`
+      id,
+      deal_id,
+      template_id,
+      template_name,
+      to_addresses,
+      cc_addresses,
+      subject,
+      body_html,
+      gmail_message_id,
+      gmail_thread_id,
+      email_type,
+      sent_by,
+      sent_at
+    `)
+    .order('sent_at', { ascending: false })
+    .limit(limit);
+
+  if (filters?.dealId) {
+    query = query.eq('deal_id', filters.dealId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error loading email send log:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    dealId: row.deal_id,
+    templateId: row.template_id,
+    templateName: row.template_name,
+    toAddresses: row.to_addresses || [],
+    ccAddresses: row.cc_addresses || [],
+    subject: row.subject,
+    bodyHtml: row.body_html,
+    gmailMessageId: row.gmail_message_id,
+    gmailThreadId: row.gmail_thread_id,
+    emailType: row.email_type,
+    sentBy: row.sent_by,
+    sentAt: row.sent_at,
+  }));
+}
+
+export async function logEmailSend(entry: {
+  dealId?: string;
+  templateId?: string;
+  templateName?: string;
+  toAddresses: string[];
+  ccAddresses?: string[];
+  subject: string;
+  bodyHtml: string;
+  gmailMessageId?: string;
+  gmailThreadId?: string;
+  emailType: EmailType;
+  sentBy?: string;
+}): Promise<string> {
+  const { data, error } = await supabase
+    .from('email_send_log')
+    .insert({
+      deal_id: entry.dealId || null,
+      template_id: entry.templateId || null,
+      template_name: entry.templateName || null,
+      to_addresses: entry.toAddresses,
+      cc_addresses: entry.ccAddresses || [],
+      subject: entry.subject,
+      body_html: entry.bodyHtml,
+      gmail_message_id: entry.gmailMessageId || null,
+      gmail_thread_id: entry.gmailThreadId || null,
+      email_type: entry.emailType,
+      sent_by: entry.sentBy || null,
+      sent_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Error logging email send:', error);
+    throw new Error('Failed to log email send');
+  }
+
+  return data.id;
+}
+
+// ── BRIEFING CONFIG ─────────────────────────────────────────────────────────
+
+export async function loadBriefingConfig(): Promise<BriefingConfig | null> {
+  const { data, error } = await supabase
+    .from('briefing_config')
+    .select('*')
+    .limit(1)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // no rows
+    console.error('Error loading briefing config:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    enabled: data.enabled ?? false,
+    sendTime: data.send_time ?? '08:00',
+    timezone: data.timezone ?? 'America/Chicago',
+    toAddresses: data.to_addresses || [],
+    templateId: data.template_id || undefined,
+    includeOverdueTasks: data.include_overdue_tasks ?? true,
+    includeUpcomingCloses: data.include_upcoming_closes ?? true,
+    includePendingDocs: data.include_pending_docs ?? true,
+    includeNewEmails: data.include_new_emails ?? true,
+    lastSentAt: data.last_sent_at || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function saveBriefingConfig(config: Partial<BriefingConfig>): Promise<void> {
+  const payload: Record<string, any> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (config.enabled !== undefined) payload.enabled = config.enabled;
+  if (config.sendTime !== undefined) payload.send_time = config.sendTime;
+  if (config.timezone !== undefined) payload.timezone = config.timezone;
+  if (config.toAddresses !== undefined) payload.to_addresses = config.toAddresses;
+  if (config.templateId !== undefined) payload.template_id = config.templateId || null;
+  if (config.includeOverdueTasks !== undefined) payload.include_overdue_tasks = config.includeOverdueTasks;
+  if (config.includeUpcomingCloses !== undefined) payload.include_upcoming_closes = config.includeUpcomingCloses;
+  if (config.includePendingDocs !== undefined) payload.include_pending_docs = config.includePendingDocs;
+  if (config.includeNewEmails !== undefined) payload.include_new_emails = config.includeNewEmails;
+
+  if (config.id) {
+    const { error } = await supabase
+      .from('briefing_config')
+      .update(payload)
+      .eq('id', config.id);
+
+    if (error) {
+      console.error('Error updating briefing config:', error);
+      throw new Error('Failed to update briefing config');
+    }
+  } else {
+    const { error } = await supabase
+      .from('briefing_config')
+      .insert({
+        ...payload,
+        enabled: payload.enabled ?? false,
+        send_time: payload.send_time ?? '08:00',
+        timezone: payload.timezone ?? 'America/Chicago',
+        to_addresses: payload.to_addresses ?? [],
+        include_overdue_tasks: payload.include_overdue_tasks ?? true,
+        include_upcoming_closes: payload.include_upcoming_closes ?? true,
+        include_pending_docs: payload.include_pending_docs ?? true,
+        include_new_emails: payload.include_new_emails ?? true,
+      });
+
+    if (error) {
+      console.error('Error creating briefing config:', error);
+      throw new Error('Failed to create briefing config');
+    }
+  }
 }
