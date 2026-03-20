@@ -369,15 +369,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleCreate = () => {
     const isMF = form.propertyType === 'multi-family';
-    // Resolve selected client info for agent fields
-    const client = agentClients?.find(cc => cc.id === form.agentClientId) ?? null;
-    const clientName = client?.fullName || (client ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : '') || '';
-    const clientAgentContact = client ? {
-      name: clientName,
-      phone: client.phone || '',
-      email: client.email || '',
-      isOurClient: true,
-    } : undefined;
 
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
@@ -416,16 +407,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       contractDate: form.contractDate,
       closingDate: form.closingDate,
       agentId: generateId(),
-      agentName: clientName,
+      agentName: '',
       agentClientId: form.agentClientId || undefined,
-      buyerAgent: form.transactionType === 'buyer' ? clientAgentContact : undefined,
-      sellerAgent: form.transactionType === 'seller' ? clientAgentContact : undefined,
       contacts: [],
       notes: form.specialNotes.trim(),
       // Financing
       loanType: form.loanType || undefined,
       loanAmount: parseFloat(form.loanAmount) || undefined,
-      downPayment: parseFloat(form.downPaymentAmount) || undefined,
+      downPaymentAmount: parseFloat(form.downPaymentAmount) || undefined,
+      downPaymentPercent: parseFloat(form.downPaymentPercent) || undefined,
+      earnestMoney: parseFloat(form.earnestMoney) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
       // Contract Conditions
@@ -434,12 +425,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       homeWarranty: form.homeWarranty,
       homeWarrantyCompany: form.homeWarrantyCompany || undefined,
       // Key Dates
+      inspectionDeadline: form.inspectionDeadline || undefined,
+      loanCommitmentDate: form.loanCommitmentDate || undefined,
       possessionDate: form.possessionDate || undefined,
       // Parties
-      buyerName: form.buyerNames || undefined,
-      sellerName: form.sellerNames || undefined,
-      titleCompanyName: form.titleCompany || undefined,
-      loanOfficerName: form.loanOfficer || undefined,
+      buyerNames: form.buyerNames || undefined,
+      sellerNames: form.sellerNames || undefined,
+      titleCompany: form.titleCompany || undefined,
+      loanOfficer: form.loanOfficer || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
