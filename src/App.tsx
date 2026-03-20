@@ -50,7 +50,7 @@ function AppInner() {
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
-  const [view, setView]                     = useState<View>('transactions');
+  const [view, setView]                     = useState<View>('dashboard');
   const [listMode, setListMode]             = useState<'deals' | 'agents'>('agents');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
@@ -311,7 +311,7 @@ function AppInner() {
   };
 
   const handleAdd = (deal: Deal) => {
-    const withId = { ...deal, id: generateId() };
+    const withId = { ...deal, id: crypto.randomUUID() };
     const updated = [withId, ...deals];
     setDeals(updated);
     saveSingleDeal(withId).catch(console.error);
