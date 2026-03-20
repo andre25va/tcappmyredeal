@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Users, ChevronDown, ChevronUp, ShoppingCart, Tag,
   Clock, AlertTriangle, CheckSquare, MoreVertical,
-  Archive, RotateCcw,
+  Archive, RotateCcw, UserX,
 } from 'lucide-react';
 import { Deal, DealStatus } from '../types';
 import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
@@ -247,6 +247,10 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
           const hasOverdue = topTask?.overdue ?? false;
           const today = new Date().toISOString().slice(0, 10);
           const tileMenuId = `tile-${name}`;
+          // Flag tile if any deal is missing an agent client
+          const missingClientCount = agentDeals.filter(
+            d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
+          ).length;
 
           return (
             <div
@@ -264,6 +268,14 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-semibold text-base-content truncate">{name}</p>
                     <span className="badge badge-primary badge-xs shrink-0">{agentDeals.length}</span>
+                    {missingClientCount > 0 && (
+                      <span
+                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[9px] font-bold text-amber-700 shrink-0"
+                        title={`${missingClientCount} deal${missingClientCount > 1 ? 's' : ''} missing agent client`}
+                      >
+                        <UserX size={8} /> {missingClientCount}
+                      </span>
+                    )}
                   </div>
                   {topTask ? (
                     <div className="mt-0.5 flex items-center gap-1 min-w-0">
@@ -333,17 +345,33 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                           const side = deal.transactionType ?? 'buyer';
                           const isArchived = deal.milestone === 'archived';
                           const rowMenuId = `row-${deal.id}`;
+                          // True if this deal has no agent client assigned on either side
+                          const noClientAssigned = !deal.buyerAgent?.isOurClient && !deal.sellerAgent?.isOurClient;
 
                           return (
-                            <tr key={deal.id} className="hover:bg-base-200 transition-colors">
+                            <tr
+                              key={deal.id}
+                              className={`hover:bg-base-200 transition-colors ${
+                                noClientAssigned && !isArchived ? 'bg-amber-50/60' : ''
+                              }`}
+                            >
                               <td
                                 className="max-w-[80px] cursor-pointer"
                                 onClick={() => { setExpandedAgent(null); onSelectDeal(deal.id); }}
                               >
-                                <p className={`truncate font-medium ${isArchived ? 'text-base-content/40 italic' : 'text-base-content'}`}>
+                                <p className={`truncate font-medium ${
+                                  isArchived ? 'text-base-content/40 italic' : 'text-base-content'
+                                }`}>
                                   {deal.propertyAddress.split(',')[0]}
                                 </p>
-                                {isArchived && <span className="text-[9px] text-gray-400 font-semibold">ARCHIVED</span>}
+                                {isArchived && (
+                                  <span className="text-[9px] text-gray-400 font-semibold">ARCHIVED</span>
+                                )}
+                                {noClientAssigned && !isArchived && (
+                                  <span className="flex items-center gap-0.5 text-[9px] text-amber-600 font-semibold">
+                                    <UserX size={8} /> No client
+                                  </span>
+                                )}
                               </td>
                               <td>
                                 {side === 'buyer'
