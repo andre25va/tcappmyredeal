@@ -317,14 +317,14 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
               {/* Expanded deal table */}
               {isExpanded && (
                 <div className="border-t border-base-300 overflow-x-auto">
-                  <table className="table table-xs w-full text-[11px]">
+                  <table className="w-full text-[14px] border-collapse">
                     <thead>
-                      <tr className="text-base-content/50 text-[10px] uppercase tracking-wide">
-                        <th className="font-semibold">Address</th>
-                        <th className="font-semibold">Side</th>
-                        <th className="font-semibold">Status</th>
-                        <th className="font-semibold">Next Due</th>
-                        <th />
+                      <tr className="bg-base-200 text-base-content/60 text-[12px] uppercase tracking-wide">
+                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Address</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Side</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Status</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Next Due</th>
+                        <th className="border border-base-300 w-8" />
                       </tr>
                     </thead>
                     <tbody>
@@ -346,73 +346,75 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                             <tr
                               key={deal.id}
                               className={`hover:bg-base-200 transition-colors ${
-                                noClientAssigned && !isArchived ? 'bg-amber-50/60' : ''
+                                noClientAssigned && !isArchived ? 'bg-amber-50/60' : 'bg-base-100'
                               }`}
                             >
                               <td
-                                className="max-w-[80px] cursor-pointer"
+                                className="px-3 py-2 border border-base-300 cursor-pointer"
                                 onClick={() => { setExpandedAgent(null); onSelectDeal(deal.id); }}
                               >
-                                <p className={`truncate font-medium ${
+                                <p className={`font-medium leading-tight ${
                                   isArchived ? 'text-base-content/40 italic' : 'text-base-content'
                                 }`}>
                                   {deal.propertyAddress.split(',')[0]}
                                 </p>
                                 {isArchived && (
-                                  <span className="text-[9px] text-gray-400 font-semibold">ARCHIVED</span>
+                                  <span className="text-[10px] text-gray-400 font-semibold">ARCHIVED</span>
                                 )}
                                 {noClientAssigned && !isArchived && (
-                                  <span className="flex items-center gap-0.5 text-[9px] text-amber-600 font-semibold">
-                                    <UserX size={8} /> No client
+                                  <span className="flex items-center gap-0.5 text-[10px] text-amber-600 font-semibold">
+                                    <UserX size={9} /> No client
                                   </span>
                                 )}
                               </td>
-                              <td>
+                              <td className="px-3 py-2 border border-base-300 whitespace-nowrap">
                                 {side === 'buyer'
-                                  ? <span className="flex items-center gap-0.5 text-blue-600"><ShoppingCart size={9} /> Buy</span>
-                                  : <span className="flex items-center gap-0.5 text-green-600"><Tag size={9} /> Sell</span>}
+                                  ? <span className="flex items-center gap-1 text-blue-600"><ShoppingCart size={11} /> Buy</span>
+                                  : <span className="flex items-center gap-1 text-green-600"><Tag size={11} /> Sell</span>}
                               </td>
-                              <td>
-                                <div className="flex items-center gap-1">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot(deal.status)}`} />
-                                  <span className="truncate max-w-[55px]">{statusLabel(deal.status)}</span>
+                              <td className="px-3 py-2 border border-base-300">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
+                                  <span>{statusLabel(deal.status)}</span>
                                 </div>
                               </td>
-                              <td className="max-w-[80px]">
+                              <td className="px-3 py-2 border border-base-300">
                                 {nextItem
-                                  ? <span className={`truncate block ${nextOverdue ? 'text-red-500' : 'text-base-content/60'}`} title={nextItem.label}>{nextItem.label}</span>
+                                  ? <span className={`block leading-tight ${
+                                      nextOverdue ? 'text-red-500' : 'text-base-content/70'
+                                    }`} title={nextItem.label}>{nextItem.label}</span>
                                   : <span className="text-green-500">Clear</span>}
                               </td>
                               {/* 3-dot row menu */}
-                              <td className="w-6">
+                              <td className="px-1 py-2 border border-base-300 w-8">
                                 <div className="relative">
                                   <button
                                     className="btn btn-xs btn-ghost p-0.5"
                                     onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === rowMenuId ? null : rowMenuId); }}
                                   >
-                                    <MoreVertical size={11} />
+                                    <MoreVertical size={13} />
                                   </button>
                                   {openMenu === rowMenuId && (
                                     <div className="absolute right-0 top-5 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[140px] py-1">
                                       <button
-                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200"
+                                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200"
                                         onClick={() => { setOpenMenu(null); setExpandedAgent(null); onSelectDeal(deal.id); }}
                                       >
                                         View Deal
                                       </button>
                                       {isArchived ? (
                                         <button
-                                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
+                                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2 text-green-600"
                                           onClick={() => { setOpenMenu(null); onRestoreDeal(deal.id); }}
                                         >
-                                          <RotateCcw size={11} /> Restore
+                                          <RotateCcw size={12} /> Restore
                                         </button>
                                       ) : (
                                         <button
-                                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
+                                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2 text-red-500"
                                           onClick={() => openArchive([deal.id], deal.propertyAddress.split(',')[0])}
                                         >
-                                          <Archive size={11} /> Archive
+                                          <Archive size={12} /> Archive
                                         </button>
                                       )}
                                     </div>
