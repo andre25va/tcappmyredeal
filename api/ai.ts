@@ -374,6 +374,52 @@ const suggestChecklistSchema = {
 };
 
 
+
+// ── Extract Deal Schema (Deal Wizard AI Upload) ──────────────────────────────
+
+const extractDealSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    address: { type: 'string' },
+    city: { type: 'string' },
+    state: { type: 'string' },
+    zipCode: { type: 'string' },
+    listPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    mlsNumber: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    contractDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    inspectionDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanCommitmentDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    possessionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    earnestMoneyDueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerConcessions: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
+    loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    downPaymentAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    transactionType: { type: 'string', enum: ['buyer', 'seller'] },
+    propertyType: { type: 'string', enum: ['single-family', 'multi-family', 'duplex', 'condo', 'townhouse', 'land', 'commercial'] },
+    asIsSale: { type: 'boolean' },
+    inspectionWaived: { type: 'boolean' },
+    homeWarranty: { type: 'boolean' },
+    homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    confidence: { type: 'number' },
+    extractedFields: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'contractPrice', 'mlsNumber',
+    'contractDate', 'closingDate', 'inspectionDeadline', 'loanCommitmentDate', 'possessionDate',
+    'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'loanType', 'loanAmount',
+    'downPaymentAmount', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
+    'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
+    'homeWarrantyCompany', 'confidence', 'extractedFields'],
+};
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 async function handleClassifyEmail(apiKey: string, body: any) {
@@ -954,6 +1000,60 @@ ${JSON.stringify(existingCompTitles || [], null, 2)}`;
 }
 
 
+
+
+// ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
+
+async function handleExtractDeal(apiKey: string, body: any) {
+  const { fileBase64, fileName } = body;
+  if (!fileBase64) throw new Error('Missing fileBase64');
+
+  const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
+
+Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
+
+For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
+For propertyType: infer from property description. Default to "single-family".
+Return null for any field not found in the document.
+Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
+Set extractedFields to an array of field names that had non-null values found.`;
+
+  const res = await fetch(OPENAI_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      temperature: 0,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              file: {
+                filename: fileName || 'contract.pdf',
+                file_data: `data:application/pdf;base64,${fileBase64}`,
+              },
+            },
+            { type: 'text', text: 'Extract all real estate transaction details from this document.' },
+          ],
+        },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'extract_deal', strict: true, schema: extractDealSchema },
+      },
+    }),
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || 'OpenAI API error');
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content in OpenAI response');
+  return JSON.parse(content);
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1012,6 +1112,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'suggest-checklist':
         result = await handleSuggestChecklist(apiKey, req.body);
+        break;
+      case 'extract-deal':
+        result = await handleExtractDeal(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

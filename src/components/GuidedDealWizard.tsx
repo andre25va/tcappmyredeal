@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
@@ -201,6 +201,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractionBanner, setExtractionBanner] = useState<{ count: number; fileName: string } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Disambiguation state — client only
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
@@ -270,6 +274,77 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const handleBack = () => {
     setError('');
     if (step > 1) setStep(step - 1);
+  };
+
+
+  const handleFileExtract = async (file: File) => {
+    if (extracting) return;
+    setExtracting(true);
+    setExtractionBanner(null);
+    setError('');
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => { const r = reader.result as string; resolve(r.split(',')[1]); };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/ai?action=extract-deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
+      });
+      if (!res.ok) throw new Error('Extraction failed');
+      const d = await res.json();
+      setForm(p => ({
+        ...p,
+        address: d.address || p.address,
+        city: d.city || p.city,
+        state: d.state || p.state,
+        zipCode: d.zipCode || p.zipCode,
+        listPrice: d.listPrice || p.listPrice,
+        contractPrice: d.contractPrice || p.contractPrice,
+        mlsNumber: d.mlsNumber || p.mlsNumber,
+        contractDate: d.contractDate || p.contractDate,
+        closingDate: d.closingDate || p.closingDate,
+        inspectionDeadline: d.inspectionDeadline || p.inspectionDeadline,
+        loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
+        possessionDate: d.possessionDate || p.possessionDate,
+        earnestMoney: d.earnestMoney || p.earnestMoney,
+        earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
+        sellerConcessions: d.sellerConcessions || p.sellerConcessions,
+        loanType: d.loanType || p.loanType,
+        loanAmount: d.loanAmount || p.loanAmount,
+        downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
+        buyerNames: d.buyerNames || p.buyerNames,
+        sellerNames: d.sellerNames || p.sellerNames,
+        titleCompany: d.titleCompany || p.titleCompany,
+        loanOfficer: d.loanOfficer || p.loanOfficer,
+        transactionType: (d.transactionType as any) || p.transactionType,
+        propertyType: (d.propertyType as any) || p.propertyType,
+        asIsSale: d.asIsSale ?? p.asIsSale,
+        inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
+        homeWarranty: d.homeWarranty ?? p.homeWarranty,
+        homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
+      }));
+      setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
+    } catch (err: any) {
+      setError('Could not extract from document — please fill in manually.');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileExtract(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFileExtract(file);
   };
 
   const runAIReview = async () => {
@@ -457,6 +532,47 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="flex items-center gap-2 mb-3">
                   <MapPin size={18} className="text-primary" />
                   <h3 className="text-lg font-bold text-base-content">Where is the property?</h3>
+                </div>
+                {/* AI Extract from Contract */}
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                    dragOver ? 'border-primary bg-primary/10' : 'border-base-300 bg-base-100 hover:border-primary/50 hover:bg-primary/5'
+                  }`}
+                >
+                  <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFileChange} />
+                  {extracting ? (
+                    <div className="flex items-center justify-center gap-2 py-1">
+                      <Loader2 size={16} className="animate-spin text-primary" />
+                      <span className="text-sm text-primary font-medium">Extracting deal data...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 py-1">
+                      <Upload size={15} className="text-base-content/40" />
+                      <span className="text-sm text-base-content/60">
+                        <span className="font-semibold text-primary">Drop a contract / agreement</span>{' '}or click to upload
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {extractionBanner && (
+                  <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg -mt-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={13} className="text-green-500 flex-none" />
+                      <span className="text-xs text-green-700 font-medium">
+                        {extractionBanner.count} fields extracted from {extractionBanner.fileName}
+                      </span>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); setExtractionBanner(null); }} className="btn btn-ghost btn-xs p-0 min-h-0 h-auto"><X size={12} /></button>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-xs text-base-content/30">
+                  <div className="flex-1 h-px bg-base-300" />
+                  <span>or enter manually</span>
+                  <div className="flex-1 h-px bg-base-300" />
                 </div>
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Street Address *</label>
