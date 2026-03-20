@@ -1,6 +1,7 @@
 {
+  "framework": "vite",
   "buildCommand": "npm run build",
-  "nodeVersion": "20.x",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/auth/:action", "destination": "/api/auth?action=:action" },
     { "source": "/api/sms/send", "destination": "/api/sms" },
