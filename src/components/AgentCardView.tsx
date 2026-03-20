@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Users, ChevronDown, ChevronUp, ShoppingCart, Tag,
   Clock, AlertTriangle, CheckSquare, MoreVertical,
-  Archive, RotateCcw, UserX,
+  Archive, RotateCcw, UserX, Home,
 } from 'lucide-react';
-import { Deal, DealStatus } from '../types';
+import { Deal, DealStatus, PropertyType } from '../types';
 import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
@@ -35,6 +35,20 @@ const VIEW_FILTERS: { label: string; value: ViewFilter }[] = [
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+function propertyTypeLabel(pt?: PropertyType | string): string {
+  if (!pt) return '—';
+  const map: Record<string, string> = {
+    'single-family': 'Single Family',
+    'multi-family':  'Multi Family',
+    'duplex':        'Duplex',
+    'condo':         'Condo',
+    'townhouse':     'Townhouse',
+    'land':          'Land',
+    'commercial':    'Commercial',
+  };
+  return map[pt] ?? pt;
+}
 
 function getNextDueItem(deal: Deal): { label: string; dueDate: string } | null {
   const items: { label: string; dueDate: string }[] = [];
@@ -89,11 +103,13 @@ function NextDueItem({ dueDate, label, overdue }: { dueDate: string; label: stri
   );
 }
 
-function AgentAvatar({ name }: { name: string }) {
+function AgentAvatar({ name, active }: { name: string; active?: boolean }) {
   const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
-    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-      <span className="text-xs font-bold text-primary">{initials || '?'}</span>
+    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+      active ? 'bg-primary shadow-md ring-2 ring-primary/30' : 'bg-primary/20'
+    }`}>
+      <span className={`text-sm font-bold ${active ? 'text-white' : 'text-primary'}`}>{initials || '?'}</span>
     </div>
   );
 }
@@ -230,7 +246,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
       </div>
 
       {/* Cards */}
-      <div className="flex-1 p-2 space-y-1.5">
+      <div className="flex-1 p-2 space-y-2">
         {agentGroups.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-base-content/30 gap-2">
             <Users size={28} />
@@ -247,22 +263,31 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
             d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
           ).length;
 
+          // Card border/shadow logic
+          let cardClass = 'rounded-xl border transition-all duration-200 ';
+          if (isExpanded) {
+            cardClass += 'border-l-4 border-l-primary border-t border-r border-b border-primary/30 bg-base-100 shadow-lg scale-[1.005]';
+          } else if (hasOverdue) {
+            cardClass += 'border border-red-300 bg-red-50/50 shadow-sm';
+          } else {
+            cardClass += 'border border-base-300 bg-base-100 hover:border-base-content/20 hover:shadow-sm';
+          }
+
           return (
-            <div
-              key={name}
-              className={`rounded-xl border transition-all ${
-                hasOverdue ? 'border-red-300 bg-red-50/50'
-                : isExpanded ? 'border-primary/40 bg-base-100'
-                : 'border-base-300 bg-base-100'
-              }`}
-            >
+            <div key={name} className={cardClass}>
               {/* Tile header */}
-              <div className="flex items-center gap-2 p-3">
-                <AgentAvatar name={name} />
+              <div className={`flex items-center gap-2 p-3 rounded-t-xl ${
+                isExpanded ? 'bg-primary/5 border-b border-primary/20' : ''
+              }`}>
+                <AgentAvatar name={name} active={isExpanded} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-base-content truncate">{name}</p>
-                    <span className="badge badge-primary badge-xs shrink-0">{agentDeals.length}</span>
+                    <p className={`text-sm font-semibold truncate ${
+                      isExpanded ? 'text-primary' : 'text-base-content'
+                    }`}>{name}</p>
+                    <span className={`badge badge-xs shrink-0 ${
+                      isExpanded ? 'badge-primary' : 'badge-primary'
+                    }`}>{agentDeals.length}</span>
                     {missingClientCount > 0 && (
                       <span
                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[9px] font-bold text-amber-700 shrink-0"
@@ -288,7 +313,12 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                 </div>
 
                 {/* View button */}
-                <button className="btn btn-xs btn-ghost gap-0.5 shrink-0" onClick={() => toggleAgent(name)}>
+                <button
+                  className={`btn btn-xs gap-0.5 shrink-0 ${
+                    isExpanded ? 'btn-primary' : 'btn-ghost'
+                  }`}
+                  onClick={() => toggleAgent(name)}
+                >
                   {isExpanded ? <><ChevronUp size={12} /> Hide</> : <><ChevronDown size={12} /> View</>}
                 </button>
 
@@ -316,15 +346,16 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
 
               {/* Expanded deal table */}
               {isExpanded && (
-                <div className="border-t border-base-300 overflow-x-auto">
+                <div className="overflow-x-auto">
                   <table className="w-full text-[14px] border-collapse">
                     <thead>
-                      <tr className="bg-base-200 text-base-content/60 text-[12px] uppercase tracking-wide">
-                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Address</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Side</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Status</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-base-300">Next Due</th>
-                        <th className="border border-base-300 w-8" />
+                      <tr className="bg-primary/10 text-primary text-[12px] uppercase tracking-wide">
+                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Address</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Side</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Type</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Status</th>
+                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Next Due</th>
+                        <th className="border border-primary/20 w-8" />
                       </tr>
                     </thead>
                     <tbody>
@@ -334,7 +365,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                           if (!ai && !bi) return 0; if (!ai) return 1; if (!bi) return -1;
                           return ai.dueDate.localeCompare(bi.dueDate);
                         })
-                        .map(deal => {
+                        .map((deal, idx) => {
                           const nextItem = getNextDueItem(deal);
                           const nextOverdue = nextItem ? nextItem.dueDate < today : false;
                           const side = deal.transactionType ?? 'buyer';
@@ -345,8 +376,12 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                           return (
                             <tr
                               key={deal.id}
-                              className={`hover:bg-base-200 transition-colors ${
-                                noClientAssigned && !isArchived ? 'bg-amber-50/60' : 'bg-base-100'
+                              className={`transition-colors ${
+                                noClientAssigned && !isArchived
+                                  ? 'bg-amber-50/60 hover:bg-amber-100/60'
+                                  : idx % 2 === 0
+                                    ? 'bg-base-100 hover:bg-primary/5'
+                                    : 'bg-base-50 hover:bg-primary/5'
                               }`}
                             >
                               <td
@@ -372,6 +407,12 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                                   ? <span className="flex items-center gap-1 text-blue-600"><ShoppingCart size={11} /> Buy</span>
                                   : <span className="flex items-center gap-1 text-green-600"><Tag size={11} /> Sell</span>}
                               </td>
+                              <td className="px-3 py-2 border border-base-300 whitespace-nowrap">
+                                <span className="flex items-center gap-1 text-base-content/70">
+                                  <Home size={11} className="shrink-0" />
+                                  {propertyTypeLabel(deal.propertyType)}
+                                </span>
+                              </td>
                               <td className="px-3 py-2 border border-base-300">
                                 <div className="flex items-center gap-1.5">
                                   <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
@@ -381,7 +422,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                               <td className="px-3 py-2 border border-base-300">
                                 {nextItem
                                   ? <span className={`block leading-tight ${
-                                      nextOverdue ? 'text-red-500' : 'text-base-content/70'
+                                      nextOverdue ? 'text-red-500 font-medium' : 'text-base-content/70'
                                     }`} title={nextItem.label}>{nextItem.label}</span>
                                   : <span className="text-green-500">Clear</span>}
                               </td>
