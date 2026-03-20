@@ -59,6 +59,10 @@ function AppInner() {
   const [txPanel, setTxPanel]               = useState<'list' | 'workspace'>('list');
   const [txContainerWide, setTxContainerWide] = useState(false);
   const txContainerRef                      = useRef<HTMLDivElement>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('tc-panel-width') || '360') || 360; } catch { return 360; }
+  });
+  const lastWidthRef = useRef<number>(360);
   const [showAdd, setShowAdd]               = useState(false);
   const [loading, setLoading]               = useState(true);
   const [loadError, setLoadError]           = useState<string | null>(null);
@@ -299,6 +303,24 @@ function AppInner() {
     saveMasterItems('dd', updated).catch(console.error);
   };
 
+  const handleResizeStart = (e: React.MouseEvent) => {
+    const startX = e.clientX;
+    const startW = leftPanelWidth;
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.max(260, Math.min(640, startW + (ev.clientX - startX)));
+      lastWidthRef.current = w;
+      setLeftPanelWidth(w);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem('tc-panel-width', String(lastWidthRef.current));
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  };
+
   const handleCallStarted = (cd: {contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string}) => {
     setActiveCall(cd);
     setIsCallMinimized(false);
@@ -498,7 +520,12 @@ function AppInner() {
           {view === 'transactions' && (
             <div ref={txContainerRef} className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
               {(txContainerWide || txPanel === 'list') && (
-                <div className={txContainerWide ? 'flex-none' : 'flex-1'} style={{ display: 'flex', flexDirection: 'column' }}>
+                <div
+                  className={txContainerWide ? 'flex-none' : 'flex-1'}
+                  style={txContainerWide
+                    ? { width: leftPanelWidth, minWidth: 260, display: 'flex', flexDirection: 'column' }
+                    : { display: 'flex', flexDirection: 'column' }}
+                >
                   {/* View mode toggle */}
                   <div className="flex items-center gap-0 bg-white border-b border-base-300 shrink-0">
                     <button
@@ -535,6 +562,16 @@ function AppInner() {
                       onChangeStatus={handleChangeStatus}
                     />
                   )}
+                </div>
+              )}
+
+              {txContainerWide && (
+                <div
+                  className="w-1 flex-none bg-base-200 hover:bg-primary/40 active:bg-primary/60 transition-colors cursor-col-resize select-none relative group"
+                  onMouseDown={handleResizeStart}
+                  title="Drag to resize"
+                >
+                  <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-primary/10" />
                 </div>
               )}
 
