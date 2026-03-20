@@ -1,18 +1,17 @@
 FROM node:20-alpine
-
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install all dependencies (including devDeps for tsx)
+# Install ALL dependencies (including devDeps needed by tsx/typescript)
 RUN npm install
 
-# Copy source code
+# Copy rest of source
 COPY . .
 
-# Expose port
-EXPOSE 3001
+# Expose server port
+EXPOSE 3000
 
 # Start the server
 CMD ["npx", "tsx", "server/index.ts"]
