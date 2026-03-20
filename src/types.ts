@@ -783,3 +783,116 @@ export interface BriefingConfig {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Request Center ─────────────────────────────────────────────────────────────
+
+export type RequestType =
+  | 'earnest_money_receipt'
+  | 'inspection_complete'
+  | 'repair_request'
+  | 'seller_credit_change';
+
+export type RequestStatus =
+  | 'draft'
+  | 'sent'
+  | 'waiting'
+  | 'reply_received'
+  | 'document_received'
+  | 'under_review'
+  | 'accepted'
+  | 'rejected'
+  | 'needs_follow_up'
+  | 'completed'
+  | 'overdue'
+  | 'cancelled';
+
+export type RequestEventType =
+  | 'created'
+  | 'sent'
+  | 'reminder_sent'
+  | 'reply_received'
+  | 'document_received'
+  | 'reviewed'
+  | 'accepted'
+  | 'rejected'
+  | 'follow_up_sent'
+  | 'status_changed'
+  | 'note_added';
+
+export type RequestDocumentStatus =
+  | 'received'
+  | 'under_review'
+  | 'accepted'
+  | 'rejected'
+  | 'wrong_document'
+  | 'duplicate';
+
+export type ExpectedResponseType = 'document_or_reply' | 'email_reply';
+
+export interface RequestRecord {
+  id: string;
+  dealId: string;
+  requestType: RequestType;
+  status: RequestStatus;
+  requestedFromContactId?: string;
+  requestedFromName?: string;
+  requestedFromEmail?: string;
+  outboundMessageId?: string;
+  taskId?: string;
+  subjectToken?: string;
+  notes?: string;
+  requiresReview: boolean;
+  expectedResponseType: ExpectedResponseType;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined / nested
+  dealAddress?: string;
+  events?: RequestEvent[];
+  documents?: RequestDocument[];
+}
+
+export interface RequestEvent {
+  id: string;
+  requestId: string;
+  eventType: RequestEventType;
+  description?: string;
+  actor?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface RequestDocument {
+  id: string;
+  requestId: string;
+  fileName: string;
+  fileUrl?: string;
+  storagePath?: string;
+  reviewStatus: RequestDocumentStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  notes?: string;
+  source: 'upload' | 'email';
+  gmailMessageId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InboundMessage {
+  id: string;
+  requestId?: string;
+  gmailThreadId?: string;
+  gmailMessageId?: string;
+  fromEmail?: string;
+  fromName?: string;
+  subject?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  receivedAt?: string;
+  matchedVia?: 'thread_id' | 'subject_token' | 'sender' | 'manual';
+  hasAttachments: boolean;
+  processed: boolean;
+  createdAt: string;
+}

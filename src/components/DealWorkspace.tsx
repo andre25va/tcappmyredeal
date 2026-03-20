@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
@@ -53,8 +53,9 @@ import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 import WorkspaceEmailCompose from './WorkspaceEmailCompose';
 import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
+import { WorkspaceRequests } from './WorkspaceRequests';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments';
 
 interface Props {
   deal: Deal;
@@ -161,6 +162,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'tasks',      label: 'Tasks',      icon: <ListChecks size={13} />, badge: overdueTasks > 0 ? overdueTasks : undefined },
     { id: 'contacts',   label: 'Contacts',   icon: <Users size={13} /> },
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
+    { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} /> },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
@@ -370,6 +372,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             )}
           </div>
         )}
+        {tab === 'requests'   && <WorkspaceRequests deal={deal} />}
         {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
         {tab === 'linked-emails' && (
           <WorkspaceLinkedEmails

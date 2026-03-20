@@ -19,6 +19,7 @@ interface SendEmailRequest {
   templateName?: string;
   emailType?: string; // 'deal' | 'briefing' | 'manual'
   sentBy?: string;
+  requestId?: string; // links sent email to a request record
 }
 
 serve(async (req: Request) => {
@@ -59,6 +60,7 @@ serve(async (req: Request) => {
         sent_by: payload.sentBy || 'system',
         gmail_message_id: null,
         gmail_thread_id: null,
+        request_id: payload.requestId || null,
       });
 
       return errorResponse(`Failed to send email: ${result.error}`, 502);
@@ -66,7 +68,7 @@ serve(async (req: Request) => {
 
     // Log successful send
     const supabase = getSupabaseClient();
-    const { error: logError } = await supabase.from('email_send_log').insert({
+    const { data: logData, error: logError } = await supabase.from('email_send_log').insert({
       deal_id: payload.dealId || null,
       template_id: payload.templateId || null,
       template_name: payload.templateName || null,
@@ -78,7 +80,8 @@ serve(async (req: Request) => {
       gmail_thread_id: result.threadId,
       email_type: payload.emailType || 'deal',
       sent_by: payload.sentBy || 'system',
-    });
+      request_id: payload.requestId || null,
+    }).select('id').single();
 
     if (logError) {
       console.error('Failed to log email send:', logError);
@@ -88,6 +91,7 @@ serve(async (req: Request) => {
       success: true,
       messageId: result.messageId,
       threadId: result.threadId,
+      logId: logData?.id || null,
     });
   } catch (error) {
     console.error('send-email error:', error);

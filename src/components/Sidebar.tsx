@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList,
 } from 'lucide-react';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
-  | 'email-review';
+  | 'email-review' | 'requests';
 
 const APP_VERSION = 'v2026.03.18.17';
 
@@ -20,6 +20,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
   { view: 'inbox',         label: 'Inbox',        icon: <MessageSquare size={18} /> },
   { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
+  { view: 'requests',      label: 'Requests',     icon: <ClipboardList size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
   { view: 'voice',         label: 'Voice',        icon: <Phone size={18} /> },
   { view: 'reports',       label: 'AI Reports',   icon: <BarChart2 size={18} /> },
@@ -36,6 +37,7 @@ interface SidebarProps {
   tasksPending: number;
   voicePending: number;
   emailQueuePending: number;
+  requestsPending: number;
   needsReviewCount: number;
   unmatchedCount: number;
   onSetInboxSubTab: (tab: 'needs_review' | 'unmatched') => void;
@@ -60,7 +62,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
-  inboxUnread, tasksPending, voicePending, emailQueuePending,
+  inboxUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
   needsReviewCount, unmatchedCount, onSetInboxSubTab,
   onLogout, userName, userRole, userInitials,
 }) => {
@@ -69,6 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (v === 'tasks') return tasksPending;
     if (v === 'voice') return voicePending;
     if (v === 'email-review') return emailQueuePending;
+    if (v === 'requests') return requestsPending;
     return 0;
   };
 
