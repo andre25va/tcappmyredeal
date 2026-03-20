@@ -1,4 +1,6 @@
+import { useAuth } from '../lib/auth';
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../lib/auth';
 import ReactDOM from 'react-dom';
 import {
   CheckCircle2, Circle, Plus, Trash2, ClipboardList, Shield,
@@ -742,6 +744,8 @@ const ComplianceTabPanel: React.FC<{
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [], contactRecords = [], complianceTemplates = [] }) => {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [activeTab, setActiveTab]               = useState<'dd' | 'compliance'>('dd');
   const [showCompleted, setShowCompleted]       = useState(true);
   const [showViewModal, setShowViewModal]       = useState(false);
@@ -815,7 +819,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
 
   const log = (d: Deal, msg: string): Deal => ({
     ...d,
-    activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: msg, user: 'TC Staff', type: 'checklist' }, ...d.activityLog],
+    activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: msg, user: userName, type: 'checklist' }, ...d.activityLog],
     updatedAt: new Date().toISOString(),
   });
 
@@ -823,7 +827,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
   const completeDDFromModal = (id: string) => {
     const item = deal.dueDiligenceChecklist.find(i => i.id === id)!;
     const dateStr = completionDate || new Date().toISOString().split('T')[0];
-    const userStr = completionUser || users.find(u => u.active)?.name || 'TC Staff';
+    const userStr = completionUser || users.find(u => u.active)?.name || userName;
     onUpdate(log({
       ...deal,
       dueDiligenceChecklist: deal.dueDiligenceChecklist.map(i =>
@@ -877,7 +881,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
     onUpdate(log({
       ...deal,
       complianceChecklist: deal.complianceChecklist.map(i =>
-        i.id === id ? { ...i, completed, completedAt: completed ? new Date().toISOString() : undefined, completedBy: completed ? 'TC Staff' : undefined } : i
+        i.id === id ? { ...i, completed, completedAt: completed ? new Date().toISOString() : undefined, completedBy: completed ? userName : undefined } : i
       ),
     }, `Compliance: "${item.title}" marked ${completed ? 'complete ✓' : 'incomplete'}`));
   };
@@ -1252,7 +1256,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
               complianceChecklist: loadedItems,
               activityLog: [
                 ...(deal.activityLog ?? []),
-                { id: generateId(), action: `Compliance template loaded: "${tpl.name}"`, timestamp: new Date().toISOString(), user: 'TC Staff', type: 'note' as const },
+                { id: generateId(), action: `Compliance template loaded: "${tpl.name}"`, timestamp: new Date().toISOString(), user: userName, type: 'note' as const },
               ],
             });
           }}

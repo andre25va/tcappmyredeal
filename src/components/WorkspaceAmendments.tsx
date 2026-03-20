@@ -1,3 +1,4 @@
+import { useAuth } from '../lib/auth';
 import React, { useState, useEffect } from 'react';
 import {
   Plus, X, FileText, Edit3, ChevronDown, ChevronRight,
@@ -113,7 +114,7 @@ function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: Amendm
       description: form.description?.trim() ?? '',
       new_values,
       created_at: existing?.created_at ?? new Date().toISOString(),
-      created_by: existing?.created_by ?? 'TC Staff',
+      created_by: existing?.created_by ?? userName,
     };
 
     const { error } = existing
@@ -313,6 +314,8 @@ function AmendmentCard({ amendment, onEdit, onDelete }: CardProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function WorkspaceAmendments({ deal, onUpdate }: Props) {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

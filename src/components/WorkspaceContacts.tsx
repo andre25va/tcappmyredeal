@@ -1,3 +1,4 @@
+import { useAuth } from '../lib/auth';
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink, FileText, Send, PhoneCall, PhoneOff } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
@@ -892,6 +893,8 @@ const SideSection: React.FC<SideSectionProps> = ({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);
@@ -961,7 +964,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       ...agentOverride,
       contacts: [...deal.contacts, contact],
       participants: [...(deal.participants || []), newParticipant],
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
+      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: userName, type: 'contact_added' }, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
   };
@@ -983,7 +986,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     onUpdate({
       ...deal,
       contacts: deal.contacts.filter(x => x.id !== id),
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact removed: ${c?.name}`, user: 'TC Staff', type: 'contact_added' }, ...deal.activityLog],
+      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact removed: ${c?.name}`, user: userName, type: 'contact_added' }, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
   };
@@ -1017,7 +1020,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           : c
       ),
       activityLog: [
-        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: 'TC Staff', type: 'contact_added' },
+        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
         ...deal.activityLog,
       ],
       updatedAt: new Date().toISOString(),

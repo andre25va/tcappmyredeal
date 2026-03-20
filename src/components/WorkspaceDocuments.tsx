@@ -1,3 +1,4 @@
+import { useAuth } from '../lib/auth';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Upload, FileText, Link2, AlertTriangle, CheckCircle2, Clock,
@@ -406,6 +407,8 @@ function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function WorkspaceDocuments({ deal, onUpdate }: Props) {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [docs, setDocs] = useState<DealDocument[]>([]);
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmailDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -730,7 +733,7 @@ function RequestModal({ existing, onSave, onClose }: RequestModalProps) {
   const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(p => ({ ...p, [k]: e.target.value }));
   const handleSave = () => {
-    onSave({ ...form, id: existing?.id ?? generateId(), requestedAt: existing?.requestedAt ?? new Date().toISOString(), requestedBy: existing?.requestedBy ?? 'TC Staff', status: form.status ?? 'pending' } as DocumentRequest);
+    onSave({ ...form, id: existing?.id ?? generateId(), requestedAt: existing?.requestedAt ?? new Date().toISOString(), requestedBy: existing?.requestedBy ?? userName, status: form.status ?? 'pending' } as DocumentRequest);
     onClose();
   };
   return (
