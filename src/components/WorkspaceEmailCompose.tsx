@@ -128,6 +128,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
     .replace(/\{\{buyersSide\}\}/g, buyersSide);
+}
 
 // ── Email chip input ────────────────────────────────────────────────────────
 
