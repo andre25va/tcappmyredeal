@@ -1,41 +1,12 @@
 {
-  "name": "myredeal",
+  "name": "tcappmyredeal",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "server": "tsx server/index.ts",
-    "server:dev": "tsx watch server/index.ts"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "lucide-react": "^0.469.0",
-    "daisyui": "^4.12.23",
-    "@supabase/supabase-js": "^2.47.0",
-    "imapflow": "^1.0.169",
-    "twilio": "^5.3.5",
-    "express": "^4.21.0",
-    "cors": "^2.8.5",
-    "tsx": "^4.7.0",
-    "openai": "^4.0.0",
-    "pdf-parse": "^1.1.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vercel/node": "^3.2.26",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.6.2",
-    "vite": "^6.0.5",
-    "@types/express": "^4.17.21",
-    "@types/cors": "^2.8.17",
-    "@types/pdf-parse": "^1.1.4"
+    "build": "tsc && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   }
 }
