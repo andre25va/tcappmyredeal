@@ -896,6 +896,8 @@ const SideSection: React.FC<SideSectionProps> = ({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);

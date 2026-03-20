@@ -62,6 +62,8 @@ interface AmendmentFormProps {
 }
 
 function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: AmendmentFormProps) {
+  const { profile } = useAuth();
+  const userName = profile?.full_name || profile?.name || 'TC Staff';
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<Partial<Amendment>>(existing ?? {
     amendment_number: nextNumber,
