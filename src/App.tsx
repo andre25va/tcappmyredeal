@@ -35,6 +35,7 @@ import { useAudit } from './hooks/useAudit';
 import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
+import { RequestCenterView } from './components/RequestCenterView';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -72,6 +73,7 @@ function AppInner() {
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
   const [emailQueuePending, setEmailQueuePending] = useState(0);
+  const [requestsPending, setRequestsPending]     = useState(0);
   const [needsReviewCount, setNeedsReviewCount]   = useState(0);
   const [unmatchedCount, setUnmatchedCount]        = useState(0);
   const [inboxInitEmailSubTab, setInboxInitEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched' | undefined>(undefined);
@@ -246,7 +248,24 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
-  // ── Keep selectedId valid ────────────────────────────────────────────────────
+  // ── Poll request center pending count ───────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    const fetchRequestCount = async () => {
+      try {
+        const { count } = await supabase
+          .from('requests')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['reply_received', 'document_received', 'under_review']);
+        setRequestsPending(count || 0);
+      } catch { /* silent */ }
+    };
+    fetchRequestCount();
+    const t = setInterval(fetchRequestCount, 60000);
+    return () => clearInterval(t);
+  }, [profile]);
+
+    // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
     if (deals.length === 0) {
       if (selectedId !== null) setSelectedId(null);
@@ -453,6 +472,7 @@ function AppInner() {
     tasksPending,
     voicePending,
     emailQueuePending,
+    requestsPending,
     needsReviewCount,
     unmatchedCount,
     onSetInboxSubTab: (subTab: 'needs_review' | 'unmatched') => {
@@ -496,7 +516,7 @@ function AppInner() {
           <div className="flex items-center h-12 px-3 gap-3">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
-              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
             <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
@@ -652,6 +672,15 @@ function AppInner() {
             <div className="flex-1 overflow-hidden">
               <EmailReviewQueueView
                 deals={deals}
+                onSelectDeal={handleSelectDeal}
+              />
+            </div>
+          )}
+
+
+          {view === 'requests' && (
+            <div className="flex-1 overflow-hidden">
+              <RequestCenterView
                 onSelectDeal={handleSelectDeal}
               />
             </div>
