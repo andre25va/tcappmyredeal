@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Users, FileDown, Plus, Pencil, Trash2, X, Check,
   Download, Building2, ClipboardList, Globe, Shield,
-  AlertCircle, Mail, Link, FileDown as _fd,
+  AlertCircle, Mail, Link, FileDown as _fd, Bell,
 } from 'lucide-react';
 import {
   AppUser, UserRole, Deal, ContactRecord, MlsEntry,
@@ -11,14 +11,15 @@ import {
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 
-// ── Tab sub-components (each in their own file) ───────────────────────────────
+// -- Tab sub-components
 import { EmailTemplatesTab }      from './settings/EmailTemplatesTab';
 import { DDChecklistTab }          from './settings/DDChecklistTab';
 import { ComplianceChecklistTab }  from './settings/ComplianceChecklistTab';
 import { AccessUsersTab }          from './settings/AccessUsersTab';
 import { LicenseLinksTab }         from './settings/LicenseLinksTab';
+import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+// -- Props
 
 interface Props {
   users: AppUser[];
@@ -36,7 +37,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -44,7 +45,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   staff: 'Staff',
 };
 
-// ── CSV helpers ───────────────────────────────────────────────────────────────
+// -- CSV helpers
 
 function toCSV(headers: string[], rows: (string | number | boolean | undefined | null)[][]): string {
   const escape = (v: string | number | boolean | undefined | null) => {
@@ -63,7 +64,7 @@ function downloadCSV(filename: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
-// ── Legacy UserForm (used only by old team tab) ───────────────────────────────
+// -- Legacy UserForm
 
 interface UserFormProps {
   user?: AppUser;
@@ -124,7 +125,7 @@ function UserForm({ user, onSave, onClose }: UserFormProps) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// -- Main component
 
 export const SettingsView: React.FC<Props> = ({
   users, onSaveUsers, deals, contactRecords, mlsEntries, complianceTemplates, storageMode,
@@ -260,6 +261,7 @@ export const SettingsView: React.FC<Props> = ({
           { id: 'team' as SettingsTab,                  label: 'Access & Users',       icon: <Shield size={14}/> },
           { id: 'license-links' as SettingsTab,         label: 'License Lookup',       icon: <Link size={14}/> },
           { id: 'email-templates' as SettingsTab,       label: 'Email Templates',      icon: <Mail size={14}/> },
+          { id: 'briefing' as SettingsTab,              label: 'Morning Briefing',     icon: <Bell size={14}/> },
           { id: 'dd-checklist' as SettingsTab,          label: 'Due Diligence',        icon: <ClipboardList size={14}/> },
           { id: 'compliance-checklist' as SettingsTab,  label: 'Compliance Checklist', icon: <Shield size={14}/> },
           { id: 'reports' as SettingsTab,               label: 'CSV Reports',          icon: <FileDown size={14}/> },
@@ -290,6 +292,7 @@ export const SettingsView: React.FC<Props> = ({
         {tab === 'email-templates' && (
           <EmailTemplatesTab emailTemplates={emailTemplates} onSave={onSaveEmailTemplates} />
         )}
+        {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
             <div className="bg-base-200 rounded-xl p-4 flex items-start gap-3">
@@ -323,7 +326,7 @@ export const SettingsView: React.FC<Props> = ({
               ))}
             </div>
             <div className="text-center text-xs text-base-content/35 pt-2">
-              All exports reflect live data — re-export anytime for the latest snapshot.
+              All exports reflect live data - re-export anytime for the latest snapshot.
             </div>
           </div>
         )}
