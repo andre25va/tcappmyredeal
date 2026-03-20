@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell, Clock, Mail, Save, Send, CheckCircle2,
-  AlertCircle, Loader2, X, Plus, ToggleLeft, ToggleRight, Users,
+  AlertCircle, Loader2, X, Plus, ToggleLeft, ToggleRight, Users, Search,
 } from 'lucide-react';
 import { loadBriefingConfig, saveBriefingConfig } from '../../utils/supabaseDb';
 import { supabase } from '../../lib/supabase';
@@ -17,13 +17,14 @@ const TIMEZONES = [
   { value: 'Pacific/Honolulu',     label: 'Hawaii Time (HST)' },
 ];
 
-interface AgentBriefingContact {
+interface AgentContact {
   id: string;
   fullName: string;
   email: string;
   briefingEnabled: boolean;
 }
 
+/* ─── Email chip input ─────────────────────────────────────────────────── */
 function EmailChipInput({
   emails,
   onChange,
@@ -80,6 +81,7 @@ function EmailChipInput({
   );
 }
 
+/* ─── Section toggle ───────────────────────────────────────────────────── */
 function SectionToggle({
   label,
   description,
@@ -115,15 +117,98 @@ function SectionToggle({
   );
 }
 
+/* ─── Agent avatar ─────────────────────────────────────────────────────── */
 function AgentAvatar({ name }: { name: string }) {
   const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
-    <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+    <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
       <span className="text-xs font-bold text-primary">{initials || '?'}</span>
     </div>
   );
 }
 
+/* ─── Searchable agent dropdown ────────────────────────────────────────── */
+function AgentSearchDropdown({
+  allAgents,
+  enabledIds,
+  onAdd,
+}: {
+  allAgents: AgentContact[];
+  enabledIds: Set<string>;
+  onAdd: (agent: AgentContact) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const available = allAgents.filter(
+    (a) => !enabledIds.has(a.id) && a.email &&
+      a.fullName.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="flex items-center gap-2 border border-base-300 rounded-lg px-3 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 bg-base-100 cursor-text"
+        onClick={() => setOpen(true)}
+      >
+        <Search size={14} className="text-base-content/40 shrink-0" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search agents to add..."
+          className="flex-1 outline-none text-sm bg-transparent"
+        />
+      </div>
+
+      {open && available.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-50 max-h-52 overflow-y-auto">
+          {available.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-base-200 transition-colors text-left"
+              onMouseDown={(e) => {
+                e.preventDefault(); // prevent blur closing before click registers
+                onAdd(agent);
+                setQuery('');
+                setOpen(false);
+              }}
+            >
+              <AgentAvatar name={agent.fullName} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-base-content truncate">{agent.fullName}</p>
+                <p className="text-xs text-base-content/50 truncate">{agent.email}</p>
+              </div>
+              <Plus size={14} className="text-primary shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {open && available.length === 0 && query.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-50 px-3 py-3 text-sm text-base-content/50">
+          No matching active agents found.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main component ───────────────────────────────────────────────────── */
 export function BriefingConfigPanel() {
   const [config, setConfig] = useState<BriefingConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,7 +216,7 @@ export function BriefingConfigPanel() {
   const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const [agentContacts, setAgentContacts] = useState<AgentBriefingContact[]>([]);
+  const [allAgents, setAllAgents] = useState<AgentContact[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
 
@@ -139,24 +224,24 @@ export function BriefingConfigPanel() {
     loadBriefingConfig()
       .then(setConfig)
       .finally(() => setLoading(false));
-
-    loadAgentContacts();
+    fetchAgents();
   }, []);
 
-  async function loadAgentContacts() {
+  async function fetchAgents() {
     setAgentsLoading(true);
     try {
       const { data, error } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, briefing_enabled')
         .eq('contact_type', 'agent')
-        .eq('is_active', true)
+        .eq('is_active', true)          // inactive agents never appear
+        .not('email', 'is', null)       // must have an email to receive briefings
         .order('last_name', { ascending: true });
 
       if (error) throw error;
-      setAgentContacts((data ?? []).map((row: any) => ({
+      setAllAgents((data ?? []).map((row: any) => ({
         id: row.id,
-        fullName: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+        fullName: row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim() || '(unnamed)',
         email: row.email || '',
         briefingEnabled: row.briefing_enabled ?? false,
       })));
@@ -167,19 +252,37 @@ export function BriefingConfigPanel() {
     }
   }
 
-  async function toggleAgentBriefing(contactId: string, currentValue: boolean) {
-    setTogglingAgent(contactId);
+  // Agents currently enabled for briefings
+  const enabledAgents = allAgents.filter(a => a.briefingEnabled);
+  const enabledIds = new Set(enabledAgents.map(a => a.id));
+
+  async function addAgent(agent: AgentContact) {
+    setTogglingAgent(agent.id);
     try {
       const { error } = await supabase
         .from('contacts')
-        .update({ briefing_enabled: !currentValue, updated_at: new Date().toISOString() })
-        .eq('id', contactId);
+        .update({ briefing_enabled: true, updated_at: new Date().toISOString() })
+        .eq('id', agent.id);
       if (error) throw error;
-      setAgentContacts(prev =>
-        prev.map(a => a.id === contactId ? { ...a, briefingEnabled: !currentValue } : a)
-      );
+      setAllAgents(prev => prev.map(a => a.id === agent.id ? { ...a, briefingEnabled: true } : a));
     } catch (e: any) {
-      showToast('error', 'Failed to update agent briefing: ' + (e.message || ''));
+      showToast('error', 'Failed to enable briefing: ' + (e.message || ''));
+    } finally {
+      setTogglingAgent(null);
+    }
+  }
+
+  async function removeAgent(agentId: string) {
+    setTogglingAgent(agentId);
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ briefing_enabled: false, updated_at: new Date().toISOString() })
+        .eq('id', agentId);
+      if (error) throw error;
+      setAllAgents(prev => prev.map(a => a.id === agentId ? { ...a, briefingEnabled: false } : a));
+    } catch (e: any) {
+      showToast('error', 'Failed to disable briefing: ' + (e.message || ''));
     } finally {
       setTogglingAgent(null);
     }
@@ -261,8 +364,6 @@ export function BriefingConfigPanel() {
     );
   }
 
-  const enabledAgentCount = agentContacts.filter(a => a.briefingEnabled).length;
-
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
 
@@ -334,7 +435,7 @@ export function BriefingConfigPanel() {
         </div>
       </div>
 
-      {/* Recipients */}
+      {/* TC Recipients */}
       <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-base-content flex items-center gap-2">
           <Mail size={15} className="text-primary" /> TC Recipients
@@ -346,7 +447,7 @@ export function BriefingConfigPanel() {
         />
       </div>
 
-      {/* Sections */}
+      {/* Briefing Sections */}
       <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-base-content">Briefing Sections</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -378,65 +479,68 @@ export function BriefingConfigPanel() {
       </div>
 
       {/* Per-Agent Briefings */}
-      <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-3">
+      <div className="bg-base-100 border border-base-300 rounded-xl p-5 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-base-content flex items-center gap-2">
             <Users size={15} className="text-primary" /> Per-Agent Briefings
-            {enabledAgentCount > 0 && (
-              <span className="badge badge-primary badge-sm">{enabledAgentCount} active</span>
+            {enabledAgents.length > 0 && (
+              <span className="badge badge-primary badge-sm">{enabledAgents.length} active</span>
             )}
           </h3>
         </div>
-        <p className="text-xs text-base-content/50 leading-relaxed">
-          Each enabled agent receives a personalized morning email showing only their own active deals,
-          tasks, and pending documents. Uses the same schedule as the global briefing.
+        <p className="text-xs text-base-content/50 leading-relaxed -mt-2">
+          Each enabled agent receives a personalized morning email showing only their deals.
+          Inactive agents are automatically excluded and removed from this list.
         </p>
 
+        {/* Enabled agent chips */}
         {agentsLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <span className="loading loading-spinner loading-sm text-primary" />
+          <div className="flex items-center gap-2 text-sm text-base-content/50">
+            <Loader2 size={14} className="animate-spin" /> Loading agents...
           </div>
-        ) : agentContacts.length === 0 ? (
-          <div className="text-center py-6 text-base-content/40 text-sm">
-            No agent clients found. Add agent contacts in the Contacts directory first.
-          </div>
-        ) : (
-          <div className="divide-y divide-base-200">
-            {agentContacts.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+        ) : enabledAgents.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {enabledAgents.map((agent) => (
+              <div
+                key={agent.id}
+                className="flex items-center gap-2 px-3 py-1.5 bg-primary/8 border border-primary/20 rounded-full text-sm"
+              >
                 <AgentAvatar name={agent.fullName} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-base-content truncate">{agent.fullName}</p>
-                  {agent.email ? (
-                    <p className="text-xs text-base-content/50 truncate">{agent.email}</p>
-                  ) : (
-                    <p className="text-xs text-amber-500">No email — cannot send briefing</p>
-                  )}
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium text-base-content text-xs leading-tight truncate max-w-[120px]">{agent.fullName}</span>
+                  <span className="text-base-content/50 text-[10px] truncate max-w-[120px]">{agent.email}</span>
                 </div>
-                {agent.briefingEnabled && (
-                  <span className="badge badge-xs bg-green-100 text-green-700 border-green-200 shrink-0">
-                    Enabled
-                  </span>
-                )}
                 <button
-                  className={`btn btn-xs gap-1 shrink-0 ${
-                    agent.briefingEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'
-                  }`}
-                  disabled={!agent.email || togglingAgent === agent.id}
-                  onClick={() => toggleAgentBriefing(agent.id, agent.briefingEnabled)}
-                  title={!agent.email ? 'Agent has no email address' : ''}
+                  type="button"
+                  className="ml-1 text-base-content/40 hover:text-red-500 transition-colors disabled:opacity-40"
+                  disabled={togglingAgent === agent.id}
+                  onClick={() => removeAgent(agent.id)}
+                  title="Remove from briefing list"
                 >
-                  {togglingAgent === agent.id ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : agent.briefingEnabled ? (
-                    <><ToggleRight size={13} /> On</>
-                  ) : (
-                    <><ToggleLeft size={13} /> Off</>
-                  )}
+                  {togglingAgent === agent.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <X size={12} />}
                 </button>
               </div>
             ))}
           </div>
+        ) : (
+          <p className="text-xs text-base-content/40 italic">
+            No agents added yet — use the search below to add agents.
+          </p>
+        )}
+
+        {/* Searchable dropdown to add more */}
+        <AgentSearchDropdown
+          allAgents={allAgents}
+          enabledIds={enabledIds}
+          onAdd={addAgent}
+        />
+
+        {allAgents.length === 0 && !agentsLoading && (
+          <p className="text-xs text-base-content/40 text-center py-2">
+            No active agent contacts with email addresses found.
+          </p>
         )}
       </div>
 
@@ -454,14 +558,14 @@ export function BriefingConfigPanel() {
           className="btn btn-outline btn-sm gap-1.5"
           onClick={handleTestSend}
           disabled={saving || testing || config.toAddresses.length === 0}
-          title={config.toAddresses.length === 0 ? 'Add at least one recipient first' : ''}
+          title={config.toAddresses.length === 0 ? 'Add at least one TC recipient first' : ''}
         >
           {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           Send Test Now
         </button>
         <span className="text-xs text-base-content/40 ml-auto">
           {config.toAddresses.length} TC recipient{config.toAddresses.length !== 1 ? 's' : ''}
-          {enabledAgentCount > 0 && ` · ${enabledAgentCount} agent${enabledAgentCount > 1 ? 's' : ''}`}
+          {enabledAgents.length > 0 && ` · ${enabledAgents.length} agent${enabledAgents.length > 1 ? 's' : ''}`}
         </span>
       </div>
 
