@@ -50,8 +50,8 @@ function AppInner() {
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
-  const [view, setView]                     = useState<View>('dashboard');
-  const [listMode, setListMode]             = useState<'deals' | 'agents'>('deals');
+  const [view, setView]                     = useState<View>('transactions');
+  const [listMode, setListMode]             = useState<'deals' | 'agents'>('agents');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
   const [deals, setDeals]                   = useState<Deal[]>([]);
