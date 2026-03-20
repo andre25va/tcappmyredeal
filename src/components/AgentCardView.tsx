@@ -142,12 +142,9 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
   }), [deals, viewFilter]);
 
   // Group by "our client" agents (buyerAgent.isOurClient / sellerAgent.isOurClient)
-  // This mirrors the exact same source as the "our client" badge in WorkspaceContacts.
-  // A deal with both sides represented appears under BOTH agent tiles.
   const agentGroups = useMemo(() => {
     const map = new Map<string, { deals: Deal[]; type: 'buyer' | 'seller' | 'mixed' }>();
     filteredDeals.forEach(deal => {
-      // Collect every "our client" agent on this deal
       const entries: Array<{ name: string; side: 'buyer' | 'seller' }> = [];
       if (deal.buyerAgent?.isOurClient && deal.buyerAgent.name) {
         entries.push({ name: deal.buyerAgent.name, side: 'buyer' });
@@ -155,7 +152,6 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
       if (deal.sellerAgent?.isOurClient && deal.sellerAgent.name) {
         entries.push({ name: deal.sellerAgent.name, side: 'seller' });
       }
-      // Fallback: use agentName if no isOurClient flags are set
       if (entries.length === 0) {
         const fallback = deal.agentName || 'Unknown Agent';
         const side: 'buyer' | 'seller' = (deal.transactionType === 'seller') ? 'seller' : 'buyer';
@@ -192,7 +188,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
   };
 
   return (
-    <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80 overflow-y-auto" ref={menuContainerRef}>
+    <div className="w-full bg-base-200 border-r border-base-300 flex flex-col h-full overflow-y-auto" ref={menuContainerRef}>
       {/* Header */}
       <div className="px-3 py-2 border-b border-base-300 shrink-0 space-y-2">
         {/* View filter pills */}
@@ -247,7 +243,6 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
           const hasOverdue = topTask?.overdue ?? false;
           const today = new Date().toISOString().slice(0, 10);
           const tileMenuId = `tile-${name}`;
-          // Flag tile if any deal is missing an agent client
           const missingClientCount = agentDeals.filter(
             d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
           ).length;
@@ -345,7 +340,6 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                           const side = deal.transactionType ?? 'buyer';
                           const isArchived = deal.milestone === 'archived';
                           const rowMenuId = `row-${deal.id}`;
-                          // True if this deal has no agent client assigned on either side
                           const noClientAssigned = !deal.buyerAgent?.isOurClient && !deal.sellerAgent?.isOurClient;
 
                           return (
@@ -387,7 +381,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                               <td className="max-w-[80px]">
                                 {nextItem
                                   ? <span className={`truncate block ${nextOverdue ? 'text-red-500' : 'text-base-content/60'}`} title={nextItem.label}>{nextItem.label}</span>
-                                  : <span className="text-green-500">✓ Clear</span>}
+                                  : <span className="text-green-500">Clear</span>}
                               </td>
                               {/* 3-dot row menu */}
                               <td className="w-6">
