@@ -10,6 +10,7 @@ export interface EmailTemplate {
   subject: string;        // supports {{merge}} tags
   body: string;           // supports {{merge}} tags
   buttons: ConfirmationButton[];
+  category?: string;
   isDefault?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -722,4 +723,63 @@ export interface CallerContext {
     city?: string;
     state?: string;
   }>;
+}
+
+// ── Email Automation ─────────────────────────────────────────────────────────
+
+export type EmailSendStatus = 'pending' | 'processing' | 'sent' | 'failed' | 'cancelled';
+export type EmailType = 'deal' | 'briefing' | 'reminder';
+
+export interface ScheduledEmail {
+  id: string;
+  dealId?: string;
+  templateId?: string;
+  toAddresses: string[];
+  ccAddresses: string[];
+  bccAddresses: string[];
+  subject: string;
+  bodyHtml: string;
+  scheduledAt: string;
+  status: EmailSendStatus;
+  errorMessage?: string;
+  retryCount: number;
+  emailType: EmailType;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields
+  dealAddress?: string;
+  templateName?: string;
+}
+
+export interface EmailSendLogEntry {
+  id: string;
+  dealId?: string;
+  templateId?: string;
+  templateName?: string;
+  toAddresses: string[];
+  ccAddresses: string[];
+  subject: string;
+  bodyHtml: string;
+  gmailMessageId?: string;
+  gmailThreadId?: string;
+  emailType: EmailType;
+  sentBy?: string;
+  sentAt: string;
+}
+
+export interface BriefingConfig {
+  id: string;
+  enabled: boolean;
+  sendTime: string; // HH:MM format
+  timezone: string;
+  toAddresses: string[];
+  templateId?: string;
+  includeOverdueTasks: boolean;
+  includeUpcomingCloses: boolean;
+  includePendingDocs: boolean;
+  includeNewEmails: boolean;
+  lastSentAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
