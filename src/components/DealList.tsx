@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
-import { Deal, DealStatus, DirectoryContact } from '../types';
+import { Deal, DealStatus, ContactRecord } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
   statusLabel, statusDot, closingCountdown, formatCurrency,
@@ -13,7 +13,7 @@ interface Props {
   onSelect: (id: string) => void;
   amberFilter?: boolean;
   onClearAmberFilter?: () => void;
-  directory?: DirectoryContact[];
+  contactRecords?: ContactRecord[];
 }
 
 const STATUS_FILTERS: { label: string; value: DealStatus | 'all' }[] = [
@@ -160,7 +160,7 @@ const renderDealCard = (
   );
 };
 
-export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFilter = false, onClearAmberFilter, directory = [] }) => {
+export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFilter = false, onClearAmberFilter, contactRecords = [] }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
@@ -180,15 +180,15 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
     if (d.milestone === 'archived') return showArchived;
 
     const q = search.toLowerCase();
-    const agentClient = d.agentClientId ? directory.find(c => c.id === d.agentClientId) : undefined;
+    const agentClient = d.agentClientId ? contactRecords.find(c => c.id === d.agentClientId) : undefined;
     const matchSearch =
       !q ||
       d.propertyAddress.toLowerCase().includes(q) ||
       d.agentName.toLowerCase().includes(q) ||
       d.mlsNumber.toLowerCase().includes(q) ||
       d.city.toLowerCase().includes(q) ||
-      (agentClient?.clientId ?? '').toLowerCase().includes(q) ||
-      (agentClient?.name ?? '').toLowerCase().includes(q);
+      (agentClient?.id ?? '').toLowerCase().includes(q) ||
+      (agentClient?.fullName ?? '').toLowerCase().includes(q);
     const matchStatus = filter === 'all' || d.status === filter;
     const matchSide   = sideFilter === 'all' || d.transactionType === sideFilter;
     const matchAmber  = !amberFilter || pendingDocCount(d.documentRequests) > 0;
