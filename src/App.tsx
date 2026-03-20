@@ -304,6 +304,24 @@ function AppInner() {
     setIsCallMinimized(false);
   };
 
+  // ── Agent name cascade ─────────────────────────────────────────────────────
+  const handleContactUpdated = (contactId: string, fullName: string, phone: string, email: string) => {
+    setDeals(prev => {
+      const updated = prev.map(deal => {
+        if (deal.agentId !== contactId) return deal;
+        const updatedDeal: Deal = {
+          ...deal,
+          agentName: fullName,
+          buyerAgent: deal.buyerAgent ? { ...deal.buyerAgent, name: fullName, phone, email } : deal.buyerAgent,
+          sellerAgent: deal.sellerAgent ? { ...deal.sellerAgent, name: fullName, phone, email } : deal.sellerAgent,
+        };
+        saveSingleDeal(updatedDeal).catch(console.error);
+        return updatedDeal;
+      });
+      return updated;
+    });
+  };
+
   const handleArchiveDeal = (dealId: string, reason: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
@@ -554,6 +572,7 @@ function AppInner() {
                 onDirectoryChanged={() => {
                   loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
+                onContactUpdated={handleContactUpdated}
               />
             </div>
           )}

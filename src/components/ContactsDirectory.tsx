@@ -227,9 +227,10 @@ interface Props {
   onTriggerHandled?: () => void;
   onDirectoryChanged?: () => void;
   onCallStarted?: (callData: CallStartedData) => void;
+  onContactUpdated?: (contactId: string, fullName: string, phone: string, email: string) => void;
 }
 
-export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted }: Props) {
+export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted, onContactUpdated }: Props) {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -591,6 +592,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         onDirectoryChanged?.();
       }
 
+      onContactUpdated?.(savedFormId, fullName, form.phone.trim(), form.email.trim());
       closeModal();
     } catch (err) {
       console.error('Save failed:', err);
