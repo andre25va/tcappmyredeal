@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardList, Plus, Send, CheckCircle, XCircle, Clock,
-  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User,
+  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3,
 } from 'lucide-react';
 import type {
   Deal, DealParticipant,
@@ -170,20 +170,21 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailTarget, setEmailTarget] = useState<RequestRecord | null>(null);
-  const [sendingEmail, setSendingEmail] = useState(false);
 
-  // New request form
+  // New request form state
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
   const [newRecipientId, setNewRecipientId] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [draftSubject, setDraftSubject] = useState('');
+  const [draftBody, setDraftBody] = useState('');
+  const [draftTo, setDraftTo] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Email compose
-  const [emailTo, setEmailTo] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
+  // Inline send state (per-card)
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  // Inline edit state for draft cards: requestId -> { to, subject, body }
+  const [inlineEdits, setInlineEdits] = useState<Record<string, { to: string; subject: string; body: string }>>({});
 
   const participants = deal.participants ?? [];
 
@@ -207,6 +208,22 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
+  // ── Rebuild inline email when type or recipient changes ─────────────────────
+  useEffect(() => {
+    const participant = participants.find(p => p.id === newRecipientId);
+    const token = '[REQ-????????]'; // placeholder — real token assigned on create
+    const content = getDefaultEmailContent(
+      newType,
+      participant?.contactName || '',
+      deal.propertyAddress,
+      profile?.name || 'TC',
+      token,
+    );
+    setDraftTo(participant?.contactEmail || '');
+    setDraftSubject(content.subject);
+    setDraftBody(content.body);
+  }, [newType, newRecipientId, participants, deal.propertyAddress, profile?.name]);
+
   // ── Add event helper ─────────────────────────────────────────────────────────
   const addEvent = async (requestId: string, eventType: RequestEventType, description?: string) => {
     await supabase.from('request_events').insert({
@@ -227,8 +244,32 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     await loadRequests();
   };
 
-  // ── Create new request ───────────────────────────────────────────────────────
-  const handleCreate = async () => {
+  // ── Seed inline edit state when a draft card expands ────────────────────────
+  const handleToggle = (req: RequestRecord) => {
+    const newId = expandedId === req.id ? null : req.id;
+    setExpandedId(newId);
+
+    if (newId && req.status === 'draft' && !inlineEdits[req.id]) {
+      const content = getDefaultEmailContent(
+        req.requestType,
+        req.requestedFromName || '',
+        deal.propertyAddress,
+        profile?.name || 'TC',
+        req.subjectToken || '',
+      );
+      setInlineEdits(prev => ({
+        ...prev,
+        [req.id]: {
+          to: req.requestedFromEmail || '',
+          subject: content.subject,
+          body: content.body,
+        },
+      }));
+    }
+  };
+
+  // ── Create request (draft only, no send) ─────────────────────────────────────
+  const handleCreateDraft = async () => {
     setCreating(true);
     try {
       const participant = participants.find(p => p.id === newRecipientId);
@@ -254,11 +295,18 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       if (error) throw error;
       await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
 
+      // Seed inline editor with the edited draft content (replace placeholder token)
+      const realSubject = draftSubject.replace('[REQ-????????]', token);
+      const realBody = draftBody.replace('[REQ-????????]', token);
+      setInlineEdits(prev => ({
+        ...prev,
+        [data.id]: { to: draftTo, subject: realSubject, body: realBody },
+      }));
+
       setShowNewModal(false);
-      setNewType('earnest_money_receipt');
-      setNewRecipientId('');
-      setNewNotes('');
+      resetNewForm();
       await loadRequests();
+      setExpandedId(data.id); // auto-expand so user sees the inline email
     } catch (err) {
       console.error('Failed to create request:', err);
     } finally {
@@ -266,31 +314,58 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     }
   };
 
-  // ── Open email compose ───────────────────────────────────────────────────────
-  const handleOpenEmail = (request: RequestRecord) => {
-    const config = getDefaultEmailContent(
-      request.requestType,
-      request.requestedFromName || '',
-      deal.propertyAddress,
-      profile?.name || 'TC',
-      request.subjectToken || '',
-    );
-    setEmailTo(request.requestedFromEmail || '');
-    setEmailSubject(config.subject);
-    setEmailBody(config.body);
-    setEmailTarget(request);
-    setShowEmailModal(true);
+  // ── Create + send immediately ─────────────────────────────────────────────────
+  const handleCreateAndSend = async () => {
+    setCreating(true);
+    try {
+      const participant = participants.find(p => p.id === newRecipientId);
+      const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
+      const tempId = crypto.randomUUID();
+      const token = shortToken(tempId);
+
+      // Replace placeholder token with real one
+      const realSubject = draftSubject.replace('[REQ-????????]', token);
+      const realBody = draftBody.replace('[REQ-????????]', token);
+
+      const { data, error } = await supabase.from('requests').insert({
+        id: tempId,
+        deal_id: deal.id,
+        request_type: newType,
+        status: 'draft',
+        requested_from_contact_id: participant?.contactId || null,
+        requested_from_name: participant?.contactName || null,
+        requested_from_email: draftTo || participant?.contactEmail || null,
+        subject_token: token,
+        notes: newNotes || null,
+        requires_review: true,
+        expected_response_type: typeConfig.expectedResponseType,
+        created_by: profile?.name || 'Staff',
+      }).select().single();
+
+      if (error) throw error;
+      await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
+
+      setShowNewModal(false);
+      resetNewForm();
+      await loadRequests();
+
+      // Now send the email
+      await sendEmail(data.id, draftTo, realSubject, realBody);
+    } catch (err) {
+      console.error('Failed to create and send request:', err);
+    } finally {
+      setCreating(false);
+    }
   };
 
-  // ── Send email ───────────────────────────────────────────────────────────────
-  const handleSendEmail = async () => {
-    if (!emailTarget) return;
-    setSendingEmail(true);
+  // ── Core send email (used by both inline and create-and-send) ───────────────
+  const sendEmail = async (requestId: string, to: string, subject: string, body: string) => {
+    setSendingId(requestId);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const bodyHtml = emailBody.split('\n').map(line =>
+      const bodyHtml = body.split('\n').map(line =>
         line.trim() ? `<p style="margin:0 0 8px 0;">${line}</p>` : '<br/>'
       ).join('');
 
@@ -301,38 +376,41 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          to: [emailTo],
+          to: [to],
           cc: [],
           bcc: [],
-          subject: emailSubject,
+          subject,
           bodyHtml,
           dealId: deal.id,
           emailType: 'deal',
           sentBy: profile?.name || 'Staff',
-          requestId: emailTarget.id,
+          requestId,
         }),
       });
 
       if (!resp.ok) throw new Error('Email send failed');
       const result = await resp.json();
 
-      // Update request: status → waiting, link outbound log entry
       await supabase.from('requests').update({
         status: 'waiting',
         outbound_message_id: result.logId || null,
         updated_at: new Date().toISOString(),
-      }).eq('id', emailTarget.id);
+      }).eq('id', requestId);
 
-      await addEvent(emailTarget.id, 'sent', `Email sent to ${emailTo} by ${profile?.name || 'Staff'}`);
-
-      setShowEmailModal(false);
-      setEmailTarget(null);
+      await addEvent(requestId, 'sent', `Email sent to ${to} by ${profile?.name || 'Staff'}`);
       await loadRequests();
     } catch (err) {
       console.error('Send email error:', err);
     } finally {
-      setSendingEmail(false);
+      setSendingId(null);
     }
+  };
+
+  // ── Inline send from expanded draft card ─────────────────────────────────────
+  const handleInlineSend = async (request: RequestRecord) => {
+    const edit = inlineEdits[request.id];
+    if (!edit) return;
+    await sendEmail(request.id, edit.to, edit.subject, edit.body);
   };
 
   // ── Accept / Reject ──────────────────────────────────────────────────────────
@@ -374,6 +452,12 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     await loadRequests();
   };
 
+  const resetNewForm = () => {
+    setNewType('earnest_money_receipt');
+    setNewRecipientId('');
+    setNewNotes('');
+  };
+
   const getTypeLabel = (type: RequestType) => REQUEST_TYPES.find(t => t.type === type)?.label || type;
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -387,10 +471,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const recipientOptions = participants.filter(p => p.contactEmail || p.contactName);
 
   const handleOpenNewModal = () => {
-    setNewType('earnest_money_receipt');
+    resetNewForm();
     const suggested = suggestRecipient(participants, 'earnest_money_receipt');
     setNewRecipientId(suggested?.id || '');
-    setNewNotes('');
     setShowNewModal(true);
   };
 
@@ -445,12 +528,20 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
               key={req.id}
               request={req}
               expanded={expandedId === req.id}
-              onToggle={() => setExpandedId(expandedId === req.id ? null : req.id)}
-              onSendEmail={() => handleOpenEmail(req)}
+              onToggle={() => handleToggle(req)}
               onMarkReceived={() => handleMarkReceived(req)}
               onAccept={() => handleAccept(req)}
               onReject={() => handleReject(req)}
               onUpdateStatus={(s) => updateStatus(req.id, s)}
+              onInlineSend={() => handleInlineSend(req)}
+              inlineEdit={inlineEdits[req.id]}
+              onInlineEditChange={(field, value) =>
+                setInlineEdits(prev => ({
+                  ...prev,
+                  [req.id]: { ...prev[req.id], [field]: value },
+                }))
+              }
+              sending={sendingId === req.id}
               getTypeLabel={getTypeLabel}
               fmtDate={fmtDate}
             />
@@ -469,12 +560,20 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
               key={req.id}
               request={req}
               expanded={expandedId === req.id}
-              onToggle={() => setExpandedId(expandedId === req.id ? null : req.id)}
-              onSendEmail={() => handleOpenEmail(req)}
+              onToggle={() => handleToggle(req)}
               onMarkReceived={() => handleMarkReceived(req)}
               onAccept={() => handleAccept(req)}
               onReject={() => handleReject(req)}
               onUpdateStatus={(s) => updateStatus(req.id, s)}
+              onInlineSend={() => handleInlineSend(req)}
+              inlineEdit={inlineEdits[req.id]}
+              onInlineEditChange={(field, value) =>
+                setInlineEdits(prev => ({
+                  ...prev,
+                  [req.id]: { ...prev[req.id], [field]: value },
+                }))
+              }
+              sending={sendingId === req.id}
               getTypeLabel={getTypeLabel}
               fmtDate={fmtDate}
             />
@@ -489,170 +588,166 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           onClick={() => setShowNewModal(false)}
         >
           <div
-            className="bg-base-100 rounded-xl shadow-xl w-full max-w-md space-y-4 p-5"
+            className="bg-base-100 rounded-xl shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <ClipboardList size={16} className="text-primary" /> New Request
-            </h3>
+            {/* Modal header */}
+            <div className="p-5 pb-3 border-b border-base-200">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <ClipboardList size={16} className="text-primary" /> New Request
+              </h3>
+            </div>
 
-            {/* Type selector */}
-            <div>
-              <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-2 block">
-                Request Type
-              </label>
-              <div className="space-y-2">
-                {REQUEST_TYPES.map(t => (
-                  <label
-                    key={t.type}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      newType === t.type
-                        ? 'border-primary bg-primary/5'
-                        : 'border-base-300 hover:border-primary/40'
-                    }`}
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+              {/* Type selector */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-2 block">
+                  Request Type
+                </label>
+                <div className="space-y-2">
+                  {REQUEST_TYPES.map(t => (
+                    <label
+                      key={t.type}
+                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        newType === t.type
+                          ? 'border-primary bg-primary/5'
+                          : 'border-base-300 hover:border-primary/40'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="radio radio-primary radio-sm mt-0.5 flex-none"
+                        checked={newType === t.type}
+                        onChange={() => {
+                          setNewType(t.type);
+                          const suggested = suggestRecipient(participants, t.type);
+                          setNewRecipientId(suggested?.id || '');
+                        }}
+                      />
+                      <div>
+                        <p className="text-sm font-semibold">{t.label}</p>
+                        <p className="text-xs text-base-content/50">{t.description}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recipient */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">
+                  Send To
+                </label>
+                {recipientOptions.length === 0 ? (
+                  <p className="text-sm text-base-content/40 italic">
+                    No contacts with email found on this deal
+                  </p>
+                ) : (
+                  <select
+                    className="select select-bordered select-sm w-full"
+                    value={newRecipientId}
+                    onChange={e => setNewRecipientId(e.target.value)}
                   >
+                    <option value="">— Select recipient —</option>
+                    {recipientOptions.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.contactName}
+                        {p.contactEmail ? ` (${p.contactEmail})` : ''} — {p.dealRole}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* ── Live Email Draft Preview ───────────────────────────────── */}
+              <div className="border border-base-300 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-base-200/60 border-b border-base-300">
+                  <Mail size={13} className="text-primary" />
+                  <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">
+                    Email Draft
+                  </span>
+                  <Edit3 size={11} className="text-base-content/30 ml-auto" />
+                  <span className="text-xs text-base-content/30">Editable</span>
+                </div>
+                <div className="p-3 space-y-2.5 bg-white">
+                  {/* To */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium">To</span>
                     <input
-                      type="radio"
-                      className="radio radio-primary radio-sm mt-0.5 flex-none"
-                      checked={newType === t.type}
-                      onChange={() => {
-                        setNewType(t.type);
-                        const suggested = suggestRecipient(participants, t.type);
-                        setNewRecipientId(suggested?.id || '');
-                      }}
+                      type="email"
+                      className="input input-bordered input-xs flex-1 font-mono"
+                      value={draftTo}
+                      onChange={e => setDraftTo(e.target.value)}
+                      placeholder="recipient@email.com"
                     />
-                    <div>
-                      <p className="text-sm font-semibold">{t.label}</p>
-                      <p className="text-xs text-base-content/50">{t.description}</p>
-                    </div>
-                  </label>
-                ))}
+                  </div>
+                  {/* Subject */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium">Subject</span>
+                    <input
+                      type="text"
+                      className="input input-bordered input-xs flex-1"
+                      value={draftSubject}
+                      onChange={e => setDraftSubject(e.target.value)}
+                    />
+                  </div>
+                  {/* Body */}
+                  <div className="flex gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium pt-1">Body</span>
+                    <textarea
+                      className="textarea textarea-bordered textarea-xs flex-1 font-mono text-xs leading-relaxed"
+                      rows={7}
+                      value={draftBody}
+                      onChange={e => setDraftBody(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-[10px] text-base-content/30 pl-14">
+                    Reply token will be inserted into subject automatically on send.
+                  </p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">
+                  Internal Notes (optional)
+                </label>
+                <textarea
+                  className="textarea textarea-bordered textarea-sm w-full"
+                  rows={2}
+                  placeholder="Add any internal context or instructions…"
+                  value={newNotes}
+                  onChange={e => setNewNotes(e.target.value)}
+                />
               </div>
             </div>
 
-            {/* Recipient */}
-            <div>
-              <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">
-                Send To
-              </label>
-              {recipientOptions.length === 0 ? (
-                <p className="text-sm text-base-content/40 italic">
-                  No contacts with email found on this deal
-                </p>
-              ) : (
-                <select
-                  className="select select-bordered select-sm w-full"
-                  value={newRecipientId}
-                  onChange={e => setNewRecipientId(e.target.value)}
-                >
-                  <option value="">— Select recipient —</option>
-                  {recipientOptions.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.contactName}
-                      {p.contactEmail ? ` (${p.contactEmail})` : ''} — {p.dealRole}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">
-                Notes (optional)
-              </label>
-              <textarea
-                className="textarea textarea-bordered textarea-sm w-full"
-                rows={2}
-                placeholder="Add any context or instructions…"
-                value={newNotes}
-                onChange={e => setNewNotes(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end pt-1">
+            {/* Footer */}
+            <div className="p-4 border-t border-base-200 flex gap-2 justify-end">
               <button className="btn btn-sm btn-ghost" onClick={() => setShowNewModal(false)}>
                 Cancel
               </button>
               <button
-                className="btn btn-sm btn-primary gap-1.5"
-                onClick={handleCreate}
+                className="btn btn-sm btn-outline gap-1.5"
+                onClick={handleCreateDraft}
                 disabled={creating}
               >
                 {creating
                   ? <span className="loading loading-spinner loading-xs" />
-                  : <Plus size={14} />}
-                Create Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Email Compose Modal ───────────────────────────────────────────────── */}
-      {showEmailModal && emailTarget && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowEmailModal(false)}
-        >
-          <div
-            className="bg-base-100 rounded-xl shadow-xl w-full max-w-lg space-y-4 p-5"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <Mail size={16} className="text-primary" /> Send Request Email
-            </h3>
-            <p className="text-xs text-base-content/50">
-              Token{' '}
-              <code className="bg-base-200 px-1.5 py-0.5 rounded font-mono">
-                {emailTarget.subjectToken}
-              </code>{' '}
-              is embedded in the subject for automatic reply matching.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-base-content/50 mb-1 block">To</label>
-                <input
-                  type="email"
-                  className="input input-bordered input-sm w-full"
-                  value={emailTo}
-                  onChange={e => setEmailTo(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-base-content/50 mb-1 block">Subject</label>
-                <input
-                  type="text"
-                  className="input input-bordered input-sm w-full"
-                  value={emailSubject}
-                  onChange={e => setEmailSubject(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-base-content/50 mb-1 block">Message</label>
-                <textarea
-                  className="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
-                  rows={8}
-                  value={emailBody}
-                  onChange={e => setEmailBody(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <button className="btn btn-sm btn-ghost" onClick={() => setShowEmailModal(false)}>
-                Cancel
+                  : <FileText size={13} />}
+                Save Draft
               </button>
               <button
                 className="btn btn-sm btn-primary gap-1.5"
-                onClick={handleSendEmail}
-                disabled={sendingEmail || !emailTo.trim()}
+                onClick={handleCreateAndSend}
+                disabled={creating || !draftTo.trim()}
               >
-                {sendingEmail
+                {creating
                   ? <span className="loading loading-spinner loading-xs" />
-                  : <Send size={14} />}
-                Send Email
+                  : <Send size={13} />}
+                Create &amp; Send
               </button>
             </div>
           </div>
@@ -667,21 +762,28 @@ interface RequestCardProps {
   request: RequestRecord;
   expanded: boolean;
   onToggle: () => void;
-  onSendEmail: () => void;
   onMarkReceived: () => void;
   onAccept: () => void;
   onReject: () => void;
   onUpdateStatus: (s: RequestStatus) => void;
+  onInlineSend: () => void;
+  inlineEdit?: { to: string; subject: string; body: string };
+  onInlineEditChange: (field: 'to' | 'subject' | 'body', value: string) => void;
+  sending: boolean;
   getTypeLabel: (t: RequestType) => string;
   fmtDate: (iso: string) => string;
 }
 
 const RequestCard: React.FC<RequestCardProps> = ({
-  request, expanded, onToggle, onSendEmail, onMarkReceived,
-  onAccept, onReject, getTypeLabel, fmtDate,
+  request, expanded, onToggle, onMarkReceived,
+  onAccept, onReject, onInlineSend, inlineEdit,
+  onInlineEditChange, sending, getTypeLabel, fmtDate,
 }) => {
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
+  const isDraft = request.status === 'draft';
+  const isWaiting = request.status === 'waiting';
+  const needsReview = ['reply_received', 'document_received', 'under_review'].includes(request.status);
 
   return (
     <div className={`border rounded-lg overflow-hidden transition-colors ${
@@ -717,127 +819,216 @@ const RequestCard: React.FC<RequestCardProps> = ({
         </div>
       </div>
 
-      {/* Action bar */}
-      <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-base-100">
-        {request.status === 'draft' && (
-          <button
-            className="btn btn-xs btn-primary gap-1"
-            onClick={e => { e.stopPropagation(); onSendEmail(); }}
-          >
-            <Send size={11} /> Send Email
-          </button>
-        )}
-        {request.status === 'waiting' && (
-          <>
+      {/* Quick action bar (non-draft, non-expanded) */}
+      {!expanded && (
+        <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-base-100">
+          {isDraft && (
             <button
-              className="btn btn-xs btn-outline gap-1"
-              onClick={e => { e.stopPropagation(); onMarkReceived(); }}
+              className="btn btn-xs btn-primary gap-1"
+              onClick={e => { e.stopPropagation(); onToggle(); }}
             >
-              <CheckCircle size={11} /> Mark Received
+              <Edit3 size={11} /> Edit &amp; Send
             </button>
+          )}
+          {isWaiting && (
+            <>
+              <button
+                className="btn btn-xs btn-outline gap-1"
+                onClick={e => { e.stopPropagation(); onMarkReceived(); }}
+              >
+                <CheckCircle size={11} /> Mark Received
+              </button>
+              <button
+                className="btn btn-xs btn-ghost gap-1 text-base-content/50"
+                onClick={e => { e.stopPropagation(); onToggle(); }}
+              >
+                <RotateCcw size={11} /> Resend
+              </button>
+            </>
+          )}
+          {needsReview && (
+            <>
+              <button
+                className="btn btn-xs btn-success gap-1"
+                onClick={e => { e.stopPropagation(); onAccept(); }}
+              >
+                <CheckCircle size={11} /> Accept
+              </button>
+              <button
+                className="btn btn-xs btn-error btn-outline gap-1"
+                onClick={e => { e.stopPropagation(); onReject(); }}
+              >
+                <XCircle size={11} /> Reject
+              </button>
+            </>
+          )}
+          {request.status === 'needs_follow_up' && (
             <button
-              className="btn btn-xs btn-ghost gap-1 text-base-content/50"
-              onClick={e => { e.stopPropagation(); onSendEmail(); }}
+              className="btn btn-xs btn-warning gap-1"
+              onClick={e => { e.stopPropagation(); onToggle(); }}
             >
-              <RotateCcw size={11} /> Resend
+              <Send size={11} /> Send Follow-Up
             </button>
-          </>
-        )}
-        {(request.status === 'reply_received' || request.status === 'document_received' || request.status === 'under_review') && (
-          <>
-            <button
-              className="btn btn-xs btn-success gap-1"
-              onClick={e => { e.stopPropagation(); onAccept(); }}
-            >
-              <CheckCircle size={11} /> Accept
-            </button>
-            <button
-              className="btn btn-xs btn-error btn-outline gap-1"
-              onClick={e => { e.stopPropagation(); onReject(); }}
-            >
-              <XCircle size={11} /> Reject
-            </button>
-          </>
-        )}
-        {request.status === 'needs_follow_up' && (
-          <button
-            className="btn btn-xs btn-warning gap-1"
-            onClick={e => { e.stopPropagation(); onSendEmail(); }}
-          >
-            <Send size={11} /> Send Follow-Up
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="border-t border-base-200 px-4 py-3 bg-base-50 space-y-3">
-          {request.subjectToken && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-base-content/40">Reply token:</span>
-              <code className="text-xs bg-white border border-base-200 px-2 py-0.5 rounded font-mono">
-                {request.subjectToken}
-              </code>
-            </div>
-          )}
+        <div className="border-t border-base-200 bg-base-50 space-y-3">
 
-          {request.notes && (
-            <div>
-              <p className="text-xs font-semibold text-base-content/40 mb-1">Notes</p>
-              <p className="text-xs text-base-content/65">{request.notes}</p>
-            </div>
-          )}
-
-          {(request.documents?.length ?? 0) > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-base-content/40 mb-1">
-                Documents ({request.documents!.length})
-              </p>
-              <div className="space-y-1">
-                {request.documents!.map(doc => (
-                  <div key={doc.id} className="flex items-center gap-2 text-xs">
-                    <FileText size={11} className="text-base-content/35 flex-none" />
-                    <span className="text-base-content/65 flex-1">{doc.fileName}</span>
-                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
-                      doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {doc.reviewStatus}
-                    </span>
-                  </div>
-                ))}
+          {/* ── Inline Email Draft (draft + needs_follow_up states) ─────────── */}
+          {(isDraft || request.status === 'needs_follow_up' || isWaiting) && inlineEdit && (
+            <div className="mx-4 mt-3 border border-base-300 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-base-200/60 border-b border-base-300">
+                <Mail size={13} className="text-primary" />
+                <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">
+                  {isWaiting ? 'Resend Email' : 'Email Draft'}
+                </span>
+                <span className="ml-auto text-[10px] text-base-content/30 flex items-center gap-1">
+                  <Edit3 size={10} /> Edit before sending
+                </span>
+              </div>
+              <div className="p-3 space-y-2 bg-white">
+                {/* To */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-base-content/40 w-14 flex-none font-medium">To</span>
+                  <input
+                    type="email"
+                    className="input input-bordered input-xs flex-1 font-mono"
+                    value={inlineEdit.to}
+                    onChange={e => onInlineEditChange('to', e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                {/* Subject */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-base-content/40 w-14 flex-none font-medium">Subject</span>
+                  <input
+                    type="text"
+                    className="input input-bordered input-xs flex-1"
+                    value={inlineEdit.subject}
+                    onChange={e => onInlineEditChange('subject', e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                {/* Body */}
+                <div className="flex gap-2">
+                  <span className="text-xs text-base-content/40 w-14 flex-none font-medium pt-1">Body</span>
+                  <textarea
+                    className="textarea textarea-bordered textarea-xs flex-1 font-mono text-xs leading-relaxed"
+                    rows={7}
+                    value={inlineEdit.body}
+                    onChange={e => onInlineEditChange('body', e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+              <div className="px-3 py-2.5 bg-base-100 border-t border-base-200 flex justify-between items-center">
+                {request.subjectToken && (
+                  <span className="text-[10px] text-base-content/35 font-mono">{request.subjectToken}</span>
+                )}
+                <button
+                  className="btn btn-xs btn-primary gap-1 ml-auto"
+                  onClick={e => { e.stopPropagation(); onInlineSend(); }}
+                  disabled={sending || !inlineEdit.to.trim()}
+                >
+                  {sending
+                    ? <span className="loading loading-spinner loading-xs" />
+                    : <Send size={11} />}
+                  {isWaiting ? 'Resend' : 'Send Email'}
+                </button>
               </div>
             </div>
           )}
 
-          {(request.events?.length ?? 0) > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-base-content/40 mb-1">History</p>
-              <div className="space-y-1.5">
-                {[...(request.events || [])]
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map(ev => (
-                    <div key={ev.id} className="flex items-start gap-2 text-xs">
-                      <Clock size={10} className="text-base-content/25 mt-0.5 flex-none" />
-                      <span className="text-base-content/55 flex-1">
-                        {ev.description || ev.eventType}
-                        {ev.actor && (
-                          <span className="text-base-content/35"> · {ev.actor}</span>
-                        )}
-                      </span>
-                      <span className="text-base-content/30 flex-none">
-                        {new Date(ev.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          {/* ── Review actions ───────────────────────────────────────────────── */}
+          {needsReview && (
+            <div className="mx-4 flex gap-2 pt-3">
+              <button
+                className="btn btn-sm btn-success gap-1.5"
+                onClick={e => { e.stopPropagation(); onAccept(); }}
+              >
+                <CheckCircle size={13} /> Accept
+              </button>
+              <button
+                className="btn btn-sm btn-error btn-outline gap-1.5"
+                onClick={e => { e.stopPropagation(); onReject(); }}
+              >
+                <XCircle size={13} /> Reject
+              </button>
+            </div>
+          )}
+
+          {/* ── Token + notes ─────────────────────────────────────────────────── */}
+          <div className="px-4 pb-3 space-y-3">
+            {!isDraft && request.subjectToken && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-base-content/40">Reply token:</span>
+                <code className="text-xs bg-white border border-base-200 px-2 py-0.5 rounded font-mono">
+                  {request.subjectToken}
+                </code>
+              </div>
+            )}
+
+            {request.notes && (
+              <div>
+                <p className="text-xs font-semibold text-base-content/40 mb-1">Internal Notes</p>
+                <p className="text-xs text-base-content/65">{request.notes}</p>
+              </div>
+            )}
+
+            {(request.documents?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-base-content/40 mb-1">
+                  Documents ({request.documents!.length})
+                </p>
+                <div className="space-y-1">
+                  {request.documents!.map(doc => (
+                    <div key={doc.id} className="flex items-center gap-2 text-xs">
+                      <FileText size={11} className="text-base-content/35 flex-none" />
+                      <span className="text-base-content/65 flex-1">{doc.fileName}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
+                        doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {doc.reviewStatus}
                       </span>
                     </div>
                   ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {(request.events?.length ?? 0) === 0 && !request.notes && (request.documents?.length ?? 0) === 0 && (
-            <p className="text-xs text-base-content/30 italic">No history yet</p>
-          )}
+            {(request.events?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-base-content/40 mb-1">History</p>
+                <div className="space-y-1.5">
+                  {[...(request.events || [])]
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map(ev => (
+                      <div key={ev.id} className="flex items-start gap-2 text-xs">
+                        <Clock size={10} className="text-base-content/25 mt-0.5 flex-none" />
+                        <span className="text-base-content/55 flex-1">
+                          {ev.description || ev.eventType}
+                          {ev.actor && (
+                            <span className="text-base-content/35"> · {ev.actor}</span>
+                          )}
+                        </span>
+                        <span className="text-base-content/30 flex-none">
+                          {new Date(ev.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {(request.events?.length ?? 0) === 0 && !request.notes && (request.documents?.length ?? 0) === 0 && !isDraft && (
+              <p className="text-xs text-base-content/30 italic">No history yet</p>
+            )}
+          </div>
         </div>
       )}
     </div>
