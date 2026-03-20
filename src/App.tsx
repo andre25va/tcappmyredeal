@@ -13,6 +13,7 @@ import {
 import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
+import { AgentCardView } from './components/AgentCardView';
 import { DealWorkspace } from './components/DealWorkspace';
 import { GuidedDealWizard } from './components/GuidedDealWizard';
 import { HomeDashboard } from './components/HomeDashboard';
@@ -50,6 +51,7 @@ function AppInner() {
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
+  const [listMode, setListMode]             = useState<'deals' | 'agents'>('deals');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
   const [deals, setDeals]                   = useState<Deal[]>([]);
@@ -454,15 +456,37 @@ function AppInner() {
           {view === 'transactions' && (
             <div ref={txContainerRef} className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
               {(txContainerWide || txPanel === 'list') && (
-                <div className={txContainerWide ? 'flex-none' : 'flex-1'}>
-                  <DealList
-                    deals={deals}
-                    selectedId={selectedId}
-                    onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
-                    amberFilter={amberFilter}
-                    onClearAmberFilter={() => setAmberFilter(false)}
-                    contactRecords={contactRecords}
-                  />
+                <div className={txContainerWide ? 'flex-none' : 'flex-1'} style={{ display: 'flex', flexDirection: 'column' }}>
+                  {/* View mode toggle */}
+                  <div className="flex items-center gap-0 border-b border-base-300 bg-base-200 shrink-0">
+                    <button
+                      className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${listMode === 'deals' ? 'bg-base-100 text-base-content border-b-2 border-primary' : 'text-base-content/50 hover:text-base-content'}`}
+                      onClick={() => setListMode('deals')}
+                    >
+                      By Deal
+                    </button>
+                    <button
+                      className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${listMode === 'agents' ? 'bg-base-100 text-base-content border-b-2 border-primary' : 'text-base-content/50 hover:text-base-content'}`}
+                      onClick={() => setListMode('agents')}
+                    >
+                      By Agent
+                    </button>
+                  </div>
+                  {listMode === 'deals' ? (
+                    <DealList
+                      deals={deals}
+                      selectedId={selectedId}
+                      onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                      amberFilter={amberFilter}
+                      onClearAmberFilter={() => setAmberFilter(false)}
+                      contactRecords={contactRecords}
+                    />
+                  ) : (
+                    <AgentCardView
+                      deals={deals}
+                      onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                    />
+                  )}
                 </div>
               )}
 
