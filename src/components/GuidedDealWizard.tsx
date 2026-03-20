@@ -62,7 +62,7 @@ const formatDisplayDate = (dateStr: string): string => {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-// ─── Verification Card ────────────────────────────────────────────────────────
+// ─── Verification Card ─────────────────────────────────────────────────────────────────────────────
 interface VerifyCardProps {
   contact: ContactRecord;
   label: string;
@@ -103,7 +103,7 @@ const VerifyCard: React.FC<VerifyCardProps> = ({ contact, label, extraNote }) =>
   </div>
 );
 
-// ─── Disambiguation Modal ─────────────────────────────────────────────────────
+// ─── Disambiguation Modal ──────────────────────────────────────────────────────────────────────────────────
 interface DisambigModalProps {
   candidates: ContactRecord[];
   title: string;
@@ -169,7 +169,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
   </div>
 );
 
-// ─── Main Wizard ──────────────────────────────────────────────────────────────
+// ─── Main Wizard ──────────────────────────────────────────────────────────────────────────────────────────────
 export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
@@ -181,20 +181,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     transactionType: 'buyer' as TransactionType,
     mlsNumber: '', listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
-    agentClientId: '',    // selected client from agentClients
+    agentClientId: '',
     specialNotes: '',
-    // Financing
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '',
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
-    // Contract Conditions
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
-    // Key Dates
     inspectionDeadline: '', loanCommitmentDate: '', possessionDate: '',
-    // Parties
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
-    // Commission (optional at creation)
     listingCommission: '', buyerCommission: '', tcFee: '',
   });
   const [error, setError] = useState('');
@@ -206,13 +201,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Disambiguation state — client only
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
 
-  // When property type changes, reset duplex-specific fields
   const handlePropertyTypeChange = (type: PropertyType) => {
     setForm(p => ({
       ...p,
@@ -222,7 +215,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }));
   };
 
-  // ── Client selection ─────────────────────────────────────────────────────────
   const handleClientSelect = (selectedId: string) => {
     if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
     const chosen = agentClients?.find(c => c.id === selectedId);
@@ -252,7 +244,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       case 3: return true;
       case 4: return true;
       case 5: return !!form.closingDate;
-      case 6: return !!form.agentClientId;  // Our Client is required
+      case 6: return !!form.agentClientId;
       case 7: return true;
       default: return true;
     }
@@ -275,7 +267,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (step > 1) setStep(step - 1);
   };
-
 
   const handleFileExtract = async (file: File) => {
     if (extracting) return;
@@ -391,6 +382,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       ...(hasTwoAddresses && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
     ];
 
+    // Find the selected agent client to populate agent fields
+    const agentClient = agentClients?.find(c => c.id === form.agentClientId);
+
     const deal: Deal = {
       id: generateId(),
       propertyAddress: form.address.trim(),
@@ -406,33 +400,38 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       transactionType: form.transactionType as TransactionType,
       contractDate: form.contractDate,
       closingDate: form.closingDate,
-      agentId: generateId(),
-      agentName: '',
+      agentId: agentClient?.id || generateId(),
+      agentName: agentClient?.fullName || '',
       agentClientId: form.agentClientId || undefined,
+      // Set buyer/seller agent based on transaction type
+      buyerAgent: form.transactionType === 'buyer' && agentClient ? {
+        name: agentClient.fullName,
+        phone: agentClient.phone || '',
+        email: agentClient.email || '',
+        isOurClient: true,
+      } : undefined,
+      sellerAgent: form.transactionType === 'seller' && agentClient ? {
+        name: agentClient.fullName,
+        phone: agentClient.phone || '',
+        email: agentClient.email || '',
+        isOurClient: true,
+      } : undefined,
       contacts: [],
       notes: form.specialNotes.trim(),
-      // Financing
       loanType: form.loanType || undefined,
       loanAmount: parseFloat(form.loanAmount) || undefined,
-      downPaymentAmount: parseFloat(form.downPaymentAmount) || undefined,
-      downPaymentPercent: parseFloat(form.downPaymentPercent) || undefined,
-      earnestMoney: parseFloat(form.earnestMoney) || undefined,
+      downPayment: parseFloat(form.downPaymentAmount) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
-      // Contract Conditions
       asIsSale: form.asIsSale,
       inspectionWaived: form.inspectionWaived,
       homeWarranty: form.homeWarranty,
       homeWarrantyCompany: form.homeWarrantyCompany || undefined,
-      // Key Dates
-      inspectionDeadline: form.inspectionDeadline || undefined,
-      loanCommitmentDate: form.loanCommitmentDate || undefined,
       possessionDate: form.possessionDate || undefined,
-      // Parties
-      buyerNames: form.buyerNames || undefined,
-      sellerNames: form.sellerNames || undefined,
-      titleCompany: form.titleCompany || undefined,
-      loanOfficer: form.loanOfficer || undefined,
+      buyerName: form.buyerNames || undefined,
+      sellerName: form.sellerNames || undefined,
+      titleCompanyName: form.titleCompany || undefined,
+      loanOfficerName: form.loanOfficer || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
@@ -468,7 +467,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   return (
     <>
-      {/* Client Disambiguation Modal */}
       {disambigClientCandidates && (
         <DisambigModal
           candidates={disambigClientCandidates}
@@ -481,7 +479,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       <div className="fixed inset-0 bg-base-100/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-base-200 rounded-2xl border border-base-300 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 
-          {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-base-300 flex-none">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
@@ -495,7 +492,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             <button onClick={onClose} className="btn btn-ghost btn-sm btn-square"><X size={16} /></button>
           </div>
 
-          {/* Progress Bar */}
           <div className="px-5 pt-4 pb-2 flex-none">
             <div className="flex items-center gap-0">
               {Array.from({ length: TOTAL_STEPS }, (_, i) => {
@@ -522,18 +518,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             </div>
           </div>
 
-          {/* Step Content */}
           <div className="overflow-y-auto flex-1 p-5">
             {error && <div className="alert alert-error mb-4 text-sm py-2">{error}</div>}
 
-            {/* Step 1 */}
             {step === 1 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-3">
                   <MapPin size={18} className="text-primary" />
                   <h3 className="text-lg font-bold text-base-content">Where is the property?</h3>
                 </div>
-                {/* AI Extract from Contract */}
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
@@ -595,7 +588,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 2 */}
             {step === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
@@ -622,7 +614,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                 )}
 
-                {/* Duplex — address count question */}
                 {isDuplex && (
                   <div className="space-y-4 pt-3 border-t border-base-300">
                     <div>
@@ -655,29 +646,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       </div>
                     </div>
 
-                    {/* Only show second address field when 2 is selected */}
                     {hasTwoAddresses && (
                       <div className="space-y-3 p-4 bg-base-100 rounded-xl border border-base-300">
                         <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Unit Addresses</p>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Unit A — Primary</label>
-                            <input
-                              className="input input-bordered input-sm w-full"
-                              value={form.address}
-                              onChange={f('address')}
-                              placeholder="123 Main St"
-                            />
+                            <input className="input input-bordered input-sm w-full" value={form.address} onChange={f('address')} placeholder="123 Main St" />
                           </div>
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Unit B — Second</label>
-                            <input
-                              className="input input-bordered input-sm w-full"
-                              value={form.secondaryAddress}
-                              onChange={f('secondaryAddress')}
-                              placeholder="125 Main St"
-                              autoFocus
-                            />
+                            <input className="input input-bordered input-sm w-full" value={form.secondaryAddress} onChange={f('secondaryAddress')} placeholder="125 Main St" autoFocus />
                           </div>
                         </div>
                         <p className="text-xs text-base-content/40">
@@ -698,7 +677,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 3 */}
             {step === 3 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">Which side of the transaction?</h3>
@@ -729,12 +707,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 4 */}
             {step === 4 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
-
-                {/* MLS + Prices */}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
                   <input className="input input-bordered w-full" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
@@ -749,8 +724,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input className="input input-bordered w-full" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
-
-                {/* Loan Type */}
                 <div>
                   <label className="text-xs text-base-content/50 mb-2 block">Loan Type</label>
                   <div className="flex flex-wrap gap-2">
@@ -766,8 +739,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     ))}
                   </div>
                 </div>
-
-                {/* Down Payment */}
                 {form.loanType && form.loanType !== 'cash' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -798,8 +769,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   </div>
                 )}
-
-                {/* Earnest Money */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Earnest Money $</label>
@@ -810,14 +779,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input type="date" className="input input-bordered w-full" value={form.earnestMoneyDueDate} onChange={f('earnestMoneyDueDate')} />
                   </div>
                 </div>
-
-                {/* Seller Concessions */}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions $</label>
                   <input className="input input-bordered w-full" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
                 </div>
-
-                {/* Contract Conditions */}
                 <div className="border-t border-base-300 pt-4">
                   <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
                   <div className="space-y-2">
@@ -845,7 +810,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 5 */}
             {step === 5 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">Key Dates</h3>
@@ -879,24 +843,19 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 6 — Our Client (required) */}
             {step === 6 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
-
-                {/* Buyer / Seller Names */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
-                    <input className="input input-bordered w-full" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John & Jane Doe" />
+                    <input className="input input-bordered w-full" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John &amp; Jane Doe" />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
                     <input className="input input-bordered w-full" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
                   </div>
                 </div>
-
-                {/* Title + Loan Officer */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Title Company</label>
@@ -907,11 +866,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input className="input input-bordered w-full" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
                   </div>
                 </div>
-
                 <div className="border-t border-base-300 pt-4">
                   <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Our Client (Required)</p>
                 </div>
-
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Our Client *</label>
                   {agentClients && agentClients.length > 0 ? (
@@ -950,8 +907,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
-
-                {/* Special Notes */}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
                     <FileText size={12} /> Special Notes
@@ -973,7 +928,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* Step 7: AI Review */}
             {step === 7 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -1027,7 +981,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <p>AI review will run automatically...</p>
                   </div>
                 )}
-                {/* Summary */}
                 <div className="bg-base-100 rounded-lg p-4 border border-base-300 space-y-2">
                   <p className="text-xs font-semibold text-base-content/50 uppercase mb-2">Deal Summary</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -1075,7 +1028,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-between p-4 border-t border-base-300 flex-none">
             <button onClick={step === 1 ? onClose : handleBack} className="btn btn-ghost btn-sm gap-1">
               {step === 1 ? 'Cancel' : <><ChevronLeft size={14} /> Back</>}
