@@ -414,9 +414,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Financing
       loanType: form.loanType || undefined,
       loanAmount: parseFloat(form.loanAmount) || undefined,
-      downPaymentAmount: parseFloat(form.downPaymentAmount) || undefined,
-      downPaymentPercent: parseFloat(form.downPaymentPercent) || undefined,
-      earnestMoney: parseFloat(form.earnestMoney) || undefined,
+      downPayment: parseFloat(form.downPaymentAmount) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
       // Contract Conditions
@@ -425,14 +423,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       homeWarranty: form.homeWarranty,
       homeWarrantyCompany: form.homeWarrantyCompany || undefined,
       // Key Dates
-      inspectionDeadline: form.inspectionDeadline || undefined,
-      loanCommitmentDate: form.loanCommitmentDate || undefined,
       possessionDate: form.possessionDate || undefined,
       // Parties
-      buyerNames: form.buyerNames || undefined,
-      sellerNames: form.sellerNames || undefined,
-      titleCompany: form.titleCompany || undefined,
-      loanOfficer: form.loanOfficer || undefined,
+      buyerName: form.buyerNames || undefined,
+      sellerName: form.sellerNames || undefined,
+      titleCompanyName: form.titleCompany || undefined,
+      loanOfficerName: form.loanOfficer || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),

@@ -4,7 +4,7 @@ import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealPartic
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 
@@ -46,7 +46,7 @@ const DealSheetEmailModal: React.FC<{
     `📍 Property:   ${(deal as any).address || 'N/A'}`,
     `🔑 MLS #:      ${(deal as any).mlsNumber || 'N/A'}`,
     `💰 Sale Price: ${(deal as any).price ? '$' + Number((deal as any).price).toLocaleString() : 'N/A'}`,
-    `📋 Stage:      ${deal.stage || 'N/A'}`,
+    `📋 Stage:      ${deal.state || 'N/A'}`,
     (deal as any).closeDate
       ? `📅 Close Date: ${new Date((deal as any).closeDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
       : '',
@@ -59,7 +59,7 @@ const DealSheetEmailModal: React.FC<{
   const defaultBody = lines.join('\n');
 
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
 
   const [to, setTo] = React.useState(contact.email || '');
   const [subject, setSubject] = React.useState(defaultSubject);
@@ -464,12 +464,18 @@ const ContactPicker: React.FC<{
         fullName: newName.trim(),
         firstName,
         lastName,
-        email: newEmail || undefined,
-        phone: newPhone || undefined,
-        company: newCompany || undefined,
+        email: newEmail || '',
+        phone: newPhone || '',
+        company: newCompany || '',
         contactType: newRole as any,
         isClient: false,
-        directoryId: newContact.id,
+        timezone: '',
+        notes: '',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        licenses: [],
+        mlsMemberships: [],
+        organizations: [],
       };
       onAdd(cr, side);
       onClose();
@@ -897,7 +903,7 @@ const SideSection: React.FC<SideSectionProps> = ({
 // ── Main Component ───────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
   const [popupContactId, setPopupContactId] = useState<string | null>(null);

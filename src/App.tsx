@@ -596,7 +596,6 @@ function AppInner() {
           onClose={() => setShowAdd(false)}
           complianceTemplates={complianceTemplates}
           agentClients={agentClients}
-          agentContacts={agentContacts}
           ddMasterItems={ddMasterItems}
         />
       )}

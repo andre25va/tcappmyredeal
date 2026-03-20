@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap
+  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap, Paperclip, ExternalLink
 } from 'lucide-react';
 import { CallButton } from './CallButton';
 import type {

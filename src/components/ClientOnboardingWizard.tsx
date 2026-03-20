@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Loader2,
   ExternalLink,
+  ClipboardList,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -49,6 +50,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   access: 'Access',
   briefing: 'Briefings',
   drive: 'Drive',
+  instructions: 'Instructions',
   done: 'Done',
 };
 
@@ -58,6 +60,7 @@ const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
   access: <Lock size={14} />,
   briefing: <Sun size={14} />,
   drive: <FolderOpen size={14} />,
+  instructions: <ClipboardList size={14} />,
   done: <CheckCircle2 size={14} />,
 };
 
@@ -69,6 +72,7 @@ interface Summary {
   briefingEnabled: boolean | null;
   folderCreated: boolean | null;
   folderUrl?: string;
+  hasInstructions?: boolean;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -97,6 +101,7 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
   const [briefingPreviewOpen, setBriefingPreviewOpen] = useState(false);
 
   // Step 5: Drive
+  const [clientInstructions, setClientInstructions] = useState('');
   const [createFolder, setCreateFolder] = useState<'yes' | 'no'>('yes');
   const [folderResult, setFolderResult] = useState<{ url?: string; manual?: boolean } | null>(null);
 

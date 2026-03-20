@@ -1,4 +1,4 @@
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -744,7 +744,7 @@ const ComplianceTabPanel: React.FC<{
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [], contactRecords = [], complianceTemplates = [] }) => {
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
   const [activeTab, setActiveTab]               = useState<'dd' | 'compliance'>('dd');
   const [showCompleted, setShowCompleted]       = useState(true);
   const [showViewModal, setShowViewModal]       = useState(false);

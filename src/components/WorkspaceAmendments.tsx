@@ -1,4 +1,4 @@
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
 import React, { useState, useEffect } from 'react';
 import {
   Plus, X, FileText, Edit3, ChevronDown, ChevronRight,
@@ -63,7 +63,7 @@ interface AmendmentFormProps {
 
 function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: AmendmentFormProps) {
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<Partial<Amendment>>(existing ?? {
     amendment_number: nextNumber,
@@ -317,7 +317,7 @@ function AmendmentCard({ amendment, onEdit, onDelete }: CardProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function WorkspaceAmendments({ deal, onUpdate }: Props) {
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

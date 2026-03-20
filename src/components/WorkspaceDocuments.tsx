@@ -1,4 +1,4 @@
-import { useAuth } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Upload, FileText, Link2, AlertTriangle, CheckCircle2, Clock,
@@ -73,19 +73,16 @@ const EXTRACTABLE_FIELDS: { key: keyof Deal; label: string }[] = [
   { key: 'listPrice', label: 'List Price' },
   { key: 'contractDate', label: 'Contract Date' },
   { key: 'closingDate', label: 'Closing Date' },
-  { key: 'earnestMoney', label: 'Earnest Money' },
-  { key: 'earnestMoneyDueDate', label: 'Earnest Money Due' },
+    { key: 'earnestMoneyDueDate', label: 'Earnest Money Due' },
   { key: 'loanType', label: 'Loan Type' },
   { key: 'loanAmount', label: 'Loan Amount' },
-  { key: 'downPaymentAmount', label: 'Down Payment' },
+  { key: 'downPayment', label: 'Down Payment' },
   { key: 'sellerConcessions', label: 'Seller Concessions' },
-  { key: 'inspectionDeadline', label: 'Inspection Deadline' },
-  { key: 'loanCommitmentDate', label: 'Loan Commitment Date' },
-  { key: 'possessionDate', label: 'Possession Date' },
-  { key: 'buyerNames', label: 'Buyer Name(s)' },
-  { key: 'sellerNames', label: 'Seller Name(s)' },
-  { key: 'titleCompany', label: 'Title Company' },
-  { key: 'loanOfficer', label: 'Lender / Loan Officer' },
+      { key: 'possessionDate', label: 'Possession Date' },
+  { key: 'buyerName', label: 'Buyer Name(s)' },
+  { key: 'sellerName', label: 'Seller Name(s)' },
+  { key: 'titleCompanyName', label: 'Title Company' },
+  { key: 'loanOfficerName', label: 'Lender / Loan Officer' },
   { key: 'asIsSale', label: 'As-Is Sale' },
   { key: 'inspectionWaived', label: 'Inspection Waived' },
   { key: 'homeWarranty', label: 'Home Warranty' },
@@ -408,7 +405,7 @@ function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const { profile } = useAuth();
-  const userName = profile?.full_name || profile?.name || 'TC Staff';
+  const userName = profile?.name || 'TC Staff';
   const [docs, setDocs] = useState<DealDocument[]>([]);
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmailDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -725,8 +722,10 @@ interface RequestModalProps {
   onClose: () => void;
 }
 function RequestModal({ existing, onSave, onClose }: RequestModalProps) {
+  const { profile } = useAuth();
+  const userName = profile?.name || 'TC Staff';
   const [form, setForm] = useState<Partial<DocumentRequest>>(existing ?? {
-    type: 'contract' as DocRequestType, label: '', description: '', urgency: 'normal', status: 'pending' as DocRequestStatus,
+    type: 'contract' as DocRequestType, label: '', description: '', urgency: 'medium', status: 'pending' as DocRequestStatus,
   });
   const cfg = docTypeConfig;
   const types = Object.keys(cfg) as DocRequestType[];
@@ -762,7 +761,7 @@ function RequestModal({ existing, onSave, onClose }: RequestModalProps) {
             <label className="text-xs text-base-content/50 mb-1 block">Urgency</label>
             <select className="select select-bordered w-full" value={form.urgency ?? 'normal'} onChange={f('urgency')}>
               <option value="low">Low</option>
-              <option value="normal">Normal</option>
+              <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
           </div>
@@ -804,14 +803,13 @@ function LegacyDocRequests({ deal, onUpdate }: { deal: Deal; onUpdate: (d: Deal)
 
   const statusColor: Record<DocRequestStatus, string> = {
     pending: 'text-warning',
-    received: 'text-success',
-    approved: 'text-info',
-    rejected: 'text-error',
+    in_progress: 'text-success',
+    confirmed: 'text-info',
   };
   const StatusIcon = ({ s }: { s: DocRequestStatus }) => {
     if (s === 'pending') return <Clock size={14} className="text-warning" />;
-    if (s === 'received') return <CheckCircle2 size={14} className="text-success" />;
-    if (s === 'approved') return <CheckCircle2 size={14} className="text-info" />;
+    if (s === 'in_progress') return <CheckCircle2 size={14} className="text-success" />;
+    if (s === 'confirmed') return <CheckCircle2 size={14} className="text-info" />;
     return <AlertTriangle size={14} className="text-error" />;
   };
 

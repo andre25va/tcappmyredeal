@@ -138,7 +138,7 @@ export function LoginPage() {
     }
   };
 
-  const doVerify = async () => {
+  const doVerify = async (_isAuto = false) => {
     const fullCode = code.join('');
     if (fullCode.length < 6) { setError('Enter the 6-digit code.'); return; }
     setError('');
