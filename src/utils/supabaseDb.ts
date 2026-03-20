@@ -170,7 +170,15 @@ export async function loadDeals(): Promise<Deal[]> {
   return data.map((row) => {
     const dd = (row.deal_data as Record<string, unknown>) || {};
     const participants = participantsByDeal[row.id] || [];
-    const clientAgent = findAgentFromParticipants(participants, 'listing');
+    // Find our client agent on either side (buyer or listing)
+    const clientAgent =
+      findAgentFromParticipants(participants, 'listing') ??
+      findAgentFromParticipants(participants, 'buyer') ??
+      undefined;
+    // The participant that is our client (isClientSide = true) and is lead_agent
+    const ourClientParticipant = participants.find(
+      (p) => p.isClientSide && p.dealRole === 'lead_agent',
+    );
 
     const deal: Deal = {
       id: row.id,
@@ -192,8 +200,8 @@ export async function loadDeals(): Promise<Deal[]> {
       assignedTcUserId: row.assigned_tc_user_id ?? undefined,
       assignedComplianceUserId: row.assigned_compliance_user_id ?? undefined,
       participants,
-      agentId: (clientAgent?.isOurClient ? participants.find((p) => p.isClientSide && p.dealRole === 'lead_agent')?.contactId : (dd.agentId as string)) || '',
-      agentName: clientAgent?.name || (dd.agentName as string) || '',
+      agentId: ourClientParticipant?.contactId || (dd.agentId as string) || '',
+      agentName: ourClientParticipant?.contactName || clientAgent?.name || (dd.agentName as string) || '',
       agentClientId: (dd.agentClientId as string) ?? undefined,
       complianceTemplateId: (dd.complianceTemplateId as string) ?? undefined,
       buyerAgent: findAgentFromParticipants(participants, 'buyer') ?? (dd.buyerAgent as AgentContact) ?? undefined,
