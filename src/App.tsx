@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-import { Deal, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
+import { Deal, DealStatus, DealMilestone, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import {
   loadDeals, saveDeals, saveSingleDeal,
   loadContactsFull,
@@ -304,6 +304,30 @@ function AppInner() {
     setIsCallMinimized(false);
   };
 
+  const handleArchiveDeal = (dealId: string, reason: string) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
+  };
+
+  const handleRestoreDeal = (dealId: string) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    const updated = { ...deal, milestone: 'contract-received' as DealMilestone, archiveReason: undefined };
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
+  };
+
+  const handleChangeStatus = (dealId: string, status: DealStatus) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    const updated = { ...deal, status };
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
+  };
+
   const handleUpdate = (deal: Deal) => {
     setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
     saveSingleDeal(deal).catch(console.error);
@@ -480,11 +504,17 @@ function AppInner() {
                       amberFilter={amberFilter}
                       onClearAmberFilter={() => setAmberFilter(false)}
                       contactRecords={contactRecords}
+                      onArchiveDeal={handleArchiveDeal}
+                      onRestoreDeal={handleRestoreDeal}
+                      onChangeStatus={handleChangeStatus}
                     />
                   ) : (
                     <AgentCardView
                       deals={deals}
                       onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                      onArchiveDeal={handleArchiveDeal}
+                      onRestoreDeal={handleRestoreDeal}
+                      onChangeStatus={handleChangeStatus}
                     />
                   )}
                 </div>
@@ -502,7 +532,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>

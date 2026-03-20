@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
@@ -64,6 +64,9 @@ interface Props {
   complianceTemplates?: ComplianceTemplate[];
   deals?: Deal[];
   onCallStarted?: (callData: { contactName: string; contactPhone: string; contactId?: string; dealId?: string; callSid?: string; startedAt: string }) => void;
+  onArchiveDeal?: (dealId: string, reason: string) => void;
+  onRestoreDeal?: (dealId: string) => void;
+  onChangeStatus?: (dealId: string, status: import('../types').DealStatus) => void;
 }
 
 /**
@@ -111,9 +114,26 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
   return null;
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus }) => {
   const [tab, setTab] = useState<Tab>('overview');
   const [copied, setCopied] = useState(false);
+  const [wsMenuOpen, setWsMenuOpen]     = useState(false);
+  const [wsArchiveOpen, setWsArchiveOpen] = useState(false);
+  const [wsArchiveReason, setWsArchiveReason] = useState('deal-closed');
+  const WS_ARCHIVE_REASONS = [
+    { value: 'deal-closed',  label: 'Deal Closed'  },
+    { value: 'fell-through', label: 'Fell Through'  },
+    { value: 'duplicate',    label: 'Duplicate'     },
+    { value: 'other',        label: 'Other'         },
+  ];
+  const WS_STATUSES: { value: string; label: string }[] = [
+    { value: 'contract',       label: 'Contract'       },
+    { value: 'due-diligence',  label: 'Due Diligence'  },
+    { value: 'clear-to-close', label: 'Clear to Close' },
+    { value: 'closed',         label: 'Closed'         },
+    { value: 'terminated',     label: 'Terminated'     },
+  ];
+  const isArchived = deal.milestone === 'archived';
   const [copiedMls, setCopiedMls] = useState(false);
   const [editTrigger, setEditTrigger] = useState(0);
   const [showSheet, setShowSheet] = useState(false);
@@ -248,6 +268,46 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             >
               <Pencil size={13} /> Edit Deal
             </button>
+            {/* 3-dot workspace menu */}
+            <div className="relative">
+              <button
+                className="btn btn-sm btn-ghost p-1.5 border border-gray-300"
+                onClick={() => setWsMenuOpen(v => !v)}
+                title="More actions"
+              >
+                <MoreVertical size={14} />
+              </button>
+              {wsMenuOpen && (
+                <div className="absolute right-0 top-9 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[170px] py-1">
+                  <div className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Change Status</div>
+                  {WS_STATUSES.map(s => (
+                    <button
+                      key={s.value}
+                      className={`w-full text-left px-3 py-1 text-xs hover:bg-base-200 ${deal.status === s.value ? 'font-bold text-primary' : ''}`}
+                      onClick={() => { onChangeStatus?.(deal.id, s.value as import('../types').DealStatus); setWsMenuOpen(false); }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                  <div className="border-t border-base-300 my-1" />
+                  {isArchived ? (
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
+                      onClick={() => { onRestoreDeal?.(deal.id); setWsMenuOpen(false); }}
+                    >
+                      <RotateCcw size={11} /> Restore Deal
+                    </button>
+                  ) : (
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
+                      onClick={() => { setWsMenuOpen(false); setWsArchiveReason('deal-closed'); setWsArchiveOpen(true); }}
+                    >
+                      <Archive size={11} /> Archive Deal
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -315,6 +375,36 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
           />
         )}
       </div>
+    {/* Workspace archive confirmation modal */}
+      {wsArchiveOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => setWsArchiveOpen(false)}>
+          <div className="bg-base-100 rounded-xl shadow-xl p-5 w-80 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <Archive size={16} className="text-red-500" /> Archive Deal
+            </h3>
+            <p className="text-sm text-base-content/70">
+              Archiving <span className="font-semibold">{deal.propertyAddress}</span>. Choose a reason:
+            </p>
+            <div className="space-y-1.5">
+              {WS_ARCHIVE_REASONS.map(r => (
+                <label key={r.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    className="radio radio-sm radio-primary"
+                    checked={wsArchiveReason === r.value}
+                    onChange={() => setWsArchiveReason(r.value)}
+                  />
+                  <span className="text-sm">{r.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button className="btn btn-sm btn-ghost" onClick={() => setWsArchiveOpen(false)}>Cancel</button>
+              <button className="btn btn-sm btn-error" onClick={() => { onArchiveDeal?.(deal.id, wsArchiveReason); setWsArchiveOpen(false); }}>Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

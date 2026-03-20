@@ -1,11 +1,26 @@
 import React, { useState } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame } from 'lucide-react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, MoreVertical, RotateCcw } from 'lucide-react';
 import { Deal, DealStatus, ContactRecord } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
   statusLabel, statusDot, closingCountdown, formatCurrency,
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
+
+const ARCHIVE_REASONS = [
+  { value: 'deal-closed',  label: 'Deal Closed'  },
+  { value: 'fell-through', label: 'Fell Through'  },
+  { value: 'duplicate',    label: 'Duplicate'     },
+  { value: 'other',        label: 'Other'         },
+];
+
+const VIEW_FILTER_OPTS: { label: string; value: 'active' | 'closed' | 'archived' | 'all' | 'terminated' }[] = [
+  { label: 'Active',     value: 'active'     },
+  { label: 'Closed',     value: 'closed'     },
+  { label: 'Archived',   value: 'archived'   },
+  { label: 'Terminated', value: 'terminated' },
+  { label: 'All',        value: 'all'        },
+];
 
 interface Props {
   deals: Deal[];
@@ -14,6 +29,9 @@ interface Props {
   amberFilter?: boolean;
   onClearAmberFilter?: () => void;
   contactRecords?: ContactRecord[];
+  onArchiveDeal?: (dealId: string, reason: string) => void;
+  onRestoreDeal?: (dealId: string) => void;
+  onChangeStatus?: (dealId: string, status: DealStatus) => void;
 }
 
 const STATUS_FILTERS: { label: string; value: DealStatus | 'all' }[] = [
@@ -50,6 +68,12 @@ const renderDealCard = (
   selectedId: string | null,
   onSelect: (id: string) => void,
   styles: typeof sideStylesConst,
+  openMenu: string | null,
+  setOpenMenu: (id: string | null) => void,
+  onArchiveDeal?: (dealId: string, reason: string) => void,
+  onRestoreDeal?: (dealId: string) => void,
+  onChangeStatus?: (dealId: string, status: DealStatus) => void,
+  openArchive?: (dealId: string, label: string) => void,
 ) => {
   const isArchived = deal.milestone === 'archived';
   const side      = deal.transactionType ?? 'buyer';
@@ -147,24 +171,91 @@ const renderDealCard = (
         </div>
       )}
 
-      {/* View button */}
-      <div className="flex justify-end">
+      {/* Bottom row: View button + 3-dot menu */}
+      <div className="flex justify-between items-center">
         <button
           className={`btn btn-xs ${side === 'buyer' ? 'btn-info' : 'btn-success'} btn-outline gap-1`}
           onClick={e => { e.stopPropagation(); onSelect(deal.id); }}
         >
           View <span className="text-[10px]">→</span>
         </button>
+        {/* 3-dot menu */}
+        <div className="relative">
+          <button
+            className="btn btn-xs btn-ghost p-1"
+            onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === deal.id ? null : deal.id); }}
+            title="More actions"
+          >
+            <MoreVertical size={13} />
+          </button>
+          {openMenu === deal.id && (
+            <div className="absolute right-0 bottom-7 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[150px] py-1">
+              {/* Change Status submenu */}
+              <div className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Change Status</div>
+              {(['contract','due-diligence','clear-to-close','closed','terminated'] as DealStatus[]).map(s => (
+                <button
+                  key={s}
+                  className={`w-full text-left px-3 py-1 text-xs hover:bg-base-200 ${deal.status === s ? 'font-bold text-primary' : ''}`}
+                  onClick={e => { e.stopPropagation(); onChangeStatus?.(deal.id, s); setOpenMenu(null); }}
+                >
+                  {s === 'contract' ? 'Contract' : s === 'due-diligence' ? 'Due Diligence' : s === 'clear-to-close' ? 'Clear to Close' : s === 'closed' ? 'Closed' : 'Terminated'}
+                </button>
+              ))}
+              <div className="border-t border-base-300 my-1" />
+              {isArchived ? (
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
+                  onClick={e => { e.stopPropagation(); onRestoreDeal?.(deal.id); setOpenMenu(null); }}
+                >
+                  <RotateCcw size={11} /> Restore
+                </button>
+              ) : (
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
+                  onClick={e => { e.stopPropagation(); openArchive?.(deal.id, deal.propertyAddress.split(',')[0]); }}
+                >
+                  <Archive size={11} /> Archive
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
-export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFilter = false, onClearAmberFilter, contactRecords = [] }) => {
+export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFilter = false, onClearAmberFilter, contactRecords = [], onArchiveDeal, onRestoreDeal, onChangeStatus }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<DealStatus | 'all'>('all');
   const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
-  const [showArchived, setShowArchived] = useState(false);
+  const [viewFilter, setViewFilter] = useState<'active' | 'closed' | 'archived' | 'all' | 'terminated'>('active');
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<{ dealId: string; label: string } | null>(null);
+  const [archiveReason, setArchiveReason] = useState('deal-closed');
+
+  // Close menu on outside click
+  React.useEffect(() => {
+    if (!openMenu) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-deallist-menu]')) setOpenMenu(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openMenu]);
+
+  const openArchive = (dealId: string, label: string) => {
+    setOpenMenu(null);
+    setArchiveReason('deal-closed');
+    setArchiveTarget({ dealId, label });
+  };
+
+  const confirmArchive = () => {
+    if (!archiveTarget) return;
+    onArchiveDeal?.(archiveTarget.dealId, archiveReason);
+    setArchiveTarget(null);
+  };
 
   // Reset local filters when amber filter activates
   React.useEffect(() => {
@@ -176,8 +267,11 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   }, [amberFilter]);
 
   const filtered = deals.filter(d => {
-    // archived deals only shown when showArchived toggle is on
-    if (d.milestone === 'archived') return showArchived;
+    // View filter
+    if (viewFilter === 'active'     && (d.status === 'terminated' || d.milestone === 'archived')) return false;
+    if (viewFilter === 'closed'     && d.status !== 'closed') return false;
+    if (viewFilter === 'archived'   && d.milestone !== 'archived') return false;
+    if (viewFilter === 'terminated' && d.status !== 'terminated') return false;
 
     const q = search.toLowerCase();
     const agentClient = d.agentClientId ? contactRecords.find(c => c.id === d.agentClientId) : undefined;
@@ -219,7 +313,7 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
 
   return (
     <>
-      <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80">
+      <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80" data-deallist-menu>
         {/* Search + Filters */}
         {/* Amber Alert Filter Banner */}
         {amberFilter && (
@@ -283,18 +377,20 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
             ))}
           </div>
 
-          {/* Archived toggle */}
-          <div className="flex items-center justify-between pt-1">
-            <button
-              className={`btn btn-xs gap-1 ${showArchived ? 'btn-warning' : 'btn-ghost text-gray-400'}`}
-              onClick={() => setShowArchived(v => !v)}
-            >
-              <Archive size={10} />
-              {showArchived ? 'Hide Archived' : 'Show Archived'}
-              {deals.filter(d => d.milestone === 'archived').length > 0 && (
-                <span className="badge badge-xs">{deals.filter(d => d.milestone === 'archived').length}</span>
-              )}
-            </button>
+          {/* View filter pills */}
+          <div className="flex gap-1 flex-wrap">
+            {VIEW_FILTER_OPTS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setViewFilter(f.value)}
+                className={`btn btn-xs ${viewFilter === f.value ? 'btn-primary' : 'btn-ghost text-base-content/50'}`}
+              >
+                {f.label}
+                {f.value === 'archived' && deals.filter(d => d.milestone === 'archived').length > 0 && (
+                  <span className="badge badge-xs ml-0.5">{deals.filter(d => d.milestone === 'archived').length}</span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -313,13 +409,13 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
                   Closing This Week ({closingThisWeek.length})
                 </span>
               </div>
-              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
+              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, openMenu, setOpenMenu, onArchiveDeal, onRestoreDeal, onChangeStatus, openArchive))}
               {otherDeals.length > 0 && (
                 <div className="border-t border-gray-200 my-1" />
               )}
             </>
           )}
-          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst))}
+          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, openMenu, setOpenMenu, onArchiveDeal, onRestoreDeal, onChangeStatus, openArchive))}
         </div>
 
         {/* Footer */}
@@ -338,6 +434,36 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
         </div>
       </div>
 
+      {/* Archive confirmation modal */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => setArchiveTarget(null)}>
+          <div className="bg-base-100 rounded-xl shadow-xl p-5 w-80 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <Archive size={16} className="text-red-500" /> Archive Deal
+            </h3>
+            <p className="text-sm text-base-content/70">
+              Archiving <span className="font-semibold">{archiveTarget.label}</span>. Choose a reason:
+            </p>
+            <div className="space-y-1.5">
+              {ARCHIVE_REASONS.map(r => (
+                <label key={r.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    className="radio radio-sm radio-primary"
+                    checked={archiveReason === r.value}
+                    onChange={() => setArchiveReason(r.value)}
+                  />
+                  <span className="text-sm">{r.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button className="btn btn-sm btn-ghost" onClick={() => setArchiveTarget(null)}>Cancel</button>
+              <button className="btn btn-sm btn-error" onClick={confirmArchive}>Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
