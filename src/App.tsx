@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-import { Deal, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
+import { Deal, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem, DealSide } from './types';
 import {
-  loadDeals, saveDeals, saveSingleDeal,
+  loadDeals, saveDeals, saveSingleDeal, saveDealParticipant,
   loadContactsFull,
   loadMls, saveMls,
   loadCompliance, saveCompliance,
@@ -315,6 +315,18 @@ function AppInner() {
     const updated = [withId, ...deals];
     setDeals(updated);
     saveSingleDeal(withId).catch(console.error);
+    // If the wizard linked an agent client, save them as lead_agent participant so they persist
+    if (withId.agentClientId) {
+      const pSide: DealSide = withId.transactionType === 'seller' ? 'listing' : 'buyer';
+      saveDealParticipant({
+        dealId: withId.id,
+        contactId: withId.agentClientId,
+        side: pSide,
+        dealRole: 'lead_agent',
+        isPrimary: true,
+        isClientSide: true,
+      }).catch(console.error);
+    }
     setSelectedId(withId.id);
     setTxPanel('workspace');
     setShowAdd(false);

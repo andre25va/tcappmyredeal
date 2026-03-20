@@ -369,6 +369,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleCreate = () => {
     const isMF = form.propertyType === 'multi-family';
+    // Resolve selected client info for agent fields
+    const client = agentClients?.find(cc => cc.id === form.agentClientId) ?? null;
+    const clientName = client?.fullName || (client ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : '') || '';
+    const clientAgentContact = client ? {
+      name: clientName,
+      phone: client.phone || '',
+      email: client.email || '',
+      isOurClient: true,
+    } : undefined;
 
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
@@ -407,8 +416,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       contractDate: form.contractDate,
       closingDate: form.closingDate,
       agentId: generateId(),
-      agentName: '',
+      agentName: clientName,
       agentClientId: form.agentClientId || undefined,
+      buyerAgent: form.transactionType === 'buyer' ? clientAgentContact : undefined,
+      sellerAgent: form.transactionType === 'seller' ? clientAgentContact : undefined,
       contacts: [],
       notes: form.specialNotes.trim(),
       // Financing
