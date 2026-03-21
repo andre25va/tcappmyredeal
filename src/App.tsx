@@ -418,6 +418,7 @@ function AppInner() {
     setPendingWorkspaceTab(tab);
     setSelectedId(id);
     setTxPanel('workspace');
+    setView('transactions');
   };
 
   const handleSetView = (v: View) => {
