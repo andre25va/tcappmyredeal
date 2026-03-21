@@ -106,23 +106,23 @@ const ThreadRow: React.FC<ThreadRowProps> = ({ thread, onMarkRead }) => {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className={`text-sm ${thread.is_unread ? 'font-bold text-base-content' : 'font-medium text-base-content/80'}`}>
-              {senderName(thread.email_from)}
-              {senderDomain(thread.email_from) && (
-                <span className="text-xs text-base-content/40 font-normal ml-1">@{senderDomain(thread.email_from)}</span>
+              {senderName(thread.thread_from)}
+              {senderDomain(thread.thread_from) && (
+                <span className="text-xs text-base-content/40 font-normal ml-1">@{senderDomain(thread.thread_from)}</span>
               )}
             </span>
             <div className="flex items-center gap-2 flex-none">
               {thread.has_attachment && <Paperclip size={12} className="text-base-content/40" />}
               {linkMethodBadge(thread.link_method)}
               <span className={`text-[10px] font-bold ${scoreColor(thread.score)}`}>{thread.score}pts</span>
-              <span className="text-xs text-base-content/40">{formatDate(thread.email_date)}</span>
+              <span className="text-xs text-base-content/40">{formatDate(thread.thread_date)}</span>
             </div>
           </div>
           <p className={`text-xs mt-0.5 truncate ${thread.is_unread ? 'text-base-content font-medium' : 'text-base-content/60'}`}>
-            {thread.email_subject || '(no subject)'}
+            {thread.thread_subject || '(no subject)'}
           </p>
-          {!expanded && thread.email_snippet && (
-            <p className="text-xs text-base-content/40 truncate mt-0.5">{thread.email_snippet}</p>
+          {!expanded && thread.thread_snippet && (
+            <p className="text-xs text-base-content/40 truncate mt-0.5">{thread.thread_snippet}</p>
           )}
         </div>
 
@@ -136,8 +136,8 @@ const ThreadRow: React.FC<ThreadRowProps> = ({ thread, onMarkRead }) => {
       {expanded && (
         <div className="px-4 pb-4 border-t border-base-200 pt-3 space-y-3">
           {/* Snippet */}
-          {thread.email_snippet && (
-            <p className="text-sm text-base-content/70 leading-relaxed">{thread.email_snippet}</p>
+          {thread.thread_snippet && (
+            <p className="text-sm text-base-content/70 leading-relaxed">{thread.thread_snippet}</p>
           )}
 
           {/* Score breakdown */}
@@ -169,7 +169,7 @@ const ThreadRow: React.FC<ThreadRowProps> = ({ thread, onMarkRead }) => {
             className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
             onClick={e => e.stopPropagation()}
           >
-            <Mail size={11} /> Open in Gmail →
+            <Mail size={11} /> Open in Gmail &rarr;
           </a>
         </div>
       )}

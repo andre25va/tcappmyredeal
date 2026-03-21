@@ -9,10 +9,10 @@ export interface LinkedEmailThread {
   score_breakdown: Record<string, number>;
   link_method: 'auto' | 'manual' | 'ai_suggested';
   linked_at: string;
-  email_subject: string | null;
-  email_snippet: string | null;
-  email_from: string | null;
-  email_date: string | null;
+  thread_subject: string | null;
+  thread_snippet: string | null;
+  thread_from: string | null;
+  thread_date: string | null;
   has_attachment: boolean;
   is_unread: boolean;
 }
@@ -40,7 +40,7 @@ export function useLinkedEmails(dealId: string): UseLinkedEmailsResult {
         .from('email_thread_links')
         .select('*')
         .eq('deal_id', dealId)
-        .order('email_date', { ascending: false });
+        .order('thread_date', { ascending: false });
 
       if (err) throw err;
       setThreads((data as LinkedEmailThread[]) ?? []);
