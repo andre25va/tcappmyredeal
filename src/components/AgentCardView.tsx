@@ -89,7 +89,7 @@ function getAgentUrgencyScore(agentDeals: Deal[]): number {
 }
 
 function formatCloseDate(dateStr: string | undefined): string {
-  if (!dateStr) return '—';
+  if (!dateStr) return '\u2014';
   try {
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
@@ -103,20 +103,16 @@ function NextDueItem({ dueDate, label, overdue }: { dueDate: string; label: stri
   const urgency = overdue ? 'text-red-600' : days <= 2 ? 'text-red-500' : days <= 7 ? 'text-amber-500' : 'text-base-content/50';
   return (
     <span className={`text-[11px] ${urgency} truncate`}>
-      {overdue ? '⚠ Overdue' : days === 0 ? 'Due today' : `Due in ${days}d`}: {label}
+      {overdue ? '! Overdue' : days === 0 ? 'Due today' : `Due in ${days}d`}: {label}
     </span>
   );
 }
 
-function AgentAvatar({ name, active }: { name: string; active?: boolean }) {
+function AgentAvatar({ name }: { name: string }) {
   const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
-    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
-      active
-        ? 'bg-primary shadow-md shadow-primary/30'
-        : 'bg-primary/20'
-    }`}>
-      <span className={`text-xs font-bold ${active ? 'text-white' : 'text-primary'}`}>
+    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary/20">
+      <span className="text-xs font-bold text-primary">
         {initials || '?'}
       </span>
     </div>
@@ -292,15 +288,12 @@ export const AgentCardView: React.FC<Props> = ({
           const missingClientCount = agentDeals.filter(
             d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
           ).length;
-          const isActiveAgent = !!selectedId && agentDeals.some(d => d.id === selectedId);
 
           return (
             <div
               key={name}
               className={`rounded-xl border transition-all ${
-                isActiveAgent
-                  ? 'border-l-4 border-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.01]'
-                  : hasOverdue
+                hasOverdue
                   ? 'border-red-300 bg-red-50/50'
                   : isExpanded
                   ? 'border-primary/30 bg-base-100'
@@ -308,21 +301,12 @@ export const AgentCardView: React.FC<Props> = ({
               }`}
             >
               {/* Tile header */}
-              <div className={`flex items-center gap-2 p-3 rounded-t-xl transition-all ${
-                isActiveAgent ? 'bg-primary/5' : ''
-              }`}>
-                <AgentAvatar name={name} active={isActiveAgent} />
+              <div className="flex items-center gap-2 p-3 rounded-t-xl">
+                <AgentAvatar name={name} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className={`text-sm font-semibold truncate transition-colors ${
-                      isActiveAgent ? 'text-primary' : 'text-base-content'
-                    }`}>{name}</p>
+                    <p className="text-sm font-semibold truncate text-base-content">{name}</p>
                     <span className="badge badge-xs badge-primary shrink-0">{agentDeals.length}</span>
-                    {isActiveAgent && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[9px] font-bold tracking-wide shrink-0">
-                        ACTIVE
-                      </span>
-                    )}
                     {missingClientCount > 0 && (
                       <span
                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[9px] font-bold text-amber-700 shrink-0"
@@ -349,9 +333,7 @@ export const AgentCardView: React.FC<Props> = ({
 
                 {/* View button */}
                 <button
-                  className={`btn btn-xs shrink-0 gap-0.5 ${
-                    isActiveAgent ? 'btn-primary' : 'btn-ghost'
-                  }`}
+                  className="btn btn-xs btn-ghost shrink-0 gap-0.5"
                   onClick={() => toggleAgent(name)}
                 >
                   {isExpanded ? <><ChevronUp size={12} /> Hide</> : <><ChevronDown size={12} /> View</>}
@@ -384,7 +366,7 @@ export const AgentCardView: React.FC<Props> = ({
                 <div className="border-t border-base-300 overflow-x-auto">
                   <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
                     <thead>
-                      <tr style={{ backgroundColor: isActiveAgent ? 'rgba(99,102,241,0.06)' : '#f3f4f6' }}>
+                      <tr style={{ backgroundColor: '#f3f4f6' }}>
                         <th style={thStyle}>Address</th>
                         <th style={thStyle}>Type</th>
                         <th style={thStyle}>Side</th>
@@ -411,7 +393,7 @@ export const AgentCardView: React.FC<Props> = ({
                           const isSelectedRow = deal.id === selectedId;
                           const propTypeLabel = deal.propertyType
                             ? (PROPERTY_TYPE_LABELS[deal.propertyType] ?? deal.propertyType)
-                            : '—';
+                            : '\u2014';
                           const closeDateStr = formatCloseDate(
                             deal.closingDate ?? (deal as any).closeDate ?? (deal as any).closing_date
                           );
