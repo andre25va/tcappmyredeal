@@ -4,7 +4,7 @@ import {
   Clock, AlertTriangle, CheckSquare, MoreVertical,
   Archive, RotateCcw, UserX, Home,
 } from 'lucide-react';
-import { Deal, DealStatus, PropertyType } from '../types';
+import { Deal, DealStatus } from '../types';
 import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
@@ -14,6 +14,7 @@ interface ArchiveTarget { dealIds: string[]; label: string }
 
 interface Props {
   deals: Deal[];
+  selectedId?: string | null;
   onSelectDeal: (id: string) => void;
   onArchiveDeal: (dealId: string, reason: string) => void;
   onRestoreDeal: (dealId: string) => void;
@@ -34,21 +35,17 @@ const VIEW_FILTERS: { label: string; value: ViewFilter }[] = [
   { label: 'All',      value: 'all'      },
 ];
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  'single-family': 'Single Family',
+  'condo':         'Condo',
+  'townhouse':     'Townhouse',
+  'multi-family':  'Multi-Family',
+  'land':          'Land',
+  'commercial':    'Commercial',
+  'other':         'Other',
+};
 
-function propertyTypeLabel(pt?: PropertyType | string): string {
-  if (!pt) return '—';
-  const map: Record<string, string> = {
-    'single-family': 'Single Family',
-    'multi-family':  'Multi Family',
-    'duplex':        'Duplex',
-    'condo':         'Condo',
-    'townhouse':     'Townhouse',
-    'land':          'Land',
-    'commercial':    'Commercial',
-  };
-  return map[pt] ?? pt;
-}
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function getNextDueItem(deal: Deal): { label: string; dueDate: string } | null {
   const items: { label: string; dueDate: string }[] = [];
@@ -107,30 +104,27 @@ function AgentAvatar({ name, active }: { name: string; active?: boolean }) {
   const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
     <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
-      active ? 'bg-primary shadow-md ring-2 ring-primary/30' : 'bg-primary/20'
+      active
+        ? 'bg-primary shadow-md shadow-primary/30'
+        : 'bg-primary/20'
     }`}>
-      <span className={`text-sm font-bold ${active ? 'text-white' : 'text-primary'}`}>{initials || '?'}</span>
+      <span className={`text-xs font-bold ${active ? 'text-white' : 'text-primary'}`}>
+        {initials || '?'}
+      </span>
     </div>
   );
 }
 
-// ── Dot-menu hook: closes on outside click ────────────────────────────────────
-function useMenuClose(openMenu: string | null, setOpenMenu: (v: string | null) => void) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!openMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenu(null);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [openMenu, setOpenMenu]);
-  return menuRef;
-}
-
 // ── main component ────────────────────────────────────────────────────────────
 
-export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveDeal, onRestoreDeal, onChangeStatus }) => {
+export const AgentCardView: React.FC<Props> = ({
+  deals,
+  selectedId,
+  onSelectDeal,
+  onArchiveDeal,
+  onRestoreDeal,
+  onChangeStatus,
+}) => {
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [viewFilter, setViewFilter]       = useState<ViewFilter>('active');
   const [agentType, setAgentType]         = useState<AgentTypeFilter>('all');
@@ -154,23 +148,21 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
     if (viewFilter === 'active')   return d.status !== 'terminated' && d.milestone !== 'archived';
     if (viewFilter === 'closed')   return d.status === 'closed';
     if (viewFilter === 'archived') return d.milestone === 'archived';
-    return true; // 'all'
+    return true;
   }), [deals, viewFilter]);
 
-  // Group by "our client" agents (buyerAgent.isOurClient / sellerAgent.isOurClient)
+  // Group by "our client" agents
   const agentGroups = useMemo(() => {
     const map = new Map<string, { deals: Deal[]; type: 'buyer' | 'seller' | 'mixed' }>();
     filteredDeals.forEach(deal => {
       const entries: Array<{ name: string; side: 'buyer' | 'seller' }> = [];
-      if (deal.buyerAgent?.isOurClient && deal.buyerAgent.name) {
+      if (deal.buyerAgent?.isOurClient && deal.buyerAgent.name)
         entries.push({ name: deal.buyerAgent.name, side: 'buyer' });
-      }
-      if (deal.sellerAgent?.isOurClient && deal.sellerAgent.name) {
+      if (deal.sellerAgent?.isOurClient && deal.sellerAgent.name)
         entries.push({ name: deal.sellerAgent.name, side: 'seller' });
-      }
       if (entries.length === 0) {
         const fallback = deal.agentName || 'Unknown Agent';
-        const side: 'buyer' | 'seller' = (deal.transactionType === 'seller') ? 'seller' : 'buyer';
+        const side: 'buyer' | 'seller' = deal.transactionType === 'seller' ? 'seller' : 'buyer';
         entries.push({ name: fallback, side });
       }
       entries.forEach(({ name, side }) => {
@@ -178,16 +170,29 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
         map.get(name)!.deals.push(deal);
       });
     });
-
     return Array.from(map.entries())
       .map(([name, { deals: agentDeals }]) => {
         const types = new Set(agentDeals.map(d => d.transactionType ?? 'buyer'));
-        const type: 'buyer' | 'seller' | 'mixed' = (types.has('buyer') && types.has('seller')) ? 'mixed' : types.has('seller') ? 'seller' : 'buyer';
+        const type: 'buyer' | 'seller' | 'mixed' =
+          types.has('buyer') && types.has('seller') ? 'mixed'
+          : types.has('seller') ? 'seller' : 'buyer';
         return { name, deals: agentDeals, topTask: getTopPriorityTask(agentDeals), score: getAgentUrgencyScore(agentDeals), type };
       })
       .filter(g => agentType === 'all' || g.type === (agentType as string) || g.type === 'mixed')
       .sort((a, b) => a.score - b.score);
   }, [filteredDeals, agentType]);
+
+  // Auto-expand + scroll to the agent card that owns the currently selected deal
+  useEffect(() => {
+    if (!selectedId) return;
+    for (const group of agentGroups) {
+      if (group.deals.some(d => d.id === selectedId)) {
+        setExpandedAgent(group.name);
+        break;
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   const toggleAgent = (name: string) => setExpandedAgent(prev => prev === name ? null : name);
 
@@ -203,11 +208,12 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
     setArchiveTarget(null);
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <div className="w-full bg-base-200 border-r border-base-300 flex flex-col h-full overflow-y-auto" ref={menuContainerRef}>
       {/* Header */}
       <div className="px-3 py-2 border-b border-base-300 shrink-0 space-y-2">
-        {/* View filter pills */}
         <div className="flex gap-1 flex-wrap">
           {VIEW_FILTERS.map(f => (
             <button
@@ -219,7 +225,6 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
             </button>
           ))}
         </div>
-        {/* Agent type filter */}
         <div className="flex gap-1">
           {(['all', 'buyer', 'seller'] as const).map(t => (
             <button
@@ -227,7 +232,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
               onClick={() => setAgentType(t)}
               className={`btn btn-xs flex-1 gap-1 ${
                 agentType === t
-                  ? t === 'buyer'  ? 'bg-blue-500  text-white border-blue-500'
+                  ? t === 'buyer'  ? 'bg-blue-500 text-white border-blue-500'
                   : t === 'seller' ? 'bg-green-500 text-white border-green-500'
                   : 'btn-neutral'
                   : 'btn-ghost'
@@ -246,7 +251,7 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
       </div>
 
       {/* Cards */}
-      <div className="flex-1 p-2 space-y-2">
+      <div className="flex-1 p-2 space-y-1.5">
         {agentGroups.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-base-content/30 gap-2">
             <Users size={28} />
@@ -255,39 +260,47 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
         )}
 
         {agentGroups.map(({ name, deals: agentDeals, topTask }) => {
-          const isExpanded = expandedAgent === name;
-          const hasOverdue = topTask?.overdue ?? false;
-          const today = new Date().toISOString().slice(0, 10);
-          const tileMenuId = `tile-${name}`;
+          const isExpanded     = expandedAgent === name;
+          const hasOverdue     = topTask?.overdue ?? false;
+          const tileMenuId     = `tile-${name}`;
           const missingClientCount = agentDeals.filter(
             d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
           ).length;
 
-          // Card border/shadow logic
-          let cardClass = 'rounded-xl border transition-all duration-200 ';
-          if (isExpanded) {
-            cardClass += 'border-l-4 border-l-primary border-t border-r border-b border-primary/30 bg-base-100 shadow-lg scale-[1.005]';
-          } else if (hasOverdue) {
-            cardClass += 'border border-red-300 bg-red-50/50 shadow-sm';
-          } else {
-            cardClass += 'border border-base-300 bg-base-100 hover:border-base-content/20 hover:shadow-sm';
-          }
+          // Is any deal in this agent's group currently open in workspace?
+          const isActiveAgent = !!selectedId && agentDeals.some(d => d.id === selectedId);
 
           return (
-            <div key={name} className={cardClass}>
+            <div
+              key={name}
+              className={`rounded-xl border transition-all ${
+                isActiveAgent
+                  ? 'border-l-4 border-primary bg-primary/5 shadow-lg shadow-primary/10 scale-[1.01]'
+                  : hasOverdue
+                  ? 'border-red-300 bg-red-50/50'
+                  : isExpanded
+                  ? 'border-primary/30 bg-base-100'
+                  : 'border-base-300 bg-base-100'
+              }`}
+            >
               {/* Tile header */}
-              <div className={`flex items-center gap-2 p-3 rounded-t-xl ${
-                isExpanded ? 'bg-primary/5 border-b border-primary/20' : ''
+              <div className={`flex items-center gap-2 p-3 rounded-t-xl transition-all ${
+                isActiveAgent ? 'bg-primary/8' : ''
               }`}>
-                <AgentAvatar name={name} active={isExpanded} />
+                <AgentAvatar name={name} active={isActiveAgent} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <p className={`text-sm font-semibold truncate ${
-                      isExpanded ? 'text-primary' : 'text-base-content'
+                    <p className={`text-sm font-semibold truncate transition-colors ${
+                      isActiveAgent ? 'text-primary' : 'text-base-content'
                     }`}>{name}</p>
                     <span className={`badge badge-xs shrink-0 ${
-                      isExpanded ? 'badge-primary' : 'badge-primary'
+                      isActiveAgent ? 'badge-primary' : 'badge-primary'
                     }`}>{agentDeals.length}</span>
+                    {isActiveAgent && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[9px] font-bold tracking-wide shrink-0">
+                        ACTIVE
+                      </span>
+                    )}
                     {missingClientCount > 0 && (
                       <span
                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[9px] font-bold text-amber-700 shrink-0"
@@ -314,8 +327,8 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
 
                 {/* View button */}
                 <button
-                  className={`btn btn-xs gap-0.5 shrink-0 ${
-                    isExpanded ? 'btn-primary' : 'btn-ghost'
+                  className={`btn btn-xs shrink-0 gap-0.5 ${
+                    isActiveAgent ? 'btn-primary' : 'btn-ghost'
                   }`}
                   onClick={() => toggleAgent(name)}
                 >
@@ -346,16 +359,16 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
 
               {/* Expanded deal table */}
               {isExpanded && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[14px] border-collapse">
+                <div className="border-t border-base-300 overflow-x-auto">
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '13px' }}>
                     <thead>
-                      <tr className="bg-primary/10 text-primary text-[12px] uppercase tracking-wide">
-                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Address</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Side</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Type</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Status</th>
-                        <th className="font-semibold text-left px-3 py-2 border border-primary/20">Next Due</th>
-                        <th className="border border-primary/20 w-8" />
+                      <tr style={{ backgroundColor: isActiveAgent ? 'rgba(var(--p)/0.08)' : '#f3f4f6' }}>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Address</th>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Type</th>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Side</th>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Status</th>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Next Due</th>
+                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 6px', width: '28px' }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -365,97 +378,101 @@ export const AgentCardView: React.FC<Props> = ({ deals, onSelectDeal, onArchiveD
                           if (!ai && !bi) return 0; if (!ai) return 1; if (!bi) return -1;
                           return ai.dueDate.localeCompare(bi.dueDate);
                         })
-                        .map((deal, idx) => {
-                          const nextItem = getNextDueItem(deal);
+                        .map(deal => {
+                          const nextItem  = getNextDueItem(deal);
                           const nextOverdue = nextItem ? nextItem.dueDate < today : false;
-                          const side = deal.transactionType ?? 'buyer';
+                          const side      = deal.transactionType ?? 'buyer';
                           const isArchived = deal.milestone === 'archived';
                           const rowMenuId = `row-${deal.id}`;
                           const noClientAssigned = !deal.buyerAgent?.isOurClient && !deal.sellerAgent?.isOurClient;
+                          const isSelectedRow = deal.id === selectedId;
+                          const propTypeLabel = deal.propertyType
+                            ? (PROPERTY_TYPE_LABELS[deal.propertyType] ?? deal.propertyType)
+                            : '—';
+
+                          const rowBg = isSelectedRow
+                            ? 'rgba(99,102,241,0.12)'
+                            : noClientAssigned && !isArchived
+                            ? 'rgba(251,191,36,0.1)'
+                            : 'transparent';
 
                           return (
                             <tr
                               key={deal.id}
-                              className={`transition-colors ${
-                                noClientAssigned && !isArchived
-                                  ? 'bg-amber-50/60 hover:bg-amber-100/60'
-                                  : idx % 2 === 0
-                                    ? 'bg-base-100 hover:bg-primary/5'
-                                    : 'bg-base-50 hover:bg-primary/5'
-                              }`}
+                              style={{ backgroundColor: rowBg, transition: 'background-color 0.15s' }}
+                              className="hover:brightness-95"
                             >
                               <td
-                                className="px-3 py-2 border border-base-300 cursor-pointer"
+                                style={{ border: '1px solid #e5e7eb', padding: '7px 10px', cursor: 'pointer', maxWidth: '120px' }}
                                 onClick={() => { setExpandedAgent(null); onSelectDeal(deal.id); }}
                               >
-                                <p className={`font-medium leading-tight ${
-                                  isArchived ? 'text-base-content/40 italic' : 'text-base-content'
-                                }`}>
+                                <p style={{
+                                  fontWeight: isSelectedRow ? 700 : 500,
+                                  color: isArchived ? '#9ca3af' : isSelectedRow ? '#4f46e5' : '#111827',
+                                  fontStyle: isArchived ? 'italic' : 'normal',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
                                   {deal.propertyAddress.split(',')[0]}
                                 </p>
-                                {isArchived && (
-                                  <span className="text-[10px] text-gray-400 font-semibold">ARCHIVED</span>
-                                )}
+                                {isArchived && <span style={{ fontSize: '9px', color: '#9ca3af', fontWeight: 600 }}>ARCHIVED</span>}
                                 {noClientAssigned && !isArchived && (
-                                  <span className="flex items-center gap-0.5 text-[10px] text-amber-600 font-semibold">
-                                    <UserX size={9} /> No client
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '9px', color: '#d97706', fontWeight: 600 }}>
+                                    <UserX size={8} /> No client
                                   </span>
                                 )}
                               </td>
-                              <td className="px-3 py-2 border border-base-300 whitespace-nowrap">
-                                {side === 'buyer'
-                                  ? <span className="flex items-center gap-1 text-blue-600"><ShoppingCart size={11} /> Buy</span>
-                                  : <span className="flex items-center gap-1 text-green-600"><Tag size={11} /> Sell</span>}
-                              </td>
-                              <td className="px-3 py-2 border border-base-300 whitespace-nowrap">
-                                <span className="flex items-center gap-1 text-base-content/70">
-                                  <Home size={11} className="shrink-0" />
-                                  {propertyTypeLabel(deal.propertyType)}
+                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280', fontSize: '12px' }}>
+                                  <Home size={10} style={{ flexShrink: 0 }} />
+                                  {propTypeLabel}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 border border-base-300">
-                                <div className="flex items-center gap-1.5">
+                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                                {side === 'buyer'
+                                  ? <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}><ShoppingCart size={10} /> Buy</span>
+                                  : <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a' }}><Tag size={10} /> Sell</span>}
+                              </td>
+                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
-                                  <span>{statusLabel(deal.status)}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>{statusLabel(deal.status)}</span>
                                 </div>
                               </td>
-                              <td className="px-3 py-2 border border-base-300">
+                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', maxWidth: '120px' }}>
                                 {nextItem
-                                  ? <span className={`block leading-tight ${
-                                      nextOverdue ? 'text-red-500 font-medium' : 'text-base-content/70'
-                                    }`} title={nextItem.label}>{nextItem.label}</span>
-                                  : <span className="text-green-500">Clear</span>}
+                                  ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', color: nextOverdue ? '#ef4444' : '#6b7280' }} title={nextItem.label}>{nextItem.label}</span>
+                                  : <span style={{ color: '#22c55e' }}>Clear</span>}
                               </td>
                               {/* 3-dot row menu */}
-                              <td className="px-1 py-2 border border-base-300 w-8">
+                              <td style={{ border: '1px solid #e5e7eb', padding: '4px 6px', width: '28px' }}>
                                 <div className="relative">
                                   <button
                                     className="btn btn-xs btn-ghost p-0.5"
                                     onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === rowMenuId ? null : rowMenuId); }}
                                   >
-                                    <MoreVertical size={13} />
+                                    <MoreVertical size={11} />
                                   </button>
                                   {openMenu === rowMenuId && (
                                     <div className="absolute right-0 top-5 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[140px] py-1">
                                       <button
-                                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200"
+                                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200"
                                         onClick={() => { setOpenMenu(null); setExpandedAgent(null); onSelectDeal(deal.id); }}
                                       >
                                         View Deal
                                       </button>
                                       {isArchived ? (
                                         <button
-                                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2 text-green-600"
+                                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
                                           onClick={() => { setOpenMenu(null); onRestoreDeal(deal.id); }}
                                         >
-                                          <RotateCcw size={12} /> Restore
+                                          <RotateCcw size={11} /> Restore
                                         </button>
                                       ) : (
                                         <button
-                                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center gap-2 text-red-500"
+                                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
                                           onClick={() => openArchive([deal.id], deal.propertyAddress.split(',')[0])}
                                         >
-                                          <Archive size={12} /> Archive
+                                          <Archive size={11} /> Archive
                                         </button>
                                       )}
                                     </div>

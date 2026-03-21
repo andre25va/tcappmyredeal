@@ -265,7 +265,7 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
-    // ── Keep selectedId valid ────────────────────────────────────────────────────
+  // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
     if (deals.length === 0) {
       if (selectedId !== null) setSelectedId(null);
@@ -462,7 +462,7 @@ function AppInner() {
     );
   }
 
-  // ── Sidebar props — TypeScript will error at build time if any required prop is missing ──
+  // ── Sidebar props ─────────────────────────────────────────────────────────────
   const sidebarProps = {
     view,
     onSetView: handleSetView,
@@ -576,6 +576,7 @@ function AppInner() {
                   ) : (
                     <AgentCardView
                       deals={deals}
+                      selectedId={selectedId}
                       onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
                       onArchiveDeal={handleArchiveDeal}
                       onRestoreDeal={handleRestoreDeal}
@@ -677,7 +678,6 @@ function AppInner() {
             </div>
           )}
 
-
           {view === 'requests' && (
             <div className="flex-1 overflow-hidden">
               <RequestCenterView
@@ -744,7 +744,6 @@ function AppInner() {
         callData={activeCall}
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
         onEndCall={async () => {
-          // Tell Twilio to hang up the call before dismissing the UI
           const sid = activeCall?.callSid;
           if (sid && sid !== 'call-initiated') {
             try {
