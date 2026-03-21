@@ -108,10 +108,12 @@ function NextDueItem({ dueDate, label, overdue }: { dueDate: string; label: stri
   );
 }
 
-function AgentAvatar({ name }: { name: string }) {
+function AgentAvatar({ name, isActive }: { name: string; isActive?: boolean }) {
   const initials = name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
-    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary/20">
+    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-primary/20 transition-all ${
+      isActive ? 'ring-2 ring-primary ring-offset-2' : ''
+    }`}>
       <span className="text-xs font-bold text-primary">
         {initials || '?'}
       </span>
@@ -283,6 +285,7 @@ export const AgentCardView: React.FC<Props> = ({
 
         {agentGroups.map(({ name, deals: agentDeals, topTask }) => {
           const isExpanded     = expandedAgent === name;
+          const isActiveAgent  = agentDeals.some(d => d.id === selectedId);
           const hasOverdue     = topTask?.overdue ?? false;
           const tileMenuId     = `tile-${name}`;
           const missingClientCount = agentDeals.filter(
@@ -302,7 +305,7 @@ export const AgentCardView: React.FC<Props> = ({
             >
               {/* Tile header */}
               <div className="flex items-center gap-2 p-3 rounded-t-xl">
-                <AgentAvatar name={name} />
+                <AgentAvatar name={name} isActive={isActiveAgent} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="text-sm font-semibold truncate text-base-content">{name}</p>
