@@ -70,6 +70,8 @@ interface Props {
   onArchiveDeal?: (dealId: string, reason: string) => void;
   onRestoreDeal?: (dealId: string) => void;
   onChangeStatus?: (dealId: string, status: import('../types').DealStatus) => void;
+  /** If set, workspace opens to this tab instead of 'overview' when deal loads. */
+  initialTab?: Tab;
 }
 
 /**
@@ -117,9 +119,9 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
   return null;
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
   const { profile } = useAuth();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
   const [copied, setCopied] = useState(false);
   const [wsMenuOpen, setWsMenuOpen]     = useState(false);
   const [wsArchiveOpen, setWsArchiveOpen] = useState(false);
@@ -149,8 +151,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   // Linked emails unread count for tab badge
   const [linkedEmailUnread, setLinkedEmailUnread] = React.useState(0);
 
-  // Reset to Overview whenever the deal changes
-  useEffect(() => { setTab('overview'); }, [deal.id]);
+  // Reset to initialTab (or overview) whenever the active deal changes
+  useEffect(() => { setTab(initialTab ?? 'overview'); }, [deal.id, initialTab]);
   const pendingDocs = pendingDocCount(deal.documentRequests);
   const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate < new Date().toISOString().slice(0, 10)).length;
 

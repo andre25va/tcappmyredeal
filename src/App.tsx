@@ -91,6 +91,9 @@ function AppInner() {
   const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);
   const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
 
+  /** Tab to open in DealWorkspace when navigating from a cross-view link (e.g. Request Center). */
+  const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
+
   // ── Load deals ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!profile) return;
@@ -393,19 +396,17 @@ function AppInner() {
     logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
-  const handleAdd = (deal: Deal) => {
-    const withId = { ...deal, id: generateId() };
-    const updated = [withId, ...deals];
-    setDeals(updated);
-    saveSingleDeal(withId).catch(console.error);
-    setSelectedId(withId.id);
+  /** Navigate to a deal workspace, resetting to Overview tab. */
+  const handleSelectDeal = (id: string) => {
+    setPendingWorkspaceTab(null);
+    setSelectedId(id);
     setTxPanel('workspace');
-    setShowAdd(false);
     setView('transactions');
-    logAction('create', 'deal', withId.id, withId.propertyAddress);
   };
 
-  const handleSelectDeal = (id: string) => {
+  /** Navigate to a deal workspace and open a specific tab (e.g. from Request Center). */
+  const handleSelectDealWithTab = (id: string, tab: string) => {
+    setPendingWorkspaceTab(tab);
     setSelectedId(id);
     setTxPanel('workspace');
     setView('transactions');
@@ -565,7 +566,7 @@ function AppInner() {
                     <DealList
                       deals={deals}
                       selectedId={selectedId}
-                      onSelect={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                      onSelect={(id) => { setPendingWorkspaceTab(null); setSelectedId(id); setTxPanel('workspace'); }}
                       amberFilter={amberFilter}
                       onClearAmberFilter={() => setAmberFilter(false)}
                       contactRecords={contactRecords}
@@ -577,7 +578,7 @@ function AppInner() {
                     <AgentCardView
                       deals={deals}
                       selectedId={selectedId}
-                      onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
+                      onSelectDeal={(id) => { setPendingWorkspaceTab(null); setSelectedId(id); setTxPanel('workspace'); }}
                       onArchiveDeal={handleArchiveDeal}
                       onRestoreDeal={handleRestoreDeal}
                       onChangeStatus={handleChangeStatus}
@@ -608,7 +609,20 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} />
+                      ? <DealWorkspace
+                          deal={selected}
+                          onUpdate={handleUpdate}
+                          contactRecords={contactRecords}
+                          users={users}
+                          emailTemplates={emailTemplates}
+                          complianceTemplates={complianceTemplates}
+                          deals={deals}
+                          onCallStarted={handleCallStarted}
+                          onArchiveDeal={handleArchiveDeal}
+                          onRestoreDeal={handleRestoreDeal}
+                          onChangeStatus={handleChangeStatus}
+                          initialTab={pendingWorkspaceTab as any ?? undefined}
+                        />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -681,7 +695,7 @@ function AppInner() {
           {view === 'requests' && (
             <div className="flex-1 overflow-hidden">
               <RequestCenterView
-                onSelectDeal={handleSelectDeal}
+                onSelectDeal={(id) => handleSelectDealWithTab(id, 'requests')}
               />
             </div>
           )}
