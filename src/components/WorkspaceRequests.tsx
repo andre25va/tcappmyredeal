@@ -838,12 +838,18 @@ const RequestCard: React.FC<RequestCardProps> = ({
                     }`}>
                       {doc.reviewStatus}
                     </span>
-                    {doc.fileUrl && (
+                    {doc.fileUrl ? (
                       <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
                         className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}>
                         <ExternalLink size={11} /> View
                       </a>
-                    )}
+                    ) : doc.gmailMessageId ? (
+                      <a href={`https://mail.google.com/mail/u/0/#inbox/${doc.gmailMessageId}`} target="_blank" rel="noopener noreferrer"
+                        className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}
+                        title="Open attachment in Gmail">
+                        <ExternalLink size={11} /> View in Gmail
+                      </a>
+                    ) : null}
                   </div>
                 ))}
               </div>
