@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Users, ChevronDown, ChevronUp, ShoppingCart, Tag,
   Clock, AlertTriangle, CheckSquare, MoreVertical,
-  Archive, RotateCcw, UserX, Home,
+  Archive, RotateCcw, UserX, Home, Calendar,
 } from 'lucide-react';
 import { Deal, DealStatus } from '../types';
 import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
@@ -88,6 +88,14 @@ function getAgentUrgencyScore(agentDeals: Deal[]): number {
   return minDays === Infinity ? 999999 : minDays;
 }
 
+function formatCloseDate(dateStr: string | undefined): string {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+  } catch { return dateStr; }
+}
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 function NextDueItem({ dueDate, label, overdue }: { dueDate: string; label: string; overdue: boolean }) {
@@ -143,7 +151,7 @@ export const AgentCardView: React.FC<Props> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenu]);
 
-  // Filter deals based on viewFilter
+  // Filter deals
   const filteredDeals = useMemo(() => deals.filter(d => {
     if (viewFilter === 'active')   return d.status !== 'terminated' && d.milestone !== 'archived';
     if (viewFilter === 'closed')   return d.status === 'closed';
@@ -151,7 +159,7 @@ export const AgentCardView: React.FC<Props> = ({
     return true;
   }), [deals, viewFilter]);
 
-  // Group by "our client" agents
+  // Group by agent
   const agentGroups = useMemo(() => {
     const map = new Map<string, { deals: Deal[]; type: 'buyer' | 'seller' | 'mixed' }>();
     filteredDeals.forEach(deal => {
@@ -182,7 +190,7 @@ export const AgentCardView: React.FC<Props> = ({
       .sort((a, b) => a.score - b.score);
   }, [filteredDeals, agentType]);
 
-  // Auto-expand + scroll to the agent card that owns the currently selected deal
+  // Auto-expand the agent card that owns the currently selected deal
   useEffect(() => {
     if (!selectedId) return;
     for (const group of agentGroups) {
@@ -209,6 +217,24 @@ export const AgentCardView: React.FC<Props> = ({
   };
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // Table cell style helpers
+  const thStyle: React.CSSProperties = {
+    border: '1px solid #e5e7eb',
+    padding: '6px 10px',
+    textAlign: 'left',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: '#6b7280',
+    whiteSpace: 'nowrap',
+  };
+  const tdStyle: React.CSSProperties = {
+    border: '1px solid #e5e7eb',
+    padding: '8px 10px',
+    fontSize: '14px',
+  };
 
   return (
     <div className="w-full bg-base-200 border-r border-base-300 flex flex-col h-full overflow-y-auto" ref={menuContainerRef}>
@@ -266,8 +292,6 @@ export const AgentCardView: React.FC<Props> = ({
           const missingClientCount = agentDeals.filter(
             d => !d.buyerAgent?.isOurClient && !d.sellerAgent?.isOurClient
           ).length;
-
-          // Is any deal in this agent's group currently open in workspace?
           const isActiveAgent = !!selectedId && agentDeals.some(d => d.id === selectedId);
 
           return (
@@ -285,17 +309,15 @@ export const AgentCardView: React.FC<Props> = ({
             >
               {/* Tile header */}
               <div className={`flex items-center gap-2 p-3 rounded-t-xl transition-all ${
-                isActiveAgent ? 'bg-primary/8' : ''
+                isActiveAgent ? 'bg-primary/5' : ''
               }`}>
                 <AgentAvatar name={name} active={isActiveAgent} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <p className={`text-sm font-semibold truncate transition-colors ${
                       isActiveAgent ? 'text-primary' : 'text-base-content'
                     }`}>{name}</p>
-                    <span className={`badge badge-xs shrink-0 ${
-                      isActiveAgent ? 'badge-primary' : 'badge-primary'
-                    }`}>{agentDeals.length}</span>
+                    <span className="badge badge-xs badge-primary shrink-0">{agentDeals.length}</span>
                     {isActiveAgent && (
                       <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[9px] font-bold tracking-wide shrink-0">
                         ACTIVE
@@ -360,15 +382,16 @@ export const AgentCardView: React.FC<Props> = ({
               {/* Expanded deal table */}
               {isExpanded && (
                 <div className="border-t border-base-300 overflow-x-auto">
-                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '13px' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
                     <thead>
-                      <tr style={{ backgroundColor: isActiveAgent ? 'rgba(var(--p)/0.08)' : '#f3f4f6' }}>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Address</th>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Type</th>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Side</th>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Status</th>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280' }}>Next Due</th>
-                        <th style={{ border: '1px solid #e5e7eb', padding: '6px 6px', width: '28px' }}></th>
+                      <tr style={{ backgroundColor: isActiveAgent ? 'rgba(99,102,241,0.06)' : '#f3f4f6' }}>
+                        <th style={thStyle}>Address</th>
+                        <th style={thStyle}>Type</th>
+                        <th style={thStyle}>Side</th>
+                        <th style={thStyle}>Status</th>
+                        <th style={thStyle}>Close Date</th>
+                        <th style={thStyle}>Next Due</th>
+                        <th style={{ ...thStyle, width: '28px', padding: '6px' }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -379,20 +402,23 @@ export const AgentCardView: React.FC<Props> = ({
                           return ai.dueDate.localeCompare(bi.dueDate);
                         })
                         .map(deal => {
-                          const nextItem  = getNextDueItem(deal);
+                          const nextItem   = getNextDueItem(deal);
                           const nextOverdue = nextItem ? nextItem.dueDate < today : false;
-                          const side      = deal.transactionType ?? 'buyer';
+                          const side       = deal.transactionType ?? 'buyer';
                           const isArchived = deal.milestone === 'archived';
-                          const rowMenuId = `row-${deal.id}`;
-                          const noClientAssigned = !deal.buyerAgent?.isOurClient && !deal.sellerAgent?.isOurClient;
+                          const rowMenuId  = `row-${deal.id}`;
+                          const noClient   = !deal.buyerAgent?.isOurClient && !deal.sellerAgent?.isOurClient;
                           const isSelectedRow = deal.id === selectedId;
                           const propTypeLabel = deal.propertyType
                             ? (PROPERTY_TYPE_LABELS[deal.propertyType] ?? deal.propertyType)
                             : '—';
+                          const closeDateStr = formatCloseDate(
+                            deal.closingDate ?? (deal as any).closeDate ?? (deal as any).closing_date
+                          );
 
                           const rowBg = isSelectedRow
                             ? 'rgba(99,102,241,0.12)'
-                            : noClientAssigned && !isArchived
+                            : noClient && !isArchived
                             ? 'rgba(251,191,36,0.1)'
                             : 'transparent';
 
@@ -402,8 +428,9 @@ export const AgentCardView: React.FC<Props> = ({
                               style={{ backgroundColor: rowBg, transition: 'background-color 0.15s' }}
                               className="hover:brightness-95"
                             >
+                              {/* Address */}
                               <td
-                                style={{ border: '1px solid #e5e7eb', padding: '7px 10px', cursor: 'pointer', maxWidth: '120px' }}
+                                style={{ ...tdStyle, cursor: 'pointer', maxWidth: '140px' }}
                                 onClick={() => { setExpandedAgent(null); onSelectDeal(deal.id); }}
                               >
                                 <p style={{
@@ -415,42 +442,53 @@ export const AgentCardView: React.FC<Props> = ({
                                   {deal.propertyAddress.split(',')[0]}
                                 </p>
                                 {isArchived && <span style={{ fontSize: '9px', color: '#9ca3af', fontWeight: 600 }}>ARCHIVED</span>}
-                                {noClientAssigned && !isArchived && (
+                                {noClient && !isArchived && (
                                   <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '9px', color: '#d97706', fontWeight: 600 }}>
                                     <UserX size={8} /> No client
                                   </span>
                                 )}
                               </td>
-                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280', fontSize: '12px' }}>
-                                  <Home size={10} style={{ flexShrink: 0 }} />
+                              {/* Type */}
+                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280' }}>
+                                  <Home size={11} style={{ flexShrink: 0 }} />
                                   {propTypeLabel}
                                 </span>
                               </td>
-                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                              {/* Side */}
+                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                 {side === 'buyer'
-                                  ? <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}><ShoppingCart size={10} /> Buy</span>
-                                  : <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a' }}><Tag size={10} /> Sell</span>}
+                                  ? <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}><ShoppingCart size={11} /> Buy</span>
+                                  : <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a' }}><Tag size={11} /> Sell</span>}
                               </td>
-                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                              {/* Status */}
+                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>{statusLabel(deal.status)}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px', fontSize: '13px' }}>{statusLabel(deal.status)}</span>
                                 </div>
                               </td>
-                              <td style={{ border: '1px solid #e5e7eb', padding: '7px 10px', maxWidth: '120px' }}>
+                              {/* Close Date */}
+                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6b7280' }}>
+                                  <Calendar size={11} style={{ flexShrink: 0 }} />
+                                  {closeDateStr}
+                                </span>
+                              </td>
+                              {/* Next Due */}
+                              <td style={{ ...tdStyle, maxWidth: '130px' }}>
                                 {nextItem
-                                  ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', color: nextOverdue ? '#ef4444' : '#6b7280' }} title={nextItem.label}>{nextItem.label}</span>
-                                  : <span style={{ color: '#22c55e' }}>Clear</span>}
+                                  ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', color: nextOverdue ? '#ef4444' : '#6b7280', fontSize: '13px' }} title={nextItem.label}>{nextItem.label}</span>
+                                  : <span style={{ color: '#22c55e', fontSize: '13px' }}>Clear</span>}
                               </td>
                               {/* 3-dot row menu */}
-                              <td style={{ border: '1px solid #e5e7eb', padding: '4px 6px', width: '28px' }}>
+                              <td style={{ ...tdStyle, padding: '4px 6px', width: '28px' }}>
                                 <div className="relative">
                                   <button
                                     className="btn btn-xs btn-ghost p-0.5"
                                     onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === rowMenuId ? null : rowMenuId); }}
                                   >
-                                    <MoreVertical size={11} />
+                                    <MoreVertical size={12} />
                                   </button>
                                   {openMenu === rowMenuId && (
                                     <div className="absolute right-0 top-5 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[140px] py-1">
