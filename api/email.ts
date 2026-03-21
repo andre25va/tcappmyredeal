@@ -7,13 +7,19 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 
 function decodeBody(raw: string, encoding: string): string {
   try {
-    if (encoding?.toLowerCase() === 'base64') {
+    const enc = (encoding || '').toLowerCase().trim();
+    if (enc === 'base64') {
       return Buffer.from(raw.replace(/\s/g, ''), 'base64').toString('utf-8');
-    } else if (encoding?.toLowerCase() === 'quoted-printable') {
-      const joined = raw.replace(/=\r?\n/g, '');
-      return joined.replace(/((?:=[0-9A-F]{2})+)/gi, (match) => {
-        const bytes = match.split('=').filter(Boolean).map(h => parseInt(h, 16));
-        return Buffer.from(bytes).toString('utf-8');
+    } else if (enc === 'quoted-printable') {
+      // Remove soft line breaks: = at end of line (both \r\n and \n variants)
+      const joined = raw.replace(/=\r\n/g, '').replace(/=\n/g, '');
+      // Decode =XX hex sequences, handling UTF-8 multi-byte sequences
+      return joined.replace(/(=[0-9A-F]{2})+/gi, (match) => {
+        try {
+          const hexPairs = match.match(/=[0-9A-F]{2}/gi) || [];
+          const bytes = hexPairs.map(h => parseInt(h.slice(1), 16));
+          return Buffer.from(bytes).toString('utf-8');
+        } catch { return match; }
       });
     }
     return raw;
@@ -22,34 +28,60 @@ function decodeBody(raw: string, encoding: string): string {
 
 function extractPartsFromSource(source: string): { text: string; html: string; attachments: any[] } {
   const result = { text: '', html: '', attachments: [] as any[] };
+  extractPartsRecursive(source, result);
+  return result;
+}
+
+function extractPartsRecursive(
+  source: string,
+  result: { text: string; html: string; attachments: any[] }
+): void {
+  // Find boundary for multipart
   const boundaryMatch = source.match(/boundary="?([^"\r\n;]+)"?/i);
+
   if (!boundaryMatch) {
-    const headerEnd = source.indexOf('\r\n\r\n');
-    if (headerEnd === -1) return result;
+    // Single part — find header/body separator (try \r\n\r\n then \n\n)
+    let headerEnd = source.indexOf('\r\n\r\n');
+    let sepLen = 4;
+    if (headerEnd === -1) { headerEnd = source.indexOf('\n\n'); sepLen = 2; }
+    if (headerEnd === -1) return;
     const headers = source.substring(0, headerEnd);
-    const body = source.substring(headerEnd + 4);
+    const body = source.substring(headerEnd + sepLen);
     const encMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const ctMatch  = headers.match(/Content-Type:\s*([^;\r\n]+)/i);
     const encoding = encMatch ? encMatch[1] : '7bit';
+    const ct = ctMatch ? ctMatch[1].trim().toLowerCase() : 'text/plain';
     const decoded = decodeBody(body, encoding);
-    if (headers.toLowerCase().includes('text/html')) { result.html = decoded; } else { result.text = decoded; }
-    return result;
+    if (ct.includes('text/html') && !result.html) { result.html = decoded; }
+    else if (ct.includes('text/plain') && !result.text) { result.text = decoded; }
+    return;
   }
+
   const boundary = boundaryMatch[1].trim();
-  const parts = source.split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:--)?\r?\n`));
+  const escaped = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = source.split(new RegExp(`--${escaped}(?:--)?\r?\n?`));
+
   for (const part of parts) {
     if (!part.trim() || part.trim() === '--') continue;
-    const partHeaderEnd = part.indexOf('\r\n\r\n');
+
+    let partHeaderEnd = part.indexOf('\r\n\r\n');
+    let sepLen = 4;
+    if (partHeaderEnd === -1) { partHeaderEnd = part.indexOf('\n\n'); sepLen = 2; }
     if (partHeaderEnd === -1) continue;
+
     const partHeaders = part.substring(0, partHeaderEnd);
-    const partBody = part.substring(partHeaderEnd + 4).replace(/\r?\n$/, '');
-    const ctMatch = partHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
-    const encMatch = partHeaders.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const partBody = part.substring(partHeaderEnd + sepLen).replace(/\r?\n$/, '');
+
+    const ctMatch   = partHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
+    const encMatch  = partHeaders.match(/Content-Transfer-Encoding:\s*(\S+)/i);
     const dispMatch = partHeaders.match(/Content-Disposition:\s*([^;\r\n]+)/i);
     const nameMatch = partHeaders.match(/(?:filename|name)="?([^"\r\n;]+)"?/i);
+
     const contentType = ctMatch ? ctMatch[1].trim().toLowerCase() : '';
-    const encoding = encMatch ? encMatch[1].trim() : '7bit';
+    const encoding    = encMatch ? encMatch[1].trim() : '7bit';
     const disposition = dispMatch ? dispMatch[1].trim().toLowerCase() : '';
-    if (disposition === 'attachment' || nameMatch) {
+
+    if (disposition === 'attachment' || (nameMatch && !contentType.includes('text/'))) {
       const filename = nameMatch ? nameMatch[1] : 'attachment';
       const cidMatch = partHeaders.match(/Content-ID:\s*<([^>]+)>/i);
       result.attachments.push({
@@ -57,14 +89,17 @@ function extractPartsFromSource(source: string): { text: string; html: string; a
         size: Math.round(partBody.length * 0.75), contentId: cidMatch ? cidMatch[1] : null,
         data: encoding.toLowerCase() === 'base64' ? partBody.replace(/\s/g, '') : null,
       });
+    } else if (contentType.includes('multipart/')) {
+      // Recurse into nested multipart (e.g. multipart/related > multipart/alternative)
+      extractPartsRecursive(partHeaders + '\r\n\r\n' + partBody, result);
     } else if (contentType.includes('text/html') && !result.html) {
       result.html = decodeBody(partBody, encoding);
     } else if (contentType.includes('text/plain') && !result.text) {
       result.text = decodeBody(partBody, encoding);
     }
   }
-  return result;
 }
+
 
 function stripHtml(html: string): string {
   return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
