@@ -45,7 +45,7 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
   'other':         'Other',
 };
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function getNextDueItem(deal: Deal): { label: string; dueDate: string } | null {
   const items: { label: string; dueDate: string }[] = [];
@@ -94,6 +94,55 @@ function formatCloseDate(dateStr: string | undefined): string {
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
   } catch { return dateStr; }
+}
+
+// ── CellTooltip ───────────────────────────────────────────────────────────────
+// Shows a dark pill above the cell on hover with full text content.
+
+function CellTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-flex', maxWidth: '100%', alignItems: 'center' }}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && text && (
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 6px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#1f2937',
+          color: '#f9fafb',
+          padding: '5px 10px',
+          borderRadius: '6px',
+          fontSize: '12px',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+          lineHeight: '1.4',
+        }}>
+          {text}
+          {/* small arrow */}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0,
+            height: 0,
+            borderLeft: '5px solid transparent',
+            borderRight: '5px solid transparent',
+            borderTop: '5px solid #1f2937',
+          }} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -407,6 +456,11 @@ export const AgentCardView: React.FC<Props> = ({
                             ? 'rgba(251,191,36,0.1)'
                             : 'transparent';
 
+                          // Tooltip text for Next Due cell
+                          const nextDueTooltip = nextItem
+                            ? `${nextItem.label} — Due ${formatCloseDate(nextItem.dueDate)}`
+                            : '';
+
                           return (
                             <tr
                               key={deal.id}
@@ -418,14 +472,17 @@ export const AgentCardView: React.FC<Props> = ({
                                 style={{ ...tdStyle, cursor: 'pointer', maxWidth: '140px' }}
                                 onClick={() => { setExpandedAgent(null); onSelectDeal(deal.id); }}
                               >
-                                <p style={{
-                                  fontWeight: isSelectedRow ? 700 : 500,
-                                  color: isArchived ? '#9ca3af' : isSelectedRow ? '#4f46e5' : '#111827',
-                                  fontStyle: isArchived ? 'italic' : 'normal',
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                }}>
-                                  {deal.propertyAddress.split(',')[0]}
-                                </p>
+                                <CellTooltip text={deal.propertyAddress}>
+                                  <p style={{
+                                    fontWeight: isSelectedRow ? 700 : 500,
+                                    color: isArchived ? '#9ca3af' : isSelectedRow ? '#4f46e5' : '#111827',
+                                    fontStyle: isArchived ? 'italic' : 'normal',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    maxWidth: '120px',
+                                  }}>
+                                    {deal.propertyAddress.split(',')[0]}
+                                  </p>
+                                </CellTooltip>
                                 {isArchived && <span style={{ fontSize: '9px', color: '#9ca3af', fontWeight: 600 }}>ARCHIVED</span>}
                                 {noClient && !isArchived && (
                                   <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '9px', color: '#d97706', fontWeight: 600 }}>
@@ -448,10 +505,12 @@ export const AgentCardView: React.FC<Props> = ({
                               </td>
                               {/* Status */}
                               <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px', fontSize: '13px' }}>{statusLabel(deal.status)}</span>
-                                </div>
+                                <CellTooltip text={statusLabel(deal.status)}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px', fontSize: '13px' }}>{statusLabel(deal.status)}</span>
+                                  </div>
+                                </CellTooltip>
                               </td>
                               {/* Close Date */}
                               <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
@@ -462,9 +521,23 @@ export const AgentCardView: React.FC<Props> = ({
                               </td>
                               {/* Next Due */}
                               <td style={{ ...tdStyle, maxWidth: '130px' }}>
-                                {nextItem
-                                  ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', color: nextOverdue ? '#ef4444' : '#6b7280', fontSize: '13px' }} title={nextItem.label}>{nextItem.label}</span>
-                                  : <span style={{ color: '#22c55e', fontSize: '13px' }}>Clear</span>}
+                                {nextItem ? (
+                                  <CellTooltip text={nextDueTooltip}>
+                                    <span style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                      display: 'block',
+                                      color: nextOverdue ? '#ef4444' : '#6b7280',
+                                      fontSize: '13px',
+                                      maxWidth: '120px',
+                                    }}>
+                                      {nextItem.label}
+                                    </span>
+                                  </CellTooltip>
+                                ) : (
+                                  <span style={{ color: '#22c55e', fontSize: '13px' }}>Clear</span>
+                                )}
                               </td>
                               {/* 3-dot row menu */}
                               <td style={{ ...tdStyle, padding: '4px 6px', width: '28px' }}>
