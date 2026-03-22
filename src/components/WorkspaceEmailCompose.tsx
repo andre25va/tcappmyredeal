@@ -471,7 +471,7 @@ export default function WorkspaceEmailCompose({
       try {
         // Find agent-type contacts on this deal (buyer agent, seller agent)
         const agentContacts = (deal.contacts || []).filter(
-          (c) => c.role === 'buyer_agent' || c.role === 'seller_agent' || c.role === 'agent'
+          (c) => c.role === 'agent'
         );
         if (agentContacts.length === 0) return;
         const allTeamEmails: string[] = [];
