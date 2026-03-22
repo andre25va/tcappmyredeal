@@ -209,6 +209,10 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [inboundMessages, setInboundMessages] = useState<Record<string, InboundMessage[]>>({});
   const [loadingMessages, setLoadingMessages] = useState<Record<string, boolean>>({});
 
+  // Doc preview state: docId → { url, filename } once fetched
+  const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
+  const [fetchingDocIds, setFetchingDocIds] = useState<Set<string>>(new Set());
+
   const participants = deal.participants ?? [];
 
   // ── Load requests ────────────────────────────────────────────────────────────
@@ -230,6 +234,41 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   }, [deal.id]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  // ── Fetch & store Gmail attachment in Supabase Storage ────────────────────
+  const loadDocPreview = useCallback(async (docId: string) => {
+    if (fetchingDocIds.has(docId) || docPreviews[docId]) return;
+    setFetchingDocIds(prev => new Set(prev).add(docId));
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || anonKey;
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/fetch-attachment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ documentId: docId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || 'Failed to fetch attachment');
+      }
+
+      const data = await res.json();
+      setDocPreviews(prev => ({ ...prev, [docId]: { url: data.url, filename: data.filename } }));
+    } catch (err: any) {
+      console.error('loadDocPreview error:', err);
+      alert(`Could not load preview: ${err.message}`);
+    } finally {
+      setFetchingDocIds(prev => { const s = new Set(prev); s.delete(docId); return s; });
+    }
+  }, [fetchingDocIds, docPreviews]);
 
   // ── Load inbound messages for a request ─────────────────────────────────────
   const loadInboundMessages = useCallback(async (requestId: string) => {
@@ -826,32 +865,93 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                 <FileText size={11} /> Documents ({request.documents!.length})
               </p>
-              <div className="space-y-1.5">
-                {request.documents!.map(doc => (
-                  <div key={doc.id} className="flex items-center gap-2 px-3 py-2 bg-white border border-base-200 rounded-lg">
-                    <FileText size={13} className="text-primary flex-none" />
-                    <span className="text-xs text-base-content/70 flex-1 truncate">{doc.fileName || 'Document'}</span>
-                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
-                      doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {doc.reviewStatus}
-                    </span>
-                    {doc.fileUrl ? (
-                      <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
-                        className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}>
-                        <ExternalLink size={11} /> View
-                      </a>
-                    ) : doc.gmailMessageId ? (
-                      <a href={`https://mail.google.com/mail/u/0/#inbox/${doc.gmailMessageId}`} target="_blank" rel="noopener noreferrer"
-                        className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}
-                        title="Open attachment in Gmail">
-                        <ExternalLink size={11} /> View in Gmail
-                      </a>
-                    ) : null}
-                  </div>
-                ))}
+              <div className="space-y-2">
+                {request.documents!.map(doc => {
+                  const preview = docPreviews[doc.id];
+                  const isFetching = fetchingDocIds.has(doc.id);
+                  const isPdf = (doc.fileName || '').toLowerCase().endsWith('.pdf') ||
+                    (preview?.filename || '').toLowerCase().endsWith('.pdf');
+
+                  return (
+                    <div key={doc.id} className="border border-base-200 rounded-lg overflow-hidden bg-white">
+                      {/* Doc row */}
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <FileText size={13} className="text-primary flex-none" />
+                        <span className="text-xs text-base-content/70 flex-1 truncate">{doc.fileName || 'Document'}</span>
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
+                          doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {doc.reviewStatus}
+                        </span>
+
+                        {/* If we already have a URL, show View + Preview toggle */}
+                        {(doc.fileUrl || preview) ? (
+                          <div className="flex items-center gap-1">
+                            <a href={doc.fileUrl || preview!.url} target="_blank" rel="noopener noreferrer"
+                              className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}>
+                              <ExternalLink size={11} /> Open
+                            </a>
+                            {isPdf && (
+                              <button
+                                className="btn btn-xs btn-ghost gap-1 text-primary"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  // Toggle preview: if already showing, remove it; otherwise keep
+                                  if (preview) {
+                                    setDocPreviews(prev => { const n = { ...prev }; delete n[doc.id]; return n; });
+                                  } else {
+                                    loadDocPreview(doc.id);
+                                  }
+                                }}
+                              >
+                                {preview ? 'Hide' : 'Preview'}
+                              </button>
+                            )}
+                          </div>
+                        ) : doc.gmailMessageId ? (
+                          /* Not yet fetched - show Load Preview button */
+                          <button
+                            className="btn btn-xs btn-primary gap-1"
+                            disabled={isFetching}
+                            onClick={e => { e.stopPropagation(); loadDocPreview(doc.id); }}
+                          >
+                            {isFetching ? (
+                              <span className="loading loading-spinner loading-xs" />
+                            ) : (
+                              <><FileText size={11} /> Preview</>
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {/* Inline PDF preview panel */}
+                      {preview && isPdf && (
+                        <div className="border-t border-base-200 bg-gray-50">
+                          <iframe
+                            src={preview.url}
+                            className="w-full rounded-b-lg"
+                            style={{ height: '480px', border: 'none' }}
+                            title={preview.filename}
+                          />
+                        </div>
+                      )}
+
+                      {/* Image preview for non-PDF */}
+                      {preview && !isPdf && (
+                        <div className="border-t border-base-200 bg-gray-50 p-2">
+                          <img
+                            src={preview.url}
+                            alt={preview.filename}
+                            className="max-w-full rounded"
+                            style={{ maxHeight: '480px', objectFit: 'contain' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
