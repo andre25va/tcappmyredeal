@@ -1,6 +1,7 @@
 // send-briefing Edge Function
 // Daily morning briefing - queries deals data and sends summary email
 // Triggered by cron job at configured time
+// Updated to match March 17 2026 format with all sections
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { sendViaGmail } from '../_shared/gmail.ts';
@@ -31,11 +32,10 @@ serve(async (req: Request) => {
       return jsonResponse({ skipped: true, reason: 'Briefing is disabled' });
     }
 
-    // Check if already sent today (prevent duplicates)
+    // Check if already sent today
     if (config.last_sent_at) {
       const lastSent = new Date(config.last_sent_at);
       const now = new Date();
-      // Convert to configured timezone for date comparison
       const lastSentDate = lastSent.toLocaleDateString('en-US', { timeZone: config.timezone });
       const todayDate = now.toLocaleDateString('en-US', { timeZone: config.timezone });
       if (lastSentDate === todayDate) {
@@ -43,213 +43,107 @@ serve(async (req: Request) => {
       }
     }
 
-    // Gather briefing data
-    const today = new Date().toISOString().split('T')[0];
-    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-    const sections: string[] = [];
-
-    // --- Overdue Tasks ---
-    if (config.include_overdue_tasks) {
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, property_address, closing_date, status, deal_data')
-        .eq('status', 'active');
-
-      const overdueTasks: { address: string; task: string; dueDate: string }[] = [];
-
-      if (deals) {
-        for (const deal of deals) {
-          const dealData = deal.deal_data || {};
-          const tasks = dealData.tasks || [];
-          const reminders = dealData.reminders || [];
-          const checklists = dealData.checklists || [];
-
-          // Check tasks
-          for (const task of tasks) {
-            if (!task.completed && task.dueDate && task.dueDate < today) {
-              overdueTasks.push({
-                address: deal.property_address,
-                task: task.title || 'Untitled task',
-                dueDate: task.dueDate,
-              });
-            }
-          }
-
-          // Check reminders
-          for (const reminder of reminders) {
-            if (!reminder.completed && reminder.dueDate && reminder.dueDate < today) {
-              overdueTasks.push({
-                address: deal.property_address,
-                task: `Reminder: ${reminder.message || 'No description'}`,
-                dueDate: reminder.dueDate,
-              });
-            }
-          }
-
-          // Check checklist items
-          for (const checklist of checklists) {
-            const items = checklist.items || [];
-            for (const item of items) {
-              if (!item.completed && item.dueDate && item.dueDate < today) {
-                overdueTasks.push({
-                  address: deal.property_address,
-                  task: `Checklist: ${item.label || item.name || 'Untitled'}`,
-                  dueDate: item.dueDate,
-                });
-              }
-            }
-          }
-        }
-      }
-
-      if (overdueTasks.length > 0) {
-        sections.push(`
-          <div style="margin-bottom: 24px;">
-            <h2 style="color: #dc2626; font-size: 18px; margin-bottom: 12px;">🚨 Overdue Tasks (${overdueTasks.length})</h2>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr style="background: #fef2f2; text-align: left;">
-                <th style="padding: 8px; border-bottom: 2px solid #fecaca;">Property</th>
-                <th style="padding: 8px; border-bottom: 2px solid #fecaca;">Task</th>
-                <th style="padding: 8px; border-bottom: 2px solid #fecaca;">Due</th>
-              </tr>
-              ${overdueTasks.map(t => `
-                <tr>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${t.address}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${t.task}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6; color: #dc2626;">${t.dueDate}</td>
-                </tr>
-              `).join('')}
-            </table>
-          </div>
-        `);
-      }
-    }
-
-    // --- Upcoming Closes ---
-    if (config.include_upcoming_closes) {
-      const { data: upcomingDeals } = await supabase
-        .from('deals')
-        .select('property_address, closing_date, buyer_name, seller_name, purchase_price, status')
-        .eq('status', 'active')
-        .gte('closing_date', today)
-        .lte('closing_date', nextWeek)
-        .order('closing_date', { ascending: true });
-
-      if (upcomingDeals?.length) {
-        sections.push(`
-          <div style="margin-bottom: 24px;">
-            <h2 style="color: #d97706; font-size: 18px; margin-bottom: 12px;">📅 Upcoming Closes - Next 7 Days (${upcomingDeals.length})</h2>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr style="background: #fffbeb; text-align: left;">
-                <th style="padding: 8px; border-bottom: 2px solid #fde68a;">Property</th>
-                <th style="padding: 8px; border-bottom: 2px solid #fde68a;">Close Date</th>
-                <th style="padding: 8px; border-bottom: 2px solid #fde68a;">Price</th>
-                <th style="padding: 8px; border-bottom: 2px solid #fde68a;">Buyer</th>
-              </tr>
-              ${upcomingDeals.map(d => `
-                <tr>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${d.property_address}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6; font-weight: 600;">${d.closing_date}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">$${Number(d.purchase_price || 0).toLocaleString()}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${d.buyer_name || 'N/A'}</td>
-                </tr>
-              `).join('')}
-            </table>
-          </div>
-        `);
-      }
-    }
-
-    // --- Pending Documents ---
-    if (config.include_pending_docs) {
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, property_address, deal_data')
-        .eq('status', 'active');
-
-      const pendingDocs: { address: string; doc: string; urgency: string }[] = [];
-
-      if (deals) {
-        for (const deal of deals) {
-          const dealData = deal.deal_data || {};
-          const docRequests = dealData.documentRequests || dealData.documents || [];
-          for (const doc of docRequests) {
-            if (doc.status === 'pending') {
-              pendingDocs.push({
-                address: deal.property_address,
-                doc: doc.name || doc.title || 'Untitled document',
-                urgency: doc.urgency || 'medium',
-              });
-            }
-          }
-        }
-      }
-
-      if (pendingDocs.length > 0) {
-        const urgencyColor: Record<string, string> = {
-          high: '#dc2626',
-          medium: '#d97706',
-          low: '#6b7280',
-        };
-
-        sections.push(`
-          <div style="margin-bottom: 24px;">
-            <h2 style="color: #7c3aed; font-size: 18px; margin-bottom: 12px;">📄 Pending Documents (${pendingDocs.length})</h2>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr style="background: #f5f3ff; text-align: left;">
-                <th style="padding: 8px; border-bottom: 2px solid #ddd6fe;">Property</th>
-                <th style="padding: 8px; border-bottom: 2px solid #ddd6fe;">Document</th>
-                <th style="padding: 8px; border-bottom: 2px solid #ddd6fe;">Urgency</th>
-              </tr>
-              ${pendingDocs.map(d => `
-                <tr>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${d.address}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6;">${d.doc}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f3f4f6; color: ${urgencyColor[d.urgency] || '#6b7280'}; font-weight: 600;">${d.urgency.toUpperCase()}</td>
-                </tr>
-              `).join('')}
-            </table>
-          </div>
-        `);
-      }
-    }
-
-    // --- Deal Pipeline Summary ---
-    const { data: allActiveDeals } = await supabase
+    // Get all active deals
+    const { data: allDeals } = await supabase
       .from('deals')
-      .select('id, status, pipeline_stage')
-      .eq('status', 'active');
+      .select('id, property_address, closing_date, status, pipeline_stage, deal_data, purchase_price, buyer_name, seller_name')
+      .eq('status', 'active')
+      .order('closing_date', { ascending: true });
 
-    const totalActive = allActiveDeals?.length || 0;
-    const stageGroups: Record<string, number> = {};
-    if (allActiveDeals) {
-      for (const d of allActiveDeals) {
-        const stage = d.pipeline_stage || 'unknown';
-        stageGroups[stage] = (stageGroups[stage] || 0) + 1;
-      }
-    }
+    const today = new Date().toISOString().split('T')[0];
+    const twoWeeksFromNow = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
 
-    const stageLabels: Record<string, string> = {
-      contract_received: 'Contract Received',
-      option_period: 'Option Period',
-      pending: 'Pending',
-      clear_to_close: 'Clear to Close',
-      closed: 'Closed',
+    // Calculate deal stage counts
+    const stageCounts = {
+      total_active: allDeals?.length || 0,
+      under_contract: 0,
+      clear_to_close: 0,
+      due_diligence: 0,
     };
 
-    sections.unshift(`
-      <div style="margin-bottom: 24px; padding: 16px; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
-        <h2 style="color: #0369a1; font-size: 18px; margin: 0 0 12px 0;">📊 Pipeline Overview</h2>
-        <p style="margin: 0 0 8px; font-size: 24px; font-weight: 700; color: #0c4a6e;">${totalActive} Active Deals</p>
-        <div style="font-size: 14px; color: #475569;">
-          ${Object.entries(stageGroups).map(([stage, count]) => 
-            `<span style="margin-right: 16px;">${stageLabels[stage] || stage}: <strong>${count}</strong></span>`
-          ).join('')}
-        </div>
-      </div>
-    `);
+    if (allDeals) {
+      for (const deal of allDeals) {
+        const stage = deal.pipeline_stage?.toLowerCase() || '';
+        if (stage.includes('contract') || stage.includes('under contract')) {
+          stageCounts.under_contract++;
+        } else if (stage.includes('clear') || stage.includes('close')) {
+          stageCounts.clear_to_close++;
+        } else if (stage.includes('due diligence') || stage.includes('option')) {
+          stageCounts.due_diligence++;
+        }
+      }
+    }
 
-    // Build the full email
+    // Get overdue tasks
+    const overdueTasks: { title: string; address: string; urgency: string; daysOverdue: number }[] = [];
+    if (allDeals) {
+      for (const deal of allDeals) {
+        const dealData = deal.deal_data || {};
+        const tasks = dealData.tasks || [];
+        for (const task of tasks) {
+          if (!task.completed && task.dueDate && task.dueDate < today) {
+            const daysOverdue = Math.floor(
+              (new Date(today).getTime() - new Date(task.dueDate).getTime()) / (1000 * 60 * 60 * 24)
+            );
+            overdueTasks.push({
+              title: task.title || 'Untitled task',
+              address: deal.property_address,
+              urgency: task.priority || 'high',
+              daysOverdue,
+            });
+          }
+        }
+      }
+    }
+    overdueTasks.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+    // Get due today tasks
+    const dueTodayTasks: { title: string; address: string; urgency: string }[] = [];
+    if (allDeals) {
+      for (const deal of allDeals) {
+        const dealData = deal.deal_data || {};
+        const tasks = dealData.tasks || [];
+        for (const task of tasks) {
+          if (!task.completed && task.dueDate === today) {
+            dueTodayTasks.push({
+              title: task.title || 'Untitled task',
+              address: deal.property_address,
+              urgency: task.priority || 'high',
+            });
+          }
+        }
+      }
+    }
+
+    // Get missing/pending documents
+    const pendingDocs: { deal_id: string; address: string; docName: string }[] = [];
+    if (allDeals) {
+      for (const deal of allDeals) {
+        const dealData = deal.deal_data || {};
+        const docs = dealData.documents || [];
+        for (const doc of docs) {
+          if (doc.status === 'pending' || doc.status === 'missing') {
+            pendingDocs.push({
+              deal_id: deal.id,
+              address: deal.property_address,
+              docName: doc.name || doc.title || 'Untitled',
+            });
+          }
+        }
+      }
+    }
+
+    // Deals closing soon (next 14 days)
+    const closingSoon = allDeals?.filter(
+      d => d.closing_date && d.closing_date >= today && d.closing_date <= twoWeeksFromNow
+    ) || [];
+
+    // Calculate days left for each deal
+    const calculateDaysLeft = (closeDate: string): number => {
+      return Math.ceil((new Date(closeDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+    };
+
+    // Format date
     const dateStr = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -258,45 +152,200 @@ serve(async (req: Request) => {
       timeZone: config.timezone,
     });
 
-    const noItems = sections.length <= 1; // Only pipeline overview
+    // Helper to format urgency badge
+    const urgencyBadge = (urgency: string) => {
+      const color = urgency.toLowerCase() === 'urgent' ? '#dc2626' : '#d97706';
+      const bgColor = urgency.toLowerCase() === 'urgent' ? '#fef2f2' : '#fffbeb';
+      return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${bgColor};color:${color};margin-left:6px;">${urgency.toUpperCase()}</span>`;
+    };
 
+    // Build the email HTML
     const emailHtml = `
       <!DOCTYPE html>
       <html>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto; padding: 20px; color: #1e293b; background: #ffffff;">
-        <div style="text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e2e8f0;">
-          <h1 style="font-size: 24px; color: #0f172a; margin: 0 0 4px;">☀️ Morning Briefing</h1>
-          <p style="color: #64748b; margin: 0; font-size: 14px;">${dateStr}</p>
+      <body style="background-color:#f8f9fa;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <div style="max-width:640px;margin:0 auto;padding:0 16px;">
+
+        <!-- HEADER -->
+        <div style="text-align:center;padding:28px 0 20px 0;border-bottom:1px solid #e5e7eb;">
+          <div style="font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">TC Command · Daily Briefing</div>
+          <div style="font-size:14px;color:#6b7280;margin-top:4px;">${dateStr}</div>
         </div>
-        
-        ${sections.join('')}
-        
-        ${noItems ? '<p style="text-align: center; color: #22c55e; font-size: 16px; padding: 20px;">✅ All clear! No overdue tasks, upcoming closes, or pending documents.</p>' : ''}
-        
-        <div style="text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-          <a href="https://tcappmyredeal.vercel.app" 
-             style="display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">
-            Open TC Command →
-          </a>
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 12px;">
-            TC Command by Andre Vargas Team • Automated Daily Briefing
-          </p>
+
+        <!-- AI INSIGHTS -->
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">🧠 What Needs Your Attention</div>
+          
+          ${overdueTasks.length > 0 ? `
+            <div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;">
+              <strong>Urgent:</strong> You have ${overdueTasks.length} overdue task${overdueTasks.length !== 1 ? 's' : ''} requiring immediate attention. The oldest is overdue by ${overdueTasks[0].daysOverdue} day${overdueTasks[0].daysOverdue !== 1 ? 's' : ''}.
+            </div>
+          ` : ''}
+
+          ${closingSoon.length > 0 ? `
+            <div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;">
+              <strong>Priority:</strong> ${closingSoon.length} deal${closingSoon.length !== 1 ? 's' : ''} closing within the next 14 days. Ensure all documentation and inspections are on track.
+            </div>
+          ` : ''}
+
+          ${dueTodayTasks.length > 0 ? `
+            <div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;">
+              <strong>Tip:</strong> Today has ${dueTodayTasks.length} task${dueTodayTasks.length !== 1 ? 's' : ''} due. Prioritize these to maintain deal momentum.
+            </div>
+          ` : ''}
+
+          ${pendingDocs.length > 0 ? `
+            <div style="font-size:14px;color:#1a1a1a;line-height:1.6;">
+              <strong>Portfolio Insight:</strong> ${pendingDocs.length} document${pendingDocs.length !== 1 ? 's' : ''} pending across active deals. Follow up with parties to ensure timely submission.
+            </div>
+          ` : ''}
+
+          ${overdueTasks.length === 0 && closingSoon.length === 0 && dueTodayTasks.length === 0 && pendingDocs.length === 0 ? `
+            <div style="font-size:14px;color:#1a1a1a;line-height:1.6;">
+              ✅ All clear! Your pipeline is well-organized with no immediate blockers.
+            </div>
+          ` : ''}
         </div>
+
+        <!-- ACTIVE DEALS SUMMARY -->
+        <div style="margin-top:24px;">
+          <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:12px;">Active Deals Summary</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="display:inline-block;min-width:148px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-size:28px;font-weight:700;color:#2563eb;">${stageCounts.total_active}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Total Active</div>
+            </div>
+            <div style="display:inline-block;min-width:148px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-size:28px;font-weight:700;color:#6b7280;">${stageCounts.under_contract}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Under Contract</div>
+            </div>
+            <div style="display:inline-block;min-width:148px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-size:28px;font-weight:700;color:#059669;">${stageCounts.clear_to_close}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Clear to Close</div>
+            </div>
+            <div style="display:inline-block;min-width:148px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+              <div style="font-size:28px;font-weight:700;color:#d97706;">${stageCounts.due_diligence}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Due Diligence</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CLOSING SOON -->
+        ${closingSoon.length > 0 ? `
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Closing Soon — Next 14 Days</div>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;">
+              <tr style="background:#f3f4f6;">
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th>
+              </tr>
+              ${closingSoon.map(d => `
+                <tr>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+        ` : ''}
+
+        <!-- FULL PIPELINE -->
+        ${allDeals && allDeals.length > 0 ? `
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Full Pipeline</div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <tr style="background:#f3f4f6;">
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th>
+                <th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th>
+              </tr>
+              ${allDeals.map(d => d.closing_date ? `
+                <tr>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td>
+                  <td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td>
+                </tr>
+              ` : '').join('')}
+            </table>
+          </div>
+        ` : ''}
+
+        <!-- OVERDUE TASKS -->
+        ${overdueTasks.length > 0 ? `
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Overdue Tasks — ${overdueTasks.length} Task${overdueTasks.length !== 1 ? 's' : ''}</div>
+            ${overdueTasks.map((task, idx) => `
+              <div style="padding:12px 0;${idx < overdueTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+                <div style="font-size:14px;font-weight:600;color:#1a1a1a;">
+                  ${task.title}
+                  ${urgencyBadge(task.urgency)}
+                </div>
+                <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address} · <span style="color:#dc2626;">${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue</span></div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <!-- DUE TODAY -->
+        ${dueTodayTasks.length > 0 ? `
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Due Today — ${dueTodayTasks.length} Task${dueTodayTasks.length !== 1 ? 's' : ''}</div>
+            ${dueTodayTasks.map((task, idx) => `
+              <div style="padding:12px 0;${idx < dueTodayTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+                <div style="font-size:14px;font-weight:600;color:#1a1a1a;">
+                  ${task.title}
+                  ${urgencyBadge(task.urgency)}
+                </div>
+                <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <!-- CALENDAR -->
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Today's Calendar</div>
+          <div style="font-size:14px;color:#6b7280;">No events scheduled</div>
+        </div>
+
+        <!-- MISSING DOCUMENTS -->
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Missing Documents</div>
+          ${pendingDocs.length === 0 ? `
+            <div style="font-size:14px;color:#059669;">All deals have documents ✓</div>
+          ` : `
+            <div style="font-size:14px;color:#dc2626;">Pending documents: ${pendingDocs.length}</div>
+          `}
+        </div>
+
+        <!-- FOOTER -->
+        <div style="text-align:center;padding:24px 0 8px 0;margin-top:24px;border-top:1px solid #e5e7eb;">
+          <div style="font-size:12px;color:#9ca3af;">TC Command · MyReDeal</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Generated ${dateStr} at ${new Date().toLocaleTimeString('en-US', { timeZone: config.timezone })} CT</div>
+        </div>
+
+      </div>
       </body>
       </html>
     `;
 
-    // Send to all configured recipients
+    // Send to recipients
     const recipients = config.to_addresses || ['tc@myredeal.com'];
 
     const result = await sendViaGmail({
       to: recipients,
-      subject: `☀️ TC Morning Briefing — ${dateStr}`,
+      subject: \`☀️ TC Morning Briefing — \${dateStr}\`,
       bodyHtml: emailHtml,
     });
 
     if (!result.success) {
-      return errorResponse(`Failed to send briefing: ${result.error}`);
+      return errorResponse(\`Failed to send briefing: \${result.error}\`);
     }
 
     // Log the send
@@ -306,7 +355,7 @@ serve(async (req: Request) => {
       template_name: 'Morning Briefing',
       to_addresses: recipients,
       cc_addresses: [],
-      subject: `☀️ TC Morning Briefing — ${dateStr}`,
+      subject: \`☀️ TC Morning Briefing — \${dateStr}\`,
       body_html: emailHtml,
       gmail_message_id: result.messageId,
       gmail_thread_id: result.threadId,
@@ -324,7 +373,6 @@ serve(async (req: Request) => {
       success: true,
       messageId: result.messageId,
       recipients,
-      sectionsIncluded: sections.length,
     });
   } catch (error) {
     console.error('send-briefing error:', error);
