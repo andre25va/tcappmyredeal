@@ -315,7 +315,7 @@ export interface ContactRecord {
   clientAccountId?: string;
   defaultInstructions?: string;
   briefingEnabled?: boolean;
-  preferredLanguage: 'en' | 'es';
+  preferredLanguage?: 'en' | 'es';
 }
 
 export interface OrgMemberInfo {
