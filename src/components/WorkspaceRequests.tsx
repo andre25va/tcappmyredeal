@@ -20,6 +20,8 @@ interface InboundMessage {
   bodyText: string;
   receivedAt: string;
   classification: string;
+  gmailMessageId: string | null;
+  gmailThreadId: string | null;
 }
 
 // ── Request type configuration ─────────────────────────────────────────────────
@@ -253,6 +255,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           bodyText: m.body_text,
           receivedAt: m.received_at,
           classification: m.classification,
+          gmailMessageId: m.gmail_message_id || null,
+          gmailThreadId: m.gmail_thread_id || null,
         })),
       }));
     } catch (err) {
@@ -699,6 +703,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
   // Doc preview state (local to each card)
   const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
   const [fetchingDocIds, setFetchingDocIds] = useState<Set<string>>(new Set());
+  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
 
   const loadDocPreview = useCallback(async (docId: string) => {
     if (fetchingDocIds.has(docId) || docPreviews[docId]) return;
@@ -721,7 +726,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
       setDocPreviews(prev => ({ ...prev, [docId]: { url: data.url, filename: data.filename } }));
     } catch (err: any) {
       console.error('loadDocPreview error:', err);
-      alert(`Could not load preview: ${err.message}`);
+      setDocErrors(prev => ({ ...prev, [docId]: err.message || 'Failed to load preview' }));
     } finally {
       setFetchingDocIds(prev => { const s = new Set(prev); s.delete(docId); return s; });
     }
@@ -838,6 +843,17 @@ const RequestCard: React.FC<RequestCardProps> = ({
                               {msg.classification.replace(/_/g, ' ')}
                             </span>
                           )}
+                          {(msg.gmailThreadId || msg.gmailMessageId) && (
+                            <a
+                              href={`https://mail.google.com/mail/u/0/#all/${msg.gmailThreadId || msg.gmailMessageId}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="btn btn-xs btn-ghost gap-1 text-primary mt-0.5"
+                              onClick={e => e.stopPropagation()}
+                              title="Open in Gmail"
+                            >
+                              <ExternalLink size={10} /> Gmail
+                            </a>
+                          )}
                         </div>
                       </div>
                       <div className="px-3 py-3 max-h-48 overflow-y-auto">
@@ -917,7 +933,41 @@ const RequestCard: React.FC<RequestCardProps> = ({
                             )}
                           </button>
                         ) : null}
+                        {/* Always show Gmail link if we have a message ID */}
+                        {doc.gmailMessageId && !doc.fileUrl && !docErrors[doc.id] && (
+                          <a
+                            href={`https://mail.google.com/mail/u/0/#all/${doc.gmailMessageId}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="btn btn-xs btn-ghost gap-1 text-base-content/50"
+                            onClick={e => e.stopPropagation()}
+                            title="Open in Gmail"
+                          >
+                            <ExternalLink size={11} /> Gmail
+                          </a>
+                        )}
                       </div>
+                      {/* Inline error */}
+                      {docErrors[doc.id] && (
+                        <div className="px-3 pb-2 flex items-center gap-2">
+                          <span className="text-[11px] text-error flex-1">{docErrors[doc.id]}</span>
+                          {doc.gmailMessageId && (
+                            <a
+                              href={`https://mail.google.com/mail/u/0/#all/${doc.gmailMessageId}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="btn btn-xs btn-ghost gap-1 text-primary"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <ExternalLink size={11} /> Open in Gmail
+                            </a>
+                          )}
+                          <button
+                            className="btn btn-xs btn-ghost text-base-content/40"
+                            onClick={e => { e.stopPropagation(); setDocErrors(prev => { const n={...prev}; delete n[doc.id]; return n; }); }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
 
                       {/* Inline PDF preview panel */}
                       {preview && isPdf && (
