@@ -14,6 +14,7 @@ import {
   History,
   Eye,
   Calendar,
+  Globe,
 } from 'lucide-react';
 import type {
   Deal,
@@ -438,6 +439,11 @@ export default function WorkspaceEmailCompose({
 
   // Sending state
   const [sending, setSending] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [showSpanishPreview, setShowSpanishPreview] = useState(false);
+  const [spanishSubject, setSpanishSubject] = useState('');
+  const [spanishBody, setSpanishBody] = useState('');
+  const [sendingSpanish, setSendingSpanish] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [toast, setToast] = useState<{
@@ -491,8 +497,8 @@ export default function WorkspaceEmailCompose({
   );
 
   // Build final HTML body with branding
-  const buildBodyHtml = (): string => {
-    const escapedBody = bodyText
+  const buildBodyHtml = (overrideBody?: string): string => {
+    const escapedBody = (overrideBody ?? bodyText)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -533,6 +539,63 @@ export default function WorkspaceEmailCompose({
     const unconfirmed = Object.entries(confirmations).filter(([, v]) => !v);
     if (unconfirmed.length > 0) return 'Please check all confirmation items before sending.';
     return null;
+  };
+
+  // Preview in Spanish
+  const handlePreviewSpanish = async () => {
+    const err = validate();
+    if (err) { showToast('error', err); return; }
+    setTranslating(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/translate-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({ texts: [subject, bodyText], targetLang: 'es' }),
+      });
+      if (!res.ok) throw new Error('Translation failed');
+      const data = await res.json();
+      setSpanishSubject(data.translations?.[0] || subject);
+      setSpanishBody(data.translations?.[1] || bodyText);
+      setShowSpanishPreview(true);
+    } catch (error: any) {
+      showToast('error', 'Translation failed. Please try again.');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  // Send Spanish Version
+  const handleSendSpanish = async () => {
+    setSendingSpanish(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const bodyHtml = buildBodyHtml(spanishBody);
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({
+          to: toAddresses, cc: ccAddresses, bcc: bccAddresses,
+          subject: spanishSubject, bodyHtml,
+          dealId: deal.id,
+          templateId: selectedTemplate?.id,
+          templateName: selectedTemplate?.name,
+          sentBy: currentUser,
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Send failed (${res.status})`); }
+      await res.json();
+      showToast('success', 'Spanish email sent successfully!');
+      setShowSpanishPreview(false);
+      setHistoryKey(k => k + 1);
+      setSubject(''); setBodyText(''); setSelectedTemplateId(''); setConfirmations({});
+    } catch (error: any) {
+      showToast('error', error.message || 'Failed to send Spanish email.');
+    } finally {
+      setSendingSpanish(false);
+    }
   };
 
   // Send Now
@@ -822,12 +885,56 @@ export default function WorkspaceEmailCompose({
             Schedule
           </button>
 
+          <button
+            className="btn btn-ghost btn-sm gap-1.5 text-info"
+            onClick={handlePreviewSpanish}
+            disabled={sending || scheduling || translating}
+            title="Preview translation in Spanish"
+          >
+            {translating ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+            {translating ? 'Translating...' : 'Preview in Español'}
+          </button>
+
           <div className="flex-1" />
 
           <span className="text-xs text-gray-400">
             {toAddresses.length} recipient{toAddresses.length !== 1 ? 's' : ''}
           </span>
         </div>
+
+        {/* Spanish Preview Panel */}
+        {showSpanishPreview && (
+          <div className="mt-3 rounded-xl border-2 border-info/40 bg-info/5 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Globe size={16} className="text-info" />
+                <span className="text-sm font-semibold text-info">Spanish Translation Preview</span>
+              </div>
+              <button className="btn btn-ghost btn-xs" onClick={() => setShowSpanishPreview(false)}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mb-2">
+              <p className="text-xs text-base-content/50 mb-1 uppercase tracking-wide font-medium">Subject</p>
+              <p className="text-sm font-medium bg-base-100 rounded px-3 py-2 border border-base-300">{spanishSubject}</p>
+            </div>
+            <div className="mb-3">
+              <p className="text-xs text-base-content/50 mb-1 uppercase tracking-wide font-medium">Body</p>
+              <pre className="text-sm bg-base-100 rounded px-3 py-2 border border-base-300 whitespace-pre-wrap font-sans">{spanishBody}</pre>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-info btn-sm gap-1.5"
+                onClick={handleSendSpanish}
+                disabled={sendingSpanish}
+              >
+                {sendingSpanish ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Send Spanish Version
+              </button>
+              <span className="text-xs text-base-content/50">Sends the translated version to {toAddresses.length} recipient{toAddresses.length !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        )}
 
         {/* Sent History */}
         <SentHistory key={historyKey} dealId={deal.id} />
