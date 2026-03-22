@@ -6,6 +6,12 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { sendViaGmail } from '../_shared/gmail.ts';
 import { getSupabaseClient, corsHeaders, jsonResponse, errorResponse } from '../_shared/supabase.ts';
 
+interface EmailAttachment {
+  filename: string;
+  content: string;  // base64-encoded file bytes
+  mimeType: string;
+}
+
 interface SendEmailRequest {
   // For immediate send
   to: string[];
@@ -13,6 +19,8 @@ interface SendEmailRequest {
   bcc?: string[];
   subject: string;
   bodyHtml: string;
+  // Optional attachments
+  attachments?: EmailAttachment[];
   // Metadata
   dealId?: string;
   templateId?: string;
@@ -43,6 +51,7 @@ serve(async (req: Request) => {
       bcc: payload.bcc,
       subject: payload.subject,
       bodyHtml: payload.bodyHtml,
+      attachments: payload.attachments,
     });
 
     if (!result.success) {

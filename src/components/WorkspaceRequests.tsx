@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ClipboardList, Plus, Send, CheckCircle, XCircle, Clock,
-  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink,
+  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink, Paperclip, X,
 } from 'lucide-react';
 import type {
   Deal, DealParticipant,
@@ -199,6 +199,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [draftSubject, setDraftSubject] = useState('');
   const [draftBody, setDraftBody] = useState('');
   const [draftTo, setDraftTo] = useState('');
+  const [attachedFile, setAttachedFile] = useState<{ name: string; content: string; type: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
 
   // Inline send state (per-card)
@@ -408,7 +410,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       setShowNewModal(false);
       resetNewForm();
       await loadRequests();
-      await sendEmail(data.id, draftTo, realSubject, realBody);
+      await sendEmail(data.id, draftTo, realSubject, realBody, attachedFile);
     } catch (err) {
       console.error('Failed to create and send request:', err);
     } finally {
@@ -417,7 +419,13 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   };
 
   // ── Core send email ────────────────────────────────────────────────────────────
-  const sendEmail = async (requestId: string, to: string, subject: string, body: string) => {
+  const sendEmail = async (
+    requestId: string,
+    to: string,
+    subject: string,
+    body: string,
+    attachment?: { name: string; content: string; type: string } | null,
+  ) => {
     setSendingId(requestId);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -427,6 +435,10 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         line.trim() ? `<p style="margin:0 0 8px 0;">${line}</p>` : '<br/>'
       ).join('');
 
+      const attachments = attachment
+        ? [{ filename: attachment.name, content: attachment.content, mimeType: attachment.type }]
+        : [];
+
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -434,6 +446,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           to: [to], cc: [], bcc: [], subject, bodyHtml,
           dealId: deal.id, emailType: 'deal',
           sentBy: profile?.name || 'Staff', requestId,
+          attachments,
         }),
       });
 
@@ -497,6 +510,21 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     setNewType('earnest_money_receipt');
     setNewRecipientId('');
     setNewNotes('');
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // result is data:application/pdf;base64,XXXX — strip the prefix
+      const base64 = result.split(',')[1];
+      setAttachedFile({ name: file.name, content: base64, type: file.type || 'application/pdf' });
+    };
+    reader.readAsDataURL(file);
   };
 
   const getTypeLabel = (type: RequestType) => REQUEST_TYPES.find(t => t.type === type)?.label || type;
@@ -652,6 +680,37 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                     <textarea className="textarea textarea-bordered textarea-xs flex-1 font-mono text-xs leading-relaxed" rows={7} value={draftBody} onChange={e => setDraftBody(e.target.value)} />
                   </div>
                   <p className="text-[10px] text-base-content/30 pl-14">Reply token will be inserted into subject automatically on send.</p>
+                  {/* PDF Attachment */}
+                  <div className="flex items-center gap-2 pl-14">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                    {attachedFile ? (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium">
+                        <Paperclip size={11} />
+                        <span className="max-w-[180px] truncate">{attachedFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setAttachedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                          className="ml-0.5 hover:text-error"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-1.5 text-xs text-base-content/50 hover:text-primary transition-colors"
+                      >
+                        <Paperclip size={12} /> Attach PDF / document
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div>

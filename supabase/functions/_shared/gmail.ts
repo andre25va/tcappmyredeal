@@ -10,6 +10,12 @@ interface GmailCredentials {
   refreshToken: string;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string;  // base64-encoded file bytes
+  mimeType: string; // e.g. 'application/pdf'
+}
+
 interface EmailPayload {
   to: string[];
   cc?: string[];
@@ -17,6 +23,7 @@ interface EmailPayload {
   subject: string;
   bodyHtml: string;
   from?: string;
+  attachments?: EmailAttachment[];
 }
 
 interface GmailSendResult {
@@ -61,34 +68,62 @@ async function getAccessToken(creds: GmailCredentials): Promise<string> {
 
 function buildMimeMessage(email: EmailPayload): string {
   const fromAddr = email.from || 'tc@myredeal.com';
-  const boundary = `boundary_${crypto.randomUUID().replace(/-/g, '')}`;
+  const hasAttachments = email.attachments && email.attachments.length > 0;
+  const htmlBodyB64 = btoa(unescape(encodeURIComponent(email.bodyHtml)));
 
-  const headers = [
+  const lines: string[] = [
     `From: ${fromAddr}`,
     `To: ${email.to.join(', ')}`,
   ];
 
-  if (email.cc?.length) {
-    headers.push(`Cc: ${email.cc.join(', ')}`);
-  }
-  if (email.bcc?.length) {
-    headers.push(`Bcc: ${email.bcc.join(', ')}`);
+  if (email.cc?.length) lines.push(`Cc: ${email.cc.join(', ')}`);
+  if (email.bcc?.length) lines.push(`Bcc: ${email.bcc.join(', ')}`);
+
+  // UTF-8 encode subject
+  const subjectEncoded = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(email.subject)))}?=`;
+  lines.push(`Subject: ${subjectEncoded}`);
+  lines.push('MIME-Version: 1.0');
+
+  if (hasAttachments) {
+    // multipart/mixed — body + attachments
+    const outerBoundary = `mixed_${crypto.randomUUID().replace(/-/g, '')}`;
+    lines.push(`Content-Type: multipart/mixed; boundary="${outerBoundary}"`);
+    lines.push('');
+
+    // HTML body part
+    lines.push(`--${outerBoundary}`);
+    lines.push('Content-Type: text/html; charset="UTF-8"');
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push('');
+    lines.push(htmlBodyB64);
+    lines.push('');
+
+    // Attachment parts
+    for (const att of email.attachments!) {
+      lines.push(`--${outerBoundary}`);
+      lines.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+      lines.push('Content-Transfer-Encoding: base64');
+      lines.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+      lines.push('');
+      lines.push(att.content); // already base64
+      lines.push('');
+    }
+
+    lines.push(`--${outerBoundary}--`);
+  } else {
+    // multipart/alternative — HTML only
+    const altBoundary = `alt_${crypto.randomUUID().replace(/-/g, '')}`;
+    lines.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`);
+    lines.push('');
+    lines.push(`--${altBoundary}`);
+    lines.push('Content-Type: text/html; charset="UTF-8"');
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push('');
+    lines.push(htmlBodyB64);
+    lines.push(`--${altBoundary}--`);
   }
 
-  headers.push(
-    `Subject: ${email.subject}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/html; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    btoa(unescape(encodeURIComponent(email.bodyHtml))),
-    `--${boundary}--`,
-  );
-
-  return headers.join('\r\n');
+  return lines.join('\r\n');
 }
 
 // Base64url encode (RFC 4648)
