@@ -37,6 +37,40 @@ async function handleSend(req: VercelRequest, res: VercelResponse) {
     channel?: 'sms' | 'whatsapp'; need_reply?: boolean;
   };
   if (!recipients?.length || !body) return res.status(400).json({ error: 'recipients and body required' });
+
+  // ── Expand recipients with agent team members ──────────────────────────────
+  // For each recipient, check if they have team members with notify_sms=true
+  // and automatically add them as additional recipients (CC on SMS)
+  const expandedRecipients = [...recipients];
+  try {
+    for (const recipient of expandedRecipients) {
+      if (!recipient.contact_id) continue;
+      const { data: teamMembers } = await supabase
+        .from('agent_team_members')
+        .select('name, phone')
+        .eq('agent_contact_id', recipient.contact_id)
+        .eq('notify_sms', true)
+        .not('phone', 'is', null);
+      if (teamMembers && teamMembers.length > 0) {
+        for (const member of teamMembers) {
+          // Avoid duplicates
+          const alreadyIncluded = expandedRecipients.some(r =>
+            r.phone && member.phone && r.phone.replace(/\D/g,'') === member.phone.replace(/\D/g,'')
+          );
+          if (!alreadyIncluded && member.phone) {
+            expandedRecipients.push({
+              contact_id: recipient.contact_id, // link to same contact/deal
+              name: `${member.name} (Team)`,
+              phone: member.phone,
+            });
+          }
+        }
+      }
+    }
+  } catch (_) {
+    // silently fail — team expansion is additive
+  }
+
   try {
     let convId = conversation_id;
     const now = new Date().toISOString();
@@ -56,7 +90,7 @@ async function handleSend(req: VercelRequest, res: VercelResponse) {
       }).eq('id', convId);
     }
     const results: any[] = [], errors: any[] = [];
-    for (const recipient of recipients) {
+    for (const recipient of expandedRecipients) {
       const phone = recipient.phone.replace(/\D/g, '');
       const e164 = phone.startsWith('1') ? `+${phone}` : `+1${phone}`;
       try {

@@ -898,3 +898,16 @@ export interface InboundMessage {
   processed: boolean;
   createdAt: string;
 }
+
+// ── Agent Team Members ──────────────────────────────────────────
+export interface AgentTeamMember {
+  id: string;
+  agentContactId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: 'admin' | 'assistant' | 'coordinator' | 'other';
+  notifyEmail: boolean;
+  notifySms: boolean;
+  createdAt?: string;
+}
