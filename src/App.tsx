@@ -506,8 +506,8 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        <div className="md:hidden flex-none bg-base-100 border-b border-base-300 mobile-header-safe">
-          <div className="flex items-center h-14 px-3 gap-2">
+        <div className="flex md:hidden flex-none shrink-0 bg-base-100 border-b border-base-300 mobile-header-safe">
+          <div className="flex items-center h-14 px-3 gap-2 w-full">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
               {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
