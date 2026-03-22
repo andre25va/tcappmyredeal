@@ -812,6 +812,8 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     isClient: !!clientByContact[row.id],
     clientAccountId: clientByContact[row.id] ?? undefined,
     defaultInstructions: row.default_instructions || '',
+    briefingEnabled: row.briefing_enabled ?? false,
+    preferredLanguage: (row.preferred_language || 'en') as 'en' | 'es',
   }));
 }
 
@@ -826,6 +828,7 @@ export async function saveContactRecord(contact: {
   timezone?: string;
   notes?: string;
   defaultInstructions?: string;
+  preferredLanguage?: 'en' | 'es';
 }): Promise<void> {
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
   const { error } = await supabase.from('contacts').upsert({
@@ -840,6 +843,7 @@ export async function saveContactRecord(contact: {
     timezone: contact.timezone || null,
     notes: contact.notes || null,
     default_instructions: contact.defaultInstructions || null,
+    preferred_language: contact.preferredLanguage || 'en',
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;

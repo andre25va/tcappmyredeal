@@ -134,6 +134,7 @@ interface EditForm {
   isClient: boolean;
   originalIsClient: boolean;
   clientAccountId?: string;
+  preferredLanguage: 'en' | 'es';
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -172,6 +173,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     isClient: false,
     originalIsClient: false,
     clientAccountId: undefined,
+    preferredLanguage: 'en',
     licenses: [],
     mlsMemberships: [],
   };
@@ -192,6 +194,7 @@ function contactToForm(c: ContactRecord): EditForm {
     isClient: c.isClient,
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
+    preferredLanguage: c.preferredLanguage || 'en',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -530,6 +533,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         timezone: form.timezone || undefined,
         notes: form.notes.trim() || undefined,
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
+        preferredLanguage: form.preferredLanguage,
       });
 
       if (form.contactType === 'agent') {
@@ -844,6 +848,25 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   {timezoneError && (
                     <p className="text-error text-xs mt-1">Please select a timezone.</p>
                   )}
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Preferred Language</span></label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 px-3 rounded-lg border text-sm font-medium transition-all ${form.preferredLanguage === 'en' ? 'bg-primary text-primary-content border-primary' : 'border-base-300 hover:border-primary/50'}`}
+                      onClick={() => updateField('preferredLanguage', 'en')}
+                    >
+                      English
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 px-3 rounded-lg border text-sm font-medium transition-all ${form.preferredLanguage === 'es' ? 'bg-primary text-primary-content border-primary' : 'border-base-300 hover:border-primary/50'}`}
+                      onClick={() => updateField('preferredLanguage', 'es')}
+                    >
+                      Espa&#241;ol
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
