@@ -911,3 +911,44 @@ export interface AgentTeamMember {
   notifySms: boolean;
   createdAt?: string;
 }
+
+// ── Milestone Notifications ──────────────────────────────────────────────────
+export interface MilestoneNotificationSetting {
+  id: string;
+  milestone: DealMilestone;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomMilestone {
+  id: string;
+  agentContactId: string;
+  name: string;
+  description?: string;
+  insertAfter: DealMilestone;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt: string;
+  updatedAt: string;
+  agentName?: string;
+}
