@@ -18,6 +18,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   isFirstLogin: boolean;
+  isViewer: boolean;
   login: (token: string, profile: TCProfile, firstLogin?: boolean) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => Promise<void>;
@@ -113,9 +114,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearFirstLogin = useCallback(() => setIsFirstLogin(false), []);
 
+  const isViewer = profile?.role === 'viewer';
+
   return (
     <AuthContext.Provider value={{
-      profile, token, loading, isFirstLogin,
+      profile, token, loading, isFirstLogin, isViewer,
       login, logout, updateProfile, clearFirstLogin,
     }}>
       {children}

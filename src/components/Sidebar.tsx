@@ -68,85 +68,92 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return 0;
   };
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-base-200 border-r border-base-300">
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-4 py-4 border-b border-base-300 flex-none">
-        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-none">
-          <FileText size={16} className="text-primary-content" />
-        </div>
-        <div className="flex-1">
-          <span className="font-bold text-sm text-base-content">TC Command</span>
-          <p className="text-[10px] text-base-content/40">{APP_VERSION}</p>
-        </div>
-        {/* Close button - only shown on mobile overlay */}
-        <button
-          onClick={onCloseMobile}
-          className="md:hidden btn btn-ghost btn-sm btn-square"
-          aria-label="Close menu"
-        >
-          <X size={20} />
-        </button>
-      </div>
+  const SidebarContent = () => {
+    // Filter nav items for viewer role
+    const visibleNavItems = userRole === 'viewer'
+      ? NAV_ITEMS.filter(item => !['inbox', 'email-review', 'tasks', 'voice', 'settings'].includes(item.view))
+      : NAV_ITEMS;
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {NAV_ITEMS.map(item => {
-          const badge = getBadge(item.view);
-          const active = view === item.view;
-          // Amber badge for email-review to stand out from error-red
-          const isEmailQueue = item.view === 'email-review';
-          return (
-            <button
-              key={item.view}
-              onClick={() => { onSetView(item.view); onCloseMobile(); }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-0.5 relative ${
-                active
-                  ? 'bg-primary text-primary-content'
-                  : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'
-              }`}
-            >
-              {item.icon}
-              <span className="flex-1 text-left">{item.label}</span>
-              {badge > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+    return (
+      <div className="flex flex-col h-full bg-base-200 border-r border-base-300">
+        {/* Logo */}
+        <div className="flex items-center gap-2 px-4 py-4 border-b border-base-300 flex-none">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-none">
+            <FileText size={16} className="text-primary-content" />
+          </div>
+          <div className="flex-1">
+            <span className="font-bold text-sm text-base-content">TC Command</span>
+            <p className="text-[10px] text-base-content/40">{APP_VERSION}</p>
+          </div>
+          {/* Close button - only shown on mobile overlay */}
+          <button
+            onClick={onCloseMobile}
+            className="md:hidden btn btn-ghost btn-sm btn-square"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-2 px-2">
+          {visibleNavItems.map(item => {
+            const badge = getBadge(item.view);
+            const active = view === item.view;
+            // Amber badge for email-review to stand out from error-red
+            const isEmailQueue = item.view === 'email-review';
+            return (
+              <button
+                key={item.view}
+                onClick={() => { onSetView(item.view); onCloseMobile(); }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-0.5 relative ${
                   active
-                    ? 'bg-primary-content/20 text-primary-content'
-                    : isEmailQueue
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-error text-error-content'
-                }`}>
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+                    ? 'bg-primary text-primary-content'
+                    : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'
+                }`}
+              >
+                {item.icon}
+                <span className="flex-1 text-left">{item.label}</span>
+                {badge > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    active
+                      ? 'bg-primary-content/20 text-primary-content'
+                      : isEmailQueue
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-error text-error-content'
+                  }`}>
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-      {/* User + Logout */}
-      <div className="flex-none px-2 py-3 border-t border-base-300 space-y-2">
-        {/* User info */}
-        <div className="flex items-center gap-2 px-2 py-1">
-          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-none">
-            <span className="text-xs font-bold text-primary">{userInitials || '?'}</span>
+        {/* User + Logout */}
+        <div className="flex-none px-2 py-3 border-t border-base-300 space-y-2">
+          {/* User info */}
+          <div className="flex items-center gap-2 px-2 py-1">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-none">
+              <span className="text-xs font-bold text-primary">{userInitials || '?'}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-base-content truncate">{userName || 'User'}</p>
+              <p className="text-[10px] text-base-content/50 truncate capitalize">{userRole || 'Staff'}</p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-base-content truncate">{userName || 'User'}</p>
-            <p className="text-[10px] text-base-content/50 truncate capitalize">{userRole || 'Staff'}</p>
-          </div>
+          {/* Logout */}
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
+          >
+            <LogOut size={16} />
+            <span>Log Out</span>
+          </button>
         </div>
-        {/* Logout */}
-        <button
-          onClick={onLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
-        >
-          <LogOut size={16} />
-          <span>Log Out</span>
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>

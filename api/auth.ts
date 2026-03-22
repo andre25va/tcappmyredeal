@@ -272,27 +272,112 @@ async function handleUpdateProfile(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function handleRequestDemoCode(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    // Invalidate any existing unused demo OTP codes
+    await supabase.from('otp_codes').update({ used: true }).eq('phone', DEMO_PHONE).eq('used', false);
+
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min expiry
+    await supabase.from('otp_codes').insert({ phone: DEMO_PHONE, code, expires_at: expiresAt });
+
+    // Send to tc@myredeal.com via Resend
+    const resendResp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY_AUTH}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'TC Command <tc@myredeal.com>',
+        to: ['tc@myredeal.com'],
+        subject: 'Demo Access Code Requested',
+        html: `<div style="font-family: sans-serif; max-width: 420px; margin: 0 auto; padding: 32px 24px;">
+          <h2 style="color: #111827; margin-bottom: 8px;">Demo Access Requested</h2>
+          <p style="color: #374151;">Someone is requesting a demo of TC Command. Share this code with them:</p>
+          <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0 24px;">
+            <span style="font-size: 40px; font-weight: 700; letter-spacing: 10px; color: #111827; font-family: monospace;">${code}</span>
+          </div>
+          <p style="color: #6b7280; font-size: 13px;">This code expires in <strong>15 minutes</strong>. The demo session lasts 24 hours.</p>
+          <p style="color: #6b7280; font-size: 13px;">If you did not expect this request, you can ignore this email.</p>
+        </div>`,
+      }),
+    });
+
+    if (!resendResp.ok) throw new Error('Failed to send email');
+
+    return res.status(200).json({ success: true, message: 'Code sent to the TC team. Ask them for the code.' });
+  } catch (err: any) {
+    console.error('request-demo-code error:', err);
+    return res.status(500).json({ error: 'Failed to send demo code. Please try again.' });
+  }
+}
+
 async function handleDemoLogin(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'Demo access code required.' });
+
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket?.remoteAddress || '';
   const ua = req.headers['user-agent'] || '';
+
   try {
+    // Verify the OTP code for the demo phone
+    const { data: otp } = await supabase
+      .from('otp_codes')
+      .select('*')
+      .eq('phone', DEMO_PHONE)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!otp) return res.status(400).json({ error: 'Code expired or not found. Request a new one.' });
+
+    await supabase.from('otp_codes').update({ attempts: otp.attempts + 1 }).eq('id', otp.id);
+    if (otp.attempts >= 5) {
+      await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
+      return res.status(400).json({ error: 'Too many attempts. Please request a new code.' });
+    }
+
+    if (otp.code !== String(code).trim()) return res.status(400).json({ error: 'Incorrect code. Please try again.' });
+
+    await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
+
+    // Find or create demo profile
     let { data: profile } = await supabase.from('profiles').select('*').eq('phone', DEMO_PHONE).single();
     if (!profile) {
-      const { data: newProfile, error } = await supabase.from('profiles').insert({ phone: DEMO_PHONE, role: 'viewer', name: 'Demo User' }).select().single();
+      const { data: newProfile, error } = await supabase.from('profiles').insert({
+        phone: DEMO_PHONE, role: 'viewer', name: 'Demo User'
+      }).select().single();
       if (error) throw error;
       profile = newProfile;
     }
+
+    // IMPORTANT: Kill ALL existing active sessions for demo user (single session enforcement)
+    await supabase
+      .from('sessions')
+      .update({ is_active: false, invalidated_reason: 'new_demo_session' })
+      .eq('user_id', profile.id)
+      .eq('is_active', true);
+
     await supabase.from('allowed_phones').update({ profile_id: profile.id }).eq('phone', DEMO_PHONE);
 
     const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua, is_active: true });
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+    await supabase.from('sessions').insert({
+      token, user_id: profile.id, expires_at: expiresAt,
+      ip_address: ip, user_agent: ua, is_active: true
+    });
+
     await supabase.from('audit_log').insert({
       user_id: profile.id, user_name: 'Demo User', user_phone: DEMO_PHONE,
       action: 'demo_login', entity_type: 'user', entity_id: profile.id, entity_name: 'Demo User',
       metadata: { ip, ua }, ip_address: ip, user_agent: ua,
     });
+
     return res.status(200).json({ success: true, token, profile, isFirstLogin: false });
   } catch (err: any) {
     console.error('demo-login error:', err);
@@ -497,16 +582,17 @@ async function handleDeleteUser(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = req.query.action as string;
   switch (action) {
-    case 'request-otp':   return handleRequestOtp(req, res);
-    case 'verify-otp':    return handleVerifyOtp(req, res);
-    case 'session':       return handleSession(req, res);
-    case 'logout':        return handleLogout(req, res);
-    case 'update-profile': return handleUpdateProfile(req, res);
-    case 'demo-login':    return handleDemoLogin(req, res);
-    case 'list-users':    return handleListUsers(req, res);
-    case 'add-user':      return handleAddUser(req, res);
-    case 'edit-user':     return handleEditUser(req, res);
-    case 'delete-user':   return handleDeleteUser(req, res);
+    case 'request-otp':       return handleRequestOtp(req, res);
+    case 'verify-otp':        return handleVerifyOtp(req, res);
+    case 'session':           return handleSession(req, res);
+    case 'logout':            return handleLogout(req, res);
+    case 'update-profile':    return handleUpdateProfile(req, res);
+    case 'request-demo-code': return handleRequestDemoCode(req, res);
+    case 'demo-login':        return handleDemoLogin(req, res);
+    case 'list-users':        return handleListUsers(req, res);
+    case 'add-user':          return handleAddUser(req, res);
+    case 'edit-user':         return handleEditUser(req, res);
+    case 'delete-user':       return handleDeleteUser(req, res);
     default: return res.status(404).json({ error: `Unknown auth action: ${action}` });
   }
 }

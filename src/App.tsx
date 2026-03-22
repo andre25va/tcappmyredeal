@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Eye } from 'lucide-react';
 
 import { Deal, DealStatus, DealMilestone, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import {
@@ -469,6 +470,8 @@ function AppInner() {
   const agentClients  = contactRecords.filter(c => c.isClient === true);
   const agentContacts = contactRecords.filter(c => c.contactType === 'agent');
 
+  const isViewer = profile?.role === 'viewer';
+
   return (
     <div data-theme="light" className="h-screen flex bg-base-100 overflow-hidden">
       {isFirstLogin && <ProfileSetupModal />}
@@ -476,10 +479,21 @@ function AppInner() {
       <Sidebar {...sidebarProps} />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Demo Mode Banner */}
+        {isViewer && (
+          <div className="w-full bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-xs text-amber-800 z-50 flex-none">
+            <div className="flex items-center gap-2">
+              <Eye size={13} />
+              <span><strong>Demo Mode</strong> · Read-only access · Session expires in 24 hours</span>
+            </div>
+            <span className="text-amber-500">TC Command Demo</span>
+          </div>
+        )}
+
         <div className="hidden md:flex items-center flex-none">
           <div className="flex-1">
             <Topbar
-              onAddDeal={() => setShowAdd(true)}
+              onAddDeal={() => { if (isViewer) return; setShowAdd(true); }}
               onAddAgentClient={() => { setQuickAddRole('agent'); setView('contacts'); }}
               onAddContact={() => { setQuickAddRole('contact'); setView('contacts'); }}
               dealCount={deals.filter(d => d.milestone !== 'archived').length}
@@ -499,9 +513,11 @@ function AppInner() {
               {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
-            <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
-              + New Deal
-            </button>
+            {!isViewer && (
+              <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
+                + New Deal
+              </button>
+            )}
           </div>
         </div>
 

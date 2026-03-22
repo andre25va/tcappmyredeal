@@ -121,6 +121,7 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
 
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
   const { profile } = useAuth();
+  const isViewer = profile?.role === 'viewer';
   const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
   const [copied, setCopied] = useState(false);
   const [wsMenuOpen, setWsMenuOpen]     = useState(false);
@@ -251,7 +252,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             </div>
           </div>
 
-          {/* Right: Focus View + Sheet + Edit Deal */}
+          {/* Right: Focus View + Sheet + Edit Deal (hidden for viewers) */}
           <div className="flex items-center gap-2 flex-none mt-0.5">
             <button
               onClick={() => setShowFocusView(true)}
@@ -269,12 +270,14 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <FileText size={13} />
               <span className="hidden sm:inline">Sheet</span>
             </button>
-            <button
-              onClick={() => setEditTrigger(n => n + 1)}
-              className="btn btn-sm btn-primary btn-outline gap-1.5"
-            >
-              <Pencil size={13} /> Edit Deal
-            </button>
+            {!isViewer && (
+              <button
+                onClick={() => setEditTrigger(n => n + 1)}
+                className="btn btn-sm btn-primary btn-outline gap-1.5"
+              >
+                <Pencil size={13} /> Edit Deal
+              </button>
+            )}
             {/* 3-dot workspace menu */}
             <div className="relative">
               <button
@@ -286,31 +289,38 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               </button>
               {wsMenuOpen && (
                 <div className="absolute right-0 top-9 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[170px] py-1">
-                  <div className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Change Status</div>
-                  {WS_STATUSES.map(s => (
-                    <button
-                      key={s.value}
-                      className={`w-full text-left px-3 py-1 text-xs hover:bg-base-200 ${deal.status === s.value ? 'font-bold text-primary' : ''}`}
-                      onClick={() => { onChangeStatus?.(deal.id, s.value as import('../types').DealStatus); setWsMenuOpen(false); }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                  <div className="border-t border-base-300 my-1" />
-                  {isArchived ? (
-                    <button
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
-                      onClick={() => { onRestoreDeal?.(deal.id); setWsMenuOpen(false); }}
-                    >
-                      <RotateCcw size={11} /> Restore Deal
-                    </button>
-                  ) : (
-                    <button
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
-                      onClick={() => { setWsMenuOpen(false); setWsArchiveReason('deal-closed'); setWsArchiveOpen(true); }}
-                    >
-                      <Archive size={11} /> Archive Deal
-                    </button>
+                  {!isViewer && (
+                    <>
+                      <div className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Change Status</div>
+                      {WS_STATUSES.map(s => (
+                        <button
+                          key={s.value}
+                          className={`w-full text-left px-3 py-1 text-xs hover:bg-base-200 ${deal.status === s.value ? 'font-bold text-primary' : ''}`}
+                          onClick={() => { onChangeStatus?.(deal.id, s.value as import('../types').DealStatus); setWsMenuOpen(false); }}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                      <div className="border-t border-base-300 my-1" />
+                      {isArchived ? (
+                        <button
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
+                          onClick={() => { onRestoreDeal?.(deal.id); setWsMenuOpen(false); }}
+                        >
+                          <RotateCcw size={11} /> Restore Deal
+                        </button>
+                      ) : (
+                        <button
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
+                          onClick={() => { setWsMenuOpen(false); setWsArchiveReason('deal-closed'); setWsArchiveOpen(true); }}
+                        >
+                          <Archive size={11} /> Archive Deal
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {isViewer && (
+                    <div className="px-3 py-2 text-xs text-base-content/40 italic">Read-only demo mode</div>
                   )}
                 </div>
               )}
