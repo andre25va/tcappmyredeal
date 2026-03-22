@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox,
 } from 'lucide-react';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
-  | 'email-review' | 'requests';
+  | 'email-review';
 
 const APP_VERSION = 'v2026.03.18.17';
 
@@ -20,7 +20,6 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
   { view: 'inbox',         label: 'Inbox',        icon: <MessageSquare size={18} /> },
   { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
-  { view: 'requests',      label: 'Requests',     icon: <ClipboardList size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
   { view: 'voice',         label: 'Voice',        icon: <Phone size={18} /> },
   { view: 'reports',       label: 'AI Reports',   icon: <BarChart2 size={18} /> },
@@ -37,10 +36,6 @@ interface SidebarProps {
   tasksPending: number;
   voicePending: number;
   emailQueuePending: number;
-  requestsPending: number;
-  needsReviewCount: number;
-  unmatchedCount: number;
-  onSetInboxSubTab: (tab: 'needs_review' | 'unmatched') => void;
   onLogout: () => void;
   userName: string;
   userRole: string;
@@ -49,8 +44,8 @@ interface SidebarProps {
 
 // ─── Mobile Menu Button (exported for Topbar / mobile header use) ─────────────
 export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: number }> = ({ onClick, pendingAlerts }) => (
-  <button onClick={onClick} className="btn btn-ghost btn-sm btn-square relative">
-    <Menu size={20} />
+  <button onClick={onClick} className="btn btn-ghost btn-sm btn-square relative border border-base-300">
+    <Menu size={22} />
     {pendingAlerts != null && pendingAlerts > 0 && (
       <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-error text-error-content text-[10px] font-bold rounded-full flex items-center justify-center">
         {pendingAlerts > 9 ? '9+' : pendingAlerts}
@@ -62,8 +57,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
-  inboxUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
-  needsReviewCount, unmatchedCount, onSetInboxSubTab,
+  inboxUnread, tasksPending, voicePending, emailQueuePending,
   onLogout, userName, userRole, userInitials,
 }) => {
   const getBadge = (v: View): number => {
@@ -71,7 +65,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (v === 'tasks') return tasksPending;
     if (v === 'voice') return voicePending;
     if (v === 'email-review') return emailQueuePending;
-    if (v === 'requests') return requestsPending;
     return 0;
   };
 
@@ -82,10 +75,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-none">
           <FileText size={16} className="text-primary-content" />
         </div>
-        <div>
+        <div className="flex-1">
           <span className="font-bold text-sm text-base-content">TC Command</span>
           <p className="text-[10px] text-base-content/40">{APP_VERSION}</p>
         </div>
+        {/* Close button - only shown on mobile overlay */}
+        <button
+          onClick={onCloseMobile}
+          className="md:hidden btn btn-ghost btn-sm btn-square"
+          aria-label="Close menu"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Nav */}
@@ -96,8 +97,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           // Amber badge for email-review to stand out from error-red
           const isEmailQueue = item.view === 'email-review';
           return (
-            <React.Fragment key={item.view}>
             <button
+              key={item.view}
               onClick={() => { onSetView(item.view); onCloseMobile(); }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mb-0.5 relative ${
                 active
@@ -119,30 +120,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               )}
             </button>
-            {/* Inbox sub-items: Needs Review + Unmatched */}
-            {item.view === 'inbox' && (needsReviewCount > 0 || unmatchedCount > 0) && (
-              <div className="ml-5 pl-2 border-l border-base-300 space-y-0.5 mt-0.5 mb-1">
-                {needsReviewCount > 0 && (
-                  <button
-                    onClick={() => { onSetInboxSubTab('needs_review'); onCloseMobile(); }}
-                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
-                  >
-                    <span className="flex-1 text-left">⚠️ Needs Review</span>
-                    <span className="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{needsReviewCount > 99 ? '99+' : needsReviewCount}</span>
-                  </button>
-                )}
-                {unmatchedCount > 0 && (
-                  <button
-                    onClick={() => { onSetInboxSubTab('unmatched'); onCloseMobile(); }}
-                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-xs text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
-                  >
-                    <span className="flex-1 text-left">❓ Unmatched</span>
-                    <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{unmatchedCount > 99 ? '99+' : unmatchedCount}</span>
-                  </button>
-                )}
-              </div>
-            )}
-            </React.Fragment>
           );
         })}
       </nav>

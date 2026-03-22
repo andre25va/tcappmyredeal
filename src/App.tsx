@@ -35,7 +35,6 @@ import { useAudit } from './hooks/useAudit';
 import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
-import { RequestCenterView } from './components/RequestCenterView';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -65,7 +64,6 @@ function AppInner() {
   });
   const lastWidthRef = useRef<number>(360);
   const [showAdd, setShowAdd]               = useState(false);
-  const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
   const [loading, setLoading]               = useState(true);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
@@ -74,7 +72,6 @@ function AppInner() {
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
   const [emailQueuePending, setEmailQueuePending] = useState(0);
-  const [requestsPending, setRequestsPending]     = useState(0);
   const [needsReviewCount, setNeedsReviewCount]   = useState(0);
   const [unmatchedCount, setUnmatchedCount]        = useState(0);
   const [inboxInitEmailSubTab, setInboxInitEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched' | undefined>(undefined);
@@ -249,23 +246,6 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
-  // ── Poll request center pending count ───────────────────────────────────────
-  useEffect(() => {
-    if (!profile) return;
-    const fetchRequestCount = async () => {
-      try {
-        const { count } = await supabase
-          .from('requests')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['reply_received', 'document_received', 'under_review']);
-        setRequestsPending(count || 0);
-      } catch { /* silent */ }
-    };
-    fetchRequestCount();
-    const t = setInterval(fetchRequestCount, 60000);
-    return () => clearInterval(t);
-  }, [profile]);
-
   // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
     if (deals.length === 0) {
@@ -407,15 +387,6 @@ function AppInner() {
   };
 
   const handleSelectDeal = (id: string) => {
-    setPendingWorkspaceTab(null);
-    setSelectedId(id);
-    setTxPanel('workspace');
-    setView('transactions');
-  };
-
-  /** Navigate to a deal workspace and open a specific tab (e.g. from Request Center). */
-  const handleSelectDealWithTab = (id: string, tab: string) => {
-    setPendingWorkspaceTab(tab);
     setSelectedId(id);
     setTxPanel('workspace');
     setView('transactions');
@@ -472,7 +443,7 @@ function AppInner() {
     );
   }
 
-  // ── Sidebar props ─────────────────────────────────────────────────────────────
+  // ── Sidebar props — TypeScript will error at build time if any required prop is missing ──
   const sidebarProps = {
     view,
     onSetView: handleSetView,
@@ -482,7 +453,6 @@ function AppInner() {
     tasksPending,
     voicePending,
     emailQueuePending,
-    requestsPending,
     needsReviewCount,
     unmatchedCount,
     onSetInboxSubTab: (subTab: 'needs_review' | 'unmatched') => {
@@ -522,11 +492,11 @@ function AppInner() {
             <NotificationBell onNavigate={handleNotificationNavigate} />
           </div>
         </div>
-        <div className="md:hidden flex-none bg-base-200 border-b border-base-300 mobile-header-safe">
-          <div className="flex items-center h-12 px-3 gap-3">
+        <div className="md:hidden flex-none bg-base-100 border-b border-base-300 mobile-header-safe">
+          <div className="flex items-center h-14 px-3 gap-2">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
-              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : 'Settings'}
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
             <button onClick={() => setShowAdd(true)} className="btn btn-primary btn-xs gap-1">
@@ -586,7 +556,6 @@ function AppInner() {
                   ) : (
                     <AgentCardView
                       deals={deals}
-                      selectedId={selectedId}
                       onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
                       onArchiveDeal={handleArchiveDeal}
                       onRestoreDeal={handleRestoreDeal}
@@ -618,7 +587,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={pendingWorkspaceTab as any ?? undefined} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -688,14 +657,6 @@ function AppInner() {
             </div>
           )}
 
-          {view === 'requests' && (
-            <div className="flex-1 overflow-hidden">
-              <RequestCenterView
-                onSelectDeal={(id) => handleSelectDealWithTab(id, 'requests')}
-              />
-            </div>
-          )}
-
           {view === 'tasks' && (
             <div className="flex-1 overflow-hidden">
               <CommTasksView
@@ -754,6 +715,7 @@ function AppInner() {
         callData={activeCall}
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
         onEndCall={async () => {
+          // Tell Twilio to hang up the call before dismissing the UI
           const sid = activeCall?.callSid;
           if (sid && sid !== 'call-initiated') {
             try {
