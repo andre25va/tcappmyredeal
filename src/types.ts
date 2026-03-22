@@ -314,6 +314,8 @@ export interface ContactRecord {
   isClient: boolean;
   clientAccountId?: string;
   defaultInstructions?: string;
+  briefingEnabled?: boolean;
+  preferredLanguage?: 'en' | 'es';
 }
 
 export interface OrgMemberInfo {
