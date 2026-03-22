@@ -23,6 +23,7 @@ interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: Cont
 const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   if (['buyer'].includes(role)) return 'buy';
   if (['seller'].includes(role)) return 'sell';
+  if (['client'].includes(role)) return 'both';
   if (['lender'].includes(role)) return 'buy';
   if (['title', 'attorney'].includes(role)) return 'sell';
   return 'both';
@@ -560,8 +561,7 @@ const ContactPicker: React.FC<{
             <option value="title">Title Officer</option>
             <option value="inspector">Inspector</option>
             <option value="tc">TC</option>
-            <option value="buyer">Buyer</option>
-            <option value="seller">Seller</option>
+            <option value="client">Client</option>
             <option value="other">Other</option>
           </select>
           <div className="flex gap-2 pt-1">
@@ -912,7 +912,12 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const existingDirIds = deal.contacts.filter(c => c.directoryId).map(c => c.directoryId!);
 
-  const contactTypeToParticipantRole = (ct: string): DealParticipantRole => {
+  const contactTypeToParticipantRole = (ct: string, side?: 'buy' | 'sell' | 'both'): DealParticipantRole => {
+    if (ct === 'client') {
+      if (side === 'buy') return 'buyer';
+      if (side === 'sell') return 'seller';
+      return 'other';
+    }
     const map: Record<string, DealParticipantRole> = {
       agent: 'lead_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
       inspector: 'inspector', appraiser: 'appraiser', buyer: 'buyer', seller: 'seller', tc: 'tc', other: 'other',
@@ -923,7 +928,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   const addFromDirectory = async (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => {
     const effectiveSide = cr.contactType === 'lender' ? 'buy' : side;
     const dealSide = effectiveSide === 'buy' ? 'buyer' : effectiveSide === 'sell' ? 'listing' : 'both' as any;
-    const dealRole = contactTypeToParticipantRole(cr.contactType);
+    const dealRole = contactTypeToParticipantRole(cr.contactType, effectiveSide);
 
     try {
       await saveDealParticipant({
@@ -944,7 +949,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       name: cr.fullName,
       email: cr.email || '',
       phone: cr.phone || '',
-      role: cr.contactType as ContactRole,
+      role: (cr.contactType === 'client' ? dealRole : cr.contactType) as ContactRole,
       company: cr.company,
       inNotificationList: true,
       side: effectiveSide,

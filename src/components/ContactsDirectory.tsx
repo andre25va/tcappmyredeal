@@ -58,15 +58,14 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'title', label: 'Title', roles: ['title'], icon: <FileText size={22} />, bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600' },
   { key: 'attorney', label: 'Attorneys', roles: ['attorney'], icon: <Scale size={22} />, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600' },
   { key: 'inspector', label: 'Inspectors', roles: ['inspector'], icon: <ClipboardCheck size={22} />, bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-600' },
-  { key: 'buyer_seller', label: 'Buyers / Sellers', roles: ['buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
+  { key: 'buyer_seller', label: 'Clients', roles: ['client', 'buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
   { key: 'tc', label: 'TCs', roles: ['tc'], icon: <Shield size={22} />, bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600' },
   { key: 'other', label: 'Other', roles: ['appraiser', 'other'], icon: <Users size={22} />, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600' },
 ];
 
 const ROLE_OPTIONS: { value: ContactRole; label: string }[] = [
   { value: 'agent', label: 'Agent' },
-  { value: 'buyer', label: 'Buyer' },
-  { value: 'seller', label: 'Seller' },
+  { value: 'client', label: 'Client' },
   { value: 'lender', label: 'Lender' },
   { value: 'title', label: 'Title' },
   { value: 'attorney', label: 'Attorney' },
@@ -83,6 +82,7 @@ function roleColor(r: ContactRole): string {
     title: 'bg-orange-100 text-orange-700',
     attorney: 'bg-red-100 text-red-700',
     inspector: 'bg-gray-100 text-gray-700',
+    client: 'bg-teal-100 text-teal-700',
     buyer: 'bg-teal-100 text-teal-700',
     seller: 'bg-teal-100 text-teal-700',
     tc: 'bg-indigo-100 text-indigo-700',
@@ -99,6 +99,7 @@ function avatarBg(r: ContactRole): string {
     title: 'bg-orange-200 text-orange-800',
     attorney: 'bg-red-200 text-red-800',
     inspector: 'bg-gray-200 text-gray-800',
+    client: 'bg-teal-200 text-teal-800',
     buyer: 'bg-teal-200 text-teal-800',
     seller: 'bg-teal-200 text-teal-800',
     tc: 'bg-indigo-200 text-indigo-800',
