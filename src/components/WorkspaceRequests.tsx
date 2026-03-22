@@ -209,9 +209,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [inboundMessages, setInboundMessages] = useState<Record<string, InboundMessage[]>>({});
   const [loadingMessages, setLoadingMessages] = useState<Record<string, boolean>>({});
 
-  // Doc preview state: docId → { url, filename } once fetched
-  const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
-  const [fetchingDocIds, setFetchingDocIds] = useState<Set<string>>(new Set());
 
   const participants = deal.participants ?? [];
 
@@ -234,41 +231,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   }, [deal.id]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
-
-  // ── Fetch & store Gmail attachment in Supabase Storage ────────────────────
-  const loadDocPreview = useCallback(async (docId: string) => {
-    if (fetchingDocIds.has(docId) || docPreviews[docId]) return;
-    setFetchingDocIds(prev => new Set(prev).add(docId));
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const { supabase } = await import('../lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || anonKey;
-
-      const res = await fetch(`${supabaseUrl}/functions/v1/fetch-attachment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ documentId: docId }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Failed to fetch attachment');
-      }
-
-      const data = await res.json();
-      setDocPreviews(prev => ({ ...prev, [docId]: { url: data.url, filename: data.filename } }));
-    } catch (err: any) {
-      console.error('loadDocPreview error:', err);
-      alert(`Could not load preview: ${err.message}`);
-    } finally {
-      setFetchingDocIds(prev => { const s = new Set(prev); s.delete(docId); return s; });
-    }
-  }, [fetchingDocIds, docPreviews]);
 
   // ── Load inbound messages for a request ─────────────────────────────────────
   const loadInboundMessages = useCallback(async (requestId: string) => {
@@ -734,6 +696,37 @@ const RequestCard: React.FC<RequestCardProps> = ({
   onInlineEditChange, sending, inboundMessages, loadingMessages,
   getTypeLabel, fmtDate,
 }) => {
+  // Doc preview state (local to each card)
+  const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
+  const [fetchingDocIds, setFetchingDocIds] = useState<Set<string>>(new Set());
+
+  const loadDocPreview = useCallback(async (docId: string) => {
+    if (fetchingDocIds.has(docId) || docPreviews[docId]) return;
+    setFetchingDocIds(prev => new Set(prev).add(docId));
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/fetch-attachment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ documentId: docId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || 'Failed to fetch attachment');
+      }
+      const data = await res.json();
+      setDocPreviews(prev => ({ ...prev, [docId]: { url: data.url, filename: data.filename } }));
+    } catch (err: any) {
+      console.error('loadDocPreview error:', err);
+      alert(`Could not load preview: ${err.message}`);
+    } finally {
+      setFetchingDocIds(prev => { const s = new Set(prev); s.delete(docId); return s; });
+    }
+  }, [fetchingDocIds, docPreviews]);
+
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
   const isDraft = request.status === 'draft';
