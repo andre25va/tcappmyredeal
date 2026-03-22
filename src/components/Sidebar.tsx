@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X,
 } from 'lucide-react';
 
 export type View =
