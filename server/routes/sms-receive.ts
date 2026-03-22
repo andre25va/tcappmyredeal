@@ -37,6 +37,57 @@ async function classifyMessage(contactName: string, dealAddress: string | null, 
   }
 }
 
+
+async function translateText(text: string, targetLang: 'en' | 'es'): Promise<string> {
+  if (!OPENAI_KEY || !text.trim()) return text;
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 1000,
+        messages: [
+          {
+            role: 'system',
+            content: targetLang === 'es'
+              ? 'Translate the following English text to Spanish. Preserve {{placeholder}} variables exactly as-is. Return only the translated text, no extra commentary.'
+              : 'Translate the following Spanish text to English. Preserve {{placeholder}} variables exactly as-is. Return only the translated text, no extra commentary.',
+          },
+          { role: 'user', content: text },
+        ],
+      }),
+    });
+    const data = await resp.json() as any;
+    return data.choices?.[0]?.message?.content?.trim() || text;
+  } catch {
+    return text; // fall back to original on error
+  }
+}
+
+async function detectLanguage(text: string): Promise<'en' | 'es'> {
+  if (!OPENAI_KEY || !text.trim()) return 'en';
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 5,
+        messages: [
+          { role: 'system', content: 'Detect the language of the following text. Reply with only "en" for English or "es" for Spanish.' },
+          { role: 'user', content: text.slice(0, 300) },
+        ],
+      }),
+    });
+    const data = await resp.json() as any;
+    const lang = data.choices?.[0]?.message?.content?.trim().toLowerCase();
+    return lang === 'es' ? 'es' : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 async function sendTwilioReply(to: string, body: string, isWhatsApp: boolean) {
   const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
   const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
@@ -76,7 +127,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     let matchedContact: any = null;
     const { data: phoneChannel } = await supabase
       .from('contact_phone_channels')
-      .select('contact_id, contacts(id, first_name, last_name, phone)')
+      .select('contact_id, contacts(id, first_name, last_name, phone, preferred_language)')
       .eq('phone_e164', fromE164)
       .eq('status', 'active')
       .limit(1)
@@ -90,7 +141,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     if (!matchedContact) {
       const { data: contacts } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, phone')
+        .select('id, first_name, last_name, phone, preferred_language')
         .not('phone', 'is', null);
 
       for (const c of contacts || []) {
@@ -105,6 +156,19 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     const contactName = matchedContact
       ? `${matchedContact.first_name} ${matchedContact.last_name}`
       : fromPhone;
+
+    // 3. Determine contact language preference & translate inbound if needed
+    const contactLang: 'en' | 'es' = matchedContact?.preferred_language === 'es' ? 'es' : 'en';
+    const inboundLang = await detectLanguage(Body);
+    const messageBody = inboundLang === 'es' ? await translateText(Body, 'en') : Body;
+    const wasTranslated = inboundLang === 'es';
+
+    // Localised reply wrapper — translates outbound to Spanish if contact prefers it
+    async function sendLocalizedReply(to: string, replyBody: string, isWA: boolean) {
+      const outBody = contactLang === 'es' ? await translateText(replyBody, 'es') : replyBody;
+      await sendTwilioReply(to, outBody, isWA);
+    }
+
 
     // 2. Find related deal via deal_participants join
     let relatedDeal: any = null;
@@ -126,7 +190,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     }
 
     // ── SMS Commands ──────────────────────────────────────────────────────────
-    const bodyUpper = Body.trim().toUpperCase();
+    const bodyUpper = messageBody.trim().toUpperCase();
 
     // ── Onboarding State Machine ─────────────────────────────────────────────
     {
@@ -148,7 +212,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
         // STOP at any point
         if (replyUpper === 'STOP' || replyUpper === 'NO' && session.step === 'greeting') {
           await supabase.from('onboarding_sessions').update({ status: 'abandoned' }).eq('id', session.id);
-          await sendTwilioReply(fromPhone, "No problem! Text us anytime if you need help. 🏠", isWhatsApp);
+          await sendLocalizedReply(fromPhone, "No problem! Text us anytime if you need help. 🏠", isWhatsApp);
           res.setHeader('Content-Type', 'text/xml');
           return res.send('<Response></Response>');
         }
@@ -163,7 +227,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
 
           if (replyUpper === 'STOP' || replyUpper === 'CANCEL') {
             await supabase.from('onboarding_sessions').update({ status: 'abandoned' }).eq('id', session.id);
-            await sendTwilioReply(fromPhone, "No problem! Text NEW CONTRACT anytime to start again. 🏠", isWhatsApp);
+            await sendLocalizedReply(fromPhone, "No problem! Text NEW CONTRACT anytime to start again. 🏠", isWhatsApp);
             res.setHeader('Content-Type', 'text/xml');
             return res.send('<Response></Response>');
           }
@@ -171,7 +235,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
           if (session.step === 'contract_address') {
             const address = reply.trim();
             if (address.length < 5) {
-              await sendTwilioReply(fromPhone, "Please send the full property address (e.g. 123 Main St, Kansas City, MO)", isWhatsApp);
+              await sendLocalizedReply(fromPhone, "Please send the full property address (e.g. 123 Main St, Kansas City, MO)", isWhatsApp);
               res.setHeader('Content-Type', 'text/xml');
               return res.send('<Response></Response>');
             }
@@ -229,12 +293,12 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
             }).eq('id', session.id);
 
             const confirmMsg = `✅ Got it! New contract started for:\n\n🏠 ${address}\n\nYour TC will be in touch shortly to complete the file. Text HELP for commands anytime!`;
-            await sendTwilioReply(fromPhone, confirmMsg, isWhatsApp);
+            await sendLocalizedReply(fromPhone, confirmMsg, isWhatsApp);
 
             // Log messages
             const msgNow = new Date().toISOString();
             await supabase.from('messages').insert([
-              { deal_id: newDeal?.id || null, contact_id: matchedContact?.id || null, direction: 'inbound', channel, body: Body, status: 'received', from_number: fromPhone, to_number: process.env.TWILIO_PHONE_NUMBER, external_message_id: MessageSid, sent_at: msgNow },
+              { deal_id: newDeal?.id || null, contact_id: matchedContact?.id || null, direction: 'inbound', channel, body: wasTranslated ? `[Translated from Spanish] ${messageBody}` : Body, status: 'received', from_number: fromPhone, to_number: process.env.TWILIO_PHONE_NUMBER, external_message_id: MessageSid, sent_at: msgNow },
               { deal_id: newDeal?.id || null, contact_id: matchedContact?.id || null, direction: 'outbound', channel, body: confirmMsg, status: 'sent', from_number: isWhatsApp ? (process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886') : process.env.TWILIO_PHONE_NUMBER, to_number: fromPhone, sent_at: msgNow },
             ]);
             res.setHeader('Content-Type', 'text/xml');
@@ -369,7 +433,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
           await supabase.from('onboarding_sessions').update({ step: nextStep, collected, updated_at: new Date().toISOString() }).eq('id', session.id);
         }
 
-        await sendTwilioReply(fromPhone, responseMsg, isWhatsApp);
+        await sendLocalizedReply(fromPhone, responseMsg, isWhatsApp);
 
         // Save message to conversations
         const now2 = new Date().toISOString();
@@ -414,7 +478,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
         ? `📋 New contract! Hi ${matchedContact.first_name} 👋\n\nWhat's the property address for this contract? (e.g. 123 Main St, Kansas City, MO)\n\nReply STOP to cancel.`
         : `📋 New contract! What's the property address? (e.g. 123 Main St, Kansas City, MO)\n\nReply STOP to cancel.`;
 
-      await sendTwilioReply(fromPhone, greeting, isWhatsApp);
+      await sendLocalizedReply(fromPhone, greeting, isWhatsApp);
 
       // Log the inbound message
       const now0 = new Date().toISOString();
@@ -429,7 +493,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
 
     // HELP command
     if (bodyUpper === 'HELP') {
-      await sendTwilioReply(fromPhone, SMS_CONFIG.responses.help, isWhatsApp);
+      await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.help, isWhatsApp);
       res.setHeader('Content-Type', 'text/xml');
       return res.send('<Response></Response>');
     }
@@ -437,7 +501,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     // OPEN FILES command
     if (bodyUpper === 'OPEN FILES') {
       if (!matchedContact) {
-        await sendTwilioReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
+        await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
       } else {
         const { data: parts } = await supabase
           .from('deal_participants').select('deal_id').eq('contact_id', matchedContact.id);
@@ -452,12 +516,12 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
               const closing = d.closing_date ? new Date(d.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : 'TBD';
               return `${i + 1}. ${d.property_address} (${d.pipeline_stage}) - Closing: ${closing}`;
             }).join('\n');
-            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.openFilesHeader + list + SMS_CONFIG.responses.openFilesFooter, isWhatsApp);
+            await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.openFilesHeader + list + SMS_CONFIG.responses.openFilesFooter, isWhatsApp);
           } else {
-            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
+            await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
           }
         } else {
-          await sendTwilioReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
+          await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.noActiveFiles, isWhatsApp);
         }
       }
       await supabase.from('communication_events').insert({
@@ -488,13 +552,13 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
           if (match) {
             const closing = match.closing_date ? new Date(match.closing_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : 'TBD';
             const summary = `📋 ${match.property_address}\nStatus: ${match.pipeline_stage}\nClosing: ${closing}\nCity: ${match.city || ''}, ${match.state || ''}\n\nText us if you have questions! 🏠`;
-            await sendTwilioReply(fromPhone, summary, isWhatsApp);
+            await sendLocalizedReply(fromPhone, summary, isWhatsApp);
           } else {
-            await sendTwilioReply(fromPhone, SMS_CONFIG.responses.statusNotFound(Body.trim().substring(7)), isWhatsApp);
+            await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.statusNotFound(Body.trim().substring(7)), isWhatsApp);
           }
         }
       } else {
-        await sendTwilioReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
+        await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.unknownContact, isWhatsApp);
       }
       await supabase.from('communication_events').insert({
         contact_id: matchedContact?.id || null,
@@ -527,7 +591,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
         summary: 'CALL ME command - callback requested',
         source_ref: MessageSid,
       });
-      await sendTwilioReply(fromPhone, SMS_CONFIG.responses.callMeConfirm, isWhatsApp);
+      await sendLocalizedReply(fromPhone, SMS_CONFIG.responses.callMeConfirm, isWhatsApp);
 
       // Create notification for TC
       await supabase.from('notifications').insert({
@@ -643,7 +707,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     });
 
     // 5. AI classify and auto-create comm task
-    const ai = await classifyMessage(contactName, relatedDeal?.property_address || null, Body);
+    const ai = await classifyMessage(contactName, relatedDeal?.property_address || null, messageBody);
 
     let createdTaskId: string | null = null;
     if (ai.needs_task) {
@@ -687,7 +751,7 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
 
     // 6. Auto-reply
     const autoReply = ai.auto_reply || SMS_CONFIG.responses.defaultAutoReply;
-    await sendTwilioReply(fromPhone, autoReply, isWhatsApp);
+    await sendLocalizedReply(fromPhone, autoReply, isWhatsApp);
 
     const WA_FROM = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
     await supabase.from('messages').insert({
