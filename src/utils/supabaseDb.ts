@@ -1656,3 +1656,98 @@ export async function saveBriefingConfig(config: Partial<BriefingConfig>): Promi
     }
   }
 }
+
+
+// ── Agent Team Members ──────────────────────────────────────────────────────
+
+export async function getAgentTeamMembers(supabase: any, agentContactId: string) {
+  const { data, error } = await supabase
+    .from('agent_team_members')
+    .select('*')
+    .eq('agent_contact_id', agentContactId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    agentContactId: r.agent_contact_id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    role: r.role,
+    notifyEmail: r.notify_email,
+    notifySms: r.notify_sms,
+    createdAt: r.created_at,
+  }));
+}
+
+export async function addAgentTeamMember(supabase: any, member: {
+  agentContactId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  notifyEmail?: boolean;
+  notifySms?: boolean;
+}) {
+  const { data, error } = await supabase
+    .from('agent_team_members')
+    .insert({
+      agent_contact_id: member.agentContactId,
+      name: member.name,
+      email: member.email || null,
+      phone: member.phone || null,
+      role: member.role || 'assistant',
+      notify_email: member.notifyEmail ?? true,
+      notify_sms: member.notifySms ?? true,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAgentTeamMember(supabase: any, id: string, updates: {
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  notifyEmail?: boolean;
+  notifySms?: boolean;
+}) {
+  const payload: any = {};
+  if (updates.name !== undefined) payload.name = updates.name;
+  if (updates.email !== undefined) payload.email = updates.email;
+  if (updates.phone !== undefined) payload.phone = updates.phone;
+  if (updates.role !== undefined) payload.role = updates.role;
+  if (updates.notifyEmail !== undefined) payload.notify_email = updates.notifyEmail;
+  if (updates.notifySms !== undefined) payload.notify_sms = updates.notifySms;
+  const { error } = await supabase.from('agent_team_members').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteAgentTeamMember(supabase: any, id: string) {
+  const { error } = await supabase.from('agent_team_members').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function getAgentTeamEmailsForCC(supabase: any, agentContactId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('agent_team_members')
+    .select('email')
+    .eq('agent_contact_id', agentContactId)
+    .eq('notify_email', true)
+    .not('email', 'is', null);
+  if (error) return [];
+  return (data || []).map((r: any) => r.email).filter(Boolean);
+}
+
+export async function getAgentTeamPhonesForSMS(supabase: any, agentContactId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('agent_team_members')
+    .select('phone')
+    .eq('agent_contact_id', agentContactId)
+    .eq('notify_sms', true)
+    .not('phone', 'is', null);
+  if (error) return [];
+  return (data || []).map((r: any) => r.phone).filter(Boolean);
+}

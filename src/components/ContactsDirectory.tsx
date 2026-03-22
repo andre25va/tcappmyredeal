@@ -3,15 +3,16 @@ import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
   Home, DollarSign, Scale, ClipboardCheck,
-  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles, ExternalLink,
+  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles, ExternalLink, Bell, UserPlus,
 } from 'lucide-react';
-import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership } from '../types';
+import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership, AgentTeamMember } from '../types';
 import {
   loadContactsFull, saveContactRecord, deleteContactRecord,
   upsertContactLicense, deleteContactLicenseRecord,
   upsertContactMls, deleteContactMlsRecord,
   createClientAccountForContact, removeClientAccountForContact,
   syncPhoneChannel,
+  getAgentTeamMembers, addAgentTeamMember, updateAgentTeamMember, deleteAgentTeamMember,
 } from '../utils/supabaseDb';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
@@ -233,6 +234,112 @@ interface Props {
   onContactUpdated?: (contactId: string, fullName: string, phone: string, email: string) => void;
 }
 
+
+// ── TeamMemberRow sub-component ──────────────────────────────────────────────
+interface TeamMemberRowProps {
+  member: AgentTeamMember;
+  isEditing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (updates: Partial<AgentTeamMember>) => void;
+  onDelete: () => void;
+  saving: boolean;
+  isLast: boolean;
+}
+
+function TeamMemberRow({ member, isEditing, onEdit, onCancelEdit, onSave, onDelete, saving }: TeamMemberRowProps) {
+  const [local, setLocal] = React.useState({ name: member.name, email: member.email || '', phone: member.phone || '', role: member.role, notifyEmail: member.notifyEmail, notifySms: member.notifySms });
+
+  React.useEffect(() => {
+    setLocal({ name: member.name, email: member.email || '', phone: member.phone || '', role: member.role, notifyEmail: member.notifyEmail, notifySms: member.notifySms });
+  }, [member]);
+
+  const roleColors: Record<string, string> = {
+    admin: 'bg-red-100 text-red-700',
+    assistant: 'bg-blue-100 text-blue-700',
+    coordinator: 'bg-purple-100 text-purple-700',
+    other: 'bg-gray-100 text-gray-700',
+  };
+
+  if (isEditing) {
+    return (
+      <div className="ml-4 border-l-2 border-dashed border-base-300 pl-3">
+        <div className="border border-base-300 rounded-lg p-3 bg-base-100 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label py-0"><span className="label-text text-[10px]">Name *</span></label>
+              <input className="input input-xs input-bordered w-full" value={local.name} onChange={e => setLocal(l => ({ ...l, name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label py-0"><span className="label-text text-[10px]">Role</span></label>
+              <select className="select select-xs select-bordered w-full" value={local.role} onChange={e => setLocal(l => ({ ...l, role: e.target.value as any }))}>
+                <option value="assistant">Assistant</option>
+                <option value="admin">Admin</option>
+                <option value="coordinator">Coordinator</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label py-0"><span className="label-text text-[10px]">Email</span></label>
+              <input className="input input-xs input-bordered w-full" value={local.email} onChange={e => setLocal(l => ({ ...l, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label py-0"><span className="label-text text-[10px]">Phone</span></label>
+              <input className="input input-xs input-bordered w-full" value={local.phone} onChange={e => setLocal(l => ({ ...l, phone: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-4 pt-1">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={local.notifyEmail} onChange={e => setLocal(l => ({ ...l, notifyEmail: e.target.checked }))} />
+              <Mail size={11} /><span className="text-[10px]">Email CC</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={local.notifySms} onChange={e => setLocal(l => ({ ...l, notifySms: e.target.checked }))} />
+              <Phone size={11} /><span className="text-[10px]">SMS CC</span>
+            </label>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button className="btn btn-primary btn-xs gap-1" onClick={() => onSave(local)} disabled={saving || !local.name.trim()}>
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Save
+            </button>
+            <button className="btn btn-ghost btn-xs" onClick={onCancelEdit}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-4 border-l-2 border-base-300 pl-3">
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-base-100 border border-base-300 rounded-lg hover:border-primary/30 transition-colors group">
+        <div className="w-5 h-5 rounded-full bg-base-300 flex items-center justify-center text-[9px] font-bold">
+          {member.name.split(' ').map((p: string) => p[0]).join('').slice(0,2).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium truncate">{member.name}</span>
+            <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${roleColors[member.role] || roleColors.other}`}>{member.role}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-base-content/50">
+            {member.email && <span className="flex items-center gap-0.5"><Mail size={9} /> {member.email}</span>}
+            {member.phone && <span className="flex items-center gap-0.5"><Phone size={9} /> {member.phone}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex gap-1">
+            {member.notifyEmail && <span title="CC on emails" className="text-primary"><Mail size={10} /></span>}
+            {member.notifySms && <span title="CC on SMS" className="text-primary"><Phone size={10} /></span>}
+          </div>
+          <button className="btn btn-ghost btn-xs btn-circle" onClick={onEdit}><Pencil size={11} /></button>
+          <button className="btn btn-ghost btn-xs btn-circle text-error" onClick={onDelete}><Trash2 size={11} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted, onContactUpdated }: Props) {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,6 +376,75 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // License lookup URL cache (stateCode → url)
   const licenseUrlCacheRef = useRef<Record<string, string>>({});
   const [licenseUrls, setLicenseUrls] = useState<Record<string, string>>({});
+
+  // Agent notification team state
+  const [teamMembers, setTeamMembers] = useState<AgentTeamMember[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+  const [editingTeamMemberId, setEditingTeamMemberId] = useState<string | null>(null);
+  const [teamForm, setTeamForm] = useState({ name: '', email: '', phone: '', role: 'assistant' as const, notifyEmail: true, notifySms: true });
+  const [teamSaving, setTeamSaving] = useState(false);
+
+  // Load team members when editing an agent contact
+  useEffect(() => {
+    if (modalOpen && isEditing && form.contactType === 'agent' && form.id) {
+      setTeamLoading(true);
+      getAgentTeamMembers(supabase, form.id)
+        .then(members => setTeamMembers(members))
+        .catch(() => setTeamMembers([]))
+        .finally(() => setTeamLoading(false));
+    } else if (!modalOpen) {
+      setTeamMembers([]);
+      setAddingTeamMember(false);
+      setEditingTeamMemberId(null);
+    }
+  }, [modalOpen, isEditing, form.id, form.contactType]);
+
+  async function saveNewTeamMember() {
+    if (!teamForm.name.trim()) return;
+    setTeamSaving(true);
+    try {
+      await addAgentTeamMember(supabase, {
+        agentContactId: form.id,
+        name: teamForm.name.trim(),
+        email: teamForm.email.trim() || undefined,
+        phone: teamForm.phone.trim() || undefined,
+        role: teamForm.role,
+        notifyEmail: teamForm.notifyEmail,
+        notifySms: teamForm.notifySms,
+      });
+      const updated = await getAgentTeamMembers(supabase, form.id);
+      setTeamMembers(updated);
+      setAddingTeamMember(false);
+      setTeamForm({ name: '', email: '', phone: '', role: 'assistant', notifyEmail: true, notifySms: true });
+    } catch (e) { console.error(e); }
+    finally { setTeamSaving(false); }
+  }
+
+  async function saveEditTeamMember(id: string, updates: Partial<AgentTeamMember>) {
+    setTeamSaving(true);
+    try {
+      await updateAgentTeamMember(supabase, id, {
+        name: updates.name,
+        email: updates.email,
+        phone: updates.phone,
+        role: updates.role,
+        notifyEmail: updates.notifyEmail,
+        notifySms: updates.notifySms,
+      });
+      const updated = await getAgentTeamMembers(supabase, form.id);
+      setTeamMembers(updated);
+      setEditingTeamMemberId(null);
+    } catch (e) { console.error(e); }
+    finally { setTeamSaving(false); }
+  }
+
+  async function removeTeamMember(id: string) {
+    try {
+      await deleteAgentTeamMember(supabase, id);
+      setTeamMembers(prev => prev.filter(m => m.id !== id));
+    } catch (e) { console.error(e); }
+  }
 
   function openSendOnboarding(c: ContactRecord) {
     const msg = `Hi ${c.firstName}! I'm Andre, your Transaction Coordinator at MyReDeal. I'll be managing your deals from contract to close — I'll send updates here. Reply anytime with questions! 🏠`;
@@ -917,6 +1093,126 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                     value={form.defaultInstructions}
                     onChange={e => updateField('defaultInstructions', e.target.value)}
                   />
+                </div>
+              )}
+
+
+              {/* Notification Team (agent clients only) */}
+              {form.contactType === 'agent' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Bell size={13} className="text-base-content/50" />
+                      <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">Notification Team</span>
+                      {teamMembers.length > 0 && <span className="badge badge-xs badge-primary">{teamMembers.length}</span>}
+                    </div>
+                    {isEditing && (
+                      <button className="btn btn-ghost btn-xs gap-1 text-primary" onClick={() => { setAddingTeamMember(true); setEditingTeamMemberId(null); }}>
+                        <UserPlus size={12} /> Add Member
+                      </button>
+                    )}
+                  </div>
+
+                  {!isEditing && (
+                    <p className="text-xs text-base-content/40 italic px-1">Save this contact first to add team members.</p>
+                  )}
+
+                  {isEditing && teamLoading && (
+                    <div className="flex items-center gap-2 py-2 text-xs text-base-content/40">
+                      <Loader2 size={12} className="animate-spin" /> Loading team...
+                    </div>
+                  )}
+
+                  {/* Team relationship tree */}
+                  {isEditing && !teamLoading && (
+                    <div className="space-y-1.5">
+                      {/* Agent (root node) */}
+                      <div className="flex items-center gap-2 px-2 py-1.5 bg-primary/5 border border-primary/20 rounded-lg">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
+                          {form.firstName?.[0]}{form.lastName?.[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold truncate">{form.firstName} {form.lastName}</span>
+                          <span className="text-[10px] text-base-content/40 ml-1">(Agent)</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {form.email && <Mail size={11} className="text-primary/60" />}
+                          {form.phone && <Phone size={11} className="text-primary/60" />}
+                        </div>
+                      </div>
+
+                      {/* Team member nodes */}
+                      {teamMembers.map((member, idx) => (
+                        <TeamMemberRow
+                          key={member.id}
+                          member={member}
+                          isEditing={editingTeamMemberId === member.id}
+                          onEdit={() => setEditingTeamMemberId(member.id)}
+                          onCancelEdit={() => setEditingTeamMemberId(null)}
+                          onSave={(updates) => saveEditTeamMember(member.id, updates)}
+                          onDelete={() => removeTeamMember(member.id)}
+                          saving={teamSaving}
+                          isLast={idx === teamMembers.length - 1 && !addingTeamMember}
+                        />
+                      ))}
+
+                      {/* Add new member form */}
+                      {addingTeamMember && (
+                        <div className="ml-4 border-l-2 border-dashed border-primary/30 pl-3">
+                          <div className="border border-primary/30 rounded-lg p-3 bg-primary/5 space-y-2">
+                            <p className="text-[10px] font-semibold text-primary uppercase tracking-wider">New Team Member</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="label py-0"><span className="label-text text-[10px]">Name *</span></label>
+                                <input className="input input-xs input-bordered w-full" placeholder="Full name" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} />
+                              </div>
+                              <div>
+                                <label className="label py-0"><span className="label-text text-[10px]">Role</span></label>
+                                <select className="select select-xs select-bordered w-full" value={teamForm.role} onChange={e => setTeamForm(f => ({ ...f, role: e.target.value as any }))}>
+                                  <option value="assistant">Assistant</option>
+                                  <option value="admin">Admin</option>
+                                  <option value="coordinator">Coordinator</option>
+                                  <option value="other">Other</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="label py-0"><span className="label-text text-[10px]">Email</span></label>
+                                <input className="input input-xs input-bordered w-full" placeholder="email@example.com" value={teamForm.email} onChange={e => setTeamForm(f => ({ ...f, email: e.target.value }))} />
+                              </div>
+                              <div>
+                                <label className="label py-0"><span className="label-text text-[10px]">Phone</span></label>
+                                <input className="input input-xs input-bordered w-full" placeholder="+1 (555) 000-0000" value={teamForm.phone} onChange={e => setTeamForm(f => ({ ...f, phone: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div className="flex gap-4 pt-1">
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={teamForm.notifyEmail} onChange={e => setTeamForm(f => ({ ...f, notifyEmail: e.target.checked }))} />
+                                <Mail size={11} /><span className="text-[10px]">Email CC</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={teamForm.notifySms} onChange={e => setTeamForm(f => ({ ...f, notifySms: e.target.checked }))} />
+                                <Phone size={11} /><span className="text-[10px]">SMS CC</span>
+                              </label>
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button className="btn btn-primary btn-xs gap-1" onClick={saveNewTeamMember} disabled={teamSaving || !teamForm.name.trim()}>
+                                {teamSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Save
+                              </button>
+                              <button className="btn btn-ghost btn-xs" onClick={() => { setAddingTeamMember(false); setTeamForm({ name: '', email: '', phone: '', role: 'assistant', notifyEmail: true, notifySms: true }); }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {!addingTeamMember && teamMembers.length === 0 && (
+                        <p className="text-xs text-base-content/40 italic px-1 py-1">No team members yet — add admins or assistants who should receive all communications.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

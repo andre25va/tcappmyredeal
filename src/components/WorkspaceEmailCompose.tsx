@@ -24,11 +24,13 @@ import type {
   EmailSendLogEntry,
 } from '../types';
 import { roleLabel, formatDate, formatCurrency, formatPhone } from '../utils/helpers';
+import { supabase } from '../lib/supabase';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import {
   loadEmailSendLog,
   logEmailSend,
   createScheduledEmail,
+  getAgentTeamEmailsForCC,
 } from '../utils/supabaseDb';
 
 // ── Merge-tag helpers (from WorkspaceEmailTemplate) ─────────────────────────
@@ -461,6 +463,33 @@ export default function WorkspaceEmailCompose({
     const notifyContacts = (deal.contacts || []).filter((c) => c.inNotificationList);
     const emails = notifyContacts.map((c) => c.email).filter(Boolean) as string[];
     setToAddresses(emails);
+  }, [deal.id]);
+
+  // Auto-CC agent team members (admins/assistants) when deal loads
+  useEffect(() => {
+    async function loadAgentTeamCC() {
+      try {
+        // Find agent-type contacts on this deal (buyer agent, seller agent)
+        const agentContacts = (deal.contacts || []).filter(
+          (c) => c.role === 'buyer_agent' || c.role === 'seller_agent' || c.role === 'agent'
+        );
+        if (agentContacts.length === 0) return;
+        const allTeamEmails: string[] = [];
+        for (const agent of agentContacts) {
+          if (!agent.id) continue;
+          const teamEmails = await getAgentTeamEmailsForCC(supabase, agent.id);
+          allTeamEmails.push(...teamEmails);
+        }
+        const unique = [...new Set(allTeamEmails)].filter(Boolean);
+        if (unique.length > 0) {
+          setCcAddresses(unique);
+          setShowCcBcc(true); // auto-expand CC row so TC sees it
+        }
+      } catch (_) {
+        // silently fail — team CC is additive, not critical
+      }
+    }
+    loadAgentTeamCC();
   }, [deal.id]);
 
   // Populate template when selected
