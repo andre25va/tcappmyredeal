@@ -15,6 +15,7 @@ import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,
   closingCountdown, generateId
 } from '../utils/helpers';
+import { MilestoneAdvanceModal } from './MilestoneAdvanceModal';
 
 interface CallStartedData {
   contactName: string;
@@ -251,11 +252,12 @@ const MilestoneStepper: React.FC<{
   deal: Deal;
   onUpdate: (d: Deal) => void;
   userName?: string;
-}> = ({ deal, onUpdate, userName = 'TC Staff' }) => {
+  contactRecords?: ContactRecord[];
+}> = ({ deal, onUpdate, userName = 'TC Staff', contactRecords = [] }) => {
   const current = deal.milestone ?? 'contract-received';
   const currentIdx = MILESTONE_ORDER.indexOf(current);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [advanceTarget, setAdvanceTarget] = useState<DealMilestone | null>(null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [showUnarchive, setShowUnarchive] = useState(false);
   const [unarchiveTo, setUnarchiveTo] = useState<DealMilestone>('contract-received');
@@ -281,7 +283,7 @@ const MilestoneStepper: React.FC<{
       activityLog: [logEntry, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
-    setConfirmIdx(null);
+    setAdvanceTarget(null);
   };
 
   return (
@@ -311,7 +313,7 @@ const MilestoneStepper: React.FC<{
               <div className="relative flex-none">
                 <button
                   onClick={() => {
-                    if (isFuture) setConfirmIdx(confirmIdx === i ? null : i);
+                    if (isFuture) setAdvanceTarget(m);
                   }}
                   onMouseEnter={() => setHoveredIdx(i)}
                   onMouseLeave={() => setHoveredIdx(null)}
@@ -345,24 +347,17 @@ const MilestoneStepper: React.FC<{
         })}
       </div>
 
-      {confirmIdx !== null && (
-        <div className="mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-          <p className="text-xs font-semibold text-base-content mb-2">
-            Advance to: <span className="text-primary">{MILESTONE_LABELS[MILESTONE_ORDER[confirmIdx]]}</span>?
-          </p>
-          <p className="text-xs text-base-content/50 mb-3">
-            This will auto-generate {generateTasksForMilestone(MILESTONE_ORDER[confirmIdx]).length} tasks for this stage.
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleAdvance(MILESTONE_ORDER[confirmIdx!])}
-              className="btn btn-xs btn-primary gap-1"
-            >
-              <Check size={10} /> Yes, Advance
-            </button>
-            <button onClick={() => setConfirmIdx(null)} className="btn btn-xs btn-ghost">Cancel</button>
-          </div>
-        </div>
+      {advanceTarget && (
+        <MilestoneAdvanceModal
+          deal={deal}
+          targetMilestone={advanceTarget}
+          contactRecords={contactRecords}
+          userName={userName}
+          onConfirm={(milestone) => {
+            handleAdvance(milestone);
+          }}
+          onCancel={() => setAdvanceTarget(null)}
+        />
       )}
 
       {!isArchived && !isTerminalMilestone(current) && (
@@ -697,7 +692,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       <SmartSuggestions deal={deal} allDeals={allDeals} />
 
       {/* ─── Milestone Stepper ─── */}
-      <MilestoneStepper deal={deal} onUpdate={onUpdate} userName={userName} />
+      <MilestoneStepper deal={deal} onUpdate={onUpdate} userName={userName} contactRecords={contactRecords} />
 
       {/* ─── Key Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
