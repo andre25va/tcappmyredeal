@@ -4,8 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 
 type Step = 'phone' | 'otp' | 'success';
 
-const DEMO_PHONE = '7085069000';
-
 function formatPhoneDisplay(raw: string) {
   const d = raw.replace(/\D/g, '');
   if (d.length === 0) return '';
@@ -28,7 +26,21 @@ export function LoginPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [pendingOtpCode, setPendingOtpCode] = useState('');
 
+  // Demo access state
+  const [demoStep, setDemoStep] = useState<'idle' | 'requesting' | 'code_entry'>('idle');
+  const [demoCode, setDemoCode] = useState(['', '', '', '', '', '']);
+  const [demoError, setDemoError] = useState('');
+
   const codeRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
+
+  const demoCodeRefs = [
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
@@ -45,11 +57,9 @@ export function LoginPage() {
 
   const phoneDigits = phone.replace(/\D/g, '');
   const phoneReady = phoneDigits.length === 10;
-  const isDemo = phoneDigits === DEMO_PHONE;
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isDemo) { handleDemoLogin(); return; }
     setError('');
     if (!phoneReady) { setError('Enter a valid 10-digit phone number.'); return; }
     setLoading(true);
@@ -70,25 +80,6 @@ export function LoginPage() {
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
-    setError('');
-    try {
-      const resp = await fetch('/api/auth?action=demo-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await resp.json();
-      if (!resp.ok) { setError(data.error || 'Demo login failed.'); return; }
-      setStep('success');
-      setTimeout(() => { login(data.token, data.profile, false); }, 800);
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setDemoLoading(false);
     }
   };
 
@@ -165,7 +156,6 @@ export function LoginPage() {
     await doVerify(false);
   };
 
-
   const handleResend = async () => {
     if (countdown > 0) return;
     setError('');
@@ -197,12 +187,77 @@ export function LoginPage() {
     }
   }, [code, step]);
 
+  // ── Demo access handlers ──────────────────────────────────────────────────
+
+  const handleRequestDemoCode = async () => {
+    setDemoLoading(true);
+    setDemoError('');
+    setDemoStep('requesting');
+    try {
+      const resp = await fetch('/api/auth?action=request-demo-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setDemoError(data.error || 'Failed to send code.'); setDemoStep('idle'); return; }
+      setDemoStep('code_entry');
+      setTimeout(() => demoCodeRefs[0].current?.focus(), 100);
+    } catch {
+      setDemoError('Network error. Please try again.');
+      setDemoStep('idle');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const handleDemoCodeChange = (index: number, val: string) => {
+    if (!/^\d*$/.test(val)) return;
+    const newCode = [...demoCode];
+    if (val.length > 1) {
+      const digits = val.replace(/\D/g, '').slice(0, 6);
+      const arr = digits.split('').concat(Array(6).fill('')).slice(0, 6);
+      setDemoCode(arr);
+      setTimeout(() => demoCodeRefs[Math.min(digits.length, 5)].current?.focus(), 50);
+      return;
+    }
+    newCode[index] = val;
+    setDemoCode(newCode);
+    if (val && index < 5) setTimeout(() => demoCodeRefs[index + 1].current?.focus(), 50);
+  };
+
+  const handleVerifyDemoCode = async () => {
+    const fullCode = demoCode.join('');
+    if (fullCode.length < 6) { setDemoError('Enter the 6-digit code.'); return; }
+    setDemoLoading(true);
+    setDemoError('');
+    try {
+      const resp = await fetch('/api/auth?action=demo-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: fullCode }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setDemoError(data.error || 'Verification failed.'); return; }
+      setStep('success');
+      setTimeout(() => { login(data.token, data.profile, false); }, 800);
+    } catch {
+      setDemoError('Network error. Please try again.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (demoStep === 'code_entry' && demoCode.join('').length === 6 && !demoLoading) {
+      handleVerifyDemoCode();
+    }
+  }, [demoCode, demoStep]);
+
   return (
     <div
       data-theme="light"
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-4"
     >
-      {/* ── Kicked-out banner ── */}
 <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
@@ -247,51 +302,32 @@ export function LoginPage() {
                     <div className="alert alert-error py-2 px-3 text-sm">{error}</div>
                   )}
 
-                  {isDemo ? (
-                    <>
-                      <button
-                        type="submit"
-                        className="btn btn-accent w-full gap-2"
-                        disabled={demoLoading}
-                      >
-                        {demoLoading ? (
-                          <span className="loading loading-spinner loading-sm" />
-                        ) : (
-                          <><Eye size={16} /> Access Demo View</>
-                        )}
-                      </button>
-                      <p className="text-center text-xs text-base-content/40 -mt-2">
-                        Read-only demo account · no code needed
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="submit"
-                        className="btn btn-primary w-full gap-2"
-                        disabled={loading || !phoneReady}
-                      >
-                        {loading ? (
-                          <span className="loading loading-spinner loading-sm" />
-                        ) : (
-                          <><Phone size={15} /> Send code via SMS</>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSendEmail}
-                        disabled={emailLoading || !phoneReady}
-                        className="btn btn-outline w-full gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary disabled:opacity-40"
-                      >
-                        {emailLoading ? (
-                          <span className="loading loading-spinner loading-sm" />
-                        ) : (
-                          <Mail size={15} />
-                        )}
-                        Send code to my email
-                      </button>
-                    </>
-                  )}
+                  <>
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-full gap-2"
+                      disabled={loading || !phoneReady}
+                    >
+                      {loading ? (
+                        <span className="loading loading-spinner loading-sm" />
+                      ) : (
+                        <><Phone size={15} /> Send code via SMS</>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendEmail}
+                      disabled={emailLoading || !phoneReady}
+                      className="btn btn-outline w-full gap-2 border-primary/40 text-primary hover:bg-primary/5 hover:border-primary disabled:opacity-40"
+                    >
+                      {emailLoading ? (
+                        <span className="loading loading-spinner loading-sm" />
+                      ) : (
+                        <Mail size={15} />
+                      )}
+                      Send code to my email
+                    </button>
+                  </>
                 </form>
 
                 <p className="text-center text-xs text-base-content/40">
@@ -401,6 +437,80 @@ export function LoginPage() {
             )}
           </div>
         </div>
+
+        {/* Demo Access Section */}
+        {step !== 'success' && (
+          <div className="mt-4">
+            {demoStep === 'idle' && (
+              <button
+                type="button"
+                onClick={handleRequestDemoCode}
+                disabled={demoLoading}
+                className="w-full btn btn-ghost btn-sm gap-2 text-base-content/40 hover:text-base-content/60 hover:bg-transparent border-0"
+              >
+                {demoLoading ? <span className="loading loading-spinner loading-xs" /> : <Eye size={13} />}
+                Request demo access
+              </button>
+            )}
+
+            {demoStep === 'requesting' && (
+              <div className="text-center text-xs text-base-content/40 py-2">
+                <span className="loading loading-spinner loading-xs mr-2" />
+                Sending code...
+              </div>
+            )}
+
+            {demoStep === 'code_entry' && (
+              <div className="card bg-base-100 shadow-sm border border-base-200 mt-2">
+                <div className="card-body gap-4 p-4">
+                  <div className="flex items-center gap-2">
+                    <Eye size={15} className="text-accent flex-none" />
+                    <div>
+                      <p className="text-sm font-medium text-base-content">Demo Access</p>
+                      <p className="text-xs text-base-content/50">Enter the code sent to the TC team</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-center">
+                    {demoCode.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={demoCodeRefs[i]}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={digit}
+                        onChange={e => handleDemoCodeChange(i, e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Backspace' && !demoCode[i] && i > 0) {
+                            setTimeout(() => demoCodeRefs[i - 1].current?.focus(), 50);
+                          }
+                        }}
+                        className="w-10 h-12 text-center text-lg font-bold border-2 border-base-300 rounded-xl focus:border-accent focus:outline-none transition-colors bg-base-100"
+                      />
+                    ))}
+                  </div>
+
+                  {demoError && <div className="alert alert-error py-2 px-3 text-xs">{demoError}</div>}
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyDemoCode}
+                    disabled={demoLoading || demoCode.join('').length < 6}
+                    className="btn btn-accent btn-sm w-full gap-2"
+                  >
+                    {demoLoading ? <span className="loading loading-spinner loading-xs" /> : <><Eye size={13} /> Access Demo</>}
+                  </button>
+
+                  <div className="flex justify-between text-xs text-base-content/40">
+                    <button type="button" onClick={() => { setDemoStep('idle'); setDemoCode(['','','','','','']); setDemoError(''); }} className="link link-hover">Cancel</button>
+                    <button type="button" onClick={handleRequestDemoCode} disabled={demoLoading} className="link link-hover">Request new code</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <p className="text-center text-xs text-base-content/30 mt-6">
           MyReDeal · TC Command v1.0
