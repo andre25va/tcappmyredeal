@@ -23,7 +23,7 @@ import type {
   ConfirmationButton,
   EmailSendLogEntry,
 } from '../types';
-import { roleLabel, formatDate, formatCurrency, formatPhone } from '../utils/helpers';
+import { roleLabel, formatDate, formatCurrency } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import {
@@ -53,13 +53,24 @@ function addBusinessDays(dateStr: string, days: number): string {
 function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
+  // Agent client name for {{tcTeam}} / {{agentClientName}} tags
+  const ourClientAgent = deal.buyerAgent?.isOurClient
+    ? deal.buyerAgent
+    : deal.sellerAgent?.isOurClient
+    ? deal.sellerAgent
+    : null;
+  const agentClientName = ourClientAgent?.name || '[Agent Name]';
+  const tcTeamLine = `TC Team for ${agentClientName}`;
+
   const agentLines: string[] = [];
-  if (deal.buyerAgent?.name) agentLines.push(`  Buyer Agent:  ${deal.buyerAgent.name}${deal.buyerAgent.phone ? ` | ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? ` | ${deal.buyerAgent.email}` : ''}${deal.buyerAgent.isOurClient ? ' ★ Our Client' : ''}`);
-  if (deal.sellerAgent?.name) agentLines.push(`  Seller Agent: ${deal.sellerAgent.name}${deal.sellerAgent.phone ? ` | ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? ` | ${deal.sellerAgent.email}` : ''}${deal.sellerAgent.isOurClient ? ' ★ Our Client' : ''}`);
+  // Names only — no phone or email in outgoing templates
+  if (deal.buyerAgent?.name) agentLines.push(`  Buyer Agent:  ${deal.buyerAgent.name}${deal.buyerAgent.isOurClient ? ' ★ Our Client' : ''}`);
+  if (deal.sellerAgent?.name) agentLines.push(`  Seller Agent: ${deal.sellerAgent.name}${deal.sellerAgent.isOurClient ? ' ★ Our Client' : ''}`);
   const agentsText = agentLines.join('\n') || '  (No agents added yet)';
 
   const contactLines = deal.contacts
-    .map(c => `  • ${c.name}${c.company ? ` (${c.company})` : ''} — ${roleLabel(c.role)}${c.email ? `: ${c.email}` : ''}${c.phone ? ` | ${formatPhone(c.phone)}` : ''}`)
+    // Names + company only — no phone or email exposed in templates
+    .map(c => `  • ${c.name}${c.company ? ` (${c.company})` : ''} — ${roleLabel(c.role)}`)
     .join('\n') || '  (No contacts added yet)';
 
   const pendingDocs = deal.documentRequests.filter(d => d.status !== 'confirmed');
@@ -76,25 +87,27 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
   const sellerLines: string[] = ['Sellers Side', ''];
-  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
+  // Names + company only — no contact details in outgoing templates
+  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
-  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}`);
+  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}`);
   else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
-  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
   const sellersSide = sellerLines.join('\n');
 
   // Build Buyers Side block
   const buyers = deal.contacts.filter(c => c.role === 'buyer');
   const buyerLines: string[] = ['Buyers Side', ''];
-  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
+  // Names + company only — no contact details in outgoing templates
+  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else buyerLines.push('  •   Buyers - [Buyer Name]');
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.phone ? `  ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? `  ${deal.buyerAgent.email}` : ''}`);
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}`);
   else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
-  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
   const buyersSide = buyerLines.join('\n');
 
@@ -130,7 +143,15 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{pendingDocs\}\}/g, pendingText)
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
-    .replace(/\{\{buyersSide\}\}/g, buyersSide);
+    .replace(/\{\{buyersSide\}\}/g, buyersSide)
+    .replace(/\{\{tcTeam\}\}/g, tcTeamLine)
+    .replace(/\{\{agentClientName\}\}/g, agentClientName)
+    // Future date fields — populated once new date fields are added to deals
+    .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')
+    .replace(/\{\{possessionDate\}\}/g, (deal as any).possessionDate ? formatDate((deal as any).possessionDate) : '[Possession Date not set]')
+    .replace(/\{\{inspectionDate\}\}/g, (deal as any).inspectionDate ? formatDate((deal as any).inspectionDate) : '[Inspection Date not set]')
+    .replace(/\{\{loanDate\}\}/g, (deal as any).loanDate ? formatDate((deal as any).loanDate) : '[Loan Commitment Date not set]')
+    .replace(/\{\{titleDate\}\}/g, (deal as any).titleDate ? formatDate((deal as any).titleDate) : '[Title Date not set]');
 }
 
 // ── Email chip input ────────────────────────────────────────────────────────
