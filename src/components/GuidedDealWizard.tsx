@@ -1108,7 +1108,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
-                {/* MLS Board + MLS Number */}
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">City *</label>
@@ -1123,10 +1122,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input className="input input-bordered w-full no-spinner" value={form.zipCode} onChange={f('zipCode')} placeholder="00000" />
                   </div>
                 </div>
-                {/* City / State / ZIP (moved below MLS) */}
+                {/* MLS Board + MLS Number */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">MLS Board</label>
+                    <label className="text-xs text-base-content/50 mb-1 block">MLS Board *</label>
                     {form.state && MLS_BY_STATE[form.state.toUpperCase()] ? (
                       <select
                         className="select select-bordered w-full"
