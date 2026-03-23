@@ -96,7 +96,14 @@ const renderDealCard = (
       {/* Header row */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-base-content truncate">{deal.propertyAddress}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            {deal.dealNumber != null && (
+              <span className="flex-none text-[10px] font-bold text-base-content/40 bg-base-300 px-1.5 py-0.5 rounded font-mono">
+                #{String(deal.dealNumber).padStart(3, '0')}
+              </span>
+            )}
+            <p className="font-semibold text-sm text-base-content truncate">{deal.propertyAddress}</p>
+          </div>
           <p className="text-xs text-base-content/50 truncate">{deal.city}, {deal.state} {deal.zipCode}</p>
         </div>
         <div className="flex items-center gap-1 flex-none">

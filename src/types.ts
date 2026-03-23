@@ -386,6 +386,7 @@ export interface AgentContact {
 
 export interface Deal {
   id: string;
+  dealNumber?: number;          // Auto-assigned sequential deal number (001, 002, ...)
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)

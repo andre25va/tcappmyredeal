@@ -724,6 +724,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
       {/* ─── Deal Details (read-only) ─── */}
       <div className="bg-base-200 rounded-xl border border-base-300 p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+        {deal.dealNumber != null && <div><span className="text-base-content/50 text-xs">Deal #</span><p className="font-medium text-base-content font-mono">#{String(deal.dealNumber).padStart(3, '0')}</p></div>}
         <div><span className="text-base-content/50 text-xs">Status</span><p className="font-medium text-base-content">{statusLabel(deal.status)}</p></div>
         <div><span className="text-base-content/50 text-xs">Property Type</span><p className="font-medium text-base-content">{propertyTypeLabel(deal.propertyType)}</p></div>
         <div><span className="text-base-content/50 text-xs">MLS #</span><p className="font-medium text-base-content">{deal.mlsNumber || '—'}</p></div>

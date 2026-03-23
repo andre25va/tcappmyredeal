@@ -162,7 +162,7 @@ export async function loadDeals(): Promise<Deal[]> {
       contract_date, closing_date, purchase_price, notes, legal_description,
       primary_client_account_id, transaction_type, risk_level,
       assigned_tc_user_id, assigned_compliance_user_id,
-      deal_data, created_at, updated_at
+      deal_data, created_at, updated_at, deal_number
     `)
     .order('created_at', { ascending: false });
 
@@ -187,6 +187,7 @@ export async function loadDeals(): Promise<Deal[]> {
 
     const deal: Deal = {
       id: row.id,
+      dealNumber: row.deal_number ?? undefined,
       propertyAddress: row.property_address || (dd.address as string) || '',
       city: row.city || (dd.city as string) || '',
       state: row.state || (dd.state as string) || '',
