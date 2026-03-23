@@ -901,8 +901,9 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      // Log locally
-      await logEmailSend({
+      // Edge function already logs to email_send_log — this is a best-effort local duplicate
+      // It must NEVER throw and block the success toast
+      logEmailSend({
         dealId: deal.id,
         templateId: selectedTemplate?.id,
         templateName: selectedTemplate?.name,
@@ -914,7 +915,7 @@ export default function WorkspaceEmailCompose({
         gmailThreadId: data.threadId,
         emailType: 'deal',
         sentBy: currentUser,
-      });
+      }).catch((err) => console.warn('Email log (non-critical):', err));
 
       showToast('success', 'Email sent successfully!');
       setHistoryKey((k) => k + 1);
