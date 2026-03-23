@@ -239,22 +239,28 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }));
   };
 
+  const isHeartlandAgent = (contact?: ContactRecord) =>
+    contact?.mlsMemberships?.some(m =>
+      /heartland/i.test(m.mlsName || '') || /heartland/i.test(m.boardName || '')
+    ) ?? false;
+
   const handleClientSelect = (selectedId: string) => {
-    if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
+    if (!selectedId) { setForm(p => ({ ...p, agentClientId: '', isHeartlandMls: false })); return; }
     const chosen = agentClients?.find(c => c.id === selectedId);
     if (!chosen) return;
     const sameName = agentClients?.filter(
       c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
     ) ?? [];
+    const heartland = isHeartlandAgent(chosen);
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
-      setForm(p => ({ ...p, agentClientId: selectedId }));
+      setForm(p => ({ ...p, agentClientId: selectedId, isHeartlandMls: heartland }));
     }
   };
 
   const handleClientDisambigSelect = (c: ContactRecord) => {
-    setForm(p => ({ ...p, agentClientId: c.id }));
+    setForm(p => ({ ...p, agentClientId: c.id, isHeartlandMls: isHeartlandAgent(c) }));
     setDisambigClientCandidates(null);
   };
 
@@ -810,15 +816,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
                   <div className="flex gap-2 items-center">
                     <input className="input input-bordered flex-1" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
-                    <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none px-3 py-2 rounded-lg border border-base-300 hover:bg-base-200 transition-colors">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm checkbox-primary"
-                        checked={form.isHeartlandMls}
-                        onChange={e => setForm(p => ({ ...p, isHeartlandMls: e.target.checked }))}
-                      />
-                      <span className="text-xs font-medium text-base-content/70">Heartland MLS</span>
-                    </label>
+                    {isHeartlandAgent(agentClients?.find(c => c.id === form.agentClientId)) && (
+                      <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none px-3 py-2 rounded-lg border border-base-300 hover:bg-base-200 transition-colors">
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-sm checkbox-primary"
+                          checked={form.isHeartlandMls}
+                          onChange={e => setForm(p => ({ ...p, isHeartlandMls: e.target.checked }))}
+                        />
+                        <span className="text-xs font-medium text-base-content/70">Heartland MLS</span>
+                      </label>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
