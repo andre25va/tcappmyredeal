@@ -136,6 +136,7 @@ interface EditForm {
   originalIsClient: boolean;
   clientAccountId?: string;
   preferredLanguage: 'en' | 'es';
+  pin: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -175,6 +176,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     originalIsClient: false,
     clientAccountId: undefined,
     preferredLanguage: 'en',
+    pin: '',
     licenses: [],
     mlsMemberships: [],
   };
@@ -196,6 +198,7 @@ function contactToForm(c: ContactRecord): EditForm {
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
     preferredLanguage: c.preferredLanguage || 'en',
+    pin: c.pin || '',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -710,6 +713,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         notes: form.notes.trim() || undefined,
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
         preferredLanguage: form.preferredLanguage,
+        pin: form.pin.trim() || undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -1043,6 +1047,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       Espa&#241;ol
                     </button>
                   </div>
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Client Portal PIN <span className="text-base-content/40">(4 digits)</span></span></label>
+                  <input
+                    className="input input-sm input-bordered w-32"
+                    autoComplete="off"
+                    maxLength={4}
+                    placeholder="0000"
+                    value={form.pin}
+                    onChange={e => updateField('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  />
+                  <p className="text-xs text-base-content/50 mt-0.5">Share with client to access the Client Portal</p>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
