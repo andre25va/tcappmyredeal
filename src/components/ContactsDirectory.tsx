@@ -362,6 +362,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [timezoneError, setTimezoneError] = useState(false);
   const [emailDup, setEmailDup] = useState<ContactRecord | null>(null);
   const [phoneDup, setPhoneDup] = useState<ContactRecord | null>(null);
+  const [pinEditing, setPinEditing] = useState(false);
+  const [pinDraft, setPinDraft] = useState('');
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
@@ -1089,15 +1091,42 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Client Portal PIN <span className="text-base-content/40">(4 digits)</span></span></label>
-                  <input
-                    className="input input-sm input-bordered w-32"
-                    autoComplete="off"
-                    maxLength={4}
-                    placeholder="0000"
-                    value={form.pin}
-                    onChange={e => updateField('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  />
-                  <p className="text-xs text-base-content/50 mt-0.5">Share with client to access the Client Portal</p>
+                  {pinEditing ? (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <input
+                        className="input input-sm input-bordered w-24 font-mono tracking-widest text-center"
+                        autoComplete="off"
+                        maxLength={4}
+                        placeholder="0000"
+                        autoFocus
+                        value={pinDraft}
+                        onChange={e => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-primary"
+                        disabled={pinDraft.length !== 4}
+                        onClick={() => { updateField('pin', pinDraft); setPinEditing(false); }}
+                      >Confirm</button>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-ghost"
+                        onClick={() => { setPinDraft(form.pin || ''); setPinEditing(false); }}
+                      >Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="font-mono text-sm tracking-widest text-base-content/60">
+                        {form.pin ? '●●●●' : <span className="text-base-content/30 font-sans text-xs">Not set</span>}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-ghost"
+                        onClick={() => { setPinDraft(form.pin || ''); setPinEditing(true); }}
+                      >Change</button>
+                    </div>
+                  )}
+                  <p className="text-xs text-base-content/50 mt-1">Share with client to access the Client Portal</p>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
