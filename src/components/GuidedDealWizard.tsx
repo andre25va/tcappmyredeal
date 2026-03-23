@@ -600,6 +600,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleCompany: d.titleCompany || p.titleCompany,
         loanOfficer: d.loanOfficer || p.loanOfficer,
         clientAgentCommission: d.commission || p.clientAgentCommission,
+        clientAgentCommissionPct: (() => {
+          const commAmt = parseFloat(d.commission || p.clientAgentCommission || '0');
+          const price = parseFloat(d.contractPrice || p.contractPrice || '0');
+          if (commAmt && price) return ((commAmt / price) * 100).toFixed(2);
+          return p.clientAgentCommissionPct;
+        })(),
         transactionType: (d.transactionType as any) || p.transactionType,
         propertyType: (d.propertyType as any) || p.propertyType,
         asIsSale: d.asIsSale ?? p.asIsSale,
