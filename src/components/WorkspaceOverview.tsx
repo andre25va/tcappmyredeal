@@ -507,7 +507,11 @@ const MilestoneStepper: React.FC<{
 export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
-  const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
+  // Show ALL agents in both dropdowns — include contacts with contactType 'agent'
+  // AND contacts marked as isClient (agent-clients may be stored with contactType 'client')
+  const agentOptions = (contactRecords || []).filter(c =>
+    c.contactType === 'agent' || c.isClient
+  );
 
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
