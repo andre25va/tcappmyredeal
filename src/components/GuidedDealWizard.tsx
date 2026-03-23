@@ -601,8 +601,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         loanOfficer: d.loanOfficer || p.loanOfficer,
         clientAgentCommission: d.commission || p.clientAgentCommission,
         clientAgentCommissionPct: (() => {
-          const commAmt = parseFloat(d.commission || p.clientAgentCommission || '0');
-          const price = parseFloat(d.contractPrice || p.contractPrice || '0');
+          const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
+          const commAmt = stripFmt(d.commission || p.clientAgentCommission || '0');
+          const price = stripFmt(d.contractPrice || p.contractPrice || '0');
           if (commAmt && price) return ((commAmt / price) * 100).toFixed(2);
           return p.clientAgentCommissionPct;
         })(),
@@ -1455,25 +1456,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
-                      <input className="input input-bordered w-full no-spinner" value={form.clientAgentCommission}
-                        onChange={e => {
-                          const amt = e.target.value;
-                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                          const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
-                          setForm(p => ({ ...p, clientAgentCommission: amt, clientAgentCommissionPct: pct }));
-                        }}
-                        placeholder="0" type="number" />
+                      <div className="join w-full">
+                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">$</span>
+                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommission}
+                          onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const pct = price > 0 && raw ? ((parseFloat(raw) / price) * 100).toFixed(1) : '';
+                            setForm(p => ({ ...p, clientAgentCommission: raw, clientAgentCommissionPct: pct }));
+                          }}
+                          onBlur={e => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommission: val.toFixed(2) }));
+                          }}
+                          placeholder="0.00" type="text" inputMode="decimal" />
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs text-base-content/40 mb-1 block">Commission % of Purchase Price</label>
-                      <input className="input input-bordered w-full no-spinner" value={form.clientAgentCommissionPct}
-                        onChange={e => {
-                          const pct = e.target.value;
-                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                          const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
-                          setForm(p => ({ ...p, clientAgentCommissionPct: pct, clientAgentCommission: amt }));
-                        }}
-                        placeholder="0.00" type="number" step="0.01" />
+                      <div className="join w-full">
+                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommissionPct}
+                          onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const amt = price > 0 && raw ? ((parseFloat(raw) / 100) * price).toFixed(2) : '';
+                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, clientAgentCommission: amt }));
+                          }}
+                          onBlur={e => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommissionPct: val.toFixed(1) }));
+                          }}
+                          placeholder="0.0" type="text" inputMode="decimal" />
+                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
