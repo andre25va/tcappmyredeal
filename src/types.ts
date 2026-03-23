@@ -449,6 +449,8 @@ export interface Deal {
   tcFeeType?: 'percent' | 'flat';
   tcFeeValue?: number;
   commissionPaidBy?: string;           // 'seller'|'buyer'
+  clientAgentCommission?: number;      // dollar amount
+  clientAgentCommissionPct?: number;   // percentage
   tcFeePaidBy?: string;                // 'seller'|'buyer'|'listing-agent'|'buying-agent'
 
   // ── Relationships (Phase 4 relational) ─────────────────────────────────────

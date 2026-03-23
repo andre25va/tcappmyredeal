@@ -349,7 +349,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               id: c.id, fullName: c.full_name || '', company: c.company || '',
               email: c.email || '', phone: c.phone || '', role: c.role || '',
               isClient: c.is_client || false,
-            } as ContactRecord));
+            } as unknown as ContactRecord));
             setAllContacts(mapped);
           }
           setTitleContactsLoaded(true);
@@ -383,13 +383,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         is_client: false,
       });
       if (error) throw error;
-      const created: ContactRecord = {
+      const created = {
         id, fullName: newTitleContact.fullName.trim(),
         company: newTitleContact.company.trim(),
         email: newTitleContact.email.trim(),
         phone: newTitleContact.phone.trim(),
         role: 'title', isClient: false,
-      };
+      } as unknown as ContactRecord;
       setAllContacts(prev => [...prev, created]);
       setForm(p => ({ ...p, titleContactId: id, titleContactEmail: created.email || '' }));
       const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
@@ -546,7 +546,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       if (step === 6) setError('Please select a client to continue.');
       return;
     }
-    if (step === 7) runAIReview();
+    if (step === 8) runAIReview();
     if (step < TOTAL_STEPS) setStep(step + 1);
   };
 
@@ -598,6 +598,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         sellerNames: d.sellerNames || p.sellerNames,
         titleCompany: d.titleCompany || p.titleCompany,
         loanOfficer: d.loanOfficer || p.loanOfficer,
+        clientAgentCommission: d.commission || p.clientAgentCommission,
         transactionType: (d.transactionType as any) || p.transactionType,
         propertyType: (d.propertyType as any) || p.propertyType,
         asIsSale: d.asIsSale ?? p.asIsSale,
@@ -713,6 +714,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       downPayment: parseFloat(form.downPaymentAmount) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
+      clientAgentCommission: parseFloat(form.clientAgentCommission) || undefined,
+      clientAgentCommissionPct: parseFloat(form.clientAgentCommissionPct) || undefined,
       asIsSale: form.asIsSale,
       inspectionWaived: form.inspectionWaived,
       homeWarranty: form.homeWarranty,
@@ -993,7 +996,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
                     loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
                     buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
-                    titleCompany: 'Title Company', loanOfficer: 'Loan Officer',
+                    titleCompany: 'Title Company', loanOfficer: 'Loan Officer', commission: 'Commission $',
                     transactionType: 'Transaction Type', propertyType: 'Property Type',
                     asIsSale: 'As-Is Sale', inspectionWaived: 'Inspection Waived',
                     homeWarranty: 'Home Warranty', homeWarrantyCompany: 'Warranty Company',

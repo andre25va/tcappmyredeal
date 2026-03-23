@@ -558,13 +558,10 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     homeWarrantyPaidBy: d.homeWarrantyPaidBy || 'seller',
     homeWarrantyCompany: d.homeWarrantyCompany || '',
     // Commission
-    listingCommissionType: d.listingCommissionType || 'percent',
-    listingCommissionValue: String(d.listingCommissionValue ?? ''),
-    buyerCommissionType: d.buyerCommissionType || 'percent',
-    buyerCommissionValue: String(d.buyerCommissionValue ?? ''),
+    clientAgentCommission: String(d.clientAgentCommission ?? ''),
+    clientAgentCommissionPct: String(d.clientAgentCommissionPct ?? ''),
     tcFeeType: d.tcFeeType || 'flat',
     tcFeeValue: String(d.tcFeeValue ?? ''),
-    commissionPaidBy: d.commissionPaidBy || 'seller',
     tcFeePaidBy: d.tcFeePaidBy || 'seller',
   });
   const [fields, setFields] = useState(() => buildFields(deal));
@@ -625,13 +622,10 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       homeWarrantyPaidBy: fields.homeWarrantyPaidBy || undefined,
       homeWarrantyCompany: fields.homeWarrantyCompany || undefined,
       // Commission
-      listingCommissionType: fields.listingCommissionType as 'percent' | 'flat',
-      listingCommissionValue: fields.listingCommissionValue ? pf(fields.listingCommissionValue) : undefined,
-      buyerCommissionType: fields.buyerCommissionType as 'percent' | 'flat',
-      buyerCommissionValue: fields.buyerCommissionValue ? pf(fields.buyerCommissionValue) : undefined,
+      clientAgentCommission: fields.clientAgentCommission ? pf(fields.clientAgentCommission) : undefined,
+      clientAgentCommissionPct: fields.clientAgentCommissionPct ? pf(fields.clientAgentCommissionPct) : undefined,
       tcFeeType: fields.tcFeeType as 'percent' | 'flat',
       tcFeeValue: fields.tcFeeValue ? pf(fields.tcFeeValue) : undefined,
-      commissionPaidBy: fields.commissionPaidBy || undefined,
       tcFeePaidBy: fields.tcFeePaidBy || undefined,
       // Agents
       buyerAgent: buyerDraft.name ? buyerDraft : undefined,
@@ -1167,42 +1161,36 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               <section>
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Commission</h3>
                 <div className="space-y-3">
-                  {/* Listing Agent Commission */}
+                  {/* Client Agent Commission */}
                   <div className="p-3 rounded-xl bg-base-200/50 border border-base-300">
-                    <p className="text-xs font-semibold text-base-content/60 mb-2">Listing Agent</p>
-                    <div className="flex gap-2 items-end">
-                      <div className="flex gap-1">
-                        {(['percent', 'flat'] as const).map(t => (
-                          <button key={t} type="button"
-                            className={`btn btn-xs ${fields.listingCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                            onClick={() => setFields(p => ({ ...p, listingCommissionType: t }))}>
-                            {t === 'percent' ? '%' : '$'}
-                          </button>
-                        ))}
+                    <p className="text-xs font-semibold text-base-content/60 mb-2">Client Agent Commission</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
+                        <input className="input input-bordered input-sm w-full"
+                          type="number"
+                          placeholder="0.00"
+                          value={fields.clientAgentCommission}
+                          onChange={e => {
+                            const amt = e.target.value;
+                            const cp = parseFloat(fields.contractPrice || '0');
+                            const pct = cp > 0 ? ((parseFloat(amt) / cp) * 100).toFixed(2) : '';
+                            setFields(p => ({ ...p, clientAgentCommission: amt, clientAgentCommissionPct: pct }));
+                          }} />
                       </div>
-                      <input className="input input-bordered input-sm flex-1"
-                        placeholder={fields.listingCommissionType === 'percent' ? '3.0' : '0.00'}
-                        value={fields.listingCommissionValue}
-                        onChange={e => setFields(p => ({ ...p, listingCommissionValue: e.target.value }))} />
-                    </div>
-                  </div>
-                  {/* Buyer Agent Commission */}
-                  <div className="p-3 rounded-xl bg-base-200/50 border border-base-300">
-                    <p className="text-xs font-semibold text-base-content/60 mb-2">Buyer Agent</p>
-                    <div className="flex gap-2 items-end">
-                      <div className="flex gap-1">
-                        {(['percent', 'flat'] as const).map(t => (
-                          <button key={t} type="button"
-                            className={`btn btn-xs ${fields.buyerCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                            onClick={() => setFields(p => ({ ...p, buyerCommissionType: t }))}>
-                            {t === 'percent' ? '%' : '$'}
-                          </button>
-                        ))}
+                      <div>
+                        <label className="text-xs text-base-content/40 mb-1 block">Commission %</label>
+                        <input className="input input-bordered input-sm w-full"
+                          type="number"
+                          placeholder="0.00"
+                          value={fields.clientAgentCommissionPct}
+                          onChange={e => {
+                            const pct = e.target.value;
+                            const cp = parseFloat(fields.contractPrice || '0');
+                            const amt = cp > 0 ? ((parseFloat(pct) / 100) * cp).toFixed(2) : '';
+                            setFields(p => ({ ...p, clientAgentCommissionPct: pct, clientAgentCommission: amt }));
+                          }} />
                       </div>
-                      <input className="input input-bordered input-sm flex-1"
-                        placeholder={fields.buyerCommissionType === 'percent' ? '3.0' : '0.00'}
-                        value={fields.buyerCommissionValue}
-                        onChange={e => setFields(p => ({ ...p, buyerCommissionValue: e.target.value }))} />
                     </div>
                   </div>
                   {/* TC Fee */}
@@ -1232,19 +1220,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       </select>
                     </div>
                   </div>
-                  {/* Commission Paid By */}
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Commission Paid By</label>
-                    <div className="flex gap-2">
-                      {['seller', 'buyer'].map(opt => (
-                        <button key={opt} type="button"
-                          className={`btn btn-sm capitalize ${fields.commissionPaidBy === opt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                          onClick={() => setFields(p => ({ ...p, commissionPaidBy: opt }))}>
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
                 </div>
               </section>
 
