@@ -814,7 +814,6 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     defaultInstructions: row.default_instructions || '',
     briefingEnabled: row.briefing_enabled ?? false,
     preferredLanguage: (row.preferred_language || 'en') as 'en' | 'es',
-    pin: row.pin || undefined,
   }));
 }
 
@@ -830,7 +829,6 @@ export async function saveContactRecord(contact: {
   notes?: string;
   defaultInstructions?: string;
   preferredLanguage?: 'en' | 'es';
-  pin?: string;
 }): Promise<void> {
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
   const { error } = await supabase.from('contacts').upsert({
@@ -846,17 +844,34 @@ export async function saveContactRecord(contact: {
     notes: contact.notes || null,
     default_instructions: contact.defaultInstructions || null,
     preferred_language: contact.preferredLanguage || 'en',
-    pin: contact.pin || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;
 }
 
 export async function deleteContactRecord(id: string): Promise<void> {
+  // 1. Remove licenses and MLS memberships
   await supabase.from('contact_licenses').delete().eq('contact_id', id);
   await supabase.from('contact_mls_memberships').delete().eq('contact_id', id);
   await supabase.from('organization_members').delete().eq('contact_id', id);
-  // Also clean up client account if exists
+
+  // 2. Clean up client_accounts where this contact is the primary_contact_id
+  //    Must delete contact_phone_channels first (FK: contact_phone_channels → client_accounts)
+  const { data: primaryAccounts } = await supabase
+    .from('client_accounts')
+    .select('id')
+    .eq('primary_contact_id', id);
+  if (primaryAccounts && primaryAccounts.length > 0) {
+    for (const acc of primaryAccounts) {
+      await supabase.from('contact_phone_channels').delete().eq('client_account_id', acc.id);
+      await supabase.from('agent_team_members').delete().eq('client_account_id', acc.id);
+    }
+    const primaryIds = primaryAccounts.map(a => a.id);
+    await supabase.from('client_account_members').delete().in('client_account_id', primaryIds);
+    await supabase.from('client_accounts').delete().eq('primary_contact_id', id);
+  }
+
+  // 3. Clean up client_account_members where contact is a non-primary member
   const { data: memberships } = await supabase
     .from('client_account_members')
     .select('client_account_id')
@@ -864,17 +879,20 @@ export async function deleteContactRecord(id: string): Promise<void> {
   if (memberships && memberships.length > 0) {
     const accountIds = memberships.map(m => m.client_account_id);
     await supabase.from('client_account_members').delete().eq('contact_id', id);
-    // Only delete accounts where this was the only member
+    // Delete orphaned accounts
     for (const accId of accountIds) {
       const { count } = await supabase
         .from('client_account_members')
         .select('id', { count: 'exact', head: true })
         .eq('client_account_id', accId);
       if (count === 0) {
+        await supabase.from('contact_phone_channels').delete().eq('client_account_id', accId);
         await supabase.from('client_accounts').delete().eq('id', accId);
       }
     }
   }
+
+  // 4. Finally delete the contact
   const { error } = await supabase.from('contacts').delete().eq('id', id);
   if (error) throw error;
 }
@@ -1366,7 +1384,7 @@ export async function buildClientDealSummary(dealId: string): Promise<string> {
   const milestone = milestoneLabels[data.pipeline_stage] || data.pipeline_stage || 'Unknown';
   const closing = data.closing_date ? new Date(data.closing_date).toLocaleDateString() : 'TBD';
 
-  return `Property: ${address}${cityState ? `, ${cityState}` : ''}\nStatus: ${milestone}\nClosing: ${closing}`;
+  return `📋 ${address}${cityState ? `, ${cityState}` : ''}\n📌 Status: ${milestone}\n📅 Closing: ${closing}`;
 }
 
 // ── SCHEDULED EMAILS ────────────────────────────────────────────────────────
