@@ -14,6 +14,60 @@ interface Props {
   ddMasterItems?: DDMasterItem[];
 }
 
+const MLS_BY_STATE: Record<string, string[]> = {
+  AL: ['Alabama MLS','Greater Alabama MLS','Valley MLS'],
+  AK: ['Alaska MLS'],
+  AZ: ['Arizona Regional MLS (ARMLS)','Western Arizona Realtor Data Exchange (WARDEX)','Flagstaff MLS'],
+  AR: ['Cooperative Arkansas REALTORS MLS (CARMLS)','Fort Smith Association MLS'],
+  CA: ['California Regional MLS (CRMLS)','MetroList MLS','San Francisco MLS','MLSListings','Bay East MLS','San Diego MLS (SDMLS)'],
+  CO: ['REcolorado','Pikes Peak MLS','Grand Junction MLS'],
+  CT: ['SmartMLS'],
+  DC: ['Bright MLS'],
+  DE: ['Bright MLS'],
+  FL: ['Stellar MLS (My Florida Regional MLS)','Miami MLS (MIAMI)','Northwest Florida MLS','Emerald Coast MLS','Northeast Florida MLS (NEFMLS)'],
+  GA: ['Georgia MLS (GAMLS)','First Multiple Listing Service (FMLS)','Golden Isles MLS'],
+  HI: ['Hawaii Information Service (HIS)'],
+  ID: ['Intermountain MLS (IMLS)','Snake River Regional MLS'],
+  IL: ['Midwest Real Estate Data (MRED)','Heartland MLS','Southern Illinois MLS'],
+  IN: ['MIBOR Realtor Association MLS','Indiana Regional MLS (IRMLS)'],
+  IA: ['Iowa Association MLS','Des Moines MLS (DMAAR)'],
+  KS: ['Heartland MLS','South Central Kansas MLS (SCKLS)','Manhattan Association of Realtors MLS','Northeast Kansas MLS'],
+  KY: ['Greater Louisville Association MLS (GLARMLS)','Lexington Bluegrass MLS','Western Kentucky MLS'],
+  LA: ['Gulf South Real Estate Information Network (GSREIN)','Greater Baton Rouge MLS','Shreveport-Bossier MLS'],
+  ME: ['Maine Real Estate Information System (MREIS)'],
+  MD: ['Bright MLS','Maryland Eastern Shore MLS'],
+  MA: ['MLS PIN','Cape Cod & Islands MLS'],
+  MI: ['Michigan Regional Information Center (MICHRIC)','Greater Lansing MLS','Upper Peninsula MLS'],
+  MN: ['NorthstarMLS','Lake Superior MLS'],
+  MS: ['Central Mississippi MLS (CMLS)','Gulf Coast MLS'],
+  MO: ['Heartland MLS','MARIS (St. Louis)','Southern Missouri Regional MLS','Columbia Board of Realtors MLS','Greater Springfield MLS'],
+  MT: ['Montana Regional MLS'],
+  NE: ['Great Plains Regional MLS','Heartland MLS'],
+  NV: ['Las Vegas Realtors (LVR)','Northern Nevada Regional MLS (NNRMLS)'],
+  NH: ['New Hampshire MLS (NHMLS)'],
+  NJ: ['Garden State MLS (GSMLS)','Ocean County MLS','New Jersey MLS'],
+  NM: ['Southwest MLS (SWMLS)','New Mexico MLS (NMMLS)'],
+  NY: ['OneKey MLS','Buffalo Niagara MLS','New York State MLS','Westchester MLS'],
+  NC: ['Triangle MLS','Canopy MLS','Triad MLS','Cape Fear Realtors MLS'],
+  ND: ['Lake Country Board of Realtors MLS'],
+  OH: ['MLS Now','Columbus Realtors MLS','Dayton REALTORS MLS','Cincinnati MLS'],
+  OK: ['Metropolitan MLS (MLSOK)','Green Country MLS'],
+  OR: ['Regional Multiple Listing Service (RMLS)','Oregon Datashare MLS'],
+  PA: ['Bright MLS','West Penn Multi-List (WPML)'],
+  RI: ['State-Wide MLS (RI-SWMLS)'],
+  SC: ['Consolidated MLS (CMLS)','Charleston Trident MLS (CTARMLS)','Spartanburg MLS'],
+  SD: ['South Dakota Association MLS'],
+  TN: ['Memphis Area Association MLS','RealTracs MLS','Knoxville Area Association MLS','Chattanooga MLS'],
+  TX: ['North Texas Real Estate Information Systems (NTREIS)','Houston Association MLS (HAR)','San Antonio Board of Realtors MLS','Austin Board of Realtors MLS (ABOR)','Central Texas MLS (CTXMLS)'],
+  UT: ['Utah Real Estate (WFRMLS)','Southern Utah MLS','Park City MLS'],
+  VT: ['New England Real Estate Network (NEREN MLS)'],
+  VA: ['Bright MLS','Virginia MLS (CVRMLS)','Hampton Roads Realtors MLS (REIN)'],
+  WA: ['Northwest MLS (NWMLS)','Spokane MLS'],
+  WV: ['Bright MLS','West Virginia MLS'],
+  WI: ['South Central Wisconsin MLS','Metro MLS'],
+  WY: ['Wyoming MLS'],
+};
+
 const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
   { type: 'single-family', label: 'Single Family', icon: <Home size={22} /> },
   { type: 'multi-family', label: 'Multi-Family', icon: <Building size={22} /> },
@@ -186,7 +240,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
-    mlsNumber: '000000', isHeartlandMls: false, listPrice: '', contractPrice: '',
+    mlsNumber: '000000', mlsBoard: '', isHeartlandMls: false, listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
@@ -247,22 +301,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     ) ?? false;
 
   const handleClientSelect = (selectedId: string) => {
-    if (!selectedId) { setForm(p => ({ ...p, agentClientId: '', isHeartlandMls: false })); return; }
+    if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
     const chosen = agentClients?.find(c => c.id === selectedId);
     if (!chosen) return;
     const sameName = agentClients?.filter(
       c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
     ) ?? [];
-    const heartland = isHeartlandAgent(chosen);
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
-      setForm(p => ({ ...p, agentClientId: selectedId, isHeartlandMls: heartland }));
+      setForm(p => ({ ...p, agentClientId: selectedId }));
     }
   };
 
   const handleClientDisambigSelect = (c: ContactRecord) => {
-    setForm(p => ({ ...p, agentClientId: c.id, isHeartlandMls: isHeartlandAgent(c) }));
+    setForm(p => ({ ...p, agentClientId: c.id }));
     setDisambigClientCandidates(null);
   };
 
@@ -720,6 +773,55 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input className="input input-bordered w-full" value={form.zipCode} onChange={f('zipCode')} placeholder="00000" />
                   </div>
                 </div>
+                {/* MLS Board + MLS Number */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">MLS Board</label>
+                    {form.state && MLS_BY_STATE[form.state.toUpperCase()] ? (
+                      <select
+                        className="select select-bordered w-full"
+                        value={form.mlsBoard}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setForm(p => ({
+                            ...p,
+                            mlsBoard: val,
+                            isHeartlandMls: /heartland/i.test(val),
+                          }));
+                        }}
+                      >
+                        <option value="">— Select MLS Board —</option>
+                        {MLS_BY_STATE[form.state.toUpperCase()].map(mls => (
+                          <option key={mls} value={mls}>{mls}</option>
+                        ))}
+                        <option value="Other">Other</option>
+                      </select>
+                    ) : (
+                      <input
+                        className="input input-bordered w-full"
+                        value={form.mlsBoard}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setForm(p => ({
+                            ...p,
+                            mlsBoard: val,
+                            isHeartlandMls: /heartland/i.test(val),
+                          }));
+                        }}
+                        placeholder="Enter MLS board name"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
+                    <input className="input input-bordered w-full" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="000000" />
+                  </div>
+                </div>
+                {form.isHeartlandMls && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <span className="text-xs text-amber-700 font-medium">Heartland MLS detected — earnest money rule will apply in Financials</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -845,23 +947,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 4 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
-                <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
-                  <div className="flex gap-2 items-center">
-                    <input className="input input-bordered flex-1" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
-                    {isHeartlandAgent(agentClients?.find(c => c.id === form.agentClientId)) && (
-                      <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none px-3 py-2 rounded-lg border border-base-300 hover:bg-base-200 transition-colors">
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-sm checkbox-primary"
-                          checked={form.isHeartlandMls}
-                          onChange={e => setForm(p => ({ ...p, isHeartlandMls: e.target.checked }))}
-                        />
-                        <span className="text-xs font-medium text-base-content/70">Heartland MLS</span>
-                      </label>
-                    )}
+                {(form.mlsBoard || form.mlsNumber) && (
+                  <div className="flex items-center gap-3 px-3 py-2 bg-base-200 rounded-lg text-xs text-base-content/60">
+                    {form.mlsBoard && <span><span className="font-medium text-base-content/80">MLS Board:</span> {form.mlsBoard}</span>}
+                    {form.mlsNumber && <span><span className="font-medium text-base-content/80">MLS #:</span> {form.mlsNumber}</span>}
+                    {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
                   </div>
-                </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
