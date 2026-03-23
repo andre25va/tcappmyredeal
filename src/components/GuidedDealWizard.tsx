@@ -282,6 +282,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [savingTitleContact, setSavingTitleContact] = useState(false);
   const [sendingIntroEmail, setSendingIntroEmail] = useState(false);
   const [introEmailSent, setIntroEmailSent] = useState(false);
+  const [introEmailSkipped, setIntroEmailSkipped] = useState(false);
   const titleSearchRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
@@ -1833,7 +1834,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   {selectedTitleContact && (
                     <div className="border-t border-base-300 pt-4 space-y-3">
                       <p className="text-xs text-base-content/50 font-semibold uppercase">Intro Email</p>
-                      {introEmailSent ? (
+                      {introEmailSkipped ? (
+                        <div className="flex items-center gap-2 p-3 bg-base-200 border border-base-300 rounded-xl text-base-content/50 text-sm">
+                          <CheckCircle2 size={15} /> Intro email skipped
+                        </div>
+                      ) : introEmailSent ? (
                         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
                           <CheckCircle2 size={15} /> Intro email sent to {selectedTitleContact.email || selectedTitleContact.fullName}
                         </div>
@@ -1856,7 +1861,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             >
                               {sendingIntroEmail ? <><Loader2 size={13} className="animate-spin" /> Sending...</> : <><Send size={13} /> Send Intro Email</>}
                             </button>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIntroEmailSent(true)}>Skip</button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIntroEmailSkipped(true)}>Skip</button>
                           </div>
                           {!form.titleContactEmail && (
                             <p className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle size={11} /> No email on file — add one to this contact to send.</p>
