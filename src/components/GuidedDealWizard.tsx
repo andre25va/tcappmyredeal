@@ -251,7 +251,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
-    listingCommission: '', buyerCommission: '', tcFee: '',
+    listingCommission: '', listingCommissionPct: '', buyerCommission: '', buyerCommissionPct: '', tcFee: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -608,6 +608,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   return (
     <>
+      <style>{`
+        input[type=number].no-spinner::-webkit-inner-spin-button,
+        input[type=number].no-spinner::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number].no-spinner { -moz-appearance: textfield; }
+      `}</style>
       {disambigClientCandidates && (
         <DisambigModal
           candidates={disambigClientCandidates}
@@ -901,7 +906,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </div>
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Street Address *</label>
-                  <input className="input input-bordered w-full" value={form.address} onChange={f('address')} placeholder="123 Main St" autoFocus />
+                  <input className="input input-bordered w-full no-spinner" value={form.address} onChange={f('address')} placeholder="123 Main St" autoFocus />
                   {dualAddressMatch && !splitDone && (
                     <div className="mt-2 flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                       <Building2 size={14} className="text-amber-600 shrink-0" />
@@ -950,15 +955,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">City *</label>
-                    <input className="input input-bordered w-full" value={form.city} onChange={f('city')} placeholder="Enter city" />
+                    <input className="input input-bordered w-full no-spinner" value={form.city} onChange={f('city')} placeholder="Enter city" />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">State</label>
-                    <input className="input input-bordered w-full" value={form.state} onChange={f('state')} placeholder="ST" maxLength={2} />
+                    <input className="input input-bordered w-full no-spinner" value={form.state} onChange={f('state')} placeholder="ST" maxLength={2} />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">ZIP</label>
-                    <input className="input input-bordered w-full" value={form.zipCode} onChange={f('zipCode')} placeholder="00000" />
+                    <input className="input input-bordered w-full no-spinner" value={form.zipCode} onChange={f('zipCode')} placeholder="00000" />
                   </div>
                 </div>
                 {/* MLS Board + MLS Number */}
@@ -983,7 +988,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       </select>
                     ) : (
                       <input
-                        className="input input-bordered w-full"
+                        className="input input-bordered w-full no-spinner"
                         value={form.mlsBoard}
                         onChange={e => {
                           const val = e.target.value;
@@ -996,7 +1001,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
-                    <input className="input input-bordered w-full" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="000000" />
+                    <input className="input input-bordered w-full no-spinner" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="000000" />
                   </div>
                 </div>
                 {form.isHeartlandMls && (
@@ -1139,11 +1144,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
-                    <input className="input input-bordered w-full" value={form.listPrice} onChange={f('listPrice')} placeholder="550000" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.listPrice} onChange={f('listPrice')} placeholder="550000" type="number" />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
-                    <input className="input input-bordered w-full" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
                 <div>
@@ -1165,26 +1170,34 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
-                      <input className="input input-bordered w-full" value={form.loanAmount} onChange={f('loanAmount')} placeholder="0" type="number" />
+                      <input className="input input-bordered w-full no-spinner" value={form.loanAmount} onChange={f('loanAmount')} placeholder="0" type="number" />
                     </div>
                     <div>
-                      <label className="text-xs text-base-content/50 mb-1 block">Down Payment $</label>
-                      <input className="input input-bordered w-full" value={form.downPaymentAmount}
+                      <label className="text-xs text-base-content/50 mb-1 block">
+                        Down Payment ${form.isHeartlandMls ? <span className="text-amber-600"> (excl. EM)</span> : null}
+                      </label>
+                      <input className="input input-bordered w-full no-spinner" value={form.downPaymentAmount}
                         onChange={e => {
                           const amt = e.target.value;
                           const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                          const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(1) : '';
+                          const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
+                          const total = (parseFloat(amt) || 0) + em;
+                          const pct = price > 0 && amt ? ((total / price) * 100).toFixed(1) : '';
                           setForm(p => ({ ...p, downPaymentAmount: amt, downPaymentPercent: pct }));
                         }}
                         placeholder="0" type="number" />
                     </div>
                     <div>
-                      <label className="text-xs text-base-content/50 mb-1 block">Down Payment %</label>
-                      <input className="input input-bordered w-full" value={form.downPaymentPercent}
+                      <label className="text-xs text-base-content/50 mb-1 block">
+                        Down Payment %{form.isHeartlandMls ? <span className="text-amber-600"> (incl. EM)</span> : null}
+                      </label>
+                      <input className="input input-bordered w-full no-spinner" value={form.downPaymentPercent}
                         onChange={e => {
                           const pct = e.target.value;
                           const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                          const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
+                          const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
+                          const totalAmt = price > 0 && pct ? ((parseFloat(pct) / 100) * price) : 0;
+                          const amt = totalAmt > 0 ? Math.max(0, totalAmt - em).toFixed(0) : '';
                           setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt }));
                         }}
                         placeholder="0" type="number" step="0.1" />
@@ -1194,22 +1207,106 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Earnest Money $</label>
-                    <input className="input input-bordered w-full" value={form.earnestMoney} onChange={f('earnestMoney')} placeholder="0" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.earnestMoney}
+                      onChange={e => {
+                        const em = e.target.value;
+                        if (form.isHeartlandMls) {
+                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const dp = parseFloat(form.downPaymentAmount) || 0;
+                          const total = dp + (parseFloat(em) || 0);
+                          const pct = price > 0 && (dp || parseFloat(em)) ? ((total / price) * 100).toFixed(1) : form.downPaymentPercent;
+                          setForm(p => ({ ...p, earnestMoney: em, downPaymentPercent: pct }));
+                        } else {
+                          setForm(p => ({ ...p, earnestMoney: em }));
+                        }
+                      }}
+                      placeholder="0" type="number" />
                     <p className="text-xs text-base-content/40 mt-1">EM due date set in Key Dates step</p>
                   </div>
                 </div>
-                {form.earnestMoney && form.downPaymentAmount && form.isHeartlandMls && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm">
-                    <span className="text-amber-700 font-semibold">Heartland MLS — Total Down Payment (incl. EM applied at closing): </span>
-                    <span className="text-amber-800 font-bold">
-                      ${((parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0)).toLocaleString()}
-                    </span>
-                  </div>
-                )}
+                {form.isHeartlandMls && form.downPaymentAmount && form.earnestMoney && (() => {
+                  const dp = parseFloat(form.downPaymentAmount) || 0;
+                  const em = parseFloat(form.earnestMoney) || 0;
+                  const total = dp + em;
+                  const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const pct = price > 0 ? ((total / price) * 100).toFixed(1) : null;
+                  return (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm flex items-center gap-3 flex-wrap">
+                      <span className="text-amber-700 font-semibold">Heartland MLS — Effective Down Payment:</span>
+                      <span className="text-amber-800 font-bold">${total.toLocaleString()}</span>
+                      {pct && <span className="text-amber-700">({pct}% of purchase price)</span>}
+                      <span className="text-amber-600 text-xs ml-auto">${dp.toLocaleString()} down + ${em.toLocaleString()} EM</span>
+                    </div>
+                  );
+                })()}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions $</label>
-                  <input className="input input-bordered w-full" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
+                  <input className="input input-bordered w-full no-spinner" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
                 </div>
+
+                {/* Commission Fields */}
+                <div className="border-t border-base-300 pt-4">
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Commissions</p>
+                  <div className="space-y-3">
+                    {/* Listing Commission */}
+                    <div>
+                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Listing Commission</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-base-content/40 mb-1 block">$ Amount</label>
+                          <input className="input input-bordered w-full no-spinner" value={form.listingCommission}
+                            onChange={e => {
+                              const amt = e.target.value;
+                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                              const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
+                              setForm(p => ({ ...p, listingCommission: amt, listingCommissionPct: pct }));
+                            }}
+                            placeholder="0" type="number" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-base-content/40 mb-1 block">% of Purchase Price</label>
+                          <input className="input input-bordered w-full no-spinner" value={form.listingCommissionPct}
+                            onChange={e => {
+                              const pct = e.target.value;
+                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                              const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
+                              setForm(p => ({ ...p, listingCommissionPct: pct, listingCommission: amt }));
+                            }}
+                            placeholder="0.00" type="number" step="0.01" />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Buyer Commission */}
+                    <div>
+                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Buyer Commission</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-base-content/40 mb-1 block">$ Amount</label>
+                          <input className="input input-bordered w-full no-spinner" value={form.buyerCommission}
+                            onChange={e => {
+                              const amt = e.target.value;
+                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                              const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
+                              setForm(p => ({ ...p, buyerCommission: amt, buyerCommissionPct: pct }));
+                            }}
+                            placeholder="0" type="number" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-base-content/40 mb-1 block">% of Purchase Price</label>
+                          <input className="input input-bordered w-full no-spinner" value={form.buyerCommissionPct}
+                            onChange={e => {
+                              const pct = e.target.value;
+                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                              const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
+                              setForm(p => ({ ...p, buyerCommissionPct: pct, buyerCommission: amt }));
+                            }}
+                            placeholder="0.00" type="number" step="0.01" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="border-t border-base-300 pt-4">
                   <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
                   <div className="space-y-2">
@@ -1341,21 +1438,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
-                    <input className="input input-bordered w-full" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John &amp; Jane Doe" />
+                    <input className="input input-bordered w-full no-spinner" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John &amp; Jane Doe" />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
-                    <input className="input input-bordered w-full" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
+                    <input className="input input-bordered w-full no-spinner" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Title Company</label>
-                    <input className="input input-bordered w-full" value={form.titleCompany} onChange={f('titleCompany')} placeholder="ABC Title Co." />
+                    <input className="input input-bordered w-full no-spinner" value={form.titleCompany} onChange={f('titleCompany')} placeholder="ABC Title Co." />
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
-                    <input className="input input-bordered w-full" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
+                    <input className="input input-bordered w-full no-spinner" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
                   </div>
                 </div>
                 <div className="border-t border-base-300 pt-4">
