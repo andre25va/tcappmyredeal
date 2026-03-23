@@ -24,7 +24,7 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   if (['buyer'].includes(role)) return 'buy';
   if (['seller'].includes(role)) return 'sell';
   if (['lender'].includes(role)) return 'buy';
-  if (['title', 'attorney'].includes(role)) return 'both';
+  if (['title', 'attorney'].includes(role)) return 'sell';
   return 'both';
 };
 
