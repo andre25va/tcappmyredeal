@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
@@ -108,7 +109,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -252,6 +253,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
+    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -268,6 +270,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [splitDone, setSplitDone] = useState(false);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
+
+  // Title & Escrow step state
+  const [titleSearch, setTitleSearch] = useState('');
+  const [titleDropdownOpen, setTitleDropdownOpen] = useState(false);
+  const [allContacts, setAllContacts] = useState<ContactRecord[]>([]);
+  const [titleContactsLoaded, setTitleContactsLoaded] = useState(false);
+  const [showCreateTitleContact, setShowCreateTitleContact] = useState(false);
+  const [newTitleContact, setNewTitleContact] = useState({ fullName: '', company: '', email: '', phone: '' });
+  const [savingTitleContact, setSavingTitleContact] = useState(false);
+  const [sendingIntroEmail, setSendingIntroEmail] = useState(false);
+  const [introEmailSent, setIntroEmailSent] = useState(false);
+  const titleSearchRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
@@ -320,6 +334,107 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Load all contacts when step 7 is reached
+  useEffect(() => {
+    if (step === 7 && !titleContactsLoaded) {
+      supabase
+        .from('contacts')
+        .select('*')
+        .is('deleted_at', null)
+        .order('full_name')
+        .then(({ data }) => {
+          if (data) {
+            const mapped = data.map((c: any) => ({
+              id: c.id, fullName: c.full_name || '', company: c.company || '',
+              email: c.email || '', phone: c.phone || '', role: c.role || '',
+              isClient: c.is_client || false,
+            } as ContactRecord));
+            setAllContacts(mapped);
+          }
+          setTitleContactsLoaded(true);
+        });
+    }
+  }, [step, titleContactsLoaded]);
+
+  // Close title dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (titleSearchRef.current && !titleSearchRef.current.contains(e.target as Node)) {
+        setTitleDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleCreateTitleContact = async () => {
+    if (!newTitleContact.fullName.trim()) return;
+    setSavingTitleContact(true);
+    try {
+      const id = crypto.randomUUID();
+      const { error } = await supabase.from('contacts').insert({
+        id,
+        full_name: newTitleContact.fullName.trim(),
+        company: newTitleContact.company.trim() || null,
+        email: newTitleContact.email.trim() || null,
+        phone: newTitleContact.phone.trim() || null,
+        role: 'title',
+        is_client: false,
+      });
+      if (error) throw error;
+      const created: ContactRecord = {
+        id, fullName: newTitleContact.fullName.trim(),
+        company: newTitleContact.company.trim(),
+        email: newTitleContact.email.trim(),
+        phone: newTitleContact.phone.trim(),
+        role: 'title', isClient: false,
+      };
+      setAllContacts(prev => [...prev, created]);
+      setForm(p => ({ ...p, titleContactId: id, titleContactEmail: created.email || '' }));
+      const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+      setForm(p => ({
+        ...p,
+        titleContactId: id,
+        titleContactEmail: created.email || '',
+        introEmailSubject: `${addr} – Introduction from TC Team`,
+        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+      }));
+      setShowCreateTitleContact(false);
+      setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
+    } catch (err: any) {
+      alert('Error saving contact: ' + (err.message || err));
+    } finally {
+      setSavingTitleContact(false);
+    }
+  };
+
+  const handleSendIntroEmail = async () => {
+    if (!form.titleContactEmail || !form.introEmailSubject) return;
+    setSendingIntroEmail(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const bodyLines = form.introEmailBody.split('\n');
+      const bodyHtml = '<p>' + bodyLines.map(l => l.trim() === '' ? '</p><p>' : l).join('<br/>') + '</p>';
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({
+          to: [form.titleContactEmail],
+          subject: form.introEmailSubject,
+          bodyHtml,
+          sentBy: 'TC Team',
+        }),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      setIntroEmailSent(true);
+    } catch (err: any) {
+      alert('Email failed: ' + (err.message || err));
+    } finally {
+      setSendingIntroEmail(false);
+    }
+  };
 
   const fetchMlsNumber = async () => {
     if (!form.address.trim() || !form.city.trim()) return;
@@ -431,7 +546,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       if (step === 6) setError('Please select a client to continue.');
       return;
     }
-    if (step === 6) runAIReview();
+    if (step === 7) runAIReview();
     if (step < TOTAL_STEPS) setStep(step + 1);
   };
 
@@ -631,7 +746,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     onAdd(deal);
   };
 
-  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -1542,7 +1657,170 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 7 && (
+            {/* ── Step 7: Title & Escrow ── */}
+            {step === 7 && (() => {
+              const selectedTitleContact = allContacts.find(c => c.id === form.titleContactId);
+              const filteredContacts = allContacts.filter(c =>
+                !titleSearch.trim() ||
+                c.fullName.toLowerCase().includes(titleSearch.toLowerCase()) ||
+                (c.company || '').toLowerCase().includes(titleSearch.toLowerCase())
+              );
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BuildingIcon size={18} className="text-primary" />
+                    <h3 className="text-lg font-bold text-base-content">Title &amp; Escrow</h3>
+                  </div>
+                  <p className="text-sm text-base-content/60">Select the title or escrow company for this deal. You can also send them an intro email right now.</p>
+
+                  {/* Contact search / selected card */}
+                  {selectedTitleContact ? (
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
+                        {selectedTitleContact.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-base-content truncate">{selectedTitleContact.fullName}</p>
+                        {selectedTitleContact.company && <p className="text-xs text-base-content/50 truncate">{selectedTitleContact.company}</p>}
+                        {selectedTitleContact.email && <p className="text-xs text-base-content/40 truncate">{selectedTitleContact.email}</p>}
+                      </div>
+                      <button type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '' })); setIntroEmailSent(false); }} className="btn btn-ghost btn-xs btn-square"><X size={12} /></button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="relative" ref={titleSearchRef}>
+                        <input
+                          className="input input-bordered w-full"
+                          placeholder="Search by name or company..."
+                          value={titleSearch}
+                          onChange={e => { setTitleSearch(e.target.value); setTitleDropdownOpen(true); }}
+                          onFocus={() => setTitleDropdownOpen(true)}
+                        />
+                        {titleDropdownOpen && (
+                          <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                            {!titleContactsLoaded ? (
+                              <div className="px-4 py-3 text-sm text-base-content/40 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
+                            ) : filteredContacts.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-base-content/40 text-center">No contacts found</div>
+                            ) : filteredContacts.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-primary/5 transition-colors text-left border-b border-base-200 last:border-0"
+                                onClick={() => {
+                                  const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+                                  setForm(p => ({
+                                    ...p,
+                                    titleContactId: c.id,
+                                    titleContactEmail: c.email || '',
+                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+                                  }));
+                                  setTitleDropdownOpen(false);
+                                  setTitleSearch('');
+                                  setIntroEmailSent(false);
+                                }}
+                              >
+                                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-none">
+                                  {c.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-base-content truncate">{c.fullName}</p>
+                                  {c.company && <p className="text-xs text-base-content/40 truncate">{c.company}</p>}
+                                  {c.email && <p className="text-xs text-base-content/40 truncate">{c.email}</p>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm gap-1.5 w-full"
+                        onClick={() => { setShowCreateTitleContact(true); setTitleDropdownOpen(false); }}
+                      >
+                        <Plus size={13} /> Create New Contact
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Create new contact inline modal */}
+                  {showCreateTitleContact && (
+                    <div className="border border-base-300 rounded-xl p-4 bg-base-50 space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-base-content">New Contact</p>
+                        <button type="button" className="btn btn-ghost btn-xs btn-square" onClick={() => setShowCreateTitleContact(false)}><X size={12} /></button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-base-content/50 mb-1 block">Full Name <span className="text-red-400">*</span></label>
+                          <input className="input input-bordered w-full input-sm" placeholder="Jane Smith" value={newTitleContact.fullName} onChange={e => setNewTitleContact(p => ({ ...p, fullName: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-base-content/50 mb-1 block">Company</label>
+                          <input className="input input-bordered w-full input-sm" placeholder="ABC Title Co." value={newTitleContact.company} onChange={e => setNewTitleContact(p => ({ ...p, company: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1"><Mail size={11} /> Email</label>
+                          <input className="input input-bordered w-full input-sm" placeholder="jane@abctitle.com" type="email" value={newTitleContact.email} onChange={e => setNewTitleContact(p => ({ ...p, email: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1"><Phone size={11} /> Phone</label>
+                          <input className="input input-bordered w-full input-sm" placeholder="(555) 123-4567" value={newTitleContact.phone} onChange={e => setNewTitleContact(p => ({ ...p, phone: e.target.value }))} />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm w-full"
+                        disabled={!newTitleContact.fullName.trim() || savingTitleContact}
+                        onClick={handleCreateTitleContact}
+                      >
+                        {savingTitleContact ? <><Loader2 size={13} className="animate-spin" /> Saving...</> : 'Save & Select Contact'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Intro email compose — shows when contact with email is selected */}
+                  {selectedTitleContact && (
+                    <div className="border-t border-base-300 pt-4 space-y-3">
+                      <p className="text-xs text-base-content/50 font-semibold uppercase">Intro Email</p>
+                      {introEmailSent ? (
+                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
+                          <CheckCircle2 size={15} /> Intro email sent to {selectedTitleContact.email || selectedTitleContact.fullName}
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Subject</label>
+                            <input className="input input-bordered w-full input-sm" value={form.introEmailSubject} onChange={e => setForm(p => ({ ...p, introEmailSubject: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="text-xs text-base-content/50 mb-1 block">Message</label>
+                            <textarea className="textarea textarea-bordered w-full text-sm resize-none" rows={6} value={form.introEmailBody} onChange={e => setForm(p => ({ ...p, introEmailBody: e.target.value }))} />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm flex-1 gap-1.5"
+                              disabled={!form.titleContactEmail || sendingIntroEmail}
+                              onClick={handleSendIntroEmail}
+                            >
+                              {sendingIntroEmail ? <><Loader2 size={13} className="animate-spin" /> Sending...</> : <><Send size={13} /> Send Intro Email</>}
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIntroEmailSent(true)}>Skip</button>
+                          </div>
+                          {!form.titleContactEmail && (
+                            <p className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle size={11} /> No email on file — add one to this contact to send.</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {step === 8 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles size={18} className="text-primary" />
