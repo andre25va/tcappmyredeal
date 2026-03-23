@@ -121,7 +121,7 @@ const ContactPopup: React.FC<{
   dealState?: string;
   deal?: Deal;
   onCallStarted?: (callData: CallStartedData) => void;
-  onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
+  onEdit: (updates: Partial<Contact> & { notes?: string }) => Promise<void>;
 }> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1019,38 +1019,39 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const editContact = async (
     contactId: string,
-    updates: { name: string; phone: string; email: string; company: string; notes: string }
+    updates: Partial<Contact> & { notes?: string }
   ) => {
     const contact = deal.contacts.find(c => c.id === contactId);
-    if (!contact) return;
+    // For synthetic injected agents, only handle side updates in local state
+    const isSyntheticAgent = contactId.startsWith('__agent_');
 
-    if (contact.directoryId) {
-      const nameParts = updates.name.trim().split(' ');
+    if (!isSyntheticAgent && contact?.directoryId && (updates.name || updates.phone !== undefined || updates.email !== undefined || updates.company !== undefined || updates.notes !== undefined)) {
+      const nameParts = (updates.name || contact.name).trim().split(' ');
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || null;
       await supabase.from('contacts').update({
         first_name: firstName,
         last_name: lastName,
-        phone: updates.phone || null,
-        email: updates.email || null,
-        company: updates.company || null,
+        phone: updates.phone ?? contact.phone ?? null,
+        email: updates.email ?? contact.email ?? null,
+        company: updates.company ?? contact.company ?? null,
         notes: updates.notes || null,
       }).eq('id', contact.directoryId);
     }
 
-    onUpdate({
-      ...deal,
-      contacts: deal.contacts.map(c =>
-        c.id === contactId
-          ? { ...c, name: updates.name, phone: updates.phone, email: updates.email, company: updates.company }
-          : c
-      ),
-      activityLog: [
-        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
-        ...deal.activityLog,
-      ],
-      updatedAt: new Date().toISOString(),
-    });
+    if (!isSyntheticAgent && contact) {
+      onUpdate({
+        ...deal,
+        contacts: deal.contacts.map(c =>
+          c.id === contactId ? { ...c, ...updates } : c
+        ),
+        activityLog: updates.name ? [
+          { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
+          ...deal.activityLog,
+        ] : deal.activityLog,
+        updatedAt: new Date().toISOString(),
+      });
+    }
   };
 
   // Inject buyer/seller agents from deal overview into the contacts panels
