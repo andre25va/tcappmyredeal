@@ -658,6 +658,7 @@ export default function WorkspaceEmailCompose({
   const [spanishBody, setSpanishBody] = useState('');
   const [sendingSpanish, setSendingSpanish] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [showConfirmWarning, setShowConfirmWarning] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [toast, setToast] = useState<{
     type: 'success' | 'error';
@@ -797,16 +798,19 @@ export default function WorkspaceEmailCompose({
     if (toAddresses.length === 0) return 'Please add at least one recipient.';
     if (!subject.trim()) return 'Subject is required.';
     if (!bodyText.trim()) return 'Email body is empty.';
-    // Check confirmations
-    const unconfirmed = Object.entries(confirmations).filter(([, v]) => !v);
-    if (unconfirmed.length > 0) return 'Please check all confirmation items before sending.';
     return null;
+  };
+
+  // Separate confirmation gate — triggers warning modal instead of toast
+  const hasUnconfirmedItems = (): boolean => {
+    return Object.entries(confirmations).some(([, v]) => !v);
   };
 
   // Preview in Spanish
   const handlePreviewSpanish = async () => {
     const err = validate();
     if (err) { showToast('error', err); return; }
+    if (hasUnconfirmedItems()) { setShowConfirmWarning(true); return; }
     setTranslating(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -865,6 +869,10 @@ export default function WorkspaceEmailCompose({
     const err = validate();
     if (err) {
       showToast('error', err);
+      return;
+    }
+    if (hasUnconfirmedItems()) {
+      setShowConfirmWarning(true);
       return;
     }
 
@@ -1213,6 +1221,41 @@ export default function WorkspaceEmailCompose({
         {/* Sent History */}
         <SentHistory key={historyKey} dealId={deal.id} />
       </div>
+
+      {/* ── Confirmation Warning Modal ───────────────────────────────── */}
+      {showConfirmWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-base-100 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-amber-100 rounded-full p-2">
+                <AlertCircle size={22} className="text-amber-600" />
+              </div>
+              <h3 className="font-semibold text-base">Action Required Before Sending</h3>
+            </div>
+            <p className="text-sm text-base-content/70 mb-4">
+              This template requires you to confirm the following items before the email can be sent:
+            </p>
+            <ul className="space-y-2 mb-5">
+              {Object.entries(confirmations)
+                .filter(([, v]) => !v)
+                .map(([item]) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span className="mt-0.5 shrink-0">⚠️</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowConfirmWarning(false)}
+              >
+                Go Back & Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Schedule Modal ──────────────────────────────────────────── */}
       <ScheduleModal
