@@ -718,6 +718,7 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
   const { data, error } = await supabase
     .from('contacts')
     .select('*')
+    .is('deleted_at', null)
     .order('last_name', { ascending: true });
   if (error) throw error;
   if (!data || data.length === 0) return [];
@@ -849,52 +850,60 @@ export async function saveContactRecord(contact: {
   if (error) throw error;
 }
 
-export async function deleteContactRecord(id: string): Promise<void> {
-  // 1. Remove licenses and MLS memberships
-  await supabase.from('contact_licenses').delete().eq('contact_id', id);
-  await supabase.from('contact_mls_memberships').delete().eq('contact_id', id);
-  await supabase.from('organization_members').delete().eq('contact_id', id);
-
-  // 2. Clean up client_accounts where this contact is the primary_contact_id
-  //    Must delete contact_phone_channels first (FK: contact_phone_channels → client_accounts)
-  const { data: primaryAccounts } = await supabase
-    .from('client_accounts')
-    .select('id')
-    .eq('primary_contact_id', id);
-  if (primaryAccounts && primaryAccounts.length > 0) {
-    for (const acc of primaryAccounts) {
-      await supabase.from('contact_phone_channels').delete().eq('client_account_id', acc.id);
-      await supabase.from('agent_team_members').delete().eq('client_account_id', acc.id);
-    }
-    const primaryIds = primaryAccounts.map(a => a.id);
-    await supabase.from('client_account_members').delete().in('client_account_id', primaryIds);
-    await supabase.from('client_accounts').delete().eq('primary_contact_id', id);
-  }
-
-  // 3. Clean up client_account_members where contact is a non-primary member
-  const { data: memberships } = await supabase
-    .from('client_account_members')
-    .select('client_account_id')
-    .eq('contact_id', id);
-  if (memberships && memberships.length > 0) {
-    const accountIds = memberships.map(m => m.client_account_id);
-    await supabase.from('client_account_members').delete().eq('contact_id', id);
-    // Delete orphaned accounts
-    for (const accId of accountIds) {
-      const { count } = await supabase
-        .from('client_account_members')
-        .select('id', { count: 'exact', head: true })
-        .eq('client_account_id', accId);
-      if (count === 0) {
-        await supabase.from('contact_phone_channels').delete().eq('client_account_id', accId);
-        await supabase.from('client_accounts').delete().eq('id', accId);
-      }
-    }
-  }
-
-  // 4. Finally delete the contact
-  const { error } = await supabase.from('contacts').delete().eq('id', id);
+export async function deleteContactRecord(id: string, staffName: string, contactSnapshot?: Record<string, any>): Promise<void> {
+  // Soft-delete: stamp deleted_at + deleted_by instead of hard delete
+  const { error } = await supabase
+    .from('contacts')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: staffName })
+    .eq('id', id);
   if (error) throw error;
+
+  // Log to activity_log
+  await supabase.from('activity_log').insert({
+    action: 'contact_deleted',
+    entity_type: 'contact',
+    entity_id: id,
+    description: `Contact deleted by ${staffName}`,
+    performed_by: staffName,
+    old_value: contactSnapshot ?? null,
+  });
+}
+
+export async function loadDeletedContacts(): Promise<ContactRecord[]> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    firstName: r.first_name ?? '',
+    lastName: r.last_name ?? '',
+    name: `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim(),
+    email: r.email ?? '',
+    phone: r.phone ?? '',
+    role: r.role ?? '',
+    company: r.company ?? '',
+    deletedAt: r.deleted_at,
+    deletedBy: r.deleted_by,
+  } as any));
+}
+
+export async function restoreContact(id: string, staffName: string): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .update({ deleted_at: null, deleted_by: null })
+    .eq('id', id);
+  if (error) throw error;
+
+  await supabase.from('activity_log').insert({
+    action: 'contact_restored',
+    entity_type: 'contact',
+    entity_id: id,
+    description: `Contact restored by ${staffName}`,
+    performed_by: staffName,
+  });
 }
 
 export async function upsertContactLicense(license: {

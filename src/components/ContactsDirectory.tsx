@@ -835,7 +835,13 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     if (!deleteTarget) return;
     if (deleteNameConfirm !== profile?.name) return;
     try {
-      await deleteContactRecord(deleteTarget.id);
+      await deleteContactRecord(deleteTarget.id, profile?.name ?? 'Unknown', {
+        name: deleteTarget.name,
+        email: deleteTarget.email,
+        phone: deleteTarget.phone,
+        role: deleteTarget.role,
+        company: deleteTarget.company,
+      });
       await refresh();
       onDirectoryChanged?.();
     } catch (err) {
