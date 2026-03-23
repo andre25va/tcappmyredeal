@@ -394,7 +394,13 @@ const ContactPopup: React.FC<{
                   className="checkbox checkbox-xs checkbox-primary"
                   checked={contact.side === 'both'}
                   onChange={async (e) => {
-                    await onEdit({ side: e.target.checked ? 'both' : 'buy' });
+                    if (e.target.checked) {
+                      // Remember current side before switching to both
+                      await onEdit({ side: 'both', originalSide: contact.side || defaultSide(contact.role) || 'sell' } as any);
+                    } else {
+                      // Revert to the side they were on before
+                      await onEdit({ side: ((contact as any).originalSide || defaultSide(contact.role) || 'sell') as any });
+                    }
                   }}
                 />
                 <span className="text-xs text-gray-500">Show on both sides</span>
