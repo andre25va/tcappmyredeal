@@ -589,6 +589,45 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setTimezoneError(false);
   };
 
+  // ── Duplicate phone/email detection ────────────────────────────────────────
+  useEffect(() => {
+    const raw = form.phone.replace(/\D/g, '');
+    if (raw.length < 10) { setPhoneDup(null); return; }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name')
+        .ilike('phone', `%${raw.slice(-10)}%`)
+        .neq('id', form.id || '00000000-0000-0000-0000-000000000000')
+        .limit(1);
+      if (data && data.length > 0) {
+        setPhoneDup({ ...data[0], firstName: data[0].first_name, lastName: data[0].last_name } as unknown as ContactRecord);
+      } else {
+        setPhoneDup(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [form.phone, form.id]);
+
+  useEffect(() => {
+    const email = form.email.trim().toLowerCase();
+    if (!email || !email.includes('@')) { setEmailDup(null); return; }
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name')
+        .ilike('email', email)
+        .neq('id', form.id || '00000000-0000-0000-0000-000000000000')
+        .limit(1);
+      if (data && data.length > 0) {
+        setEmailDup({ ...data[0], firstName: data[0].first_name, lastName: data[0].last_name } as unknown as ContactRecord);
+      } else {
+        setEmailDup(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [form.email, form.id]);
+
   // ── Form helpers ───────────────────────────────────────────────────────────
   const updateField = <K extends keyof EditForm>(key: K, val: EditForm[K]) => {
     setForm(prev => ({ ...prev, [key]: val }));
@@ -1410,7 +1449,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
               <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
-              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim()}>
+              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim() || !!phoneDup || !!emailDup}>
                 {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
                 {isEditing ? 'Save Changes' : 'Add Contact'}
               </button>
