@@ -224,6 +224,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }));
   };
 
+  // Detect dual-number address pattern: "2121/2123 Askew Ave" or "2121-2123 Askew Ave"
+  const dualAddressMatch = form.address.trim().match(/^(\d+)[\/\-](\d+)\s+(.+)$/);
+
+  const handleSplitAddress = () => {
+    if (!dualAddressMatch) return;
+    const [, num1, num2, street] = dualAddressMatch;
+    setForm(p => ({
+      ...p,
+      address: `${num1} ${street}`,
+      secondaryAddress: `${num2} ${street}`,
+      propertyType: 'duplex',
+      duplexAddressCount: '2',
+    }));
+  };
+
   const handleClientSelect = (selectedId: string) => {
     if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
     const chosen = agentClients?.find(c => c.id === selectedId);
@@ -637,6 +652,19 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Street Address *</label>
                   <input className="input input-bordered w-full" value={form.address} onChange={f('address')} placeholder="123 Main St" autoFocus />
+                  {dualAddressMatch && (
+                    <div className="mt-2 flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                      <Building2 size={14} className="text-amber-600 shrink-0" />
+                      <span className="text-xs text-amber-700 flex-1">Dual address detected — this looks like a duplex.</span>
+                      <button
+                        type="button"
+                        onClick={handleSplitAddress}
+                        className="btn btn-xs bg-amber-500 hover:bg-amber-600 text-white border-0 gap-1"
+                      >
+                        <Building2 size={12} /> Split Address
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -727,7 +755,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           </div>
                         </div>
                         <p className="text-xs text-base-content/40">
-                          💡 Usually just the house number changes — e.g. 123 and 125 Main St. Both addresses will be used when matching emails to this deal.
+                          Usually just the house number changes — e.g. 2121 and 2123 Askew Ave. Both addresses will be used when matching emails to this deal.
                         </p>
                       </div>
                     )}
