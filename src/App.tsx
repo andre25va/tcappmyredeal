@@ -376,7 +376,8 @@ function AppInner() {
   };
 
   const handleAdd = (deal: Deal) => {
-    const withId = { ...deal, id: generateId() };
+    // Use crypto.randomUUID() to generate a proper UUID — the deals table id column is uuid type
+    const withId = { ...deal, id: crypto.randomUUID() };
     const updated = [withId, ...deals];
     setDeals(updated);
     saveSingleDeal(withId).catch(console.error);
