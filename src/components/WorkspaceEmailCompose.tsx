@@ -669,6 +669,9 @@ export default function WorkspaceEmailCompose({
 
   const selectedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId);
 
+  // Agent-client record in component scope (needed for pre-checking email)
+  const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
+
   // Pre-fill recipients from deal contacts on notification list + always include agent-client
   useEffect(() => {
     const notifyContacts = (deal.contacts || []).filter((c) => c.inNotificationList);
