@@ -211,6 +211,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
+  const [splitDone, setSplitDone] = useState(false);
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
@@ -237,6 +238,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       propertyType: 'duplex',
       duplexAddressCount: '2',
     }));
+    setSplitDone(true);
   };
 
   const isHeartlandAgent = (contact?: ContactRecord) =>
@@ -659,7 +661,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Street Address *</label>
                   <input className="input input-bordered w-full" value={form.address} onChange={f('address')} placeholder="123 Main St" autoFocus />
-                  {dualAddressMatch && (
+                  {dualAddressMatch && !splitDone && (
                     <div className="mt-2 flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                       <Building2 size={14} className="text-amber-600 shrink-0" />
                       <span className="text-xs text-amber-700 flex-1">Dual address detected — this looks like a duplex.</span>
@@ -670,6 +672,37 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       >
                         <Building2 size={12} /> Split Address
                       </button>
+                    </div>
+                  )}
+                  {splitDone && (
+                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Building2 size={14} className="text-amber-600 shrink-0" />
+                        <span className="text-xs font-semibold text-amber-700">Duplex — two addresses</span>
+                        <button
+                          type="button"
+                          onClick={() => { setSplitDone(false); setForm(p => ({ ...p, propertyType: 'single-family', duplexAddressCount: '', secondaryAddress: '' })); }}
+                          className="ml-auto text-xs text-amber-500 hover:text-amber-700 underline"
+                        >Undo</button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-amber-700 mb-1 block">Unit A</label>
+                          <input
+                            className="input input-bordered input-sm w-full"
+                            value={form.address}
+                            onChange={f('address')}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-amber-700 mb-1 block">Unit B</label>
+                          <input
+                            className="input input-bordered input-sm w-full"
+                            value={form.secondaryAddress}
+                            onChange={f('secondaryAddress')}
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
