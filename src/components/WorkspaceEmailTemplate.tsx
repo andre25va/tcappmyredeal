@@ -41,14 +41,7 @@ function addBusinessDays(dateStr: string, days: number): string {
 function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
-  // Agent client name for {{tcTeam}} / {{agentClientName}} tags
-  const ourClientAgent = deal.buyerAgent?.isOurClient
-    ? deal.buyerAgent
-    : deal.sellerAgent?.isOurClient
-    ? deal.sellerAgent
-    : null;
-  const agentClientName = ourClientAgent?.name || '[Agent Name]';
-  const tcTeamLine = `TC Team for ${agentClientName}`;
+
 
   const agentLines: string[] = [];
   // Names only — no phone or email in outgoing templates
@@ -132,8 +125,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
     .replace(/\{\{buyersSide\}\}/g, buyersSide)
-    .replace(/\{\{tcTeam\}\}/g, tcTeamLine)
-    .replace(/\{\{agentClientName\}\}/g, agentClientName)
+
     // Future date fields — populated once new date fields are added to deals
     .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')
     .replace(/\{\{possessionDate\}\}/g, (deal as any).possessionDate ? formatDate((deal as any).possessionDate) : '[Possession Date not set]')

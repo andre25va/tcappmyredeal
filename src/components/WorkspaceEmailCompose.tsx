@@ -53,14 +53,7 @@ function addBusinessDays(dateStr: string, days: number): string {
 function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
-  // Agent client name for {{tcTeam}} / {{agentClientName}} tags
-  const ourClientAgent = deal.buyerAgent?.isOurClient
-    ? deal.buyerAgent
-    : deal.sellerAgent?.isOurClient
-    ? deal.sellerAgent
-    : null;
-  const agentClientName = ourClientAgent?.name || '[Agent Name]';
-  const tcTeamLine = `TC Team for ${agentClientName}`;
+
 
   const agentLines: string[] = [];
   // Names only — no phone or email in outgoing templates
@@ -144,14 +137,163 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
     .replace(/\{\{buyersSide\}\}/g, buyersSide)
-    .replace(/\{\{tcTeam\}\}/g, tcTeamLine)
-    .replace(/\{\{agentClientName\}\}/g, agentClientName)
+
     // Future date fields — populated once new date fields are added to deals
     .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')
     .replace(/\{\{possessionDate\}\}/g, (deal as any).possessionDate ? formatDate((deal as any).possessionDate) : '[Possession Date not set]')
     .replace(/\{\{inspectionDate\}\}/g, (deal as any).inspectionDate ? formatDate((deal as any).inspectionDate) : '[Inspection Date not set]')
     .replace(/\{\{loanDate\}\}/g, (deal as any).loanDate ? formatDate((deal as any).loanDate) : '[Loan Commitment Date not set]')
     .replace(/\{\{titleDate\}\}/g, (deal as any).titleDate ? formatDate((deal as any).titleDate) : '[Title Date not set]');
+}
+
+// ── Deal Contact Picker ──────────────────────────────────────────────────────
+
+interface PickerEntry {
+  key: string;
+  name: string;
+  email: string;
+  roleLabel: string;
+  side: 'buy' | 'sell';
+}
+
+function DealContactPicker({
+  deal,
+  selected,
+  onToggle,
+}: {
+  deal: Deal;
+  selected: string[];
+  onToggle: (email: string) => void;
+}) {
+  const buySide: PickerEntry[] = [];
+  const sellSide: PickerEntry[] = [];
+
+  // Buyer agent
+  if (deal.buyerAgent?.name) {
+    buySide.push({
+      key: 'buyerAgent',
+      name: deal.buyerAgent.name,
+      email: (deal.buyerAgent as any).email || '',
+      roleLabel: 'Buyer Agent',
+      side: 'buy',
+    });
+  }
+
+  // Seller agent
+  if (deal.sellerAgent?.name) {
+    sellSide.push({
+      key: 'sellerAgent',
+      name: deal.sellerAgent.name,
+      email: (deal.sellerAgent as any).email || '',
+      roleLabel: 'Seller Agent',
+      side: 'sell',
+    });
+  }
+
+  // Deal contacts by role
+  const roleSideMap: Record<string, 'buy' | 'sell'> = {
+    buyer: 'buy',
+    lender: 'buy',
+    seller: 'sell',
+    title: 'sell',
+    attorney: 'sell',
+    agent: 'buy',
+    other: 'buy',
+  };
+  const roleDisplayMap: Record<string, string> = {
+    buyer: 'Buyer',
+    seller: 'Seller',
+    lender: 'Lender',
+    title: 'Title Officer',
+    attorney: 'Attorney',
+    agent: 'Agent',
+    other: 'Other',
+  };
+
+  for (const c of deal.contacts || []) {
+    const side = roleSideMap[c.role] ?? 'buy';
+    const entry: PickerEntry = {
+      key: c.id || c.name,
+      name: c.name,
+      email: c.email || '',
+      roleLabel: roleDisplayMap[c.role] || roleLabel(c.role),
+      side,
+    };
+    if (side === 'buy') buySide.push(entry);
+    else sellSide.push(entry);
+  }
+
+  const renderEntry = (entry: PickerEntry) => {
+    const hasEmail = !!entry.email;
+    const isSelected = hasEmail && selected.includes(entry.email);
+    return (
+      <button
+        key={entry.key}
+        type="button"
+        disabled={!hasEmail}
+        onClick={() => hasEmail && onToggle(entry.email)}
+        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors text-sm ${
+          isSelected
+            ? 'bg-primary/10 text-primary'
+            : hasEmail
+            ? 'hover:bg-gray-50 text-gray-700'
+            : 'opacity-40 cursor-not-allowed text-gray-400'
+        }`}
+      >
+        <span
+          className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+            isSelected ? 'bg-primary border-primary' : 'border-gray-300'
+          }`}
+        >
+          {isSelected && (
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="font-medium truncate block">{entry.name}</span>
+          <span className="text-xs truncate block text-gray-400">
+            {entry.roleLabel}
+            {entry.email ? ` · ${entry.email}` : ' · No email on file'}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  const isEmpty = buySide.length === 0 && sellSide.length === 0;
+
+  if (isEmpty) return null;
+
+  return (
+    <div className="border border-gray-200 rounded-xl mb-3 overflow-hidden">
+      <div className="grid grid-cols-2 divide-x divide-gray-100">
+        {/* Buy Side */}
+        <div className="p-2">
+          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1 px-1">
+            Buy Side
+          </p>
+          {buySide.length > 0 ? (
+            buySide.map(renderEntry)
+          ) : (
+            <p className="text-xs text-gray-400 px-2 py-1">No buy-side contacts</p>
+          )}
+        </div>
+        {/* Sell Side */}
+        <div className="p-2">
+          <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1 px-1">
+            Sell Side
+          </p>
+          {sellSide.length > 0 ? (
+            sellSide.map(renderEntry)
+          ) : (
+            <p className="text-xs text-gray-400 px-2 py-1">No sell-side contacts</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Email chip input ────────────────────────────────────────────────────────
@@ -827,13 +969,24 @@ export default function WorkspaceEmailCompose({
 
       {/* ── Right Panel: Compose + History ──────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
+        {/* Deal Contact Picker */}
+        <DealContactPicker
+          deal={deal}
+          selected={toAddresses}
+          onToggle={(email) =>
+            setToAddresses((prev) =>
+              prev.includes(email) ? prev.filter((e) => e !== email) : [...prev, email]
+            )
+          }
+        />
+
         {/* Recipients */}
         <div className="space-y-2 mb-4">
           <EmailChipInput
             label="To"
             emails={toAddresses}
             onChange={setToAddresses}
-            placeholder="Add recipient email…"
+            placeholder="Add external email…"
           />
 
           {!showCcBcc ? (
