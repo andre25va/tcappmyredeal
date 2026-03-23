@@ -254,6 +254,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
     titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '',
+    legalDescription: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -605,6 +606,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
         homeWarranty: d.homeWarranty ?? p.homeWarranty,
         homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
+        legalDescription: d.legalDescription || p.legalDescription,
       }));
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
       setExtractedRawData(d);
@@ -726,6 +728,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
       loanOfficerName: form.loanOfficer || undefined,
+      legalDescription: form.legalDescription.trim() || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
@@ -1195,6 +1198,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <span className="text-xs text-amber-700 font-medium">Heartland MLS detected — earnest money rule will apply in Financials</span>
                   </div>
                 )}
+                {/* Legal Description */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block">Legal Description</label>
+                  <textarea
+                    className="textarea textarea-bordered w-full text-sm resize-none"
+                    rows={3}
+                    value={form.legalDescription}
+                    onChange={e => setForm(p => ({ ...p, legalDescription: e.target.value }))}
+                    placeholder="e.g. Lot 14, Block 3, Sunset Ridge Subdivision, Johnson County, MO"
+                  />
+                  <p className="text-xs text-base-content/40 mt-0.5">Extracted from contract automatically when uploaded — verify against title commitment</p>
+                </div>
               </div>
             )}
 
