@@ -24,7 +24,7 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   if (['buyer'].includes(role)) return 'buy';
   if (['seller'].includes(role)) return 'sell';
   if (['lender'].includes(role)) return 'buy';
-  if (['title', 'escrow', 'attorney'].includes(role)) return 'both';
+  if (['title', 'attorney'].includes(role)) return 'sell';
   return 'both';
 };
 
@@ -384,6 +384,23 @@ const ContactPopup: React.FC<{
               : <><BellOff size={13} className="text-gray-300" /><span className="text-xs text-gray-400">Not on notification list</span></>
             }
           </div>
+
+          {/* Both Sides toggle for provider contacts */}
+          {(['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
+            <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-xs checkbox-primary"
+                  checked={contact.side === 'both'}
+                  onChange={async (e) => {
+                    await onEdit({ side: e.target.checked ? 'both' : 'buy' });
+                  }}
+                />
+                <span className="text-xs text-gray-500">Show on both sides</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -1059,7 +1076,8 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   ];
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
-  const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
+  const allDisplayedContacts = [...buySide, ...sellSide.filter(c => !buySide.some(b => b.id === c.id))];
+  const popupContact = popupContactId ? allDisplayedContacts.find(c => c.id === popupContactId) : null;
   const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
 
   // Normalize deal state to 2-letter uppercase code
