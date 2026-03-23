@@ -64,7 +64,7 @@ export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'clos
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'duplex' | 'condo' | 'townhouse' | 'land' | 'commercial';
-export type ContactRole = 'agent' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
+export type ContactRole = 'agent' | 'client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
 
 // ── New relational type aliases ──────────────────────────────────────────────
 export type ContactType = ContactRole; // alias for clarity during migration
@@ -316,7 +316,6 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
-  pin?: string; // 4-digit Client Portal PIN
 }
 
 export interface OrgMemberInfo {
@@ -436,6 +435,7 @@ export interface Deal {
 
   // ── Key Dates (expanded) ───────────────────────────────────────────────────
   possessionDate?: string;
+  titleDate?: string;
 
   // ── Commission ─────────────────────────────────────────────────────────────
   listingCommissionType?: 'percent' | 'flat';
@@ -900,7 +900,7 @@ export interface InboundMessage {
   createdAt: string;
 }
 
-// ── Agent Team Members ──────────────────────────────────────────────────────
+// ── Agent Team Members ──────────────────────────────────────────
 export interface AgentTeamMember {
   id: string;
   agentContactId: string;
@@ -911,45 +911,4 @@ export interface AgentTeamMember {
   notifyEmail: boolean;
   notifySms: boolean;
   createdAt?: string;
-}
-
-// ── Milestone Notifications ──────────────────────────────────────────────────
-export interface MilestoneNotificationSetting {
-  id: string;
-  milestone: DealMilestone;
-  notifyBuyerAgent: boolean;
-  notifySellerAgent: boolean;
-  notifyLender: boolean;
-  notifyTitle: boolean;
-  notifyBuyer: boolean;
-  notifySeller: boolean;
-  sendEmail: boolean;
-  sendSms: boolean;
-  emailSubject?: string;
-  emailBody?: string;
-  smsBody?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CustomMilestone {
-  id: string;
-  agentContactId: string;
-  name: string;
-  description?: string;
-  insertAfter: DealMilestone;
-  notifyBuyerAgent: boolean;
-  notifySellerAgent: boolean;
-  notifyLender: boolean;
-  notifyTitle: boolean;
-  notifyBuyer: boolean;
-  notifySeller: boolean;
-  sendEmail: boolean;
-  sendSms: boolean;
-  emailSubject?: string;
-  emailBody?: string;
-  smsBody?: string;
-  createdAt: string;
-  updatedAt: string;
-  agentName?: string;
 }

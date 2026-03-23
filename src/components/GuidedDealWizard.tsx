@@ -62,6 +62,13 @@ const formatDisplayDate = (dateStr: string): string => {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+const calcDate = (baseDateStr: string, days: number): string => {
+  if (!baseDateStr) return '';
+  const d = new Date(baseDateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
+
 // ─── Verification Card ─────────────────────────────────────────────────────────────────────────────
 interface VerifyCardProps {
   contact: ContactRecord;
@@ -188,7 +195,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
-    inspectionDeadline: '', loanCommitmentDate: '', possessionDate: '',
+    inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     listingCommission: '', buyerCommission: '', tcFee: '',
   });
@@ -431,7 +438,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       inspectionWaived: form.inspectionWaived,
       homeWarranty: form.homeWarranty,
       homeWarrantyCompany: form.homeWarrantyCompany || undefined,
-      possessionDate: form.possessionDate || undefined,
+      possessionDate: form.possessionAtClosing ? (form.closingDate || undefined) : (form.possessionDate || undefined),
+      titleDate: form.titleDate || undefined,
       buyerName: form.buyerNames || undefined,
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
@@ -561,7 +569,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     listPrice: 'List Price', contractPrice: 'Contract Price', mlsNumber: 'MLS #',
                     contractDate: 'Contract Date', closingDate: 'Closing Date',
                     inspectionDeadline: 'Inspection Deadline', loanCommitmentDate: 'Loan Commitment Date',
-                    possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
+                    titleDate: 'Title / Clear to Close', possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
                     earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
                     loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
                     buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
@@ -832,12 +840,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Earnest Money $</label>
                     <input className="input input-bordered w-full" value={form.earnestMoney} onChange={f('earnestMoney')} placeholder="0" type="number" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money Due</label>
-                    <input type="date" className="input input-bordered w-full" value={form.earnestMoneyDueDate} onChange={f('earnestMoneyDueDate')} />
+                    <p className="text-xs text-base-content/40 mt-1">EM due date set in Key Dates step</p>
                   </div>
                 </div>
+                {form.earnestMoney && form.downPaymentAmount && ['KS','MO'].includes(form.state?.toUpperCase()) && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm">
+                    <span className="text-amber-700 font-semibold">KS/MO — Total Down Payment (incl. EM applied at closing): </span>
+                    <span className="text-amber-800 font-bold">
+                      ${((parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0)).toLocaleString()}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions $</label>
                   <input className="input input-bordered w-full" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
@@ -869,38 +882,103 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 5 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-base-content">Key Dates</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Contract Date</label>
-                    <input type="date" className="input input-bordered w-full" value={form.contractDate} onChange={f('contractDate')} />
-                    {form.contractDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.contractDate)}</p>}
+            {step === 5 && (() => {
+              const presetBtn = (label: string, field: keyof typeof form, days: number) => (
+                <button key={label} type="button"
+                  className={`btn btn-xs ${form[field] === calcDate(form.contractDate, days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                  onClick={() => setForm(p => ({ ...p, [field]: calcDate(p.contractDate, days) }))}
+                  disabled={!form.contractDate}
+                >{label}</button>
+              );
+              const dateRow = (
+                field: keyof typeof form,
+                label: string,
+                presets: { label: string; days: number }[],
+              ) => (
+                <div className="space-y-1">
+                  <label className="text-xs text-base-content/50 font-semibold block">{label}</label>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {presets.map(p => presetBtn(p.label, field, p.days))}
                   </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Closing Date *</label>
-                    <input type="date" className="input input-bordered w-full" value={form.closingDate} onChange={f('closingDate')} />
-                    {form.closingDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.closingDate)}</p>}
+                  <input type="date" className="input input-bordered w-full input-sm"
+                    value={form[field] as string}
+                    onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
+                  />
+                  {(form[field] as string) && <p className="text-xs text-base-content/40">{formatDisplayDate(form[field] as string)}</p>}
+                </div>
+              );
+              return (
+                <div className="space-y-5">
+                  <h3 className="text-lg font-bold text-base-content">Key Dates</h3>
+                  {/* Contract + Closing side by side — anchor dates */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Contract Date</label>
+                      <input type="date" className="input input-bordered w-full input-sm" value={form.contractDate}
+                        onChange={e => {
+                          const cd = e.target.value;
+                          setForm(p => ({
+                            ...p, contractDate: cd,
+                            possessionDate: p.possessionAtClosing ? p.closingDate : p.possessionDate,
+                          }));
+                        }} />
+                      {form.contractDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.contractDate)}</p>}
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Closing Date *</label>
+                      <input type="date" className="input input-bordered w-full input-sm" value={form.closingDate}
+                        onChange={e => {
+                          const cd = e.target.value;
+                          setForm(p => ({
+                            ...p, closingDate: cd,
+                            possessionDate: p.possessionAtClosing ? cd : p.possessionDate,
+                          }));
+                        }} />
+                      {form.closingDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.closingDate)}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Inspection Deadline</label>
-                    <input type="date" className="input input-bordered w-full" value={form.inspectionDeadline} onChange={f('inspectionDeadline')} />
-                    {form.inspectionDeadline && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.inspectionDeadline)}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Loan Commitment Date</label>
-                    <input type="date" className="input input-bordered w-full" value={form.loanCommitmentDate} onChange={f('loanCommitmentDate')} />
-                    {form.loanCommitmentDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.loanCommitmentDate)}</p>}
-                  </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Possession Date</label>
-                    <input type="date" className="input input-bordered w-full" value={form.possessionDate} onChange={f('possessionDate')} />
-                    {form.possessionDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.possessionDate)}</p>}
+                  <p className="text-xs text-base-content/40 -mt-2">All calculated dates are counted from Contract Date</p>
+
+                  {/* EM Date */}
+                  {dateRow('earnestMoneyDueDate', 'EM Due Date', [
+                    { label: '1d', days: 1 }, { label: '3d', days: 3 }, { label: '5d', days: 5 }, { label: '7d', days: 7 },
+                  ])}
+
+                  {/* Inspection */}
+                  {dateRow('inspectionDeadline', 'Inspection Deadline', [
+                    { label: '7d', days: 7 }, { label: '10d', days: 10 }, { label: '14d', days: 14 },
+                  ])}
+
+                  {/* Loan Commitment */}
+                  {form.loanType && form.loanType !== 'cash' && dateRow('loanCommitmentDate', 'Loan Commitment Date', [
+                    { label: '21d', days: 21 }, { label: '30d', days: 30 },
+                  ])}
+
+                  {/* Title Date */}
+                  {dateRow('titleDate', 'Title / Clear to Close', [
+                    { label: '14d', days: 14 }, { label: '21d', days: 21 }, { label: '30d', days: 30 },
+                  ])}
+
+                  {/* Possession Date — manual or At Closing */}
+                  <div className="space-y-1">
+                    <label className="text-xs text-base-content/50 font-semibold block">Possession Date</label>
+                    <div className="flex gap-2 mb-1">
+                      <button type="button"
+                        className={`btn btn-xs ${form.possessionAtClosing ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                        onClick={() => setForm(p => ({ ...p, possessionAtClosing: !p.possessionAtClosing, possessionDate: !p.possessionAtClosing ? p.closingDate : p.possessionDate }))}
+                      >At Closing</button>
+                    </div>
+                    <input type="date" className="input input-bordered w-full input-sm"
+                      value={form.possessionAtClosing ? form.closingDate : form.possessionDate}
+                      disabled={form.possessionAtClosing}
+                      onChange={e => setForm(p => ({ ...p, possessionDate: e.target.value }))}
+                    />
+                    {(form.possessionAtClosing ? form.closingDate : form.possessionDate) &&
+                      <p className="text-xs text-base-content/40">{form.possessionAtClosing ? 'Same as closing date' : formatDisplayDate(form.possessionDate)}</p>}
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {step === 6 && (
               <div className="space-y-5">
@@ -1069,7 +1147,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.sellerNames && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerNames}</span></>}
                     {form.loanType && <><span className="text-base-content/50">Loan Type:</span><span className="font-medium capitalize">{form.loanType}</span></>}
                     {form.earnestMoney && <><span className="text-base-content/50">Earnest Money:</span><span className="font-medium">${Number(form.earnestMoney).toLocaleString()}</span></>}
-                    {form.inspectionDeadline && <><span className="text-base-content/50">Inspection Deadline:</span><span className="font-medium">{formatDisplayDate(form.inspectionDeadline)}</span></>}
+                    {form.earnestMoney && form.downPaymentAmount && ['KS','MO'].includes(form.state?.toUpperCase()) && (() => {
+                      const total = (parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0);
+                      return <><span className="text-base-content/50 text-amber-600 font-semibold">Total Down (incl. EM):</span><span className="font-bold text-amber-700">${total.toLocaleString()}</span></>;
+                    })()}
+                    {form.earnestMoneyDueDate && <><span className="text-base-content/50">EM Due:</span><span className="font-medium">{formatDisplayDate(form.earnestMoneyDueDate)}</span></>}
+                    {form.inspectionDeadline && <><span className="text-base-content/50">Inspection:</span><span className="font-medium">{formatDisplayDate(form.inspectionDeadline)}</span></>}
+                    {form.loanCommitmentDate && <><span className="text-base-content/50">Loan Commit:</span><span className="font-medium">{formatDisplayDate(form.loanCommitmentDate)}</span></>}
+                    {form.titleDate && <><span className="text-base-content/50">Title / CTC:</span><span className="font-medium">{formatDisplayDate(form.titleDate)}</span></>}
+                    {(form.possessionDate || form.possessionAtClosing) && <><span className="text-base-content/50">Possession:</span><span className="font-medium">{form.possessionAtClosing ? 'At Closing' : formatDisplayDate(form.possessionDate)}</span></>}
                     {(form.asIsSale || form.inspectionWaived || form.homeWarranty) && (
                       <><span className="text-base-content/50">Conditions:</span><span className="font-medium">{[form.asIsSale && 'As-Is', form.inspectionWaived && 'Insp. Waived', form.homeWarranty && 'Home Warranty'].filter(Boolean).join(' · ')}</span></>
                     )}
