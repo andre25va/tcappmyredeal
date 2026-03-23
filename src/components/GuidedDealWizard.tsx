@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload,
 } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
 
 interface Props {
@@ -266,6 +266,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
   const [splitDone, setSplitDone] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
+    selectedMls: string;
+    agentMlsMemberships: ContactMlsMembership[];
+    agentName: string;
+  } | null>(null);
+  const clientSearchRef = useRef<HTMLDivElement>(null);
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
@@ -299,6 +307,50 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     contact?.mlsMemberships?.some(m =>
       /heartland/i.test(m.mlsName || '') || /heartland/i.test(m.boardName || '')
     ) ?? false;
+
+  // Close client dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (clientSearchRef.current && !clientSearchRef.current.contains(e.target as Node)) {
+        setClientDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const checkMlsMismatch = (agentId: string, mlsBoard: string) => {
+    if (!agentId || !mlsBoard || mlsBoard === 'Other') return;
+    const agent = agentClients?.find(c => c.id === agentId);
+    if (!agent) return;
+    const memberships = agent.mlsMemberships || [];
+    const hasMatch = memberships.some(m => {
+      const name = (m.mlsName || '').toLowerCase();
+      const board = (m.boardName || '').toLowerCase();
+      const selected = mlsBoard.toLowerCase();
+      return name.includes(selected) || selected.includes(name) ||
+             board.includes(selected) || selected.includes(board);
+    });
+    if (!hasMatch) {
+      setMlsMismatchWarning({ selectedMls: mlsBoard, agentMlsMemberships: memberships, agentName: agent.fullName });
+    }
+  };
+
+  const selectAgentClient = (id: string) => {
+    setClientDropdownOpen(false);
+    const chosen = agentClients?.find(c => c.id === id);
+    if (!chosen) return;
+    const sameName = agentClients?.filter(
+      c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
+    ) ?? [];
+    if (sameName.length > 1) {
+      setDisambigClientCandidates(sameName);
+    } else {
+      setForm(p => ({ ...p, agentClientId: id }));
+      setClientSearch('');
+      if (form.mlsBoard) checkMlsMismatch(id, form.mlsBoard);
+    }
+  };
 
   const handleClientSelect = (selectedId: string) => {
     if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
@@ -565,6 +617,73 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         />
       )}
 
+      {/* MLS Mismatch Warning Popup */}
+      {mlsMismatchWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setMlsMismatchWarning(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-amber-50 border-b border-amber-200 px-5 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-none">
+                <AlertTriangle size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900">MLS Mismatch Detected</p>
+                <p className="text-xs text-amber-700 mt-0.5">Please verify MLS information for <span className="font-semibold">{mlsMismatchWarning.agentName}</span></p>
+              </div>
+              <button onClick={() => setMlsMismatchWarning(null)} className="ml-auto btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+            </div>
+            {/* Body */}
+            <div className="px-5 py-4 space-y-4">
+              {/* Selected MLS */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">MLS Board You Selected</p>
+                <div className="flex items-center gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Building2 size={14} className="text-amber-600 flex-none" />
+                  <span className="text-sm font-semibold text-amber-900">{mlsMismatchWarning.selectedMls}</span>
+                </div>
+              </div>
+              {/* Agent memberships */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">
+                  MLS Memberships on {mlsMismatchWarning.agentName}'s Profile
+                </p>
+                {mlsMismatchWarning.agentMlsMemberships.length === 0 ? (
+                  <div className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-400 text-center">
+                    No MLS memberships on file for this agent
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {mlsMismatchWarning.agentMlsMemberships.map((m, i) => (
+                      <div key={i} className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+                        <p className="text-sm font-semibold text-blue-900">{m.mlsName}</p>
+                        {m.boardName && <p className="text-xs text-gray-500 mt-0.5">{m.boardName}</p>}
+                        {m.mlsMemberNumber && <p className="text-xs text-blue-600 mt-0.5">Member # {m.mlsMemberNumber}</p>}
+                        <span className={`badge badge-xs mt-1 ${m.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{m.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">
+                The selected MLS board doesn't appear to match this agent's memberships. You can proceed anyway or update the agent's profile in Contacts.
+              </p>
+            </div>
+            {/* Footer */}
+            <div className="px-5 pb-4 flex gap-2">
+              <button onClick={() => setMlsMismatchWarning(null)} className="btn btn-warning btn-sm flex-1 gap-1.5">
+                <AlertTriangle size={13} /> Proceed Anyway
+              </button>
+              <button
+                onClick={() => setMlsMismatchWarning(null)}
+                className="btn btn-ghost btn-sm flex-1"
+              >
+                Go Back &amp; Fix
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed inset-0 bg-base-100/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-base-200 rounded-2xl border border-base-300 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 
@@ -616,6 +735,75 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <MapPin size={18} className="text-primary" />
                   <h3 className="text-lg font-bold text-base-content">Where is the property?</h3>
                 </div>
+
+                {/* ── Agent Client search-dropdown ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block flex items-center gap-1">
+                    <User size={11} /> Agent Client <span className="text-red-400 ml-0.5">*</span>
+                  </label>
+                  {form.agentClientId ? (() => {
+                    const ac = agentClients?.find(c => c.id === form.agentClientId);
+                    return ac ? (
+                      <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
+                          {ac.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-base-content truncate">{ac.fullName}</p>
+                          {ac.company && <p className="text-xs text-base-content/50 truncate">{ac.company}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setForm(p => ({ ...p, agentClientId: '' })); setClientSearch(''); }}
+                          className="btn btn-ghost btn-xs btn-square"
+                        ><X size={12} /></button>
+                      </div>
+                    ) : null;
+                  })() : (
+                    <div className="relative" ref={clientSearchRef}>
+                      <input
+                        className="input input-bordered w-full pr-8"
+                        placeholder="Search agent clients..."
+                        value={clientSearch}
+                        onChange={e => { setClientSearch(e.target.value); setClientDropdownOpen(true); }}
+                        onFocus={() => setClientDropdownOpen(true)}
+                      />
+                      {clientDropdownOpen && (
+                        <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                          {(() => {
+                            const filtered = (agentClients || []).filter(c =>
+                              !clientSearch.trim() ||
+                              c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                              (c.company || '').toLowerCase().includes(clientSearch.toLowerCase())
+                            );
+                            if (filtered.length === 0) return (
+                              <div className="px-4 py-3 text-sm text-base-content/40 text-center">
+                                No agent clients found
+                              </div>
+                            );
+                            return filtered.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-primary/5 transition-colors text-left border-b border-base-200 last:border-0"
+                                onClick={() => selectAgentClient(c.id)}
+                              >
+                                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-none">
+                                  {c.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-base-content truncate">{c.fullName}</p>
+                                  {c.company && <p className="text-xs text-base-content/40 truncate">{c.company}</p>}
+                                </div>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
@@ -783,11 +971,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         value={form.mlsBoard}
                         onChange={e => {
                           const val = e.target.value;
-                          setForm(p => ({
-                            ...p,
-                            mlsBoard: val,
-                            isHeartlandMls: /heartland/i.test(val),
-                          }));
+                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val) }));
+                          if (form.agentClientId) checkMlsMismatch(form.agentClientId, val);
                         }}
                       >
                         <option value="">— Select MLS Board —</option>
@@ -802,11 +987,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         value={form.mlsBoard}
                         onChange={e => {
                           const val = e.target.value;
-                          setForm(p => ({
-                            ...p,
-                            mlsBoard: val,
-                            isHeartlandMls: /heartland/i.test(val),
-                          }));
+                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val) }));
+                          if (form.agentClientId && val.length > 3) checkMlsMismatch(form.agentClientId, val);
                         }}
                         placeholder="Enter MLS board name"
                       />
@@ -1177,43 +1359,34 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                 </div>
                 <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Our Client (Required)</p>
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Agent Client</p>
                 </div>
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Our Client *</label>
-                  {agentClients && agentClients.length > 0 ? (
-                    <>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.agentClientId}
-                        onChange={e => handleClientSelect(e.target.value)}
-                      >
-                        <option value="">-- Select Client --</option>
-                        {agentClients.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.fullName}{c.company ? ` — ${c.company}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedClient && (
-                        <VerifyCard
-                          contact={selectedClient}
-                          label="Client Confirmed"
-                          extraNote={(() => {
-                            if (!complianceTemplates) return null;
-                            const tpl = complianceTemplates.find(t =>
-                              (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id)
-                            );
-                            return tpl
-                              ? <p className="text-xs text-green-600">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
-                              : null;
-                          })()}
-                        />
-                      )}
-                    </>
+                  {selectedClient ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-700 flex-none">
+                          {selectedClient.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-base-content truncate">{selectedClient.fullName}</p>
+                          {selectedClient.company && <p className="text-xs text-base-content/50 truncate">{selectedClient.company}</p>}
+                        </div>
+                        <CheckCircle2 size={16} className="text-green-500 flex-none" />
+                      </div>
+                      {(() => {
+                        if (!complianceTemplates) return null;
+                        const tpl = complianceTemplates.find(t =>
+                          (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id)
+                        );
+                        return tpl
+                          ? <p className="text-xs text-green-600 pl-1">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
+                          : null;
+                      })()}
+                    </div>
                   ) : (
-                    <div className="p-3 rounded-xl border border-dashed border-base-300 text-sm text-base-content/40 text-center">
-                      No client contacts found. Mark contacts as "Is Client" in the Contacts Directory first.
+                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
+                      No agent client selected — go back to Step 1 to choose one.
                     </div>
                   )}
                 </div>
