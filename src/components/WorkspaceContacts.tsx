@@ -1036,8 +1036,27 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     });
   };
 
-  const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy'));
-  const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell'));
+  // Inject buyer/seller agents from deal overview into the contacts panels
+  const agentToContact = (agent: NonNullable<typeof deal.buyerAgent>, side: 'buy' | 'sell'): Contact => ({
+    id: `__agent_${side}`,
+    name: agent.name,
+    email: agent.email,
+    phone: agent.phone,
+    role: side === 'buy' ? 'buyer' : 'seller' as any,
+    side,
+  } as Contact);
+  const buyerAlreadyInContacts = !deal.buyerAgent?.name ||
+    deal.contacts.some(c => c.email === deal.buyerAgent!.email || c.name === deal.buyerAgent!.name);
+  const sellerAlreadyInContacts = !deal.sellerAgent?.name ||
+    deal.contacts.some(c => c.email === deal.sellerAgent!.email || c.name === deal.sellerAgent!.name);
+  const buySide: Contact[] = [
+    ...(buyerAlreadyInContacts ? [] : [agentToContact(deal.buyerAgent!, 'buy')]),
+    ...deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy')),
+  ];
+  const sellSide: Contact[] = [
+    ...(sellerAlreadyInContacts ? [] : [agentToContact(deal.sellerAgent!, 'sell')]),
+    ...deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell')),
+  ];
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
   const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
