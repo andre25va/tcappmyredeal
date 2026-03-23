@@ -830,6 +830,7 @@ export async function saveContactRecord(contact: {
   notes?: string;
   defaultInstructions?: string;
   preferredLanguage?: 'en' | 'es';
+  pin?: string;
 }): Promise<void> {
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
   const { error } = await supabase.from('contacts').upsert({
@@ -845,6 +846,7 @@ export async function saveContactRecord(contact: {
     notes: contact.notes || null,
     default_instructions: contact.defaultInstructions || null,
     preferred_language: contact.preferredLanguage || 'en',
+    pin: contact.pin || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;

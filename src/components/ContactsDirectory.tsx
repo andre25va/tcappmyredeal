@@ -836,10 +836,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     if (deleteNameConfirm !== profile?.name) return;
     try {
       await deleteContactRecord(deleteTarget.id, profile?.name ?? 'Unknown', {
-        name: deleteTarget.name,
+        name: `${deleteTarget.firstName} ${deleteTarget.lastName}`.trim(),
         email: deleteTarget.email,
         phone: deleteTarget.phone,
-        role: deleteTarget.role,
+        contactType: deleteTarget.contactType,
         company: deleteTarget.company,
       });
       await refresh();
