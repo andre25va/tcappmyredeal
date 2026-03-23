@@ -392,6 +392,7 @@ export interface Deal {
   zipCode: string;
   legalDescription?: string;
   mlsNumber: string;
+  isHeartlandMls?: boolean;
   listPrice: number;
   contractPrice: number;
   propertyType: PropertyType;

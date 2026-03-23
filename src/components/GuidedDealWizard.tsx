@@ -186,7 +186,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
-    mlsNumber: '000000', listPrice: '', contractPrice: '',
+    mlsNumber: '000000', isHeartlandMls: false, listPrice: '', contractPrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
@@ -419,6 +419,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       state: form.state.trim().toUpperCase(),
       zipCode: form.zipCode.trim(),
       mlsNumber: form.mlsNumber.trim() || '000000',
+      isHeartlandMls: form.isHeartlandMls,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType,
@@ -807,7 +808,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
                 <div>
                   <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
-                  <input className="input input-bordered w-full" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
+                  <div className="flex gap-2 items-center">
+                    <input className="input input-bordered flex-1" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="MLS-XXXXXXX" />
+                    <label className="flex items-center gap-1.5 cursor-pointer whitespace-nowrap select-none px-3 py-2 rounded-lg border border-base-300 hover:bg-base-200 transition-colors">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm checkbox-primary"
+                        checked={form.isHeartlandMls}
+                        onChange={e => setForm(p => ({ ...p, isHeartlandMls: e.target.checked }))}
+                      />
+                      <span className="text-xs font-medium text-base-content/70">Heartland MLS</span>
+                    </label>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -871,9 +883,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <p className="text-xs text-base-content/40 mt-1">EM due date set in Key Dates step</p>
                   </div>
                 </div>
-                {form.earnestMoney && form.downPaymentAmount && ['KS','MO'].includes(form.state?.toUpperCase()) && (
+                {form.earnestMoney && form.downPaymentAmount && form.isHeartlandMls && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm">
-                    <span className="text-amber-700 font-semibold">KS/MO — Total Down Payment (incl. EM applied at closing): </span>
+                    <span className="text-amber-700 font-semibold">Heartland MLS — Total Down Payment (incl. EM applied at closing): </span>
                     <span className="text-amber-800 font-bold">
                       ${((parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0)).toLocaleString()}
                     </span>
@@ -1175,7 +1187,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.sellerNames && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerNames}</span></>}
                     {form.loanType && <><span className="text-base-content/50">Loan Type:</span><span className="font-medium capitalize">{form.loanType}</span></>}
                     {form.earnestMoney && <><span className="text-base-content/50">Earnest Money:</span><span className="font-medium">${Number(form.earnestMoney).toLocaleString()}</span></>}
-                    {form.earnestMoney && form.downPaymentAmount && ['KS','MO'].includes(form.state?.toUpperCase()) && (() => {
+                    {form.earnestMoney && form.downPaymentAmount && form.isHeartlandMls && (() => {
                       const total = (parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0);
                       return <><span className="text-base-content/50 text-amber-600 font-semibold">Total Down (incl. EM):</span><span className="font-bold text-amber-700">${total.toLocaleString()}</span></>;
                     })()}
