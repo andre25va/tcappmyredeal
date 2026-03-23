@@ -1426,8 +1426,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   );
                 })()}
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions $</label>
-                  <input className="input input-bordered w-full no-spinner" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
                 </div>
 
                 {/* Client Agent Commission */}

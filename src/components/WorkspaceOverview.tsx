@@ -1091,12 +1091,6 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       onChange={e => setFields(p => ({ ...p, earnestMoneyDueDate: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions</label>
-                    <input className="input input-bordered input-sm w-full" placeholder="$"
-                      value={fields.sellerConcessions}
-                      onChange={e => setFields(p => ({ ...p, sellerConcessions: e.target.value }))} />
-                  </div>
-                  <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Total Seller Credits</label>
                     <input className="input input-bordered input-sm w-full" placeholder="$"
                       value={fields.totalSellerCredits}
