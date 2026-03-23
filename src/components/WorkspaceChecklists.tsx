@@ -4,12 +4,15 @@ import ReactDOM from 'react-dom';
 import {
   CheckCircle2, Circle, Plus, Trash2, ClipboardList, Shield,
   Star, AlertCircle, Home, Eye, EyeOff, Pencil, Check, X, Lock, ChevronRight,
-  MoreVertical, StickyNote, User, RotateCcw, GripVertical,
+  MoreVertical, StickyNote, User, RotateCcw, GripVertical, Paperclip,
 } from 'lucide-react';
 import { Deal, ComplianceTemplate, ChecklistItem, AppUser, ContactRecord } from '../types';
 import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 import { SmartChecklistSuggestions } from './SmartChecklistSuggestions';
+import { supabase } from '../lib/supabase';
+
+interface ChecklistDocLink { id: string; checklist_item_id: string; document_id: string; file_name?: string; }
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; users?: AppUser[]; contactRecords?: ContactRecord[]; complianceTemplates?: any[]; }
 
@@ -52,7 +55,8 @@ const DDTableRow: React.FC<{
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: () => void;
   onDragEnd?: () => void;
-}> = ({ item, rowIndex, rowNum, onDelete, onNote, onRename, onUndo, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd }) => {
+  linkedDocName?: string;
+}> = ({ item, rowIndex, rowNum, onDelete, onNote, onRename, onUndo, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteVal, setNoteVal]   = useState(item.notes ?? '');
   const [editing, setEditing]   = useState(false);
@@ -138,6 +142,11 @@ const DDTableRow: React.FC<{
             {item.dueDate && (
               <span className={`text-xs ${overdue ? 'text-red-600 font-semibold' : dueSoon ? 'text-yellow-600' : 'text-gray-400'}`}>
                 {overdue ? '⚠' : dueSoon ? '⏰' : '📅'} {formatDate(item.dueDate)}
+              </span>
+            )}
+            {linkedDocName && (
+              <span className="text-xs flex items-center gap-0.5 text-primary/70 bg-primary/8 px-1 rounded">
+                <Paperclip size={9} /> {linkedDocName}
               </span>
             )}
           </div>
@@ -395,7 +404,8 @@ const ItemRow: React.FC<{
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: () => void;
   onDragEnd?: () => void;
-}> = ({ item, onToggle, onDelete, onNote, onRename, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd }) => {
+  linkedDocName?: string;
+}> = ({ item, onToggle, onDelete, onNote, onRename, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteVal, setNoteVal]   = useState(item.notes ?? '');
   const [editing, setEditing]   = useState(false);
@@ -469,6 +479,11 @@ const ItemRow: React.FC<{
               </span>
             )}
             {item.completedBy && <span className="text-xs text-success/70">✓ {item.completedBy}</span>}
+            {linkedDocName && (
+              <span className="text-xs flex items-center gap-0.5 text-primary/70 bg-primary/8 px-1 rounded">
+                <Paperclip size={9} /> {linkedDocName}
+              </span>
+            )}
             {item.notes && !noteOpen && (
               <span className="text-xs text-base-content/40 italic truncate max-w-48">{item.notes}</span>
             )}
@@ -745,6 +760,30 @@ const ComplianceTabPanel: React.FC<{
 export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [], contactRecords = [], complianceTemplates = [] }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
+  // ── Checklist ↔ Document links ─────────────────────────────────────────────
+  const [docLinks, setDocLinks] = useState<ChecklistDocLink[]>([]);
+  useEffect(() => {
+    supabase
+      .from('checklist_document_links')
+      .select('id, checklist_item_id, document_id')
+      .eq('deal_id', deal.id)
+      .then(({ data }) => {
+        if (!data) return;
+        // Fetch file names for linked docs
+        const docIds = [...new Set(data.map((l: any) => l.document_id))];
+        if (docIds.length === 0) { setDocLinks(data as ChecklistDocLink[]); return; }
+        supabase
+          .from('deal_documents')
+          .select('id, file_name')
+          .in('id', docIds)
+          .then(({ data: docs }) => {
+            const nameMap: Record<string, string> = {};
+            (docs ?? []).forEach((d: any) => { nameMap[d.id] = d.file_name; });
+            setDocLinks(data.map((l: any) => ({ ...l, file_name: nameMap[l.document_id] ?? '' })));
+          });
+      });
+  }, [deal.id]);
+
   const [activeTab, setActiveTab]               = useState<'dd' | 'compliance'>('dd');
   const [showCompleted, setShowCompleted]       = useState(true);
   const [showViewModal, setShowViewModal]       = useState(false);
@@ -988,6 +1027,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
               onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
               onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
               onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
+              linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name}
             />
           );
         })}
@@ -1101,6 +1141,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                     onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                     onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
                     onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
+                    linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name}
                   />
                 );
               });
@@ -1175,6 +1216,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                         onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                         onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
                         onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
+                        linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name}
                       />
                     );
                   });
@@ -1217,6 +1259,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                         onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                         onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
                         onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
+                        linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name}
                       />
                     );
                   });

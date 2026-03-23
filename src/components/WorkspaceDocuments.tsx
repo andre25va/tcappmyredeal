@@ -1,11 +1,12 @@
 import { useAuth } from '../contexts/AuthContext';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, FileText, Link2, AlertTriangle, CheckCircle2, Clock,
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
+  Paperclip, Lock, ArrowRight, ChevronUp,
 } from 'lucide-react';
-import { Deal, DocumentRequest, DocRequestType, DocRequestStatus } from '../types';
+import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 
@@ -14,16 +15,24 @@ interface DealDocument {
   id: string;
   deal_id: string;
   file_name: string;
-  file_path: string;
-  file_size?: number;
-  mime_type?: string;
-  doc_type?: 'purchase_contract' | 'amendment' | 'addendum' | 'other';
+  storage_path: string;           // path in Supabase bucket e.g. deal_id/uuid.pdf
+  file_size_bytes?: number;
+  category?: 'purchase_contract' | 'amendment' | 'addendum' | 'other';
   source: 'upload' | 'email';
   gmail_thread_id?: string;
-  thread_subject?: string;
-  thread_from?: string;
-  uploaded_at: string;
+  document_type?: string;         // legacy column kept from original schema
+  thread_subject?: string;        // populated from email_thread_links join (not a DB col, runtime only)
+  created_at: string;
   extracted_at?: string;
+  uploaded_by?: string;
+  is_protected?: boolean;
+}
+
+interface DocLink {
+  id: string;
+  checklist_item_id: string;
+  document_id: string;
+  linked_at: string;
 }
 
 interface LinkedEmailDoc {
@@ -68,27 +77,412 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-const EXTRACTABLE_FIELDS: { key: keyof Deal; label: string }[] = [
-  { key: 'contractPrice', label: 'Contract Price' },
-  { key: 'listPrice', label: 'List Price' },
-  { key: 'contractDate', label: 'Contract Date' },
-  { key: 'closingDate', label: 'Closing Date' },
-    { key: 'earnestMoneyDueDate', label: 'Earnest Money Due' },
-  { key: 'loanType', label: 'Loan Type' },
-  { key: 'loanAmount', label: 'Loan Amount' },
-  { key: 'downPayment', label: 'Down Payment' },
-  { key: 'sellerConcessions', label: 'Seller Concessions' },
-      { key: 'possessionDate', label: 'Possession Date' },
-  { key: 'buyerName', label: 'Buyer Name(s)' },
-  { key: 'sellerName', label: 'Seller Name(s)' },
-  { key: 'titleCompanyName', label: 'Title Company' },
-  { key: 'loanOfficerName', label: 'Lender / Loan Officer' },
-  { key: 'asIsSale', label: 'As-Is Sale' },
-  { key: 'inspectionWaived', label: 'Inspection Waived' },
-  { key: 'homeWarranty', label: 'Home Warranty' },
+// Map extraction field keys → deal field paths for comparison
+const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal) => string }[] = [
+  { key: 'contractPrice',    label: 'Purchase Price',        getDealVal: d => d.contractPrice    ? `$${Number(d.contractPrice).toLocaleString()}`    : '' },
+  { key: 'listPrice',        label: 'List Price',            getDealVal: d => d.listPrice        ? `$${Number(d.listPrice).toLocaleString()}`        : '' },
+  { key: 'contractDate',     label: 'Contract Date',         getDealVal: d => d.contractDate     || '' },
+  { key: 'closingDate',      label: 'Closing Date',          getDealVal: d => d.closingDate      || '' },
+  { key: 'earnestMoney',     label: 'Earnest Money',         getDealVal: d => (d as any).earnestMoney ? `$${Number((d as any).earnestMoney).toLocaleString()}` : '' },
+  { key: 'earnestMoneyDueDate', label: 'EM Due Date',        getDealVal: d => (d as any).earnestMoneyDueDate || '' },
+  { key: 'loanType',         label: 'Loan Type',             getDealVal: d => (d as any).loanType || '' },
+  { key: 'loanAmount',       label: 'Loan Amount',           getDealVal: d => (d as any).loanAmount ? `$${Number((d as any).loanAmount).toLocaleString()}` : '' },
+  { key: 'downPaymentAmount',label: 'Down Payment',          getDealVal: d => (d as any).downPayment ? `$${Number((d as any).downPayment).toLocaleString()}` : '' },
+  { key: 'inspectionDeadline',label:'Inspection Deadline',   getDealVal: d => (d as any).inspectionDeadline || '' },
+  { key: 'loanCommitmentDate',label:'Loan Commitment',       getDealVal: d => (d as any).loanCommitmentDate || '' },
+  { key: 'possessionDate',   label: 'Possession Date',       getDealVal: d => (d as any).possessionDate || '' },
+  { key: 'buyerNames',       label: 'Buyer Name(s)',         getDealVal: d => (d as any).buyerName || '' },
+  { key: 'sellerNames',      label: 'Seller Name(s)',        getDealVal: d => (d as any).sellerName || '' },
+  { key: 'titleCompany',     label: 'Title Company',         getDealVal: d => (d as any).titleCompanyName || '' },
+  { key: 'loanOfficer',      label: 'Lender / Loan Officer', getDealVal: d => (d as any).loanOfficerName || '' },
+  { key: 'asIsSale',         label: 'As-Is Sale',            getDealVal: d => (d as any).asIsSale !== undefined ? String((d as any).asIsSale) : '' },
+  { key: 'inspectionWaived', label: 'Inspection Waived',     getDealVal: d => (d as any).inspectionWaived !== undefined ? String((d as any).inspectionWaived) : '' },
+  { key: 'homeWarranty',     label: 'Home Warranty',         getDealVal: d => (d as any).homeWarranty !== undefined ? String((d as any).homeWarranty) : '' },
+  { key: 'clientAgentCommission', label: 'Commission',       getDealVal: d => (d as any).clientAgentCommission ? `$${Number((d as any).clientAgentCommission).toLocaleString()}` : '' },
 ];
 
-// ─── Extraction Verification Modal ───────────────────────────────────────────
+// Format a raw extracted value for display
+function fmtExtracted(key: string, val: string): string {
+  const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount','clientAgentCommission'];
+  if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
+    const n = parseFloat(val.replace(/[$,]/g, ''));
+    if (!isNaN(n)) return `$${n.toLocaleString()}`;
+  }
+  return val;
+}
+
+// Normalize values for equality comparison
+function normalizeVal(key: string, val: string): string {
+  if (!val) return '';
+  const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount','clientAgentCommission'];
+  if (moneyKeys.includes(key)) {
+    const n = parseFloat(val.replace(/[$,]/g, ''));
+    return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
+  }
+  return val.toLowerCase().trim();
+}
+
+// Build deal updates from checked fields
+function buildDealUpdates(checked: Record<string, boolean>, result: ExtractionResult): Partial<Deal> {
+  const updates: any = {};
+  result.fields.forEach(f => {
+    if (!checked[f.key]) return;
+    const val = f.value;
+    if (!val) return;
+    const boolKeys = ['asIsSale','inspectionWaived','homeWarranty'];
+    const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount'];
+    if (boolKeys.includes(f.key)) {
+      updates[f.key] = val === 'true' || val === 'yes' || val === '1';
+    } else if (moneyKeys.includes(f.key)) {
+      updates[f.key] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
+    } else if (f.key === 'downPaymentAmount') {
+      updates['downPayment'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
+    } else if (f.key === 'buyerNames') {
+      updates['buyerName'] = val;
+    } else if (f.key === 'sellerNames') {
+      updates['sellerName'] = val;
+    } else if (f.key === 'titleCompany') {
+      updates['titleCompanyName'] = val;
+    } else if (f.key === 'loanOfficer') {
+      updates['loanOfficerName'] = val;
+    } else if (f.key === 'clientAgentCommission') {
+      updates['clientAgentCommission'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
+    } else {
+      updates[f.key] = val;
+    }
+  });
+  return updates as Partial<Deal>;
+}
+
+// ─── Standalone PDF Preview Modal ────────────────────────────────────────────
+function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => void }) {
+  const [url, setUrl] = useState('');
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.storage
+        .from('deal-documents')
+        .createSignedUrl(doc.storage_path, 3600);
+      if (error) setErr(error.message);
+      else setUrl(data.signedUrl);
+    })();
+  }, [doc.storage_path]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="m-auto bg-base-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: '85vw', maxWidth: '1000px', height: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 flex-none">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-primary" />
+            <span className="font-semibold text-sm text-base-content truncate max-w-md">{doc.file_name}</span>
+            {doc.category && (
+              <span className="badge badge-sm badge-ghost">{DOC_TYPE_LABELS[doc.category] ?? doc.category}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                const { data } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
+                if (data) window.open(data.signedUrl, '_blank');
+              }}
+              className="btn btn-ghost btn-xs gap-1"
+            >
+              <ExternalLink size={12} /> Open in new tab
+            </button>
+            <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 bg-base-200">
+          {err ? (
+            <div className="flex items-center justify-center h-full text-error text-sm">{err}</div>
+          ) : !url ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={24} className="animate-spin text-primary/50" />
+            </div>
+          ) : (
+            <iframe src={url} className="w-full h-full" title="Document Preview" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Inline PDF Viewer (used inside modals) ───────────────────────────────────
+function PdfPreview({ filePath }: { filePath: string }) {
+  const [url, setUrl] = useState('');
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(filePath, 3600);
+      if (error) setErr(error.message);
+      else setUrl(data.signedUrl);
+    })();
+  }, [filePath]);
+
+  if (err) return <div className="flex items-center justify-center h-full text-sm text-error p-4">{err}</div>;
+  if (!url) return <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-primary/50" /></div>;
+
+  return <iframe src={url} className="w-full h-full" title="PDF Preview" />;
+}
+
+// ─── Change Comparison Modal (auto-fires after contract/amendment upload) ─────
+interface ChangeComparisonProps {
+  doc: DealDocument;
+  deal: Deal;
+  onConfirm: (updates: Partial<Deal>) => void;
+  onDismiss: () => void;
+}
+
+function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeComparisonProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<ExtractionResult | null>(null);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  useEffect(() => { runExtraction(); }, []);
+
+  const runExtraction = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data: signed, error: urlErr } = await supabase.storage
+        .from('deal-documents')
+        .createSignedUrl(doc.storage_path, 300);
+      if (urlErr) throw new Error('Could not sign URL: ' + urlErr.message);
+
+      const res = await fetch('/api/extract-contract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_url: signed.signedUrl,
+          file_name: doc.file_name,
+          deal_id: deal.id,
+          deal_address: deal.propertyAddress,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Extraction failed (${res.status})`);
+      const data: ExtractionResult = await res.json();
+      setResult(data);
+
+      // Auto-check all fields that are CHANGED vs current deal
+      const init: Record<string, boolean> = {};
+      data.fields.forEach(f => {
+        const defMap = FIELD_DEAL_MAP.find(m => m.key === f.key);
+        if (!defMap) return;
+        const currentVal = normalizeVal(f.key, defMap.getDealVal(deal));
+        const newVal = normalizeVal(f.key, f.value);
+        // Only auto-check if value is different from current
+        init[f.key] = currentVal !== newVal && !!newVal;
+      });
+      setChecked(init);
+    } catch (e: any) {
+      setError(e.message || 'Extraction failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const changedCount = Object.values(checked).filter(Boolean).length;
+
+  const handleConfirm = () => {
+    if (!result) return;
+    const updates = buildDealUpdates(checked, result);
+    onConfirm(updates);
+  };
+
+  // Build comparison rows
+  const rows = result
+    ? FIELD_DEAL_MAP.map(def => {
+        const extracted = result.fields.find(f => f.key === def.key);
+        if (!extracted) return null;
+        const currentVal = def.getDealVal(deal);
+        const newVal = fmtExtracted(def.key, extracted.value);
+        const isChanged = normalizeVal(def.key, currentVal) !== normalizeVal(def.key, extracted.value);
+        return { ...def, currentVal, newVal, isChanged, confidence: extracted.confidence };
+      }).filter(Boolean)
+    : [];
+
+  const changedRows = rows.filter(r => r!.isChanged);
+  const sameRows = rows.filter(r => !r!.isChanged);
+
+  return (
+    <div className="fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm">
+      <div
+        className="m-auto bg-base-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: '92vw', maxWidth: '1200px', height: '88vh' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-base-300 flex-none">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-primary" />
+              <span className="font-semibold text-base-content">
+                {doc.category === 'amendment' ? 'Amendment' : 'Contract'} — Review Data Changes
+              </span>
+            </div>
+            <p className="text-xs text-base-content/40 mt-0.5 ml-6">{doc.file_name}</p>
+          </div>
+          <button onClick={onDismiss} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+        </div>
+
+        {/* Body: PDF left, comparison right */}
+        <div className="flex flex-1 min-h-0">
+
+          {/* Left — PDF preview */}
+          <div className="w-5/12 border-r border-base-300 flex flex-col flex-none">
+            <div className="px-3 py-2 border-b border-base-300 bg-base-50 flex-none">
+              <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Document</p>
+            </div>
+            <div className="flex-1 min-h-0">
+              <PdfPreview filePath={doc.storage_path} />
+            </div>
+          </div>
+
+          {/* Right — comparison table */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="px-4 py-2.5 border-b border-base-300 bg-base-50 flex-none">
+              <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Field Comparison</p>
+              {result && !loading && (
+                <p className="text-xs text-base-content/40 mt-0.5">
+                  {changedRows.length === 0
+                    ? 'No changes detected — deal data is up to date'
+                    : `${changedRows.length} field${changedRows.length !== 1 ? 's' : ''} changed · check the ones you want to apply`}
+                </p>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {loading && (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-base-content/40">
+                  <Loader2 size={28} className="animate-spin text-primary" />
+                  <p className="text-sm">Extracting contract data…</p>
+                  <p className="text-xs">~10–15 seconds</p>
+                </div>
+              )}
+
+              {error && !loading && (
+                <div className="m-4 rounded-xl bg-error/10 border border-error/20 p-4 space-y-3">
+                  <p className="text-sm font-medium text-error">Extraction failed</p>
+                  <p className="text-xs text-base-content/60">{error}</p>
+                  <button onClick={runExtraction} className="btn btn-sm btn-outline gap-1">
+                    <RefreshCw size={13} /> Retry
+                  </button>
+                </div>
+              )}
+
+              {result && !loading && rows.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-base-content/40 p-6">
+                  <AlertTriangle size={24} className="opacity-40" />
+                  <p className="text-sm">No fields could be extracted from this document.</p>
+                  <p className="text-xs">It may not be a standard purchase contract. The file was saved.</p>
+                </div>
+              )}
+
+              {result && !loading && rows.length > 0 && (
+                <>
+                  {/* Column headers */}
+                  <div className="sticky top-0 bg-base-200 border-b border-base-300 grid grid-cols-[2rem_1fr_1fr_1fr] text-xs font-semibold text-base-content/50 uppercase tracking-wide px-4 py-2 z-10">
+                    <div />
+                    <div>Field</div>
+                    <div>Current Value</div>
+                    <div className="flex items-center gap-1 text-primary">
+                      <ArrowRight size={11} /> New Value
+                    </div>
+                  </div>
+
+                  {/* Changed rows first */}
+                  {changedRows.map(row => row && (
+                    <div
+                      key={row.key}
+                      className="grid grid-cols-[2rem_1fr_1fr_1fr] items-center px-4 py-2.5 border-b border-base-300 bg-amber-50 hover:bg-amber-100/70 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm checkbox-primary"
+                        checked={!!checked[row.key]}
+                        onChange={e => setChecked(p => ({ ...p, [row.key]: e.target.checked }))}
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-base-content">{row.label}</p>
+                        {row.confidence && row.confidence !== 'high' && (
+                          <span className={`text-xs px-1 rounded-full ${row.confidence === 'medium' ? 'text-warning' : 'text-error'}`}>
+                            {row.confidence} confidence
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-base-content/50 line-through">{row.currentVal || '—'}</div>
+                      <div className="text-sm font-semibold text-amber-800">{row.newVal || '—'}</div>
+                    </div>
+                  ))}
+
+                  {/* Unchanged rows — collapsed toggle */}
+                  {sameRows.length > 0 && (
+                    <UnchangedRows rows={sameRows as typeof rows} />
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-base-300 flex-none bg-base-50">
+          <button onClick={onDismiss} className="btn btn-ghost btn-sm">
+            Keep Current Values
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="btn btn-primary btn-sm gap-1.5"
+            disabled={loading || changedCount === 0}
+          >
+            <CheckCircle2 size={14} />
+            {changedCount === 0 ? 'No Changes Selected' : `Confirm Changes (${changedCount})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Collapsible unchanged rows section
+function UnchangedRows({ rows }: { rows: Array<{ key: string; label: string; currentVal: string; newVal: string } | null> }) {
+  const [open, setOpen] = useState(false);
+  const valid = rows.filter(Boolean) as Array<{ key: string; label: string; currentVal: string; newVal: string }>;
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-2 px-4 py-2 text-xs text-base-content/40 hover:bg-base-200 transition-colors border-b border-base-300"
+      >
+        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {valid.length} unchanged field{valid.length !== 1 ? 's' : ''} {open ? '(hide)' : '(show)'}
+      </button>
+      {open && valid.map(row => (
+        <div
+          key={row.key}
+          className="grid grid-cols-[2rem_1fr_1fr_1fr] items-center px-4 py-2 border-b border-base-300 opacity-40"
+        >
+          <div />
+          <div className="text-sm text-base-content/60">{row.label}</div>
+          <div className="text-sm text-base-content/40">{row.currentVal || '—'}</div>
+          <div className="text-sm text-base-content/40 flex items-center gap-1">
+            <CheckCircle2 size={11} className="text-success" /> Same
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Manual Extraction Modal (for Extract button on non-contract docs) ────────
 interface ExtractionModalProps {
   doc: DealDocument;
   deal: Deal;
@@ -102,19 +496,15 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
   const [result, setResult] = useState<ExtractionResult | null>(null);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    runExtraction();
-  }, []);
+  useEffect(() => { runExtraction(); }, []);
 
   const runExtraction = async () => {
     setLoading(true);
     setError('');
     try {
-      // Get a signed URL for the file so Railway can download it
       const { data: signedUrl, error: urlErr } = await supabase.storage
         .from('deal-documents')
-        .createSignedUrl(doc.file_path, 300); // 5 min expiry
-
+        .createSignedUrl(doc.storage_path, 300);
       if (urlErr) throw new Error('Could not generate file URL: ' + urlErr.message);
 
       const res = await fetch('/api/extract-contract', {
@@ -135,8 +525,6 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
 
       const data: ExtractionResult = await res.json();
       setResult(data);
-
-      // Pre-populate editable fields
       const init: Record<string, string> = {};
       data.fields.forEach(f => { init[f.key] = f.value; });
       setEditedFields(init);
@@ -148,19 +536,11 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
   };
 
   const handleConfirm = () => {
-    const updates: Partial<Deal> = {};
-    Object.entries(editedFields).forEach(([key, val]) => {
-      if (val === '' || val === undefined) return;
-      const k = key as keyof Deal;
-      // Coerce booleans
-      if (k === 'asIsSale' || k === 'inspectionWaived' || k === 'homeWarranty') {
-        (updates as any)[k] = val === 'true' || val === 'yes' || val === '1';
-      } else if (['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount','sellerConcessions','downPaymentPercent'].includes(key)) {
-        (updates as any)[k] = parseFloat(val.replace(/[$,%,]/g, '')) || undefined;
-      } else {
-        (updates as any)[k] = val;
-      }
-    });
+    if (!result) return;
+    const updates = buildDealUpdates(
+      Object.fromEntries(Object.keys(editedFields).map(k => [k, true])),
+      { ...result, fields: result.fields.map(f => ({ ...f, value: editedFields[f.key] ?? f.value })) }
+    );
     onConfirm(updates);
   };
 
@@ -169,7 +549,6 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
       <div className="m-auto bg-base-100 rounded-2xl shadow-2xl flex flex-col"
         style={{ width: '90vw', maxWidth: '1200px', height: '85vh' }}>
 
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-base-300 flex-none">
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-primary" />
@@ -179,36 +558,29 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
           <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
         </div>
 
-        {/* Body */}
         <div className="flex flex-1 min-h-0">
-          {/* Left: PDF Viewer */}
           <div className="w-1/2 border-r border-base-300 flex flex-col">
             <div className="p-3 border-b border-base-300 flex-none">
               <p className="text-xs font-semibold text-base-content/50 uppercase">Document Preview</p>
             </div>
             <div className="flex-1 overflow-hidden">
-              <PdfPreview filePath={doc.file_path} />
+              <PdfPreview filePath={doc.storage_path} />
             </div>
           </div>
 
-          {/* Right: Extracted Fields */}
           <div className="w-1/2 flex flex-col">
             <div className="p-3 border-b border-base-300 flex-none">
               <p className="text-xs font-semibold text-base-content/50 uppercase">Extracted Fields</p>
-              {result && (
-                <p className="text-xs text-base-content/40 mt-0.5">Review and edit values before confirming</p>
-              )}
+              {result && <p className="text-xs text-base-content/40 mt-0.5">Review and edit before applying</p>}
             </div>
-
             <div className="flex-1 overflow-y-auto p-4">
               {loading && (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-base-content/40">
                   <Loader2 size={28} className="animate-spin text-primary" />
-                  <p className="text-sm">Extracting contract data with AI…</p>
-                  <p className="text-xs">This takes about 10–15 seconds</p>
+                  <p className="text-sm">Extracting with AI…</p>
+                  <p className="text-xs">~10–15 seconds</p>
                 </div>
               )}
-
               {error && !loading && (
                 <div className="rounded-xl bg-error/10 border border-error/20 p-4 space-y-3">
                   <p className="text-sm font-medium text-error">Extraction failed</p>
@@ -218,10 +590,9 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
                   </button>
                 </div>
               )}
-
               {result && !loading && (
                 <div className="space-y-3">
-                  {EXTRACTABLE_FIELDS.map(({ key, label }) => {
+                  {FIELD_DEAL_MAP.map(({ key, label }) => {
                     const extracted = result.fields.find(f => f.key === key);
                     if (!extracted && !editedFields[key]) return null;
                     const val = editedFields[key] ?? extracted?.value ?? '';
@@ -235,33 +606,22 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
                               conf === 'high' ? 'bg-success/15 text-success' :
                               conf === 'medium' ? 'bg-warning/15 text-warning' :
                               'bg-error/10 text-error'
-                            }`}>
-                              {conf}
-                            </span>
+                            }`}>{conf}</span>
                           )}
                         </div>
                         <input
-                          className={`input input-sm input-bordered w-full text-sm ${
-                            conf === 'low' ? 'border-warning/50' : ''
-                          }`}
+                          className={`input input-sm input-bordered w-full text-sm ${conf === 'low' ? 'border-warning/50' : ''}`}
                           value={val}
                           onChange={e => setEditedFields(p => ({ ...p, [key]: e.target.value }))}
                           placeholder={`Enter ${label.toLowerCase()}…`}
                         />
-                        {extracted?.original && extracted.original !== val && (
-                          <p className="text-xs text-base-content/30">
-                            Original: <span className="italic">{extracted.original}</span>
-                          </p>
-                        )}
                       </div>
                     );
                   })}
-
                   {result.fields.length === 0 && (
                     <div className="text-center py-8 text-base-content/40 text-sm">
                       <AlertTriangle size={22} className="mx-auto mb-2 opacity-40" />
                       <p>No fields could be extracted.</p>
-                      <p className="text-xs mt-1">The document may not be a purchase contract.</p>
                     </div>
                   )}
                 </div>
@@ -270,14 +630,11 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
           </div>
         </div>
 
-        {/* Footer */}
         {result && !loading && !error && (
           <div className="flex items-center justify-between p-4 border-t border-base-300 flex-none">
             <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
             <div className="flex items-center gap-3">
-              <p className="text-xs text-base-content/40">
-                {result.fields.length} field{result.fields.length !== 1 ? 's' : ''} extracted
-              </p>
+              <p className="text-xs text-base-content/40">{result.fields.length} field{result.fields.length !== 1 ? 's' : ''} extracted</p>
               <button onClick={handleConfirm} className="btn btn-primary btn-sm gap-1.5">
                 <CheckCircle2 size={14} /> Apply to Deal
               </button>
@@ -289,50 +646,105 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
   );
 }
 
-// ─── PDF Preview (signed URL) ─────────────────────────────────────────────────
-function PdfPreview({ filePath }: { filePath: string }) {
-  const [url, setUrl] = useState('');
-  const [err, setErr] = useState('');
+// ─── Checklist Link Picker ────────────────────────────────────────────────────
+interface ChecklistLinkPickerProps {
+  doc: DealDocument;
+  checklistItems: ChecklistItem[];
+  docLinks: DocLink[];
+  onLink: (checklistItemId: string) => void;
+  onUnlink: (linkId: string) => void;
+  onClose: () => void;
+}
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(filePath, 3600);
-      if (error) setErr(error.message);
-      else setUrl(data.signedUrl);
-    })();
-  }, [filePath]);
+function ChecklistLinkPicker({ doc, checklistItems, docLinks, onLink, onUnlink, onClose }: ChecklistLinkPickerProps) {
+  const linkedItemIds = docLinks
+    .filter(l => l.document_id === doc.id)
+    .map(l => l.checklist_item_id);
 
-  if (err) return <div className="flex items-center justify-center h-full text-sm text-error p-4">{err}</div>;
-  if (!url) return <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-primary/50" /></div>;
+  const incompleteItems = checklistItems.filter(i => !i.completed);
+  const completedItems = checklistItems.filter(i => i.completed);
+
+  const renderItem = (item: ChecklistItem) => {
+    const isLinked = linkedItemIds.includes(item.id);
+    const link = docLinks.find(l => l.document_id === doc.id && l.checklist_item_id === item.id);
+    return (
+      <button
+        key={item.id}
+        onClick={() => isLinked && link ? onUnlink(link.id) : onLink(item.id)}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-lg transition-colors ${
+          isLinked ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'hover:bg-base-200 text-base-content'
+        }`}
+      >
+        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-none ${isLinked ? 'bg-primary border-primary' : 'border-base-300'}`}>
+          {isLinked && <CheckCircle2 size={10} className="text-white" />}
+        </div>
+        <span className={`flex-1 truncate ${item.completed ? 'line-through opacity-50' : ''}`}>{item.title}</span>
+        {isLinked && <Paperclip size={11} className="text-primary flex-none" />}
+      </button>
+    );
+  };
 
   return (
-    <iframe
-      src={url}
-      className="w-full h-full"
-      title="PDF Preview"
-    />
+    <div className="fixed inset-0 z-50 flex bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="m-auto bg-base-100 rounded-2xl shadow-2xl overflow-hidden"
+        style={{ width: 380, maxHeight: '70vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
+          <div>
+            <p className="font-semibold text-sm text-base-content">Link to Checklist Item</p>
+            <p className="text-xs text-base-content/40 truncate max-w-xs">{doc.file_name}</p>
+          </div>
+          <button onClick={onClose} className="btn btn-ghost btn-xs btn-circle"><X size={14} /></button>
+        </div>
+        <div className="overflow-y-auto p-2" style={{ maxHeight: 'calc(70vh - 60px)' }}>
+          {checklistItems.length === 0 ? (
+            <p className="text-sm text-base-content/40 text-center py-6">No checklist items for this deal.</p>
+          ) : (
+            <>
+              {incompleteItems.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide px-2 py-1">Open Items</p>
+                  {incompleteItems.map(renderItem)}
+                </div>
+              )}
+              {completedItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide px-2 py-1">Completed Items</p>
+                  {completedItems.map(renderItem)}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ─── Document Row ─────────────────────────────────────────────────────────────
 interface DocRowProps {
   doc: DealDocument;
+  isOriginal: boolean;
+  linkedItemTitles: string[];
+  onPreview: (doc: DealDocument) => void;
   onExtract: (doc: DealDocument) => void;
   onDelete: (doc: DealDocument) => void;
   onDownload: (doc: DealDocument) => void;
+  onLinkChecklist: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
-  const isContract = doc.doc_type === 'purchase_contract';
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist }: DocRowProps) {
+  const isContract = doc.category === 'purchase_contract';
   const isEmail = doc.source === 'email';
+  const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border border-base-300 bg-base-100 hover:bg-base-200/50 transition-colors group">
       {/* Icon */}
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-none ${
-        isContract ? 'bg-primary/10' : 'bg-base-300/50'
-      }`}>
-        {doc.mime_type?.includes('pdf') ? (
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-none ${isContract ? 'bg-primary/10' : 'bg-base-300/50'}`}>
+        {isPdf ? (
           <FileText size={18} className={isContract ? 'text-primary' : 'text-base-content/50'} />
         ) : (
           <File size={18} className="text-base-content/40" />
@@ -343,12 +755,19 @@ function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.file_name}</p>
-          {isContract && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Purchase Contract</span>
+          {isOriginal && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">
+              <Lock size={9} /> Original Contract
+            </span>
           )}
-          {doc.doc_type && doc.doc_type !== 'purchase_contract' && (
+          {!isOriginal && doc.category && doc.category !== 'purchase_contract' && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-base-300 text-base-content/60">
-              {DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}
+              {DOC_TYPE_LABELS[doc.category] ?? doc.category}
+            </span>
+          )}
+          {!isOriginal && doc.category === 'purchase_contract' && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-base-200 text-base-content/50">
+              Purchase Contract
             </span>
           )}
           {isEmail && (
@@ -357,46 +776,67 @@ function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 mt-0.5">
-          <span className="text-xs text-base-content/40">{formatDateTime(doc.uploaded_at)}</span>
-          {doc.file_size && <span className="text-xs text-base-content/30">{formatFileSize(doc.file_size)}</span>}
+        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          <span className="text-xs text-base-content/40">{formatDateTime(doc.created_at)}</span>
+          {doc.file_size_bytes && <span className="text-xs text-base-content/30">{formatFileSize(doc.file_size_bytes)}</span>}
+          {doc.uploaded_by && <span className="text-xs text-base-content/30">by {doc.uploaded_by}</span>}
           {isEmail && doc.thread_subject && (
-            <span className="text-xs text-base-content/40 truncate max-w-xs">✉️ {doc.thread_subject}</span>
+            <span className="text-xs text-base-content/40 truncate max-w-xs">✉ {doc.thread_subject}</span>
           )}
           {doc.extracted_at && (
             <span className="text-xs text-success flex items-center gap-1">
-              <CheckCircle2 size={11} /> Extracted {formatDateTime(doc.extracted_at)}
+              <CheckCircle2 size={11} /> Extracted
+            </span>
+          )}
+          {linkedItemTitles.length > 0 && (
+            <span className="text-xs text-primary flex items-center gap-1">
+              <Paperclip size={11} />
+              {linkedItemTitles.length === 1 ? linkedItemTitles[0] : `${linkedItemTitles.length} checklist items`}
             </span>
           )}
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Actions — visible on hover */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-none">
+        {/* Preview — always available for PDFs */}
+        {isPdf && (
+          <button onClick={() => onPreview(doc)} className="btn btn-ghost btn-xs btn-circle" title="Preview document">
+            <Eye size={13} />
+          </button>
+        )}
+        {/* Download */}
         <button onClick={() => onDownload(doc)} className="btn btn-ghost btn-xs btn-circle" title="Download">
           <Download size={13} />
         </button>
-        {isContract && (
+        {/* Extract — for contracts (primary) or any PDF (secondary) */}
+        {isPdf && (
           <button
             onClick={() => onExtract(doc)}
-            className="btn btn-primary btn-xs gap-1"
-            title="Extract contract data with AI"
+            className={`btn btn-xs gap-1 ${isContract ? 'btn-primary' : 'btn-ghost'}`}
+            title="Extract data with AI"
           >
             <Sparkles size={11} /> Extract
           </button>
         )}
-        {!isContract && doc.mime_type?.includes('pdf') && (
-          <button
-            onClick={() => onExtract(doc)}
-            className="btn btn-ghost btn-xs gap-1"
-            title="Extract data from this document"
-          >
-            <Sparkles size={11} /> Extract
-          </button>
-        )}
-        <button onClick={() => onDelete(doc)} className="btn btn-ghost btn-xs btn-circle text-error/60 hover:text-error" title="Delete">
-          <Trash2 size={13} />
+        {/* Link to checklist */}
+        <button
+          onClick={() => onLinkChecklist(doc)}
+          className="btn btn-ghost btn-xs btn-circle"
+          title="Link to checklist item"
+        >
+          <Paperclip size={13} />
         </button>
+        {/* Delete — blocked for original contract */}
+        {isOriginal ? (
+          <button disabled className="btn btn-ghost btn-xs btn-circle opacity-30 cursor-not-allowed" title="Original contract cannot be deleted">
+            <Lock size={13} />
+          </button>
+        ) : (
+          <button onClick={() => onDelete(doc)} className="btn btn-ghost btn-xs btn-circle text-error/60 hover:text-error" title="Delete">
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -406,18 +846,27 @@ function DocRow({ doc, onExtract, onDelete, onDownload }: DocRowProps) {
 export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
+
   const [docs, setDocs] = useState<DealDocument[]>([]);
+  const [docLinks, setDocLinks] = useState<DocLink[]>([]);
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmailDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
-  const [extractingDoc, setExtractingDoc] = useState<DealDocument | null>(null);
-  const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['doc_type']>('purchase_contract');
+  const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['category']>('purchase_contract');
   const [showDocRequests, setShowDocRequests] = useState(true);
+
+  // Modal states
+  const [previewDoc, setPreviewDoc] = useState<DealDocument | null>(null);
+  const [comparisonDoc, setComparisonDoc] = useState<DealDocument | null>(null);
+  const [manualExtractDoc, setManualExtractDoc] = useState<DealDocument | null>(null);
+  const [linkingDoc, setLinkingDoc] = useState<DealDocument | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDocuments();
+    loadDocLinks();
     loadLinkedEmails();
   }, [deal.id]);
 
@@ -427,10 +876,17 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       .from('deal_documents')
       .select('*')
       .eq('deal_id', deal.id)
-      .order('uploaded_at', { ascending: false });
-
+      .order('created_at', { ascending: false });
     if (!error && data) setDocs(data as DealDocument[]);
     setLoading(false);
+  };
+
+  const loadDocLinks = async () => {
+    const { data, error } = await supabase
+      .from('checklist_document_links')
+      .select('*')
+      .eq('deal_id', deal.id);
+    if (!error && data) setDocLinks(data as DocLink[]);
   };
 
   const loadLinkedEmails = async () => {
@@ -439,7 +895,6 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       .select('gmail_thread_id, score, link_method, thread_subject, thread_from, thread_date')
       .eq('deal_id', deal.id)
       .order('created_at', { ascending: false });
-
     if (!error && data) {
       setLinkedEmails(data.map((r: any) => ({
         thread_id: r.gmail_thread_id,
@@ -452,7 +907,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     }
   };
 
-  // ─── Upload ────────────────────────────────────────────────────────────────
+  // ─── Upload ─────────────────────────────────────────────────────────────────
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -460,30 +915,39 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     await uploadFile(file, docTypeForUpload);
   };
 
-  const uploadFile = async (file: File, docType: DealDocument['doc_type']) => {
+  const uploadFile = async (file: File, docType: DealDocument['category']) => {
     setUploading(true);
-    setUploadProgress(`Uploading ${file.name}…`);
+    setUploadProgress('Compressing & uploading…');
     try {
-      const ext = file.name.split('.').pop() ?? 'bin';
-      const path = `${deal.id}/${generateId()}.${ext}`;
+      // Send to our API route which flattens PDF then stores to Supabase
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('deal_id', deal.id);
 
-      const { error: upErr } = await supabase.storage
-        .from('deal-documents')
-        .upload(path, file, { contentType: file.type, upsert: false });
+      const uploadRes = await fetch('/api/upload-document', {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (upErr) throw upErr;
+      if (!uploadRes.ok) {
+        // Fallback: direct upload if API route unavailable
+        await directUpload(file, docType);
+        return;
+      }
 
+      const { path, file_name, file_size } = await uploadRes.json();
       setUploadProgress('Saving record…');
 
-      const rec: Omit<DealDocument, 'id'> = {
+      const rec = {
         deal_id: deal.id,
-        file_name: file.name,
-        file_path: path,
-        file_size: file.size,
-        mime_type: file.type,
-        doc_type: docType,
-        source: 'upload',
-        uploaded_at: new Date().toISOString(),
+        file_name: file_name || file.name,
+        storage_path: path,
+        file_size_bytes: file_size,
+        category: docType,
+        source: 'upload' as const,
+        created_at: new Date().toISOString(),
+        uploaded_by: userName,
+        is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
       };
 
       const { data: inserted, error: dbErr } = await supabase
@@ -493,11 +957,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         .single();
 
       if (dbErr) throw dbErr;
-      setDocs(prev => [inserted as DealDocument, ...prev]);
 
-      // If purchase contract, prompt extraction
-      if (docType === 'purchase_contract') {
-        setTimeout(() => setExtractingDoc(inserted as DealDocument), 500);
+      const newDoc = inserted as DealDocument;
+      setDocs(prev => [newDoc, ...prev]);
+
+      // Auto-trigger comparison for contracts and amendments
+      if (docType === 'purchase_contract' || docType === 'amendment') {
+        setTimeout(() => setComparisonDoc(newDoc), 400);
       }
     } catch (e: any) {
       alert('Upload failed: ' + (e.message ?? e));
@@ -507,44 +973,127 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     }
   };
 
-  const handleDownload = async (doc: DealDocument) => {
-    const { data, error } = await supabase.storage
+  // Fallback direct upload if API route isn't available
+  const directUpload = async (file: File, docType: DealDocument['category']) => {
+    const ext = file.name.split('.').pop() ?? 'bin';
+    const path = `${deal.id}/${generateId()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
       .from('deal-documents')
-      .createSignedUrl(doc.file_path, 300);
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw upErr;
+
+    const rec = {
+      deal_id: deal.id,
+      file_name: file.name,
+      storage_path: path,
+      file_size_bytes: file.size,
+      category: docType,
+      source: 'upload' as const,
+      created_at: new Date().toISOString(),
+      uploaded_by: userName,
+      is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
+    };
+
+    const { data: inserted, error: dbErr } = await supabase
+      .from('deal_documents')
+      .insert(rec)
+      .select()
+      .single();
+    if (dbErr) throw dbErr;
+
+    const newDoc = inserted as DealDocument;
+    setDocs(prev => [newDoc, ...prev]);
+
+    if (docType === 'purchase_contract' || docType === 'amendment') {
+      setTimeout(() => setComparisonDoc(newDoc), 400);
+    }
+  };
+
+  const handleDownload = async (doc: DealDocument) => {
+    const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
     if (error) { alert('Could not generate download link'); return; }
     window.open(data.signedUrl, '_blank');
   };
 
   const handleDelete = async (doc: DealDocument) => {
     if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
-    await supabase.storage.from('deal-documents').remove([doc.file_path]);
+    await supabase.storage.from('deal-documents').remove([doc.storage_path]);
     await supabase.from('deal_documents').delete().eq('id', doc.id);
     setDocs(prev => prev.filter(d => d.id !== doc.id));
+  };
+
+  // ─── Extraction handlers ─────────────────────────────────────────────────
+  const handleComparisonConfirm = async (updates: Partial<Deal>) => {
+    const updated: Deal = { ...deal, ...updates, updatedAt: new Date().toISOString() };
+    onUpdate(updated);
+    if (comparisonDoc) {
+      await supabase.from('deal_documents').update({ extracted_at: new Date().toISOString() }).eq('id', comparisonDoc.id);
+      setDocs(prev => prev.map(d => d.id === comparisonDoc.id ? { ...d, extracted_at: new Date().toISOString() } : d));
+    }
+    setComparisonDoc(null);
   };
 
   const handleExtractionConfirm = async (updates: Partial<Deal>) => {
     const updated: Deal = { ...deal, ...updates, updatedAt: new Date().toISOString() };
     onUpdate(updated);
-
-    // Mark document as extracted
-    if (extractingDoc) {
-      await supabase.from('deal_documents').update({ extracted_at: new Date().toISOString() }).eq('id', extractingDoc.id);
-      setDocs(prev => prev.map(d => d.id === extractingDoc.id ? { ...d, extracted_at: new Date().toISOString() } : d));
+    if (manualExtractDoc) {
+      await supabase.from('deal_documents').update({ extracted_at: new Date().toISOString() }).eq('id', manualExtractDoc.id);
+      setDocs(prev => prev.map(d => d.id === manualExtractDoc.id ? { ...d, extracted_at: new Date().toISOString() } : d));
     }
-    setExtractingDoc(null);
+    setManualExtractDoc(null);
   };
 
-  // ─── Document Requests (legacy section) ───────────────────────────────────
-  const pendingDocRequests = (deal.documentRequests ?? []).filter(r => r.status === 'pending');
+  // ─── Checklist linking ───────────────────────────────────────────────────
+  const handleLink = async (checklistItemId: string) => {
+    if (!linkingDoc) return;
+    const { data, error } = await supabase
+      .from('checklist_document_links')
+      .insert({
+        checklist_item_id: checklistItemId,
+        document_id: linkingDoc.id,
+        deal_id: deal.id,
+        linked_at: new Date().toISOString(),
+        linked_by: userName,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setDocLinks(prev => [...prev, data as DocLink]);
+    }
+  };
 
-  // ─── Separate contract docs vs other docs ────────────────────────────────
-  const contractDocs = docs.filter(d => d.doc_type === 'purchase_contract');
-  const otherDocs = docs.filter(d => d.doc_type !== 'purchase_contract');
+  const handleUnlink = async (linkId: string) => {
+    await supabase.from('checklist_document_links').delete().eq('id', linkId);
+    setDocLinks(prev => prev.filter(l => l.id !== linkId));
+  };
+
+  // ─── Derived data ────────────────────────────────────────────────────────
+  const contractDocs = docs.filter(d => d.category === 'purchase_contract');
+  const amendmentDocs = docs.filter(d => d.category === 'amendment' || d.category === 'addendum');
+  const otherDocs = docs.filter(d => d.category === 'other' || !d.category);
+
+  // Original contract = oldest purchase_contract (last in newest-first list)
+  const originalContractId = contractDocs.length > 0
+    ? [...contractDocs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].id
+    : null;
+
+  // Build a map: doc_id → linked checklist item titles
+  const checklistItems: ChecklistItem[] = (deal as any).checklist ?? [];
+  const linkedTitlesByDocId: Record<string, string[]> = {};
+  docLinks.forEach(link => {
+    const item = checklistItems.find(i => i.id === link.checklist_item_id);
+    if (!item) return;
+    if (!linkedTitlesByDocId[link.document_id]) linkedTitlesByDocId[link.document_id] = [];
+    linkedTitlesByDocId[link.document_id].push(item.title);
+  });
+
+  const pendingDocRequests = (deal.documentRequests ?? []).filter(r => r.status === 'pending');
 
   return (
     <div className="p-4 space-y-6 pb-10">
 
-      {/* ── Upload Purchase Contract (hero CTA) ─────────────────────────── */}
+      {/* ── Upload hero CTA (no contract yet) ─────────────────────────── */}
       {contractDocs.length === 0 && (
         <div
           onClick={() => { setDocTypeForUpload('purchase_contract'); fileInputRef.current?.click(); }}
@@ -555,88 +1104,135 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           </div>
           <div className="text-center">
             <p className="font-semibold text-base-content">Upload Purchase Contract</p>
-            <p className="text-xs text-base-content/50 mt-1">PDF, Word, or image · AI will offer to extract fields</p>
+            <p className="text-xs text-base-content/50 mt-1">PDF · AI will extract fields and show changes for review</p>
           </div>
         </div>
       )}
 
-      {/* ── Contract Documents ───────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide flex items-center gap-1.5">
-            <FileText size={14} /> Contract Documents
-          </h3>
-          <div className="flex items-center gap-2">
-            <select
-              className="select select-xs select-bordered"
-              value={docTypeForUpload}
-              onChange={e => setDocTypeForUpload(e.target.value as DealDocument['doc_type'])}
-            >
-              <option value="purchase_contract">Purchase Contract</option>
-              <option value="amendment">Amendment</option>
-              <option value="addendum">Addendum</option>
-              <option value="other">Other</option>
-            </select>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="btn btn-sm btn-primary gap-1"
-              disabled={uploading}
-            >
-              {uploading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-              {uploading ? uploadProgress : 'Upload File'}
-            </button>
-          </div>
+      {/* ── Upload controls ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">Documents</h3>
+        <div className="flex items-center gap-2">
+          <select
+            className="select select-xs select-bordered"
+            value={docTypeForUpload}
+            onChange={e => setDocTypeForUpload(e.target.value as DealDocument['category'])}
+          >
+            <option value="purchase_contract">Purchase Contract</option>
+            <option value="amendment">Amendment</option>
+            <option value="addendum">Addendum</option>
+            <option value="other">Other</option>
+          </select>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-sm btn-primary gap-1"
+            disabled={uploading}
+          >
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            {uploading ? uploadProgress : 'Upload File'}
+          </button>
         </div>
+      </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-          onChange={handleFileSelect}
-        />
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+        onChange={handleFileSelect}
+      />
 
-        {loading ? (
-          <div className="flex items-center justify-center py-8 text-base-content/30">
-            <Loader2 size={18} className="animate-spin" />
-          </div>
-        ) : contractDocs.length === 0 ? (
-          <div className="rounded-xl border border-base-300 bg-base-50 p-4 text-center text-sm text-base-content/40">
-            No contract documents yet — upload the signed purchase agreement above.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {contractDocs.map(doc => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                onExtract={setExtractingDoc}
-                onDelete={handleDelete}
-                onDownload={handleDownload}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {loading ? (
+        <div className="flex items-center justify-center py-8 text-base-content/30">
+          <Loader2 size={18} className="animate-spin" />
+        </div>
+      ) : (
+        <>
+          {/* ── Purchase Contracts (pinned at top, bordered card) ─────── */}
+          {contractDocs.length > 0 && (
+            <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.02] overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/15 bg-primary/[0.04]">
+                <FileText size={14} className="text-primary" />
+                <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Purchase Contract</h3>
+                <span className="badge badge-sm bg-primary/10 text-primary border-0">{contractDocs.length}</span>
+                <div className="flex-1" />
+                <span className="text-xs text-base-content/30">Newest first · Original contract protected</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {contractDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    isOriginal={doc.id === originalContractId}
+                    linkedItemTitles={linkedTitlesByDocId[doc.id] ?? []}
+                    onPreview={setPreviewDoc}
+                    onExtract={setManualExtractDoc}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                    onLinkChecklist={setLinkingDoc}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* ── Amendments & Addendums ─────────────────────────────────────── */}
-      {otherDocs.length > 0 && (
-        <section>
-          <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide flex items-center gap-1.5 mb-3">
-            <FileText size={14} /> Amendments &amp; Other Documents
-          </h3>
-          <div className="space-y-2">
-            {otherDocs.map(doc => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                onExtract={setExtractingDoc}
-                onDelete={handleDelete}
-                onDownload={handleDownload}
-              />
-            ))}
-          </div>
-        </section>
+          {/* ── Amendments & Addenda ──────────────────────────────────── */}
+          {amendmentDocs.length > 0 && (
+            <section className="rounded-2xl border border-base-300 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200/50">
+                <FileText size={14} className="text-base-content/60" />
+                <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">Amendments &amp; Addenda</h3>
+                <span className="badge badge-sm badge-ghost">{amendmentDocs.length}</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {amendmentDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    isOriginal={false}
+                    linkedItemTitles={linkedTitlesByDocId[doc.id] ?? []}
+                    onPreview={setPreviewDoc}
+                    onExtract={setManualExtractDoc}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                    onLinkChecklist={setLinkingDoc}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Other Documents ───────────────────────────────────────── */}
+          {otherDocs.length > 0 && (
+            <section>
+              <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                <File size={14} /> Other Documents
+              </h3>
+              <div className="space-y-2">
+                {otherDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    isOriginal={false}
+                    linkedItemTitles={linkedTitlesByDocId[doc.id] ?? []}
+                    onPreview={setPreviewDoc}
+                    onExtract={setManualExtractDoc}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                    onLinkChecklist={setLinkingDoc}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Empty state */}
+          {docs.length === 0 && (
+            <div className="rounded-xl border border-dashed border-base-300 p-8 text-center text-base-content/40 text-sm">
+              No documents yet — upload the purchase contract above.
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Linked Email Threads ─────────────────────────────────────────── */}
@@ -657,9 +1253,6 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                   <div className="flex items-center gap-3 mt-0.5">
                     <span className="text-xs text-base-content/40 truncate">{em.from_address}</span>
                     {em.thread_date && <span className="text-xs text-base-content/30">{em.thread_date.slice(0, 10)}</span>}
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-base-300 text-base-content/50">
-                      Score: {em.score}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -680,24 +1273,52 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
             <span className="badge badge-sm badge-warning">{pendingDocRequests.length} pending</span>
           )}
         </button>
-
         {showDocRequests && <LegacyDocRequests deal={deal} onUpdate={onUpdate} />}
       </section>
 
-      {/* ── Extraction Modal ─────────────────────────────────────────────── */}
-      {extractingDoc && (
+      {/* ── Modals ───────────────────────────────────────────────────────── */}
+
+      {/* Standalone PDF preview */}
+      {previewDoc && (
+        <PdfPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+      )}
+
+      {/* Change comparison (auto-triggered on contract/amendment upload) */}
+      {comparisonDoc && (
+        <ChangeComparisonModal
+          doc={comparisonDoc}
+          deal={deal}
+          onConfirm={handleComparisonConfirm}
+          onDismiss={() => setComparisonDoc(null)}
+        />
+      )}
+
+      {/* Manual extraction modal */}
+      {manualExtractDoc && (
         <ExtractionModal
-          doc={extractingDoc}
+          doc={manualExtractDoc}
           deal={deal}
           onConfirm={handleExtractionConfirm}
-          onClose={() => setExtractingDoc(null)}
+          onClose={() => setManualExtractDoc(null)}
+        />
+      )}
+
+      {/* Checklist link picker */}
+      {linkingDoc && (
+        <ChecklistLinkPicker
+          doc={linkingDoc}
+          checklistItems={checklistItems}
+          docLinks={docLinks}
+          onLink={handleLink}
+          onUnlink={handleUnlink}
+          onClose={() => setLinkingDoc(null)}
         />
       )}
     </div>
   );
 }
 
-// ─── Legacy Document Requests (preserved from original) ──────────────────────
+// ─── Legacy Document Requests (preserved) ────────────────────────────────────
 interface ConfirmModalProps {
   title: string; message: string; onConfirm: () => void; onCancel: () => void;
 }
