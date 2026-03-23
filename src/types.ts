@@ -426,6 +426,7 @@ export interface Deal {
   loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
   loanAmount?: number;
   downPayment?: number;
+  earnestMoney?: number;           // Earnest money deposit amount
   earnestMoneyDueDate?: string;
   sellerConcessions?: number;
   totalSellerCredits?: number;
