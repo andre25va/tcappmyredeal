@@ -526,7 +526,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const canAdvance = (): boolean => {
     switch (step) {
-      case 1: return !!(form.address.trim() && form.city.trim());
+      case 1: return !!(form.address.trim() && form.city.trim() && form.mlsBoard);
       case 2: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 3: return true;
       case 4: return true;
@@ -540,7 +540,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const handleNext = () => {
     setError('');
     if (!canAdvance()) {
-      if (step === 1) setError('Address and city are required.');
+      if (step === 1) setError('Address, city, and MLS Board are required.');
       if (step === 2) setError('Please select whether this duplex has 1 or 2 addresses.');
       if (step === 5) setError('Closing date is required.');
       if (step === 6) setError('Please select a client to continue.');
