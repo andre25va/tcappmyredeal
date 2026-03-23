@@ -22,6 +22,7 @@ import type {
   ComplianceTemplate,
   ConfirmationButton,
   EmailSendLogEntry,
+  ContactRecord,
 } from '../types';
 import { roleLabel, formatDate, formatCurrency } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
@@ -50,14 +51,14 @@ function addBusinessDays(dateStr: string, days: number): string {
 }
 
 // Replace {{merge}} tags in a string with deal data
-function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[], contactRecords?: import('../types').ContactRecord[]): string {
+function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[], contactRecords?: ContactRecord[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
 
 
   // Representing agent (agentClient) — for {{agentName}}, {{agentPhone}}, {{agentEmail}}
   const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
-  const agentName  = agentClientRecord?.fullName || agentClientRecord?.name || '';
+  const agentName  = agentClientRecord?.fullName || '';
   const agentPhone = agentClientRecord?.phone || '';
   const agentEmail = agentClientRecord?.email || '';
 
@@ -608,7 +609,7 @@ interface Props {
   emailTemplates: EmailTemplate[];
   complianceTemplates?: ComplianceTemplate[];
   currentUser?: string;
-  contactRecords?: import('../types').ContactRecord[];
+  contactRecords?: ContactRecord[];
 }
 
 export default function WorkspaceEmailCompose({
