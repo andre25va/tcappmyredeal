@@ -198,6 +198,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [aiError, setAiError] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [extractionBanner, setExtractionBanner] = useState<{ count: number; fileName: string } | null>(null);
+  const [showExtractedTable, setShowExtractedTable] = useState(false);
+  const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -319,6 +321,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
       }));
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
+      setExtractedRawData(d);
+      setShowExtractedTable(false);
     } catch (err: any) {
       setError('Could not extract from document — please fill in manually.');
     } finally {
@@ -551,17 +555,72 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
-                {extractionBanner && (
-                  <div className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-lg -mt-1">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 size={13} className="text-green-500 flex-none" />
-                      <span className="text-xs text-green-700 font-medium">
-                        {extractionBanner.count} fields extracted from {extractionBanner.fileName}
-                      </span>
+                {extractionBanner && (() => {
+                  const FIELD_LABELS: Record<string, string> = {
+                    address: 'Street Address', city: 'City', state: 'State', zipCode: 'ZIP',
+                    listPrice: 'List Price', contractPrice: 'Contract Price', mlsNumber: 'MLS #',
+                    contractDate: 'Contract Date', closingDate: 'Closing Date',
+                    inspectionDeadline: 'Inspection Deadline', loanCommitmentDate: 'Loan Commitment Date',
+                    possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
+                    earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
+                    loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
+                    buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
+                    titleCompany: 'Title Company', loanOfficer: 'Loan Officer',
+                    transactionType: 'Transaction Type', propertyType: 'Property Type',
+                    asIsSale: 'As-Is Sale', inspectionWaived: 'Inspection Waived',
+                    homeWarranty: 'Home Warranty', homeWarrantyCompany: 'Warranty Company',
+                  };
+                  const rows = extractedRawData
+                    ? Object.entries(FIELD_LABELS)
+                        .map(([key, label]) => ({ label, value: extractedRawData[key] }))
+                        .filter(r => r.value !== undefined && r.value !== null && r.value !== '')
+                    : [];
+                  return (
+                    <div className="rounded-lg border border-green-200 bg-green-50 -mt-1 overflow-hidden">
+                      <div className="flex items-center justify-between p-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={13} className="text-green-500 flex-none" />
+                          <span className="text-xs text-green-700 font-medium">
+                            {extractionBanner.count} fields extracted from {extractionBanner.fileName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={e => { e.stopPropagation(); setShowExtractedTable(v => !v); }}
+                            className="text-xs text-green-700 font-semibold border border-green-300 bg-white hover:bg-green-100 rounded px-2 py-0.5 transition-colors"
+                          >
+                            {showExtractedTable ? 'Hide Table' : 'View Table'}
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setExtractionBanner(null); setShowExtractedTable(false); }} className="btn btn-ghost btn-xs p-0 min-h-0 h-auto ml-1"><X size={12} /></button>
+                        </div>
+                      </div>
+                      {showExtractedTable && (
+                        <div className="border-t border-green-200 bg-white max-h-64 overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-green-50 sticky top-0">
+                              <tr>
+                                <th className="text-left px-3 py-1.5 text-green-800 font-semibold w-2/5">Field</th>
+                                <th className="text-left px-3 py-1.5 text-green-800 font-semibold">Extracted Value</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.length === 0 ? (
+                                <tr><td colSpan={2} className="px-3 py-3 text-center text-base-content/40">No data extracted</td></tr>
+                              ) : rows.map((row, i) => (
+                                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-green-50/40'}>
+                                  <td className="px-3 py-1.5 text-base-content/60 font-medium">{row.label}</td>
+                                  <td className="px-3 py-1.5 text-base-content font-semibold">
+                                    {typeof row.value === 'boolean' ? (row.value ? 'Yes' : 'No') : String(row.value)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
-                    <button onClick={e => { e.stopPropagation(); setExtractionBanner(null); }} className="btn btn-ghost btn-xs p-0 min-h-0 h-auto"><X size={12} /></button>
-                  </div>
-                )}
+                  );
+                })()}
                 <div className="flex items-center gap-2 text-xs text-base-content/30">
                   <div className="flex-1 h-px bg-base-300" />
                   <span>or enter manually</span>
