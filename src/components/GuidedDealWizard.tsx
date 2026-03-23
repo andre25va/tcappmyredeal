@@ -399,7 +399,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+        introEmailBody: (() => {
+          const ac = agentClients?.find(c => c.id === form.agentClientId);
+          const agentBlock = ac
+            ? `\n\nRepresenting Agent: ${ac.fullName}${ac.phone ? `\nPhone: ${ac.phone}` : ''}${ac.email ? `\nEmail: ${ac.email}` : ''}`
+            : '';
+          return `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}${agentBlock}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`;
+        })(),
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -1799,7 +1805,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+                                    introEmailBody: (() => {
+                                      const ac = agentClients?.find(a => a.id === form.agentClientId);
+                                      const agentBlock = ac
+                                        ? `\n\nRepresenting Agent: ${ac.fullName}${ac.phone ? `\nPhone: ${ac.phone}` : ''}${ac.email ? `\nEmail: ${ac.email}` : ''}`
+                                        : '';
+                                      return `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}${agentBlock}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`;
+                                    })(),
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');
