@@ -152,7 +152,11 @@ export const WorkspaceEmailTemplate: React.FC<Props> = ({ deal, emailTemplates, 
 
   const template = emailTemplates.find(t => t.id === selectedTemplateId) ?? null;
 
-  const populatedSubject = template ? populateTemplate(template.subject, deal, complianceTemplates) : '';
+  const rawSubject = template ? populateTemplate(template.subject, deal, complianceTemplates) : '';
+  const addr = deal.propertyAddress?.trim() ?? '';
+  const populatedSubject = rawSubject && addr && !rawSubject.includes(addr)
+    ? `${addr} – ${rawSubject}`
+    : rawSubject || addr;
   const populatedBody = template ? populateTemplate(template.body, deal, complianceTemplates) : '';
 
   const notifEmails = deal.contacts

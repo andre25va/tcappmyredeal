@@ -655,13 +655,24 @@ export default function WorkspaceEmailCompose({
     loadAgentTeamCC();
   }, [deal.id]);
 
+  // Helper: prefix address to subject if not already present
+  const withAddress = useCallback(
+    (rawSubject: string) => {
+      const addr = deal.propertyAddress?.trim();
+      if (!addr) return rawSubject;
+      if (rawSubject.includes(addr)) return rawSubject;
+      return rawSubject.trim() ? `${addr} – ${rawSubject}` : addr;
+    },
+    [deal.propertyAddress]
+  );
+
   // Populate template when selected
   const handleSelectTemplate = useCallback(
     (templateId: string) => {
       setSelectedTemplateId(templateId);
       const tpl = emailTemplates.find((t) => t.id === templateId);
       if (tpl) {
-        setSubject(populateTemplate(tpl.subject, deal, complianceTemplates));
+        setSubject(withAddress(populateTemplate(tpl.subject, deal, complianceTemplates)));
         setBodyText(populateTemplate(tpl.body, deal, complianceTemplates));
         // Handle confirmation buttons
         if (tpl.buttons && tpl.buttons.length > 0) {
@@ -681,7 +692,7 @@ export default function WorkspaceEmailCompose({
   const handleSelectComplianceTemplate = useCallback(
     (tpl: ComplianceTemplate) => {
       setSelectedTemplateId('');
-      setSubject(populateTemplate(tpl.name || '', deal, complianceTemplates));
+      setSubject(withAddress(populateTemplate(tpl.name || '', deal, complianceTemplates)));
       setBodyText(populateTemplate(tpl.description || '', deal, complianceTemplates));
       setConfirmations({});
     },
