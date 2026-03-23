@@ -85,6 +85,7 @@ export const propertyTypeLabel = (p: PropertyType): string => ({
 export const roleLabel = (r: ContactRole): string => ({
   'agent': 'Agent',
   'agent-client': 'Agent Client',
+  'client': 'Client',
   'buyer': 'Buyer',
   'seller': 'Seller',
   'lender': 'Lender',
@@ -99,6 +100,7 @@ export const roleLabel = (r: ContactRole): string => ({
 export const roleBadge = (r: ContactRole): string => ({
   'agent': 'badge-primary',
   'agent-client': 'badge-accent',
+  'client': 'badge-accent',
   'buyer': 'badge-info',
   'seller': 'badge-secondary',
   'lender': 'badge-warning',
@@ -113,6 +115,7 @@ export const roleBadge = (r: ContactRole): string => ({
 export const roleAvatarBg = (r: ContactRole): string => ({
   'agent': 'bg-primary/20 text-primary',
   'agent-client': 'bg-accent/20 text-accent',
+  'client': 'bg-accent/20 text-accent',
   'buyer': 'bg-info/20 text-info',
   'seller': 'bg-secondary/20 text-secondary',
   'lender': 'bg-warning/20 text-warning',

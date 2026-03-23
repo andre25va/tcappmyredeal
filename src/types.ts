@@ -316,6 +316,9 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
+  pin?: string;
+  deleted_at?: string;
+  deleted_by?: string;
 }
 
 export interface OrgMemberInfo {
@@ -912,4 +915,44 @@ export interface AgentTeamMember {
   notifyEmail: boolean;
   notifySms: boolean;
   createdAt?: string;
+}
+
+export interface MilestoneNotificationSetting {
+  id?: string;
+  milestone: DealMilestone;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CustomMilestone {
+  id: string;
+  agentContactId?: string;
+  name: string;
+  description?: string;
+  insertAfter: string;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  agentName?: string;
 }

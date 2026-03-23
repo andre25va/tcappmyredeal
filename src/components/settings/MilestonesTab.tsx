@@ -452,7 +452,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
                   <p className="font-semibold text-sm text-base-content">{cm.name}</p>
                   {cm.description && <p className="text-xs text-base-content/60 mt-0.5">{cm.description}</p>}
                   <p className="text-xs text-base-content/40 mt-1">
-                    Inserted after: <span className="font-medium text-base-content/60">{MILESTONE_LABELS[cm.insertAfter]}</span>
+                    Inserted after: <span className="font-medium text-base-content/60">{MILESTONE_LABELS[cm.insertAfter as DealMilestone] ?? cm.insertAfter}</span>
                     {cm.agentName && <> &middot; Agent: <span className="font-medium text-base-content/60">{cm.agentName}</span></>}
                   </p>
                   <div className="flex gap-1 mt-2">
@@ -464,7 +464,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
                 <div className="flex gap-1 flex-none">
                   <button onClick={() => {
                     setEditingCustomId(cm.id);
-                    setCustomForm({ name: cm.name, description: cm.description || '', insertAfter: cm.insertAfter, agentContactId: cm.agentContactId || '', notifFields: { notifyBuyerAgent: cm.notifyBuyerAgent, notifySellerAgent: cm.notifySellerAgent, notifyLender: cm.notifyLender, notifyTitle: cm.notifyTitle, notifyBuyer: cm.notifyBuyer, notifySeller: cm.notifySeller, sendEmail: cm.sendEmail, sendSms: cm.sendSms, emailSubject: cm.emailSubject || '', emailBody: cm.emailBody || '', smsBody: cm.smsBody || '' } });
+                    setCustomForm({ name: cm.name, description: cm.description || '', insertAfter: cm.insertAfter as DealMilestone, agentContactId: cm.agentContactId || '', notifFields: { notifyBuyerAgent: cm.notifyBuyerAgent, notifySellerAgent: cm.notifySellerAgent, notifyLender: cm.notifyLender, notifyTitle: cm.notifyTitle, notifyBuyer: cm.notifyBuyer, notifySeller: cm.notifySeller, sendEmail: cm.sendEmail, sendSms: cm.sendSms, emailSubject: cm.emailSubject || '', emailBody: cm.emailBody || '', smsBody: cm.smsBody || '' } });
                     setCustomSaveError(null); setShowCustomForm(true);
                   }} className="btn btn-ghost btn-xs btn-square" title="Edit"><Pencil size={13} /></button>
                   <button onClick={() => setDeleteConfirmId(cm.id)} className="btn btn-ghost btn-xs btn-square text-error" title="Delete"><Trash2 size={13} /></button>
