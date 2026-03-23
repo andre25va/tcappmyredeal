@@ -342,14 +342,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       supabase
         .from('contacts')
         .select('*')
+        .in('contact_type', ['title', 'escrow'])
         .is('deleted_at', null)
         .order('full_name')
         .then(({ data }) => {
           if (data) {
             const mapped = data.map((c: any) => ({
               id: c.id, fullName: c.full_name || '', company: c.company || '',
-              email: c.email || '', phone: c.phone || '', role: c.role || '',
-              isClient: c.is_client || false,
+              email: c.email || '', phone: c.phone || '', role: c.contact_type || '',
             } as unknown as ContactRecord));
             setAllContacts(mapped);
           }
@@ -380,8 +380,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         company: newTitleContact.company.trim() || null,
         email: newTitleContact.email.trim() || null,
         phone: newTitleContact.phone.trim() || null,
-        role: 'title',
-        is_client: false,
+        contact_type: 'title',
       });
       if (error) throw error;
       const created = {
@@ -389,7 +388,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         company: newTitleContact.company.trim(),
         email: newTitleContact.email.trim(),
         phone: newTitleContact.phone.trim(),
-        role: 'title', isClient: false,
+        role: 'title',
       } as unknown as ContactRecord;
       setAllContacts(prev => [...prev, created]);
       setForm(p => ({ ...p, titleContactId: id, titleContactEmail: created.email || '' }));
