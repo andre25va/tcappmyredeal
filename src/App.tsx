@@ -351,6 +351,11 @@ function AppInner() {
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
     setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
+    // Deselect the deal so the workspace doesn't keep showing an archived deal
+    if (selectedId === dealId) {
+      setSelectedId(null);
+      setTxPanel('list');
+    }
   };
 
   const handleRestoreDeal = (dealId: string) => {
