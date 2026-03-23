@@ -16,9 +16,9 @@ export const formatPhone = (raw: string): string => {
 /** Live-formats phone as user types — strips non-digits, builds partial +1-xxx-xxx-xxxx */
 export const formatPhoneLive = (raw: string): string => {
   const digits = raw.replace(/\D/g, '');
-  // Strip leading country code '1' whenever there are more digits after it
-  // (fixes re-capturing the '1' from the '+1-' prefix on each keystroke)
-  const d = digits.startsWith('1') && digits.length > 1 ? digits.slice(1) : digits;
+  // Always strip leading country code '1' — NANP area codes never start with 1,
+  // so any leading 1 is the country code. This also fixes the sticky +1- backspace bug.
+  const d = digits.startsWith('1') ? digits.slice(1) : digits;
   if (d.length === 0) return '';
   if (d.length <= 3) return `+1-${d}`;
   if (d.length <= 6) return `+1-${d.slice(0,3)}-${d.slice(3)}`;
