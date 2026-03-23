@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
@@ -344,6 +345,7 @@ function TeamMemberRow({ member, isEditing, onEdit, onCancelEdit, onSave, onDele
 }
 
 export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted, onContactUpdated }: Props) {
+  const { profile } = useAuth();
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -367,6 +369,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
+  const [deleteNameConfirm, setDeleteNameConfirm] = useState('');
 
   // Onboarding wizard
   const [onboardingContact, setOnboardingContact] = useState<ContactRecord | null>(null);
@@ -830,6 +833,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    if (deleteNameConfirm !== profile?.name) return;
     try {
       await deleteContactRecord(deleteTarget.id);
       await refresh();
@@ -838,6 +842,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       console.error('Delete failed:', err);
     }
     setDeleteTarget(null);
+    setDeleteNameConfirm('');
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -982,7 +987,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       <button className="btn btn-ghost btn-xs text-purple-500" onClick={() => setOnboardingContact(c)} title="Open Onboarding Wizard">
                         <Sparkles size={13} />
                       </button>
-                      <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(c)} title="Delete">
+                      <button className="btn btn-ghost btn-xs text-error" onClick={() => { setDeleteTarget(c); setDeleteNameConfirm(''); }} title="Delete">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -1488,16 +1493,78 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         </div>
       )}
 
-      {/* Delete confirmation */}
-      <ConfirmModal
-        isOpen={!!deleteTarget}
-        title="Delete Contact"
-        message={deleteTarget ? `Are you sure you want to delete "${deleteTarget.fullName}"? This will also remove their licenses and MLS memberships.` : ''}
-        confirmLabel="Delete"
-        confirmClass="btn-error"
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
+      {/* Delete confirmation — requires staff name retype */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md">
+            {/* Header */}
+            <div className="flex items-center gap-3 p-5 border-b border-base-300">
+              <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-error" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">Delete Contact</h3>
+                <p className="text-xs text-base-content/50">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-base-content/80">
+                You are about to permanently delete{' '}
+                <span className="font-semibold text-base-content">"{deleteTarget.fullName}"</span>.
+                This will also remove their licenses and MLS memberships.
+              </p>
+
+              {/* Staff name display (greyed out) */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide block mb-1">
+                  Authorized by
+                </label>
+                <div className="input input-bordered w-full flex items-center bg-base-200 text-base-content/40 text-sm cursor-not-allowed select-none rounded-lg px-3 py-2">
+                  {profile?.name ?? 'Staff Member'}
+                </div>
+              </div>
+
+              {/* Staff must retype their name */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">
+                  Type your name to confirm
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full text-sm"
+                  placeholder={profile?.name ?? 'Your name'}
+                  value={deleteNameConfirm}
+                  onChange={e => setDeleteNameConfirm(e.target.value)}
+                  autoFocus
+                />
+                {deleteNameConfirm.length > 0 && deleteNameConfirm !== profile?.name && (
+                  <p className="text-xs text-error mt-1">Name doesn't match — type exactly: {profile?.name}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 px-5 pb-5">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setDeleteTarget(null); setDeleteNameConfirm(''); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-error btn-sm"
+                disabled={deleteNameConfirm !== profile?.name}
+                onClick={handleDelete}
+              >
+                <Trash2 size={14} />
+                Delete Contact
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Send Onboarding Modal */}
       {sendOnboardingTarget && (
