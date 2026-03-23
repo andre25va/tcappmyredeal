@@ -61,6 +61,13 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const agentName  = agentClientRecord?.fullName || '';
   const agentPhone = agentClientRecord?.phone || '';
   const agentEmail = agentClientRecord?.email || '';
+  // TC signature: use team name (company field) if set, otherwise agent name
+  const agentTeamName = agentClientRecord?.company?.trim();
+  const tcTeamSignature = agentTeamName
+    ? `Transaction Coordinating Team for ${agentTeamName}`
+    : agentName
+    ? `TC Team for ${agentName}`
+    : 'TC Team';
 
   // Client name — buyer(s) or seller(s) we represent
   const clientContacts = (deal.contacts || []).filter(c =>
@@ -92,6 +99,10 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellers = deal.contacts.filter(c => c.role === 'seller');
   const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
+  // Title contacts split by their stored side field
+  const allTitleContacts = deal.contacts.filter(c => c.role === 'title');
+  const sellSideTitleContacts = allTitleContacts.filter(c => !c.side || c.side === 'sell' || c.side === 'both');
+  const buySideTitleContacts  = allTitleContacts.filter(c => c.side === 'buy'  || c.side === 'both');
   const sellerLines: string[] = ['Sellers Side', ''];
   // Names + company only — no contact details in outgoing templates
   if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
@@ -101,6 +112,9 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
   if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
+  if (sellSideTitleContacts.length > 0) {
+    sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+  }
   const sellersSide = sellerLines.join('\n');
 
   // Build Buyers Side block
@@ -115,6 +129,9 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
   if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
+  if (buySideTitleContacts.length > 0) {
+    buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+  }
   const buyersSide = buyerLines.join('\n');
 
   // Inspection deadline: contractDate + inspectionPeriodDays from compliance template
@@ -154,6 +171,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{agentPhone\}\}/g, agentPhone || '[Agent Phone]')
     .replace(/\{\{agentEmail\}\}/g, agentEmail || '[Agent Email]')
     .replace(/\{\{clientName\}\}/g, clientName || '[Client Name]')
+    .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSignature)
 
     // Future date fields — populated once new date fields are added to deals
     .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')

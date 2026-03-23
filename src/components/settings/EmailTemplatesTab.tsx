@@ -19,6 +19,7 @@ const MERGE_TAGS = [
   { tag: '{{agentPhone}}', desc: 'Representing agent phone number' },
   { tag: '{{agentEmail}}', desc: 'Representing agent email address' },
   { tag: '{{clientName}}', desc: 'Client name (buyer or seller we represent)' },
+  { tag: '{{tcTeamSignature}}', desc: 'TC sign-off: "TC Team for [Agent]" or "Transaction Coordinating Team for [Team Name]"' },
   { tag: '{{agents}}', desc: 'Auto-populated agent info block' },
   { tag: '{{contacts}}', desc: 'Auto-populated contact list' },
   { tag: '{{pendingDocs}}', desc: 'Pending document requests' },
