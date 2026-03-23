@@ -251,7 +251,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
-    listingCommission: '', listingCommissionPct: '', buyerCommission: '', buyerCommissionPct: '', tcFee: '',
+    clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -1312,65 +1312,31 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <input className="input input-bordered w-full no-spinner" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
                 </div>
 
-                {/* Commission Fields */}
+                {/* Client Agent Commission */}
                 <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Commissions</p>
-                  <div className="space-y-3">
-                    {/* Listing Commission */}
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Client Agent Commission</p>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Listing Commission</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-base-content/40 mb-1 block">$ Amount</label>
-                          <input className="input input-bordered w-full no-spinner" value={form.listingCommission}
-                            onChange={e => {
-                              const amt = e.target.value;
-                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                              const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
-                              setForm(p => ({ ...p, listingCommission: amt, listingCommissionPct: pct }));
-                            }}
-                            placeholder="0" type="number" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-base-content/40 mb-1 block">% of Purchase Price</label>
-                          <input className="input input-bordered w-full no-spinner" value={form.listingCommissionPct}
-                            onChange={e => {
-                              const pct = e.target.value;
-                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                              const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
-                              setForm(p => ({ ...p, listingCommissionPct: pct, listingCommission: amt }));
-                            }}
-                            placeholder="0.00" type="number" step="0.01" />
-                        </div>
-                      </div>
+                      <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.clientAgentCommission}
+                        onChange={e => {
+                          const amt = e.target.value;
+                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
+                          setForm(p => ({ ...p, clientAgentCommission: amt, clientAgentCommissionPct: pct }));
+                        }}
+                        placeholder="0" type="number" />
                     </div>
-                    {/* Buyer Commission */}
                     <div>
-                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Buyer Commission</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-base-content/40 mb-1 block">$ Amount</label>
-                          <input className="input input-bordered w-full no-spinner" value={form.buyerCommission}
-                            onChange={e => {
-                              const amt = e.target.value;
-                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                              const pct = price > 0 && amt ? ((parseFloat(amt) / price) * 100).toFixed(2) : '';
-                              setForm(p => ({ ...p, buyerCommission: amt, buyerCommissionPct: pct }));
-                            }}
-                            placeholder="0" type="number" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-base-content/40 mb-1 block">% of Purchase Price</label>
-                          <input className="input input-bordered w-full no-spinner" value={form.buyerCommissionPct}
-                            onChange={e => {
-                              const pct = e.target.value;
-                              const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                              const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
-                              setForm(p => ({ ...p, buyerCommissionPct: pct, buyerCommission: amt }));
-                            }}
-                            placeholder="0.00" type="number" step="0.01" />
-                        </div>
-                      </div>
+                      <label className="text-xs text-base-content/40 mb-1 block">Commission % of Purchase Price</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.clientAgentCommissionPct}
+                        onChange={e => {
+                          const pct = e.target.value;
+                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const amt = price > 0 && pct ? ((parseFloat(pct) / 100) * price).toFixed(0) : '';
+                          setForm(p => ({ ...p, clientAgentCommissionPct: pct, clientAgentCommission: amt }));
+                        }}
+                        placeholder="0.00" type="number" step="0.01" />
                     </div>
                   </div>
                 </div>
