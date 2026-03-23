@@ -266,6 +266,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
   const [splitDone, setSplitDone] = useState(false);
+  const [mlsFetching, setMlsFetching] = useState(false);
+  const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
   const [clientSearch, setClientSearch] = useState('');
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
@@ -318,6 +320,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const fetchMlsNumber = async () => {
+    if (!form.address.trim() || !form.city.trim()) return;
+    setMlsFetching(true);
+    setMlsFetchStatus('');
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-mls-number`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          address: form.address.trim(),
+          city: form.city.trim(),
+          state: form.state.trim(),
+          zipCode: form.zipCode.trim(),
+          ...(form.secondaryAddress?.trim() ? { secondaryAddress: form.secondaryAddress.trim() } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (data.found && data.mlsNumber) {
+        setForm(p => ({ ...p, mlsNumber: data.mlsNumber }));
+        setMlsFetchStatus('found');
+      } else {
+        setMlsFetchStatus('not_found');
+      }
+    } catch {
+      setMlsFetchStatus('not_found');
+    } finally {
+      setMlsFetching(false);
+    }
+  };
 
   const checkMlsMismatch = (agentId: string, mlsBoard: string) => {
     if (!agentId || !mlsBoard || mlsBoard === 'Other') return;
@@ -1001,7 +1036,40 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">MLS Number</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.mlsNumber} onChange={f('mlsNumber')} placeholder="000000" />
+                    <div className="flex gap-2 items-center">
+                      <input
+                        className="input input-bordered w-full no-spinner"
+                        value={form.mlsNumber}
+                        onChange={e => {
+                          setMlsFetchStatus('');
+                          setForm(p => ({ ...p, mlsNumber: e.target.value }));
+                        }}
+                        placeholder="000000"
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline whitespace-nowrap flex-shrink-0"
+                        disabled={mlsFetching || !form.address.trim() || !form.city.trim()}
+                        onClick={fetchMlsNumber}
+                        title={!form.address.trim() || !form.city.trim() ? 'Enter address first' : 'Search for MLS # using AI'}
+                      >
+                        {mlsFetching ? (
+                          <span className="loading loading-spinner loading-xs" />
+                        ) : mlsFetchStatus === 'found' ? (
+                          <span className="text-success">✓ Found</span>
+                        ) : mlsFetchStatus === 'not_found' ? (
+                          <span className="text-error">Not found</span>
+                        ) : (
+                          'Fetch MLS #'
+                        )}
+                      </button>
+                    </div>
+                    {mlsFetchStatus === 'not_found' && (
+                      <p className="text-xs text-error mt-1">Couldn't find it — enter manually</p>
+                    )}
+                    {mlsFetchStatus === 'found' && form.secondaryAddress?.trim() && (
+                      <p className="text-xs text-success mt-1">Searched both unit addresses</p>
+                    )}
                   </div>
                 </div>
                 {form.isHeartlandMls && (
