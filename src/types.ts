@@ -316,6 +316,7 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
+  pin?: string; // 4-digit Client Portal PIN
 }
 
 export interface OrgMemberInfo {
@@ -899,7 +900,7 @@ export interface InboundMessage {
   createdAt: string;
 }
 
-// ── Agent Team Members ──────────────────────────────────────────
+// ── Agent Team Members ──────────────────────────────────────────────────────
 export interface AgentTeamMember {
   id: string;
   agentContactId: string;

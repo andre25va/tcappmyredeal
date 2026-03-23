@@ -814,6 +814,7 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     defaultInstructions: row.default_instructions || '',
     briefingEnabled: row.briefing_enabled ?? false,
     preferredLanguage: (row.preferred_language || 'en') as 'en' | 'es',
+    pin: row.pin || undefined,
   }));
 }
 
@@ -829,6 +830,7 @@ export async function saveContactRecord(contact: {
   notes?: string;
   defaultInstructions?: string;
   preferredLanguage?: 'en' | 'es';
+  pin?: string;
 }): Promise<void> {
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
   const { error } = await supabase.from('contacts').upsert({
@@ -844,6 +846,7 @@ export async function saveContactRecord(contact: {
     notes: contact.notes || null,
     default_instructions: contact.defaultInstructions || null,
     preferred_language: contact.preferredLanguage || 'en',
+    pin: contact.pin || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;
@@ -1363,7 +1366,7 @@ export async function buildClientDealSummary(dealId: string): Promise<string> {
   const milestone = milestoneLabels[data.pipeline_stage] || data.pipeline_stage || 'Unknown';
   const closing = data.closing_date ? new Date(data.closing_date).toLocaleDateString() : 'TBD';
 
-  return `📋 ${address}${cityState ? `, ${cityState}` : ''}\n📌 Status: ${milestone}\n📅 Closing: ${closing}`;
+  return `Property: ${address}${cityState ? `, ${cityState}` : ''}\nStatus: ${milestone}\nClosing: ${closing}`;
 }
 
 // ── SCHEDULED EMAILS ────────────────────────────────────────────────────────
