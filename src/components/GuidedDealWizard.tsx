@@ -253,7 +253,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
-    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: 'sell' as 'buy' | 'sell',
+    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '',
     legalDescription: '',
   });
   const [error, setError] = useState('');
@@ -728,7 +728,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           role: ((tc as any).role || 'title') as any,
           company: (tc as any).company || '',
           inNotificationList: false,
-          side: form.titleSide,
+          side: form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell'),
         }];
       })(),
       notes: form.specialNotes.trim(),
@@ -1733,22 +1733,30 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <p className="text-sm text-base-content/60">Select the title or escrow company for this deal. You can also send them an intro email right now.</p>
 
-                  {/* Side selector */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-base-content/70">Assign to:</span>
-                    <div className="join">
-                      <button
-                        type="button"
-                        className={`join-item btn btn-sm ${form.titleSide === 'buy' ? 'btn-primary' : 'btn-outline'}`}
-                        onClick={() => setForm(p => ({ ...p, titleSide: 'buy' }))}
-                      >Buy Side</button>
-                      <button
-                        type="button"
-                        className={`join-item btn btn-sm ${form.titleSide === 'sell' ? 'btn-primary' : 'btn-outline'}`}
-                        onClick={() => setForm(p => ({ ...p, titleSide: 'sell' }))}
-                      >Sell Side</button>
-                    </div>
-                  </div>
+                  {/* Side selector — auto-matches transaction side from step 3 */}
+                  {(() => {
+                    const effectiveSide = form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-base-content/70">Assign to:</span>
+                        <div className="join">
+                          <button
+                            type="button"
+                            className={`join-item btn btn-sm ${effectiveSide === 'buy' ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={() => setForm(p => ({ ...p, titleSide: 'buy' }))}
+                          >Buy Side</button>
+                          <button
+                            type="button"
+                            className={`join-item btn btn-sm ${effectiveSide === 'sell' ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={() => setForm(p => ({ ...p, titleSide: 'sell' }))}
+                          >Sell Side</button>
+                        </div>
+                        {!form.titleSide && (
+                          <span className="text-xs text-base-content/40 italic">auto-matched from transaction side</span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Contact search / selected card */}
                   {selectedTitleContact ? (
