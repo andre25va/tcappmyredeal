@@ -399,13 +399,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: (() => {
-          const ac = agentClients?.find(c => c.id === form.agentClientId);
-          const agentBlock = ac
-            ? `\n\nRepresenting Agent: ${ac.fullName}${ac.phone ? `\nPhone: ${ac.phone}` : ''}${ac.email ? `\nEmail: ${ac.email}` : ''}`
-            : '';
-          return `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}${agentBlock}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`;
-        })(),
+        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -422,7 +416,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const bodyLines = form.introEmailBody.split('\n');
+      // Resolve merge tags before sending
+      const ac = agentClients?.find(c => c.id === form.agentClientId);
+      const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+      const resolvedBody = form.introEmailBody
+        .replace(/\{\{address\}\}/g, form.address || '')
+        .replace(/\{\{city\}\}/g, form.city || '')
+        .replace(/\{\{state\}\}/g, form.state || '')
+        .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
+        .replace(/\{\{agentPhone\}\}/g, ac?.phone || '')
+        .replace(/\{\{agentEmail\}\}/g, ac?.email || '');
+      const bodyLines = resolvedBody.split('\n');
       const bodyHtml = '<p>' + bodyLines.map(l => l.trim() === '' ? '</p><p>' : l).join('<br/>') + '</p>';
       const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
@@ -1805,13 +1809,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: (() => {
-                                      const ac = agentClients?.find(a => a.id === form.agentClientId);
-                                      const agentBlock = ac
-                                        ? `\n\nRepresenting Agent: ${ac.fullName}${ac.phone ? `\nPhone: ${ac.phone}` : ''}${ac.email ? `\nEmail: ${ac.email}` : ''}`
-                                        : '';
-                                      return `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}${agentBlock}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`;
-                                    })(),
+                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');

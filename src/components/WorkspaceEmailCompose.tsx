@@ -50,10 +50,22 @@ function addBusinessDays(dateStr: string, days: number): string {
 }
 
 // Replace {{merge}} tags in a string with deal data
-function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
+function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[], contactRecords?: import('../types').ContactRecord[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
 
+
+  // Representing agent (agentClient) — for {{agentName}}, {{agentPhone}}, {{agentEmail}}
+  const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
+  const agentName  = agentClientRecord?.fullName || agentClientRecord?.name || '';
+  const agentPhone = agentClientRecord?.phone || '';
+  const agentEmail = agentClientRecord?.email || '';
+
+  // Client name — buyer(s) or seller(s) we represent
+  const clientContacts = (deal.contacts || []).filter(c =>
+    deal.transactionType === 'buyer' ? c.role === 'buyer' : c.role === 'seller'
+  );
+  const clientName = clientContacts.map(c => c.name).filter(Boolean).join(', ');
 
   const agentLines: string[] = [];
   // Names only — no phone or email in outgoing templates
@@ -137,6 +149,10 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
     .replace(/\{\{buyersSide\}\}/g, buyersSide)
+    .replace(/\{\{agentName\}\}/g, agentName || '[Agent Name]')
+    .replace(/\{\{agentPhone\}\}/g, agentPhone || '[Agent Phone]')
+    .replace(/\{\{agentEmail\}\}/g, agentEmail || '[Agent Email]')
+    .replace(/\{\{clientName\}\}/g, clientName || '[Client Name]')
 
     // Future date fields — populated once new date fields are added to deals
     .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')
@@ -211,7 +227,12 @@ function DealContactPicker({
   };
 
   for (const c of deal.contacts || []) {
-    const side = roleSideMap[c.role] ?? 'buy';
+    // Use the contact's stored side if available; fall back to role-based default
+    const storedSide = (c as any).side as 'buy' | 'sell' | 'both' | undefined;
+    const side: 'buy' | 'sell' =
+      storedSide === 'sell' ? 'sell'
+      : storedSide === 'buy' ? 'buy'
+      : roleSideMap[c.role] ?? 'buy';
     const entry: PickerEntry = {
       key: c.id || c.name,
       name: c.name,
@@ -219,8 +240,14 @@ function DealContactPicker({
       roleLabel: roleDisplayMap[c.role] || roleLabel(c.role),
       side,
     };
-    if (side === 'buy') buySide.push(entry);
-    else sellSide.push(entry);
+    if (storedSide === 'both') {
+      buySide.push({ ...entry, side: 'buy' });
+      sellSide.push({ ...entry, side: 'sell' });
+    } else if (side === 'buy') {
+      buySide.push(entry);
+    } else {
+      sellSide.push(entry);
+    }
   }
 
   const renderEntry = (entry: PickerEntry) => {
@@ -581,6 +608,7 @@ interface Props {
   emailTemplates: EmailTemplate[];
   complianceTemplates?: ComplianceTemplate[];
   currentUser?: string;
+  contactRecords?: import('../types').ContactRecord[];
 }
 
 export default function WorkspaceEmailCompose({
@@ -588,6 +616,7 @@ export default function WorkspaceEmailCompose({
   emailTemplates,
   complianceTemplates,
   currentUser,
+  contactRecords,
 }: Props) {
   // Template selection
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -672,8 +701,8 @@ export default function WorkspaceEmailCompose({
       setSelectedTemplateId(templateId);
       const tpl = emailTemplates.find((t) => t.id === templateId);
       if (tpl) {
-        setSubject(withAddress(populateTemplate(tpl.subject, deal, complianceTemplates)));
-        setBodyText(populateTemplate(tpl.body, deal, complianceTemplates));
+        setSubject(withAddress(populateTemplate(tpl.subject, deal, complianceTemplates, contactRecords)));
+        setBodyText(populateTemplate(tpl.body, deal, complianceTemplates, contactRecords));
         // Handle confirmation buttons
         if (tpl.buttons && tpl.buttons.length > 0) {
           const c: Record<string, boolean> = {};
@@ -692,8 +721,8 @@ export default function WorkspaceEmailCompose({
   const handleSelectComplianceTemplate = useCallback(
     (tpl: ComplianceTemplate) => {
       setSelectedTemplateId('');
-      setSubject(withAddress(populateTemplate(tpl.name || '', deal, complianceTemplates)));
-      setBodyText(populateTemplate(tpl.description || '', deal, complianceTemplates));
+      setSubject(withAddress(populateTemplate(tpl.name || '', deal, complianceTemplates, contactRecords)));
+      setBodyText(populateTemplate(tpl.description || '', deal, complianceTemplates, contactRecords));
       setConfirmations({});
     },
     [deal]
