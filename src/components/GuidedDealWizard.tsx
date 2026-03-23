@@ -715,7 +715,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         email: agentClient.email || '',
         isOurClient: true,
       } : undefined,
-      contacts: [],
+      contacts: (() => {
+        if (!form.titleContactId) return [];
+        const tc = allContacts.find(c => c.id === form.titleContactId);
+        if (!tc) return [];
+        return [{
+          id: tc.id,
+          name: (tc as any).fullName || '',
+          email: (tc as any).email || '',
+          phone: (tc as any).phone || '',
+          role: ((tc as any).role || 'title') as any,
+          company: (tc as any).company || '',
+          inNotificationList: false,
+        }];
+      })(),
       notes: form.specialNotes.trim(),
       loanType: form.loanType || undefined,
       loanAmount: parseFloat(form.loanAmount) || undefined,
