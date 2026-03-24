@@ -5,7 +5,7 @@ import {
   Home, DollarSign, Scale, ClipboardCheck,
   ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles, ExternalLink, Bell, UserPlus,
 } from 'lucide-react';
-import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership, AgentTeamMember } from '../types';
+import { ContactRecord, ContactRole, ContactLicense, ContactMlsMembership, AgentTeamMember, Organization } from '../types';
 import {
   loadContactsFull, saveContactRecord, deleteContactRecord,
   upsertContactLicense, deleteContactLicenseRecord,
@@ -13,12 +13,14 @@ import {
   createClientAccountForContact, removeClientAccountForContact,
   syncPhoneChannel,
   getAgentTeamMembers, addAgentTeamMember, updateAgentTeamMember, deleteAgentTeamMember,
+  loadOrganizations,
 } from '../utils/supabaseDb';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 import { ClientOnboardingWizard } from './ClientOnboardingWizard';
 import { CallButton } from './CallButton';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -138,6 +140,7 @@ interface EditForm {
   clientAccountId?: string;
   preferredLanguage: 'en' | 'es';
   teamName: string;
+  orgId: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -178,6 +181,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     clientAccountId: undefined,
     preferredLanguage: 'en',
     teamName: '',
+    orgId: '',
     licenses: [],
     mlsMemberships: [],
   };
@@ -200,6 +204,7 @@ function contactToForm(c: ContactRecord): EditForm {
     clientAccountId: c.clientAccountId,
     preferredLanguage: c.preferredLanguage || 'en',
     teamName: c.teamName ?? '',
+    orgId: c.orgId ?? '',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -356,6 +361,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const { isMasterAdmin, primaryOrgId } = useAuth();
+  const [orgs, setOrgs] = useState<Organization[]>([]);
   const [form, setForm] = useState<EditForm>(blankForm());
   const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
   const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
@@ -507,7 +514,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // ── Load data ────────────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
     try {
-      const data = await loadContactsFull();
+      const [data, orgData] = await Promise.all([loadContactsFull(), loadOrganizations()]);
+      setOrgs(orgData);
       setContacts(data);
     } catch (err) {
       console.error('Failed to load contacts:', err);
@@ -522,7 +530,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   useEffect(() => {
     if (triggerAdd) {
       const role: ContactRole = triggerAdd === 'agent' ? 'agent' : 'other';
-      setForm(blankForm(role));
+      setForm({ ...blankForm(role), orgId: primaryOrgId ?? '' });
       setIsEditing(false);
       setDeletedLicenseIds([]);
       setDeletedMlsIds([]);
@@ -549,6 +557,14 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // ── Filtered contacts (search + category) ──────────────────────────────────
   const filtered = useMemo(() => {
     let list = contacts;
+    // Org scoping
+    if (!isMasterAdmin) {
+      if (primaryOrgId) {
+        list = list.filter(c => c.orgId === primaryOrgId);
+      } else {
+        list = list.filter(c => !c.orgId);
+      }
+    }
     if (activeCategory) {
       const cat = CATEGORIES.find(c => c.key === activeCategory);
       if (cat) list = list.filter(c => cat.roles.includes(c.contactType));
@@ -563,11 +579,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       );
     }
     return list;
-  }, [contacts, activeCategory, search]);
+  }, [contacts, activeCategory, search, isMasterAdmin, primaryOrgId]);
 
   // ── Open modal ─────────────────────────────────────────────────────────────
   const openAdd = () => {
-    setForm(blankForm());
+    setForm({ ...blankForm(), orgId: primaryOrgId ?? '' });
     setIsEditing(false);
     setDeletedLicenseIds([]);
     setDeletedMlsIds([]);
@@ -715,6 +731,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
         preferredLanguage: form.preferredLanguage,
         teamName: form.teamName.trim() || undefined,
+        orgId: form.orgId || undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -1018,6 +1035,19 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Team Name</span></label>
                   <input className="input input-sm input-bordered w-full" placeholder="e.g. Team Alberto Zuniga" value={form.teamName} onChange={e => updateField('teamName', e.target.value)} />
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Collaboration with</span></label>
+                  <select
+                    className="select select-sm select-bordered w-full"
+                    value={form.orgId}
+                    onChange={e => updateField('orgId', e.target.value)}
+                  >
+                    <option value="">myRedeal Staff</option>
+                    {orgs.map(org => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0">

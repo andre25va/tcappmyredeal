@@ -318,6 +318,7 @@ export interface ContactRecord {
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
   teamName?: string;
+  orgId?: string;
   pin?: string;
   deleted_at?: string;
   deleted_by?: string;
