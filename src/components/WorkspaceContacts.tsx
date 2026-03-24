@@ -742,7 +742,7 @@ const AgentClientCard: React.FC<{
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-          {(cr?.company || contact.company) && <span className="text-xs text-gray-400">· {cr?.company || contact.company}</span>}
+          {contact.company && <span className="text-xs text-gray-400">· {contact.company}</span>}
         </div>
       </div>
       <ChevronRight size={14} className="text-gray-300 group-hover:text-primary transition-colors flex-none" />
