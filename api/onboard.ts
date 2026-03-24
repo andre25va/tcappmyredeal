@@ -2,7 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
 const FROM_SMS = process.env.TWILIO_PHONE_NUMBER!;

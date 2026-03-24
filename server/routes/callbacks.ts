@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { AI_CONFIG } from '../../src/config/ai.config';
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
 const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER!;

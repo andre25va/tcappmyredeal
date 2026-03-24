@@ -4,7 +4,7 @@ import { VOICE_CONFIG } from '../../src/config/voice.config';
 import { AI_CONFIG } from '../../src/config/ai.config';
 import { SMS_CONFIG } from '../../src/config/sms.config';
 import { EMAIL_CONFIG } from '../../src/config/email.config';
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID!;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
 const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER!;
