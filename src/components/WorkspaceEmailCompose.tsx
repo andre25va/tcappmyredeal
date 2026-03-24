@@ -105,13 +105,14 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const buySideTitleContacts  = allTitleContacts.filter(c => c.side === 'buy'  || c.side === 'both');
   const sellerLines: string[] = ['Sellers Side', ''];
   // Names + company only — no contact details in outgoing templates
+  // BUG-001 FIX: Fall back to deal.sellerName if no seller contacts with role='seller'
   if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
+  else if (deal.sellerName) sellerLines.push(`  •   Sellers - ${deal.sellerName}`);
   else sellerLines.push('  •   Sellers - [Seller Name]');
+  // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
   if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}`);
-  else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
   if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
-  else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
   if (sellSideTitleContacts.length > 0) {
     sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
   }
@@ -121,14 +122,15 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const buyers = deal.contacts.filter(c => c.role === 'buyer');
   const buyerLines: string[] = ['Buyers Side', ''];
   // Names + company only — no contact details in outgoing templates
+  // BUG-001 FIX: Fall back to deal.buyerName if no buyer contacts with role='buyer'
   if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
+  else if (deal.buyerName) buyerLines.push(`  •   Buyers - ${deal.buyerName}`);
   else buyerLines.push('  •   Buyers - [Buyer Name]');
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}`);
-  else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
+  // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.company ? ` (${deal.buyerAgent.company})` : ''}`);
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
   if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
-  else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
   if (buySideTitleContacts.length > 0) {
     buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
   }
@@ -909,21 +911,9 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      // Edge function already logs to email_send_log — this is a best-effort local duplicate
-      // It must NEVER throw and block the success toast
-      logEmailSend({
-        dealId: deal.id,
-        templateId: selectedTemplate?.id,
-        templateName: selectedTemplate?.name,
-        toAddresses,
-        ccAddresses,
-        subject,
-        bodyHtml,
-        gmailMessageId: data.messageId,
-        gmailThreadId: data.threadId,
-        emailType: 'deal',
-        sentBy: currentUser,
-      }).catch((err) => console.warn('Email log (non-critical):', err));
+      // BUG-003 FIX: Removed duplicate logEmailSend() call.
+      // The Edge function (send-email) already inserts into email_send_log.
+      // Calling it here a second time caused every sent email to be logged twice.
 
       showToast('success', 'Email sent successfully!');
       setHistoryKey((k) => k + 1);
