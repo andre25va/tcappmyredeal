@@ -317,6 +317,7 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
+  teamName?: string;
   pin?: string;
   deleted_at?: string;
   deleted_by?: string;
