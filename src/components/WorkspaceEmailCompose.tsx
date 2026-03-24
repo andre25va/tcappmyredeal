@@ -75,27 +75,46 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellers = deal.contacts.filter(c => c.role === 'seller');
   const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
+  // Title contacts split by their stored side field
+  const allTitleContacts = deal.contacts.filter(c => c.role === 'title');
+  const sellSideTitleContacts = allTitleContacts.filter(c => !c.side || c.side === 'sell' || c.side === 'both');
+  const buySideTitleContacts  = allTitleContacts.filter(c => c.side === 'buy'  || c.side === 'both');
+  // TC signature: use agent company if set, otherwise agent name
+  const ourAgent = deal.buyerAgent?.isOurClient ? deal.buyerAgent : deal.sellerAgent?.isOurClient ? deal.sellerAgent : (deal.buyerAgent || deal.sellerAgent);
+  const agentTeamName = (ourAgent as any)?.company?.trim();
+  const tcTeamSignature = agentTeamName
+    ? `Transaction Coordinating Team for ${agentTeamName}`
+    : ourAgent?.name
+    ? `TC Team for ${ourAgent.name}`
+    : 'TC Team';
   const sellerLines: string[] = ['Sellers Side', ''];
-  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
+  // Names + company only — no contact details in outgoing templates
+  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
-  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}`);
+  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}${ (deal.sellerAgent as any).company ? ` (${(deal.sellerAgent as any).company})` : ''}`);
   else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
-  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
+  if (sellSideTitleContacts.length > 0) {
+    sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+  }
   const sellersSide = sellerLines.join('\n');
 
   // Build Buyers Side block
   const buyers = deal.contacts.filter(c => c.role === 'buyer');
   const buyerLines: string[] = ['Buyers Side', ''];
-  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
+  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else buyerLines.push('  •   Buyers - [Buyer Name]');
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.phone ? `  ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? `  ${deal.buyerAgent.email}` : ''}`);
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.phone ? `  ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? `  ${deal.buyerAgent.email}` : ''}${ (deal.buyerAgent as any).company ? ` (${(deal.buyerAgent as any).company})` : ''}`);
   else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
-  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
   else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
+  if (buySideTitleContacts.length > 0) {
+    buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+  }
   const buyersSide = buyerLines.join('\n');
 
   // Inspection deadline: contractDate + inspectionPeriodDays from compliance template
@@ -130,7 +149,8 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{pendingDocs\}\}/g, pendingText)
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
-    .replace(/\{\{buyersSide\}\}/g, buyersSide);
+    .replace(/\{\{buyersSide\}\}/g, buyersSide)
+    .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSignature);
 }
 
 // ── Email chip input ────────────────────────────────────────────────────────
@@ -449,6 +469,7 @@ export default function WorkspaceEmailCompose({
   const [spanishBody, setSpanishBody] = useState('');
   const [sendingSpanish, setSendingSpanish] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [showConfirmWarning, setShowConfirmWarning] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [toast, setToast] = useState<{
     type: 'success' | 'error';
@@ -460,11 +481,20 @@ export default function WorkspaceEmailCompose({
 
   const selectedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId);
 
-  // Pre-fill recipients from deal contacts on notification list
+  // Pre-fill recipients from deal contacts on notification list + always include agent-client
   useEffect(() => {
     const notifyContacts = (deal.contacts || []).filter((c) => c.inNotificationList);
     const emails = notifyContacts.map((c) => c.email).filter(Boolean) as string[];
+
+    // Agent-client is always pre-checked by default
+    const ourClientAgent = deal.buyerAgent?.isOurClient ? deal.buyerAgent : deal.sellerAgent?.isOurClient ? deal.sellerAgent : null;
+    const agentClientEmail = ourClientAgent?.email;
+    if (agentClientEmail && !emails.includes(agentClientEmail)) {
+      emails.push(agentClientEmail);
+    }
+
     setToAddresses(emails);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   // Auto-CC agent team members (admins/assistants) when deal loads
@@ -566,16 +596,19 @@ export default function WorkspaceEmailCompose({
     if (toAddresses.length === 0) return 'Please add at least one recipient.';
     if (!subject.trim()) return 'Subject is required.';
     if (!bodyText.trim()) return 'Email body is empty.';
-    // Check confirmations
-    const unconfirmed = Object.entries(confirmations).filter(([, v]) => !v);
-    if (unconfirmed.length > 0) return 'Please check all confirmation items before sending.';
     return null;
+  };
+
+  // Separate confirmation gate — triggers warning modal instead of toast
+  const hasUnconfirmedItems = (): boolean => {
+    return Object.entries(confirmations).some(([, v]) => !v);
   };
 
   // Preview in Spanish
   const handlePreviewSpanish = async () => {
     const err = validate();
     if (err) { showToast('error', err); return; }
+    if (hasUnconfirmedItems()) { setShowConfirmWarning(true); return; }
     setTranslating(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -638,6 +671,11 @@ export default function WorkspaceEmailCompose({
       return;
     }
 
+    if (hasUnconfirmedItems()) {
+      setShowConfirmWarning(true);
+      return;
+    }
+
     sendingRef.current = true;
     setSending(true);
     try {
@@ -672,8 +710,9 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      // Log locally
-      await logEmailSend({
+      // Edge function already logs to email_send_log — this is a best-effort local duplicate
+      // It must NEVER throw and block the success toast
+      logEmailSend({
         dealId: deal.id,
         templateId: selectedTemplate?.id,
         templateName: selectedTemplate?.name,
@@ -685,7 +724,7 @@ export default function WorkspaceEmailCompose({
         gmailThreadId: data.threadId,
         emailType: 'deal',
         sentBy: currentUser,
-      });
+      }).catch((err) => console.warn('Email log (non-critical):', err));
 
       showToast('success', 'Email sent successfully!');
       setHistoryKey((k) => k + 1);
@@ -977,6 +1016,41 @@ export default function WorkspaceEmailCompose({
         {/* Sent History */}
         <SentHistory key={historyKey} dealId={deal.id} />
       </div>
+
+      {/* ── Confirmation Warning Modal ───────────────────────────────── */}
+      {showConfirmWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-base-100 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-amber-100 rounded-full p-2">
+                <AlertCircle size={22} className="text-amber-600" />
+              </div>
+              <h3 className="font-semibold text-base">Action Required Before Sending</h3>
+            </div>
+            <p className="text-sm text-base-content/70 mb-4">
+              This template requires you to confirm the following items before the email can be sent:
+            </p>
+            <ul className="space-y-2 mb-5">
+              {Object.entries(confirmations)
+                .filter(([, v]) => !v)
+                .map(([item]) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <span className="mt-0.5 shrink-0">⚠️</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowConfirmWarning(false)}
+              >
+                Go Back & Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Schedule Modal ──────────────────────────────────────────── */}
       <ScheduleModal
