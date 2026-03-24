@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
+// Module-level Supabase client (avoids multiple GoTrueClient instances)
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
 // ── OpenAI Responses API with structured outputs ──────────────────────────────
 // All AI logic lives here. Browser code calls these endpoints via fetch().
 // The openai npm package is NOT used — we call the API directly to avoid
@@ -696,7 +699,7 @@ async function handleProcessRecording(apiKey: string, body: any) {
   const { recordingSid, recordingUrl, callerContactId, dealId, phoneE164, callSid } = body;
   if (!recordingSid || !recordingUrl) throw new Error('Missing recordingSid or recordingUrl');
 
-  const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const sb = supabase;
 
   // 1. Fetch recording MP3 from Twilio (authenticated)
   const audioUrl = `${recordingUrl}.mp3`;

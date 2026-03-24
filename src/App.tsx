@@ -784,8 +784,18 @@ function AppInner() {
           setIsCallMinimized(false);
         }}
         onMinimize={() => setIsCallMinimized(prev => !prev)}
-        onAddNote={(note) => { console.log('Call note:', note); }}
-        onCreateTask={(desc) => { console.log('Call task:', desc); }}
+        onAddNote={(note) => {
+          if (activeCall?.dealId) {
+            const deal = deals.find(d => d.id === activeCall.dealId);
+            if (deal) handleUpdateDeal({ ...deal, notes: (deal.notes ? deal.notes + '\n' : '') + `[Call] ${note}` });
+          }
+        }}
+        onCreateTask={(desc) => {
+          if (activeCall?.dealId) {
+            const deal = deals.find(d => d.id === activeCall.dealId);
+            if (deal) handleUpdateDeal({ ...deal, tasks: [...(deal.tasks || []), { id: Date.now().toString(), text: desc, done: false, dueDate: '', priority: 'medium', assignedTo: '' }] });
+          }
+        }}
         isMinimized={isCallMinimized}
       />
 

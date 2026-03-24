@@ -7,7 +7,7 @@ const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 function sb() {
   return createClient(
     process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 }
 
