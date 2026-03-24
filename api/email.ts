@@ -194,7 +194,7 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
           body: bodyText,
           attachments: attachments.map((a: any) => ({
             filename: a.filename, contentType: a.contentType, size: a.size,
-            downloadUrl: `/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
+            downloadUrl: `/api/email/attachment?uid=${String(msg.uid).split(':')[0]}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
           })),
         });
       } catch (fetchErr) { console.error(`Failed to fetch UID ${uid}:`, fetchErr); }
@@ -318,7 +318,7 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
         return res.status(200).json({
           messages: [{
-            id: msg.uid.toString(), threadId: msg.uid.toString(),
+            id: String(msg.uid).split(':')[0], threadId: String(msg.uid).split(':')[0],
             subject: msg.envelope?.subject || '(no subject)',
             from: msg.envelope?.from?.[0] ? `${msg.envelope.from[0].name || ''} <${msg.envelope.from[0].address || ''}>`.trim() : '',
             to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
@@ -327,7 +327,7 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
             bodyHtml, body: bodyText, snippet: bodyText.substring(0, 200),
             attachments: attachments.map(a => ({
               filename: a.filename, contentType: a.contentType, size: a.size,
-              downloadUrl: `/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
+              downloadUrl: `/api/email/attachment?uid=${String(msg.uid).split(':')[0]}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
             })),
           }],
         });
@@ -428,7 +428,8 @@ async function handleAttachment(req: VercelRequest, res: VercelResponse) {
     await client.connect();
     const lock = await client.getMailboxLock(folder as string);
     try {
-      const msg = await client.fetchOne(uid as string, { source: true }, { uid: true });
+      const cleanUid = String(uid).split(':')[0];
+      const msg = await client.fetchOne(cleanUid, { source: true }, { uid: true });
       if (!msg) return res.status(404).json({ error: 'Message not found' });
       const source = msg.source?.toString('utf-8') || '';
       const boundaryMatch = source.match(/boundary="?([^"\r\n;]+)"?/i);
@@ -747,7 +748,7 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
               attachmentNames: attachments.map((a:any)=>a.filename),
               attachments: attachments.map((a:any)=>({
                 filename:a.filename, contentType:a.contentType, size:a.size,
-                downloadUrl:`/api/email/attachment?uid=${msg.uid}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
+                downloadUrl:`/api/email/attachment?uid=${String(msg.uid).split(':')[0]}&filename=${encodeURIComponent(a.filename)}&folder=INBOX`,
               })),
             });
           } catch(e) { console.error(`Fetch UID ${uid} error:`, e); }
