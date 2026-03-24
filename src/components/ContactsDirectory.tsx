@@ -361,7 +361,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const { isMasterAdmin, primaryOrgId } = useAuth();
+  const { isMasterAdmin: isMasterAdminFn, primaryOrgId: primaryOrgIdFn } = useAuth();
+  const isMasterAdmin = isMasterAdminFn();
+  const primaryOrgId = primaryOrgIdFn();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [form, setForm] = useState<EditForm>(blankForm());
   const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
@@ -538,7 +540,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       setModalOpen(true);
       onTriggerHandled?.();
     }
-  }, [triggerAdd, onTriggerHandled]);
+  }, [triggerAdd, onTriggerHandled, primaryOrgId]);
 
   // ── Counts per category ──────────────────────────────────────────────────────
   const categoryCounts = useMemo(() => {
@@ -852,8 +854,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
               type="text"
               placeholder="Search contacts..."
               className="input input-sm input-bordered pl-8 w-full sm:w-56"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              value={search}\n              onChange={e => setSearch(e.target.value)}
             />
           </div>
           <button className="btn btn-primary btn-sm gap-1" onClick={openAdd}>
