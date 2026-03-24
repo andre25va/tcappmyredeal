@@ -138,6 +138,7 @@ interface EditForm {
   clientAccountId?: string;
   preferredLanguage: 'en' | 'es';
   pin: string;
+  teamName: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -178,6 +179,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     clientAccountId: undefined,
     preferredLanguage: 'en',
     pin: '',
+    teamName: '',
     licenses: [],
     mlsMemberships: [],
   };
@@ -200,6 +202,7 @@ function contactToForm(c: ContactRecord): EditForm {
     clientAccountId: c.clientAccountId,
     preferredLanguage: c.preferredLanguage || 'en',
     pin: c.pin || '',
+    teamName: c.teamName || '',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -758,6 +761,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
         preferredLanguage: form.preferredLanguage,
         pin: form.pin.trim() || undefined,
+        teamName: form.isClient ? (form.teamName.trim() || undefined) : undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -1066,6 +1070,21 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <label className="label py-0"><span className="label-text text-xs">Company</span></label>
                   <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
                 </div>
+                {form.isClient && (
+                  <div className="mt-2">
+                    <label className="label py-0">
+                      <span className="label-text text-xs">Team Name</span>
+                      <span className="label-text-alt text-xs text-amber-500 font-semibold">Agent client branding</span>
+                    </label>
+                    <input
+                      className="input input-sm input-bordered w-full border-amber-300 bg-amber-50/30"
+                      placeholder="e.g. The Aguilar Group"
+                      value={form.teamName}
+                      onChange={e => updateField('teamName', e.target.value)}
+                    />
+                    <p className="text-xs text-base-content/40 mt-0.5">For client branding – not used in email signatures</p>
+                  </div>
+                )}
                 <div className="mt-2">
                   <label className="label py-0">
                     <span className="label-text text-xs">Timezone *</span>

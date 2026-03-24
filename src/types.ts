@@ -317,6 +317,7 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
+  pin?: string;
 }
 
 export interface OrgMemberInfo {
@@ -385,6 +386,7 @@ export interface AgentContact {
 
 export interface Deal {
   id: string;
+  dealNumber?: string;
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
@@ -424,6 +426,7 @@ export interface Deal {
   loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
   loanAmount?: number;
   downPayment?: number;
+  earnestMoney?: number;
   earnestMoneyDueDate?: string;
   sellerConcessions?: number;
   totalSellerCredits?: number;
@@ -445,6 +448,8 @@ export interface Deal {
   listingCommissionValue?: number;
   buyerCommissionType?: 'percent' | 'flat';
   buyerCommissionValue?: number;
+  clientAgentCommission?: number;
+  clientAgentCommissionPct?: number;
   tcFeeType?: 'percent' | 'flat';
   tcFeeValue?: number;
   commissionPaidBy?: string;           // 'seller'|'buyer'
@@ -914,4 +919,46 @@ export interface AgentTeamMember {
   notifyEmail: boolean;
   notifySms: boolean;
   createdAt?: string;
+}
+
+// ── Milestone Notification Settings ─────────────────────────────────────────
+
+export interface MilestoneNotificationSetting {
+  id: string;
+  milestone: DealMilestone;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomMilestone {
+  id: string;
+  agentContactId?: string;
+  name: string;
+  description?: string;
+  insertAfter: string;
+  notifyBuyerAgent: boolean;
+  notifySellerAgent: boolean;
+  notifyLender: boolean;
+  notifyTitle: boolean;
+  notifyBuyer: boolean;
+  notifySeller: boolean;
+  sendEmail: boolean;
+  sendSms: boolean;
+  emailSubject?: string;
+  emailBody?: string;
+  smsBody?: string;
+  createdAt: string;
+  updatedAt: string;
+  agentName?: string;
 }
