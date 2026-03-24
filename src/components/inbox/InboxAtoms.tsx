@@ -95,14 +95,14 @@ export function EmailBodyRenderer({ msg, threadSnippet }: { msg: EmailMessage; t
         <iframe
           srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#374151;margin:0;padding:12px;word-wrap:break-word;}img{max-width:100%;height:auto;}a{color:#2563eb;}*{box-sizing:border-box;}</style></head><body>${msg.bodyHtml}</body></html>`}
           className="w-full border-0 min-h-[120px]"
-          style={{ height: '300px', maxHeight: '400px' }}
+          style={{ height: '300px', maxHeight: '800px' }}
           sandbox="allow-same-origin"
           title="Email content"
           onLoad={(e) => {
             try {
               const iframe = e.currentTarget;
               const height = iframe.contentDocument?.body?.scrollHeight;
-              if (height) iframe.style.height = Math.min(height + 24, 500) + 'px';
+              if (height) iframe.style.height = Math.min(height + 24, 800) + 'px';
             } catch {}
           }}
         />

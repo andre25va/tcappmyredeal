@@ -1084,10 +1084,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       {senderName.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-semibold">{isMe ? 'You' : senderName}</span>
-                        <span className="text-[10px] text-base-content/40">→ {msg.to}</span>
+                        <span className="text-[10px] text-base-content/35">
+                          {msg.from?.match(/<(.+?)>/)?.[1] ? `<${msg.from.match(/<(.+?)>/)?.[1]}>` : ''}
+                        </span>
                       </div>
+                      {msg.to && <p className="text-[10px] text-base-content/35">to: {msg.to}</p>}
                       {msg.cc && <p className="text-[10px] text-base-content/35">cc: {msg.cc}</p>}
                     </div>
                     <span className="text-[10px] text-base-content/35 flex-none">
