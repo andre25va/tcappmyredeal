@@ -823,6 +823,57 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </button>
             </div>
           ))}
+          {/* ─── Title Company Row ─── */}
+          {(() => {
+            const titleContact = deal.contacts.find(c => c.role === 'title');
+            if (!titleContact) return (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
+                <div className="flex-none w-5 flex items-center justify-center">
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                </div>
+                <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
+                  <p className="text-sm italic text-gray-300 font-normal">Not set</p>
+                </button>
+              </div>
+            );
+            const cr = titleContact.directoryId ? contactRecords.find(r => r.id === titleContact.directoryId) : undefined;
+            const companyName = (titleContact as any).company || cr?.company || '';
+            return (
+              <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all">
+                <div className="flex-none w-5 flex items-center justify-center">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                </div>
+                <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
+                  <p className="text-sm font-semibold text-black truncate">
+                    {titleContact.name}{companyName ? <span className="font-normal text-gray-500"> ({companyName})</span> : ''}
+                  </p>
+                </button>
+                {titleContact.phone && (
+                  <div className="flex items-center gap-1.5 flex-none">
+                    <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">
+                      {formatPhone(titleContact.phone)}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' }); }}
+                      className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
+                      title={`View ${titleContact.name} contact info`}
+                    >
+                      <Phone size={14} />
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' })}
+                  className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
+                  title="View contact details"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
