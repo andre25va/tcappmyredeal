@@ -56,6 +56,10 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
 
 
 
+  // Live company lookup — always uses freshest data from contacts directory, not stale deal snapshot
+  const liveCompany = (c: { id?: string; company?: string }) =>
+    (contactRecords || []).find(r => r.id === c.id)?.company?.trim() || c.company?.trim() || '';
+
   // Representing agent (agentClient) — for {{agentName}}, {{agentPhone}}, {{agentEmail}}
   const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
   const agentName  = agentClientRecord?.fullName || '';
@@ -83,7 +87,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
 
   const contactLines = deal.contacts
     // Names + company only — no phone or email exposed in templates
-    .map(c => `  • ${c.name}${c.company ? ` (${c.company})` : ''} — ${roleLabel(c.role)}`)
+    .map(c => `  • ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''} — ${roleLabel(c.role)}`)
     .join('\n') || '  (No contacts added yet)';
 
   const pendingDocs = deal.documentRequests.filter(d => d.status !== 'confirmed');
@@ -106,15 +110,15 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellerLines: string[] = ['Sellers Side', ''];
   // Names + company only — no contact details in outgoing templates
   // BUG-001 FIX: Fall back to deal.sellerName if no seller contacts with role='seller'
-  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
+  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''}`));
   else if (deal.sellerName) sellerLines.push(`  •   Sellers - ${deal.sellerName}`);
   else sellerLines.push('  •   Sellers - [Seller Name]');
   // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
   if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}`);
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
-  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
+  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${liveCompany(a) ? ` (${liveCompany(a)})` : ''}`));
   if (sellSideTitleContacts.length > 0) {
-    sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+    sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${liveCompany(t) ? ` (${liveCompany(t)})` : ''}`));
   }
   const sellersSide = sellerLines.join('\n');
 
@@ -123,16 +127,16 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const buyerLines: string[] = ['Buyers Side', ''];
   // Names + company only — no contact details in outgoing templates
   // BUG-001 FIX: Fall back to deal.buyerName if no buyer contacts with role='buyer'
-  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
+  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''}`));
   else if (deal.buyerName) buyerLines.push(`  •   Buyers - ${deal.buyerName}`);
   else buyerLines.push('  •   Buyers - [Buyer Name]');
   // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.company ? ` (${deal.buyerAgent.company})` : ''}`);
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${liveCompany(deal.buyerAgent) ? ` (${liveCompany(deal.buyerAgent)})` : ''}`);
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
-  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
+  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${liveCompany(a) ? ` (${liveCompany(a)})` : ''}`));
   if (buySideTitleContacts.length > 0) {
-    buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${t.company ? ` (${t.company})` : ''}`));
+    buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${liveCompany(t) ? ` (${liveCompany(t)})` : ''}`));
   }
   const buyersSide = buyerLines.join('\n');
 
