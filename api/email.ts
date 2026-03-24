@@ -26,7 +26,10 @@ function decodeBody(raw: string, encoding: string): string {
       //   [ \t]*  =  [ \t]*  \n     — same, LF only
       const joined = raw
         .replace(/[ \t]*=[ \t]*\r\n/g, '')   // CRLF soft break (ws anywhere around =)
-        .replace(/[ \t]*=[ \t]*\n/g, '');     // LF-only soft break (ws anywhere around =)
+        .replace(/[ \t]*=[ \t]*\n/g, '')      // LF-only soft break (ws anywhere around =)
+        .replace(/[ \t]*=[ \t]*\r(?!\n)/g, '') // Bare CR soft break (rare mailers)
+        .replace(/=[ \t]+(?=\S)/g, '')         // IMAP-normalized soft break (=\r\n → "= ")
+        .replace(/=$/gm, '');                  // Trailing = at end of line (missed soft break)
       // Decode =XX hex sequences, handling UTF-8 multi-byte sequences
       return joined.replace(/(=[0-9A-F]{2})+/gi, (match) => {
         try {
