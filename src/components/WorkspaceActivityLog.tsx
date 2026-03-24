@@ -345,7 +345,7 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                           </button>
                           {isExpanded && (
                             <p className="text-xs text-base-content/60 mt-1 bg-base-100 rounded-lg p-2 whitespace-pre-wrap">
-                              {entry.meta.ai_summary}
+                              {entry.meta?.ai_summary}
                             </p>
                           )}
                         </div>
