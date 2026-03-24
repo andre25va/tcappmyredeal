@@ -573,13 +573,13 @@ function AppInner() {
                   <div className="flex items-center gap-0 bg-white border-b border-base-300 shrink-0">
                     <button
                       className={`flex-1 py-2 text-xs font-bold tracking-wide transition-all ${listMode === 'deals' ? 'text-primary border-b-2 border-primary' : 'text-base-content/40 hover:text-base-content hover:bg-base-100'}`}
-                      onClick={() => setListMode('deals')}
+                      onClick={() => { setListMode('deals'); setSelectedId(null); }}
                     >
                       By Deal
                     </button>
                     <button
                       className={`flex-1 py-2 text-xs font-bold tracking-wide transition-all ${listMode === 'agents' ? 'text-primary border-b-2 border-primary' : 'text-base-content/40 hover:text-base-content hover:bg-base-100'}`}
-                      onClick={() => setListMode('agents')}
+                      onClick={() => { setListMode('agents'); setSelectedId(null); }}
                     >
                       By Agent
                     </button>
@@ -599,6 +599,7 @@ function AppInner() {
                   ) : (
                     <AgentCardView
                       deals={deals}
+                      selectedId={selectedId}
                       onSelectDeal={(id) => { setSelectedId(id); setTxPanel('workspace'); }}
                       onArchiveDeal={handleArchiveDeal}
                       onRestoreDeal={handleRestoreDeal}
