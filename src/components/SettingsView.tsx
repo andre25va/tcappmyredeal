@@ -9,6 +9,7 @@ import {
   ComplianceTemplate, EmailTemplate, ComplianceMasterItem, DDMasterItem,
 } from '../types';
 import { generateId } from '../utils/helpers';
+import { useAuth } from '../contexts/AuthContext';
 import { ConfirmModal } from './ConfirmModal';
 
 // -- Tab sub-components
@@ -19,6 +20,7 @@ import { AccessUsersTab }          from './settings/AccessUsersTab';
 import { LicenseLinksTab }         from './settings/LicenseLinksTab';
 import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 import { MilestonesTab }           from './settings/MilestonesTab';
+import { OrgManagementTab }        from './settings/OrgManagementTab';
 
 // -- Props
 
@@ -38,7 +40,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'org-management';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -135,6 +137,11 @@ export const SettingsView: React.FC<Props> = ({
   ddMasterItems = [], onSaveDdMasterItems,
 }) => {
   const [tab, setTab]             = useState<SettingsTab>('team');
+  const { profile, isMasterAdmin } = useAuth();
+
+  // Only show org tab for admins or team admins
+  const showOrgTab = profile?.role === 'admin' || profile?.is_master_admin ||
+    ((profile as any)?.orgMemberships ?? []).some((m: any) => m.roleInOrg === 'team_admin');
   const [showForm, setShowForm]   = useState(false);
   const [editUser, setEditUser]   = useState<AppUser | undefined>();
   const [deleteId, setDeleteId]   = useState<string | null>(null);
@@ -260,6 +267,7 @@ export const SettingsView: React.FC<Props> = ({
       <div className="flex gap-1 px-6 pt-4 flex-none border-b border-base-300 overflow-x-auto">
         {[
           { id: 'team' as SettingsTab,                  label: 'Access & Users',       icon: <Shield size={14}/> },
+          ...(showOrgTab ? [{ id: 'org-management' as SettingsTab, label: 'Organizations', icon: <Building2 size={14}/> }] : []),
           { id: 'license-links' as SettingsTab,         label: 'License Lookup',       icon: <Link size={14}/> },
           { id: 'email-templates' as SettingsTab,       label: 'Email Templates',      icon: <Mail size={14}/> },
           { id: 'briefing' as SettingsTab,              label: 'Morning Briefing',     icon: <Bell size={14}/> },
@@ -290,6 +298,7 @@ export const SettingsView: React.FC<Props> = ({
           <ComplianceChecklistTab items={complianceMasterItems} onSave={onSaveComplianceMasterItems} />
         )}
         {tab === 'team' && <AccessUsersTab />}
+        {tab === 'org-management' && <OrgManagementTab />}
         {tab === 'license-links' && <LicenseLinksTab />}
         {tab === 'email-templates' && (
           <EmailTemplatesTab emailTemplates={emailTemplates} onSave={onSaveEmailTemplates} />

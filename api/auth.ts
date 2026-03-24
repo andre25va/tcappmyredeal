@@ -218,7 +218,28 @@ async function handleSession(req: VercelRequest, res: VercelResponse) {
     }
 
     await supabase.from('sessions').update({ last_used: new Date().toISOString() }).eq('token', token);
-    return res.status(200).json({ valid: true, profile: session.profiles });
+
+    // Fetch org memberships for this user
+    const profileData = session.profiles as any;
+    const { data: memberships } = await supabase
+      .from('user_org_memberships')
+      .select('id, org_id, role_in_org, status, invited_at, joined_at, organizations(id, name, org_code)')
+      .eq('user_id', profileData.id)
+      .eq('status', 'active');
+
+    const orgMemberships = (memberships || []).map((m: any) => ({
+      membershipId: m.id,
+      orgId: m.org_id,
+      orgName: m.organizations?.name ?? '',
+      orgCode: m.organizations?.org_code ?? '',
+      roleInOrg: m.role_in_org as 'team_admin' | 'tc' | 'agent',
+      status: m.status,
+    }));
+
+    return res.status(200).json({
+      valid: true,
+      profile: { ...profileData, orgMemberships },
+    });
   } catch {
     return res.status(401).json({ error: 'Invalid session' });
   }
@@ -579,6 +600,166 @@ async function handleDeleteUser(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+
+// ── Org Management (admin/team_admin only) ─────────────────────────────────
+
+async function handleOrgManagement(req: VercelRequest, res: VercelResponse) {
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  const userId = await requireAdmin(token);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  // GET: list members of an org (or all orgs for master admin)
+  if (req.method === 'GET') {
+    const { orgId, listOrgs } = req.query as Record<string, string>;
+
+    if (listOrgs === 'true') {
+      // Master admin: list all orgs
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('id, name, org_code, is_active, organization_type')
+        .order('name');
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ orgs: data });
+    }
+
+    if (!orgId) return res.status(400).json({ error: 'orgId required' });
+
+    const { data, error } = await supabase
+      .from('user_org_memberships')
+      .select('id, user_id, role_in_org, status, invited_at, joined_at, profiles(id, name, phone, role, is_active, last_login, is_master_admin)')
+      .eq('org_id', orgId)
+      .order('created_at');
+    if (error) return res.status(500).json({ error: error.message });
+
+    const members = (data || []).map((m: any) => ({
+      membershipId: m.id,
+      userId: m.user_id,
+      roleInOrg: m.role_in_org,
+      status: m.status,
+      invitedAt: m.invited_at,
+      joinedAt: m.joined_at,
+      profile: m.profiles ? {
+        id: m.profiles.id,
+        name: m.profiles.name,
+        phone: m.profiles.phone,
+        role: m.profiles.role,
+        isActive: m.profiles.is_active,
+        lastLogin: m.profiles.last_login,
+        isMasterAdmin: m.profiles.is_master_admin,
+      } : null,
+    }));
+
+    return res.status(200).json({ members });
+  }
+
+  // POST: mutation actions
+  if (req.method === 'POST') {
+    const body = req.body as any;
+    const subAction = body.action as string;
+
+    if (subAction === 'add-member') {
+      const { orgId, profileId, roleInOrg } = body;
+      if (!orgId || !profileId || !roleInOrg) return res.status(400).json({ error: 'orgId, profileId, roleInOrg required' });
+
+      const { data: existing } = await supabase
+        .from('user_org_memberships')
+        .select('id, status')
+        .eq('org_id', orgId)
+        .eq('user_id', profileId)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('user_org_memberships')
+          .update({ status: 'active', role_in_org: roleInOrg, joined_at: new Date().toISOString() })
+          .eq('id', existing.id);
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json({ success: true, action: 'reactivated' });
+      }
+
+      const { error } = await supabase
+        .from('user_org_memberships')
+        .insert({
+          user_id: profileId,
+          org_id: orgId,
+          role_in_org: roleInOrg,
+          status: 'active',
+          invited_at: new Date().toISOString(),
+          joined_at: new Date().toISOString(),
+        });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true, action: 'added' });
+    }
+
+    if (subAction === 'update-role') {
+      const { membershipId, roleInOrg } = body;
+      if (!membershipId || !roleInOrg) return res.status(400).json({ error: 'membershipId, roleInOrg required' });
+      const { error } = await supabase
+        .from('user_org_memberships')
+        .update({ role_in_org: roleInOrg })
+        .eq('id', membershipId);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true });
+    }
+
+    if (subAction === 'remove-member') {
+      const { membershipId } = body;
+      if (!membershipId) return res.status(400).json({ error: 'membershipId required' });
+      const { error } = await supabase
+        .from('user_org_memberships')
+        .update({ status: 'inactive' })
+        .eq('id', membershipId);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true });
+    }
+
+    if (subAction === 'grant-deal-access') {
+      const { dealId, profileId } = body;
+      if (!dealId || !profileId) return res.status(400).json({ error: 'dealId, profileId required' });
+      const { error } = await supabase
+        .from('deal_access')
+        .upsert({ deal_id: dealId, user_id: profileId, granted_by: userId, granted_at: new Date().toISOString() },
+          { onConflict: 'deal_id,user_id' });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true });
+    }
+
+    if (subAction === 'revoke-deal-access') {
+      const { dealId, profileId } = body;
+      if (!dealId || !profileId) return res.status(400).json({ error: 'dealId, profileId required' });
+      const { error } = await supabase
+        .from('deal_access')
+        .delete()
+        .eq('deal_id', dealId)
+        .eq('user_id', profileId);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ success: true });
+    }
+
+    return res.status(400).json({ error: 'Unknown sub-action' });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleLookupProfile(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  const adminId = await requireAdmin(token);
+  if (!adminId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { phone } = req.query as Record<string, string>;
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, name, phone')
+    .eq('phone', phone)
+    .maybeSingle();
+
+  return res.status(200).json({ profile: data ?? null });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = req.query.action as string;
   switch (action) {
@@ -593,6 +774,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'add-user':          return handleAddUser(req, res);
     case 'edit-user':         return handleEditUser(req, res);
     case 'delete-user':       return handleDeleteUser(req, res);
+    case 'org-management':    return handleOrgManagement(req, res);
+    case 'lookup-profile':    return handleLookupProfile(req, res);
     default: return res.status(404).json({ error: `Unknown auth action: ${action}` });
   }
 }
