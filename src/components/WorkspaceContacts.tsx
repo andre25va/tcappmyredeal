@@ -129,7 +129,7 @@ const ContactPopup: React.FC<{
     name: contact.name,
     phone: contact.phone || '',
     email: contact.email || '',
-    company: contact.company || cr?.company || '',
+    company: cr?.company || contact.company || '',
     notes: cr?.notes || '',
   });
   const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
@@ -336,10 +336,10 @@ const ContactPopup: React.FC<{
               </div>
             </div>
           )}
-          {(contact.company || cr?.company) && (
+          {(cr?.company || contact.company) && (
             <div className="flex items-center gap-3">
               <Building2 size={14} className="text-gray-400 flex-none" />
-              <span className="text-sm text-black">{contact.company || cr?.company}</span>
+              <span className="text-sm text-black">{cr?.company || contact.company}</span>
             </div>
           )}
           {cr?.notes && (
@@ -762,7 +762,7 @@ const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () 
       <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-        {(contact.company || cr?.company) && <span className="text-xs text-gray-400">· {contact.company || cr?.company}</span>}
+        {(cr?.company || contact.company) && <span className="text-xs text-gray-400">· {cr?.company || contact.company}</span>}
       </div>
     </div>
     <div className="flex items-center gap-1.5 flex-none">
