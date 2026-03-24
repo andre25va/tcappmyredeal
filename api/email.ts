@@ -1,5 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ImapFlow } from 'imapflow';
+import { createClient } from '@supabase/supabase-js';
+
+function sbClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!
+  );
+}
 
 const GMAIL_USER = process.env.GMAIL_USER || 'tc@myredeal.com';
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
@@ -789,12 +797,63 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
 async function handleInboundWebhook(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { subject, body: emailBody, from: fromEmail, hasAttachment } = req.body as {
+  const { subject, body: emailBody, from: fromEmail, hasAttachment, gmailMessageId, gmailThreadId } = req.body as {
     subject: string;
     body: string;
     from: string;
     hasAttachment: boolean;
+    gmailMessageId?: string;
+    gmailThreadId?: string;
   };
+
+  // ── Subject token matching: link inbound reply to a pending request ──────────
+  const tokenMatch = (subject || '').match(/\[REQ-([A-Z0-9]{8})\]/);
+  if (tokenMatch) {
+    try {
+      const supabase = sbClient();
+      const token = tokenMatch[0]; // e.g. [REQ-ABCD1234]
+      const { data: matchedRequest } = await supabase
+        .from('requests')
+        .select('id, status, expected_response_type')
+        .eq('subject_token', token)
+        .maybeSingle();
+
+      if (matchedRequest) {
+        const newStatus = hasAttachment ? 'document_received' : 'reply_received';
+        const now = new Date().toISOString();
+
+        await supabase.from('inbound_messages').insert({
+          request_id: matchedRequest.id,
+          gmail_message_id: gmailMessageId || null,
+          gmail_thread_id: gmailThreadId || null,
+          from_email: fromEmail,
+          subject,
+          body_text: (emailBody || '').substring(0, 5000),
+          received_at: now,
+          matched_via: 'subject_token',
+          has_attachments: !!hasAttachment,
+          processed: false,
+        });
+
+        await supabase.from('requests').update({
+          status: newStatus,
+          updated_at: now,
+        }).eq('id', matchedRequest.id);
+
+        await supabase.from('request_events').insert({
+          request_id: matchedRequest.id,
+          event_type: hasAttachment ? 'document_received' : 'reply_received',
+          description: `Reply received from ${fromEmail} via subject token`,
+          actor: 'system',
+        });
+
+        return res.json({ ok: true, matched: 'request', requestId: matchedRequest.id, status: newStatus });
+      }
+    } catch (tokenErr) {
+      console.error('Subject token matching error:', tokenErr);
+      // Fall through to workflow processing
+    }
+  }
 
   const content = `From: ${fromEmail}\nSubject: ${subject}\nHas Attachment: ${hasAttachment}\n\nBody:\n${(emailBody || '').substring(0, 1000)}`;
 

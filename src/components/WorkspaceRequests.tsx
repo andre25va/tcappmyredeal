@@ -81,6 +81,22 @@ const STATUS_CONFIG: Record<RequestStatus, { label: string; badge: string }> = {
   cancelled:         { label: 'Cancelled',         badge: 'bg-gray-100 text-gray-400 border-gray-200' },
 };
 
+// ── Valid state transitions (state machine guard) ──────────────────────────────
+const VALID_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
+  draft:             ['waiting', 'cancelled'],
+  sent:              ['waiting', 'reply_received', 'document_received', 'cancelled'],
+  waiting:           ['reply_received', 'document_received', 'needs_follow_up', 'cancelled'],
+  reply_received:    ['under_review', 'accepted', 'rejected', 'needs_follow_up'],
+  document_received: ['under_review', 'accepted', 'rejected', 'needs_follow_up'],
+  under_review:      ['accepted', 'rejected', 'needs_follow_up'],
+  rejected:          ['needs_follow_up', 'cancelled'],
+  needs_follow_up:   ['waiting', 'cancelled'],
+  accepted:          ['completed'],
+  overdue:           ['waiting', 'needs_follow_up', 'cancelled'],
+  completed:         [],
+  cancelled:         [],
+};
+
 const CLASSIFICATION_BADGE: Record<string, string> = {
   confirmation_reply: 'bg-green-50 text-green-700 border-green-200',
   document_received:  'bg-purple-50 text-purple-700 border-purple-200',
@@ -296,6 +312,14 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   // ── Update status ────────────────────────────────────────────────────────────
   const updateStatus = async (requestId: string, status: RequestStatus, eventDesc?: string) => {
+    const current = requests.find(r => r.id === requestId);
+    if (current) {
+      const allowed = VALID_TRANSITIONS[current.status] ?? [];
+      if (!allowed.includes(status)) {
+        console.warn(`[RequestCenter] Invalid transition: ${current.status} → ${status}`);
+        return;
+      }
+    }
     await supabase
       .from('requests')
       .update({ status, updated_at: new Date().toISOString() })
@@ -757,7 +781,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
   request, expanded, onToggle, onMarkReceived,
   onAccept, onReject, onInlineSend, inlineEdit,
   onInlineEditChange, sending, inboundMessages, loadingMessages,
-  getTypeLabel, fmtDate,
+  getTypeLabel, fmtDate, onUpdateStatus,
 }) => {
   // Doc preview state (local to each card)
   const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
@@ -859,6 +883,11 @@ const RequestCard: React.FC<RequestCardProps> = ({
           {request.status === 'needs_follow_up' && (
             <button className="btn btn-xs btn-warning gap-1" onClick={e => { e.stopPropagation(); onToggle(); }}>
               <Send size={11} /> Send Follow-Up
+            </button>
+          )}
+          {request.status === 'rejected' && (
+            <button className="btn btn-xs btn-outline btn-warning gap-1" onClick={e => { e.stopPropagation(); onUpdateStatus('needs_follow_up'); }}>
+              <RotateCcw size={11} /> Flag for Follow-Up
             </button>
           )}
         </div>
