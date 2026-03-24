@@ -269,13 +269,15 @@ function AppInner() {
 
   // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
-    if (deals.length === 0) {
+    const activeDeals = deals.filter(d => d.milestone !== 'archived');
+    if (activeDeals.length === 0) {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
-    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
-    if (!stillExists) {
-      setSelectedId(deals[0].id);
+    const stillActive = selectedId && activeDeals.some((deal) => deal.id === selectedId);
+    if (!stillActive) {
+      // Don't auto-select — let user pick from the list
+      setSelectedId(null);
     }
   }, [deals, selectedId]);
 
@@ -371,6 +373,11 @@ function AppInner() {
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
     setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
+    // Deselect the deal so the workspace doesn't keep showing an archived deal
+    if (selectedId === dealId) {
+      setSelectedId(null);
+      setTxPanel('list');
+    }
   };
 
   const handleRestoreDeal = (dealId: string) => {

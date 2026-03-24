@@ -276,7 +276,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             </button>
             {!isViewer && (
               <button
-                onClick={() => setEditTrigger(n => n + 1)}
+                onClick={() => { setTab('overview'); setEditTrigger(n => n + 1); }}
                 className="btn btn-sm btn-primary btn-outline gap-1.5"
               >
                 <Pencil size={13} /> Edit Deal
