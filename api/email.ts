@@ -175,7 +175,7 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
     const uidList = Array.from(uidSet).slice(0, 15);
     for (const uid of uidList) {
       try {
-        const msg = await client.fetchOne(uid.toString(), { envelope: true, source: true });
+        const msg = await client.fetchOne(uid.toString(), { envelope: true, source: true }, { uid: true });
         if (!msg) continue;
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
@@ -274,7 +274,7 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
       const targetUid = (uid || thread_id) as string;
       const lock = await client.getMailboxLock(folder as string);
       try {
-        const msg = await client.fetchOne(targetUid, { envelope: true, source: true });
+        const msg = await client.fetchOne(targetUid, { envelope: true, source: true }, { uid: true });
         if (!msg) return res.status(404).json({ error: 'Message not found' });
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
@@ -339,7 +339,7 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
       const recent = messages.slice(-50).reverse();
       for await (const msg of client.fetch(recent.join(','), {
         envelope: true, flags: true, uid: true, internalDate: true, bodyStructure: true,
-      })) {
+      }, { uid: true })) {
         const msgDate = (msg as any).internalDate ? new Date((msg as any).internalDate)
           : msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
         const fromAddr = msg.envelope?.from?.[0];
@@ -423,7 +423,7 @@ async function handleAttachment(req: VercelRequest, res: VercelResponse) {
     await client.connect();
     const lock = await client.getMailboxLock(folder as string);
     try {
-      const msg = await client.fetchOne(uid as string, { source: true });
+      const msg = await client.fetchOne(uid as string, { source: true }, { uid: true });
       if (!msg) return res.status(404).json({ error: 'Message not found' });
       const source = msg.source?.toString('utf-8') || '';
       const boundaryMatch = source.match(/boundary="?([^"\r\n;]+)"?/i);
@@ -718,7 +718,7 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
         const uidList = Array.from(uidSet).slice(0,15);
         for (const uid of uidList) {
           try {
-            const msg = await client.fetchOne(uid.toString(), { envelope:true, source:true });
+            const msg = await client.fetchOne(uid.toString(), { envelope:true, source:true }, { uid: true });
             if (!msg) continue;
             const source = msg.source?.toString('utf-8')||'';
             const { text, html, attachments } = extractPartsFromSource(source);
