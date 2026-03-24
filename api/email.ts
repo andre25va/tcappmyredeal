@@ -104,8 +104,13 @@ function extractPartsRecursive(
         data: encoding.toLowerCase() === 'base64' ? partBody.replace(/\s/g, '') : null,
       });
     } else if (contentType.includes('multipart/')) {
-      // Recurse into nested multipart (e.g. multipart/related > multipart/alternative)
-      extractPartsRecursive(partHeaders + '\r\n\r\n' + partBody, result);
+      // Recurse into nested multipart (e.g. multipart/related > multipart/alternative).
+      // Guard: skip parts with empty body — the preamble (index 0 of the split) carries
+      // the outer Content-Type header but has no body.  Without this guard the function
+      // infinitely re-discovers the same boundary and recurses until stack overflow.
+      if (partBody.trim()) {
+        extractPartsRecursive(partHeaders + '\r\n\r\n' + partBody, result);
+      }
     } else if (contentType.includes('text/html') && !result.html) {
       result.html = decodeBody(partBody, encoding);
     } else if (contentType.includes('text/plain') && !result.text) {
