@@ -516,7 +516,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     setCustomForm({
       name: cm.name,
       description: cm.description || '',
-      insertAfter: cm.insertAfter,
+      insertAfter: cm.insertAfter as DealMilestone,
       agentContactId: cm.agentContactId || '',
       notifFields: {
         notifyBuyerAgent: cm.notifyBuyerAgent,
@@ -819,7 +819,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
                     <p className="text-xs text-base-content/60 mt-0.5">{cm.description}</p>
                   )}
                   <p className="text-xs text-base-content/40 mt-1">
-                    Inserted after: <span className="font-medium text-base-content/60">{MILESTONE_LABELS[cm.insertAfter]}</span>
+                    Inserted after: <span className="font-medium text-base-content/60">{MILESTONE_LABELS[cm.insertAfter as DealMilestone]}</span>
                     {cm.agentName && (
                       <> · Agent: <span className="font-medium text-base-content/60">{cm.agentName}</span></>
                     )}

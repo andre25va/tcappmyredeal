@@ -787,7 +787,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteContactRecord(deleteTarget.id);
+      await deleteContactRecord(deleteTarget.id, 'TC');
       await refresh();
       onDirectoryChanged?.();
     } catch (err) {
