@@ -19,8 +19,12 @@ function decodeBody(raw: string, encoding: string): string {
     if (enc === 'base64') {
       return Buffer.from(raw.replace(/\s/g, ''), 'base64').toString('utf-8');
     } else if (enc === 'quoted-printable') {
-      // Remove soft line breaks: = at end of line (both \r\n and \n variants)
-      const joined = raw.replace(/=\r\n/g, '').replace(/=\n/g, '');
+      // Remove soft line breaks: optional trailing whitespace + = at end of line
+      // RFC 2045: trailing LWSP before soft break must be stripped by the encoder,
+      // but some mailers leave a trailing space/tab — handle both variants.
+      const joined = raw
+        .replace(/[ \t]*=\r\n/g, '')   // CRLF soft break (with optional trailing ws)
+        .replace(/[ \t]*=\n/g, '');     // LF-only soft break (with optional trailing ws)
       // Decode =XX hex sequences, handling UTF-8 multi-byte sequences
       return joined.replace(/(=[0-9A-F]{2})+/gi, (match) => {
         try {
