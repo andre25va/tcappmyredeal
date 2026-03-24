@@ -756,8 +756,39 @@ function AppInner() {
           setIsCallMinimized(false);
         }}
         onMinimize={() => setIsCallMinimized(prev => !prev)}
-        onAddNote={(note) => { console.log('Call note:', note); }}
-        onCreateTask={(desc) => { console.log('Call task:', desc); }}
+        onAddNote={async (note) => {
+          if (!note.trim()) return;
+          try {
+            await supabase.from('call_notes').insert({
+              raw_notes:  note.trim(),
+              deal_id:    activeCall?.dealId    || null,
+              contact_id: activeCall?.contactId || null,
+              author_id:  profile?.id           || null,
+            });
+          } catch (err) {
+            console.error('onAddNote error:', err);
+          }
+        }}
+        onCreateTask={async (desc) => {
+          if (!desc.trim()) return;
+          const deal = activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined;
+          try {
+            await supabase.from('comm_tasks').insert({
+              title:        `Follow-up: ${activeCall?.contactName || 'Contact'}`,
+              description:  desc.trim(),
+              contact_id:   activeCall?.contactId || null,
+              contact_name: activeCall?.contactName || null,
+              deal_id:      activeCall?.dealId || null,
+              deal_address: deal?.propertyAddress || null,
+              channel:      'phone',
+              status:       'pending',
+              priority:     'normal',
+              source:       'call',
+            });
+          } catch (err) {
+            console.error('onCreateTask error:', err);
+          }
+        }}
         isMinimized={isCallMinimized}
       />
 
