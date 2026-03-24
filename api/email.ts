@@ -268,7 +268,21 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
         const bodyHtml = html || '';
-        const bodyText = text || (html ? stripHtml(html) : '');
+        let bodyText = text || (html ? stripHtml(html) : '');
+        // Fallback: if MIME parsing yielded nothing, extract raw body after header block
+        if (!bodyText && !bodyHtml && source) {
+          const sep4 = source.indexOf('\r\n\r\n');
+          const sep2 = source.indexOf('\n\n');
+          const bodyStart = sep4 !== -1 ? sep4 + 4 : sep2 !== -1 ? sep2 + 2 : -1;
+          if (bodyStart !== -1) {
+            const headerBlock = source.substring(0, bodyStart);
+            const rawBody = source.substring(bodyStart);
+            const encMatch = headerBlock.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+            const enc = encMatch ? encMatch[1].toLowerCase().trim() : '7bit';
+            const decoded = decodeBody(rawBody.trim(), enc);
+            bodyText = stripHtml(decoded).replace(/\s+/g, ' ').trim();
+          }
+        }
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
         return res.status(200).json({
           messages: [{

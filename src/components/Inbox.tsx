@@ -1093,7 +1093,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       {msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <EmailBodyRenderer msg={msg} />
+                  <EmailBodyRenderer msg={msg} threadSnippet={selectedEmailThread?.snippet} />
                   {msg.attachments && msg.attachments.length > 0 && (
                     <AttachmentChips
                       attachments={msg.attachments}

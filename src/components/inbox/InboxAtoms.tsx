@@ -76,7 +76,7 @@ export function AttachmentChips({ attachments, onPreviewPdf }: {
   );
 }
 
-export function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
+export function EmailBodyRenderer({ msg, threadSnippet }: { msg: EmailMessage; threadSnippet?: string }) {
   const [showHtml, setShowHtml] = useState(true);
   const hasHtml = !!msg.bodyHtml;
 
@@ -120,9 +120,15 @@ export function EmailBodyRenderer({ msg }: { msg: EmailMessage }) {
           View formatted email
         </button>
       )}
-      <pre className="text-sm text-base-content/80 whitespace-pre-wrap font-sans leading-relaxed max-h-80 overflow-y-auto">
-        {msg.body || msg.snippet || '(no content)'}
-      </pre>
+      {(msg.body || msg.snippet || threadSnippet) ? (
+        <pre className="text-sm text-base-content/80 whitespace-pre-wrap font-sans leading-relaxed max-h-80 overflow-y-auto">
+          {msg.body || msg.snippet || threadSnippet}
+        </pre>
+      ) : (
+        <div className="flex items-center gap-2 px-4 py-3 text-base-content/35 text-xs italic">
+          <span>Content could not be loaded for this message.</span>
+        </div>
+      )}
     </div>
   );
 }
