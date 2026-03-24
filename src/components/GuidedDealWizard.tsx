@@ -401,7 +401,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
+        introEmailBody: resolveIntroBody(`Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -412,13 +412,28 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }
   };
 
+  // Resolve merge tags eagerly so the textarea preview shows real values
+  const resolveIntroBody = (rawBody: string): string => {
+    const ac = agentClients?.find(c => c.id === form.agentClientId);
+    const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
+    return rawBody
+      .replace(/\{\{address\}\}/g, form.address || '')
+      .replace(/\{\{city\}\}/g, form.city || '')
+      .replace(/\{\{state\}\}/g, form.state || '')
+      .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
+      .replace(/\{\{agentPhone\}\}/g, (ac as any)?.phone || '')
+      .replace(/\{\{agentEmail\}\}/g, (ac as any)?.email || '')
+      .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSig);
+  };
+
   const handleSendIntroEmail = async () => {
     if (!form.titleContactEmail || !form.introEmailSubject) return;
     setSendingIntroEmail(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      // Resolve merge tags before sending
+      // Body is already resolved (resolveIntroBody called at selection time)
+      // Re-resolve as safety net in case agent client was changed after contact picked
       const ac = agentClients?.find(c => c.id === form.agentClientId);
       const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
       const resolvedBody = form.introEmailBody
@@ -1815,7 +1830,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
+                                    introEmailBody: resolveIntroBody(`Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');
