@@ -124,6 +124,7 @@ function extractPartsRecursive(
  * Fallback HTML extractor: regex-scans raw MIME source for the first text/html part.
  * Used when the structured MIME parser (extractPartsRecursive) returns empty html —
  * e.g. Dotloop emails where the nested multipart boundary confuses the recursive splitter.
+ * Fires independently of whether text/plain was already found.
  */
 function extractHtmlFallback(source: string): string {
   const idx = source.search(/Content-Type:\s*text\/html/i);
@@ -135,7 +136,6 @@ function extractHtmlFallback(source: string): string {
   if (headerEnd === -1) return '';
   const headers = partSource.substring(0, headerEnd);
   const body = partSource.substring(headerEnd + sepLen);
-  // Trim at the next MIME boundary
   const bodyEnd = body.search(/\r?\n--/);
   const rawBody = bodyEnd !== -1 ? body.substring(0, bodyEnd) : body;
   const encMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
@@ -304,8 +304,8 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
         // HTML fallback: fires whenever structured parser missed the html part (e.g. Dotloop).
-        // Independent of whether text/plain was found — fixes emails that show plain text only.
-        let bodyHtml = html || (source ? extractHtmlFallback(source) : '');
+        // Independent of whether text/plain was found — fixes emails rendering as plain-text wall.
+        const bodyHtml = html || (source ? extractHtmlFallback(source) : '');
         let bodyText = text || (bodyHtml ? stripHtml(bodyHtml) : '');
         // Fallback: if MIME parsing yielded nothing, try two recovery strategies.
         if (!bodyText && !bodyHtml && source) {
@@ -342,19 +342,45 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
           }
         }
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+        const hdrs = extractEmailHeaders(source);
+        const cleanId = String(msg.uid).split(':')[0];
         return res.status(200).json({
-          messages: [{
-            id: String(msg.uid).split(':')[0], threadId: String(msg.uid).split(':')[0],
+          threads: [{
+            id: cleanId,
+            threadId: hdrs.inReplyTo || hdrs.messageId || cleanId,
+            messageId: hdrs.messageId || cleanId,
+            inReplyTo: hdrs.inReplyTo || '',
             subject: msg.envelope?.subject || '(no subject)',
             from: msg.envelope?.from?.[0] ? `${msg.envelope.from[0].name || ''} <${msg.envelope.from[0].address || ''}>`.trim() : '',
             to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
-            cc: msg.envelope?.cc?.map((a: any) => a.address).join(', ') || '',
-            date: msgDate.toISOString(), internalDate: msgDate.getTime().toString(),
-            bodyHtml, body: bodyText, snippet: bodyText.substring(0, 200),
+            cc: hdrs.cc || msg.envelope?.cc?.map((a: any) => a.address).join(', ') || '',
+            date: msgDate.toISOString(),
+            internalDate: msgDate.getTime().toString(),
+            bodyHtml,
+            body: bodyText,
+            snippet: bodyText.substring(0, 200),
+            hasAttachment: attachments.length > 0,
+            messageCount: 1,
             attachments: attachments.map(a => ({
               filename: a.filename, contentType: a.contentType, size: a.size,
-              downloadUrl: `/api/email/attachment?uid=${String(msg.uid).split(':')[0]}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
+              downloadUrl: `/api/email/attachment?uid=${cleanId}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
             })),
+            messages: [{
+              id: cleanId,
+              subject: msg.envelope?.subject || '(no subject)',
+              from: msg.envelope?.from?.[0] ? `${msg.envelope.from[0].name || ''} <${msg.envelope.from[0].address || ''}>`.trim() : '',
+              to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
+              cc: hdrs.cc || msg.envelope?.cc?.map((a: any) => a.address).join(', ') || '',
+              date: msgDate.toISOString(),
+              internalDate: msgDate.getTime().toString(),
+              bodyHtml,
+              body: bodyText,
+              snippet: bodyText.substring(0, 200),
+              attachments: attachments.map(a => ({
+                filename: a.filename, contentType: a.contentType, size: a.size,
+                downloadUrl: `/api/email/attachment?uid=${cleanId}&filename=${encodeURIComponent(a.filename)}&folder=${folder}`,
+              })),
+            }],
           }],
         });
       } finally { lock.release(); }
@@ -579,7 +605,7 @@ function deterministicScore(email: any, deal: DealEmailContext): { score: number
   let score = 0;
   const signals: string[] = [];
   const subject = email.subject || '';
-  const body = email.bodyText || email.snippet || '';
+  const body = email.bodyText || email.body || email.snippet || '';
   const from = email.from || '';
   const attNames: string[] = email.attachmentNames || [];
 
