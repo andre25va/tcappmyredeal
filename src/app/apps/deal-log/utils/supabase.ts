@@ -1,5 +1,13 @@
 import { Deal, EmailLogEntry } from '../types';
 
+declare global {
+  interface Window {
+    tasklet: {
+      runTool: (tool: string, args: Record<string, unknown>) => Promise<unknown>;
+    };
+  }
+}
+
 const PROJECT_ID = 'alxrmusieuzgssynktxg';
 const TOOL = 'conn_ggvr42vq9x7f2jfmb9d1__execute_sql';
 
