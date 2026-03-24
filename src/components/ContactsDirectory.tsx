@@ -854,7 +854,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
               type="text"
               placeholder="Search contacts..."
               className="input input-sm input-bordered pl-8 w-full sm:w-56"
-              value={search}\n              onChange={e => setSearch(e.target.value)}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
             />
           </div>
           <button className="btn btn-primary btn-sm gap-1" onClick={openAdd}>
