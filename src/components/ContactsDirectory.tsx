@@ -137,6 +137,7 @@ interface EditForm {
   originalIsClient: boolean;
   clientAccountId?: string;
   preferredLanguage: 'en' | 'es';
+  teamName: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -176,6 +177,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     originalIsClient: false,
     clientAccountId: undefined,
     preferredLanguage: 'en',
+    teamName: '',
     licenses: [],
     mlsMemberships: [],
   };
@@ -197,6 +199,7 @@ function contactToForm(c: ContactRecord): EditForm {
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
     preferredLanguage: c.preferredLanguage || 'en',
+    teamName: c.teamName ?? '',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -711,6 +714,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         notes: form.notes.trim() || undefined,
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
         preferredLanguage: form.preferredLanguage,
+        teamName: form.teamName.trim() || undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -1012,6 +1016,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
                 </div>
                 <div className="mt-2">
+                  <label className="label py-0"><span className="label-text text-xs">Team Name</span></label>
+                  <input className="input input-sm input-bordered w-full" placeholder="e.g. Team Alberto Zuniga" value={form.teamName} onChange={e => updateField('teamName', e.target.value)} />
+                </div>
+                <div className="mt-2">
                   <label className="label py-0">
                     <span className="label-text text-xs">Timezone *</span>
                   </label>
@@ -1162,6 +1170,23 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                         <div className="ml-4 border-l-2 border-dashed border-primary/30 pl-3">
                           <div className="border border-primary/30 rounded-lg p-3 bg-primary/5 space-y-2">
                             <p className="text-[10px] font-semibold text-primary uppercase tracking-wider">New Team Member</p>
+                            {/* Pick from directory */}
+                            <div>
+                              <label className="label py-0"><span className="label-text text-[10px]">Link from Directory</span></label>
+                              <select
+                                className="select select-xs select-bordered w-full"
+                                value=""
+                                onChange={e => {
+                                  const c = contacts.find(ct => ct.id === e.target.value);
+                                  if (c) setTeamForm(f => ({ ...f, name: c.fullName, email: c.email || f.email, phone: c.phone || f.phone }));
+                                }}
+                              >
+                                <option value="">— Pick a contact to auto-fill —</option>
+                                {contacts.map(c => (
+                                  <option key={c.id} value={c.id}>{c.fullName}{c.company ? ` (${c.company})` : ''}</option>
+                                ))}
+                              </select>
+                            </div>
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="label py-0"><span className="label-text text-[10px]">Name *</span></label>
