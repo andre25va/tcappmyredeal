@@ -114,7 +114,9 @@ export const smsReceiveRouter = Router();
 smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
   if (req.method !== 'POST') return res.status(405).send('Method not allowed');
 
-  const { From, Body, MessageSid } = req.body as { From: string; Body: string; MessageSid: string };
+  const { From, Body, MessageSid, To = '', NumMedia = '0' } = req.body as {
+    From: string; Body: string; MessageSid: string; To: string; NumMedia: string;
+  };
 
   try {
     const isWhatsApp = From && From.startsWith('whatsapp:');
@@ -122,6 +124,8 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
     const channel: 'sms' | 'whatsapp' = isWhatsApp ? 'whatsapp' : 'sms';
     const fromClean = fromPhone.replace(/\D/g, '');
     const fromE164 = fromClean.startsWith('1') ? `+${fromClean}` : `+1${fromClean}`;
+    const toNumbers = To.split(',').map((n: string) => n.trim()).filter(Boolean);
+    const isGroupMMS = toNumbers.length > 1;
 
     // 1. Match contact — try contact_phone_channels first (trusted registry)
     let matchedContact: any = null;
@@ -191,6 +195,57 @@ smsReceiveRouter.post('/receive', async (req: Request, res: Response) => {
 
     // ── SMS Commands ──────────────────────────────────────────────────────────
     const bodyUpper = messageBody.trim().toUpperCase();
+
+    // ── Group MMS Handler ─────────────────────────────────────────────────────
+    // Twilio sends multiple numbers comma-separated in `To` for group MMS messages.
+    // We send an immediate "Message Received" reply, log the message, and skip AI classify.
+    if (isGroupMMS) {
+      // Send "Message Received" reply immediately
+      await sendTwilioReply(fromPhone, 'Message Received', isWhatsApp);
+
+      // Save inbound message with [Group MMS] prefix
+      const groupNow = new Date().toISOString();
+      await supabase.from('messages').insert({
+        deal_id: relatedDeal?.id || null,
+        contact_id: matchedContact?.id || null,
+        direction: 'inbound',
+        channel,
+        body: `[Group MMS] ${wasTranslated ? `[Translated from Spanish] ${messageBody}` : Body}`,
+        status: 'received',
+        from_number: fromPhone,
+        to_number: process.env.TWILIO_PHONE_NUMBER,
+        external_message_id: MessageSid,
+        sent_at: groupNow,
+      });
+
+      // Create notification for TC
+      await supabase.from('notifications').insert({
+        type: channel,
+        title: `[Group MMS] New message from ${contactName}`,
+        body: Body.substring(0, 200),
+        from_name: contactName,
+        from_identifier: fromPhone,
+        deal_id: relatedDeal?.id || null,
+        contact_id: matchedContact?.id || null,
+      });
+
+      // Create comm_task for group MMS
+      await supabase.from('comm_tasks').insert({
+        title: `[Group MMS] Reply to ${contactName}: "${Body.substring(0, 40)}..."`,
+        description: `Inbound group MMS from ${contactName} (${fromPhone}): "${Body}"`,
+        channel,
+        contact_id: matchedContact?.id || null,
+        deal_id: relatedDeal?.id || null,
+        status: 'pending',
+        priority: 'normal',
+        source: 'auto_inbound',
+        due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      });
+
+      res.setHeader('Content-Type', 'text/xml');
+      return res.send('<Response></Response>');
+    }
+    // ── End Group MMS Handler ─────────────────────────────────────────────────
 
     // ── Onboarding State Machine ─────────────────────────────────────────────
     {
