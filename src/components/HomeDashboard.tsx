@@ -1,12 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Building2, TrendingUp, AlertTriangle, CheckSquare, Calendar,
   MapPin, Users, Clock, FileText, Activity, Home, DollarSign,
-  ChevronRight, Flame, Target, BarChart2, Zap, XCircle
+  ChevronRight, Flame, Target, BarChart2, Zap, XCircle,
+  Mail, Phone, ClipboardList, Sparkles,
 } from 'lucide-react';
 import { Deal, DealStatus, DealMilestone } from '../types';
 import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   deals: Deal[];
@@ -53,10 +55,115 @@ function KPICard({ icon, label, value, sub, color, onClick }:
   );
 }
 
+interface LiveStats {
+  emailsThisWeek: number;
+  callsThisWeek: number;
+  openRequests: number;
+  aiSummaries: number;
+}
+
+interface LiveActivityItem {
+  id: string;
+  type: 'email' | 'call' | 'request';
+  icon: string;
+  action: string;
+  dealId: string | null;
+  dealAddress: string | null;
+  timestamp: string;
+}
+
 export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeals, onGoToAlerts }) => {
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const thisYearStart  = new Date(now.getFullYear(), 0, 1);
+
+  // ── Live DB stats ──────────────────────────────────────────────────────────
+  const [liveStats, setLiveStats] = useState<LiveStats>({
+    emailsThisWeek: 0,
+    callsThisWeek: 0,
+    openRequests: 0,
+    aiSummaries: 0,
+  });
+  const [liveActivity, setLiveActivity] = useState<LiveActivityItem[]>([]);
+  const [liveLoaded, setLiveLoaded] = useState(false);
+
+  // Build a deal address lookup from props so we can enrich DB rows client-side
+  const dealAddressMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    deals.forEach(d => { m[d.id] = d.propertyAddress; });
+    return m;
+  }, [deals]);
+
+  useEffect(() => {
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    // ── Fetch counts ──
+    Promise.all([
+      supabase.from('email_send_log').select('id', { count: 'exact', head: true }).gte('sent_at', weekAgo),
+      supabase.from('call_logs').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
+      supabase.from('requests').select('id', { count: 'exact', head: true }).in('status', ['pending', 'sent', 'pending_review']),
+      supabase.from('call_logs').select('id', { count: 'exact', head: true }).not('ai_summary', 'is', null),
+    ]).then(([emails, calls, requests, summaries]) => {
+      setLiveStats({
+        emailsThisWeek: emails.count ?? 0,
+        callsThisWeek: calls.count ?? 0,
+        openRequests: requests.count ?? 0,
+        aiSummaries: summaries.count ?? 0,
+      });
+    }).catch(() => {/* silent — stats just stay 0 */});
+
+    // ── Fetch recent activity ──
+    Promise.all([
+      supabase.from('email_send_log')
+        .select('id, subject, template_name, sent_at, deal_id')
+        .order('sent_at', { ascending: false })
+        .limit(6),
+      supabase.from('call_logs')
+        .select('id, direction, status, duration, created_at, deal_id')
+        .order('created_at', { ascending: false })
+        .limit(6),
+      supabase.from('requests')
+        .select('id, request_type, status, created_at, deal_id')
+        .order('created_at', { ascending: false })
+        .limit(6),
+    ]).then(([emailRes, callRes, reqRes]) => {
+      const items: LiveActivityItem[] = [
+        ...(emailRes.data ?? []).map((e: any): LiveActivityItem => ({
+          id: `email-${e.id}`,
+          type: 'email',
+          icon: '📧',
+          action: e.subject || e.template_name || 'Email sent',
+          dealId: e.deal_id ?? null,
+          dealAddress: e.deal_id ? (dealAddressMap[e.deal_id] ?? null) : null,
+          timestamp: e.sent_at,
+        })),
+        ...(callRes.data ?? []).map((c: any): LiveActivityItem => ({
+          id: `call-${c.id}`,
+          type: 'call',
+          icon: '📞',
+          action: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call${c.duration ? ` · ${c.duration}s` : ''}${c.status ? ` · ${c.status}` : ''}`,
+          dealId: c.deal_id ?? null,
+          dealAddress: c.deal_id ? (dealAddressMap[c.deal_id] ?? null) : null,
+          timestamp: c.created_at,
+        })),
+        ...(reqRes.data ?? []).map((r: any): LiveActivityItem => ({
+          id: `req-${r.id}`,
+          type: 'request',
+          icon: '📋',
+          action: `${r.request_type || 'Request'} · ${r.status}`,
+          dealId: r.deal_id ?? null,
+          dealAddress: r.deal_id ? (dealAddressMap[r.deal_id] ?? null) : null,
+          timestamp: r.created_at,
+        })),
+      ]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 10);
+
+      setLiveActivity(items);
+      setLiveLoaded(true);
+    }).catch(() => { setLiveLoaded(true); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stats = useMemo(() => {
     const active = deals.filter(d => d.status !== 'closed' && d.status !== 'terminated' && d.milestone !== 'archived');
@@ -72,7 +179,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     const totalClosedVolume = closedThisMonth.reduce((s, d) => s + d.contractPrice, 0);
     const totalTerminatedVolume = terminated.reduce((s, d) => s + d.contractPrice, 0);
 
-    // Pipeline by status (exclude archived from active counts)
     const pipeline = (['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'] as DealStatus[])
       .map(status => ({
         status,
@@ -80,7 +186,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
         volume: deals.filter(d => d.status === status && (status === 'terminated' || d.milestone !== 'archived')).reduce((s, d) => s + d.contractPrice, 0),
       }));
 
-    // Amber alerts
     const allPending = deals.flatMap(d =>
       d.status !== 'terminated' && d.milestone !== 'archived'
         ? d.documentRequests.filter(r => r.status === 'pending').map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
@@ -89,7 +194,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     const highAlerts = allPending.filter(r => r.urgency === 'high');
     const medAlerts  = allPending.filter(r => r.urgency === 'medium');
 
-    // Closing timeline (next 30 days, active only)
     const closingSoon = active
       .map(d => ({ ...d, daysLeft: daysUntil(d.closingDate) }))
       .filter(d => d.daysLeft >= 0 && d.daysLeft <= 30)
@@ -98,7 +202,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     const closingThisWeek  = closingSoon.filter(d => d.daysLeft <= 7);
     const closingThisMonth = closingSoon.filter(d => d.daysLeft > 7 && d.daysLeft <= 30);
 
-    // Checklist health (active deals only)
     const allDDItems   = active.flatMap(d => d.dueDiligenceChecklist);
     const allCompItems = active.flatMap(d => d.complianceChecklist);
     const ddPct   = allDDItems.length   === 0 ? 100 : Math.round(allDDItems.filter(i => i.completed).length   / allDDItems.length   * 100);
@@ -107,7 +210,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
       i => !i.completed && i.dueDate && new Date(i.dueDate) < now
     );
 
-    // By state (active only)
     const byState: Record<string, { count: number; volume: number }> = {};
     active.forEach(d => {
       if (!byState[d.state]) byState[d.state] = { count: 0, volume: 0 };
@@ -116,7 +218,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     });
     const stateList = Object.entries(byState).sort((a, b) => b[1].count - a[1].count);
 
-    // By agent (active only)
     const byAgent: Record<string, { count: number; volume: number }> = {};
     active.forEach(d => {
       if (!byAgent[d.agentName]) byAgent[d.agentName] = { count: 0, volume: 0 };
@@ -125,26 +226,22 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     });
     const agentList = Object.entries(byAgent).sort((a, b) => b[1].count - a[1].count);
 
-    // By property type (active only)
     const byType: Record<string, number> = {};
     active.forEach(d => {
       byType[d.propertyType] = (byType[d.propertyType] || 0) + 1;
     });
 
-    // Today's reminders (active only)
     const todayStr = now.toISOString().slice(0, 10);
     const todayReminders = active.flatMap(d =>
       d.reminders.filter(r => !r.completed && r.dueDate <= todayStr)
         .map(r => ({ ...r, dealId: d.id, dealAddress: d.propertyAddress }))
     );
 
-    // Recent activity across all deals
     const recentActivity = deals
       .flatMap(d => d.activityLog.map(a => ({ ...a, dealId: d.id, dealAddress: d.propertyAddress, dealState: d.state })))
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 8);
 
-    // Avg days to close
     const closedDeals = deals.filter(d => d.status === 'closed');
     const avgDaysToClose = closedDeals.length === 0 ? 0 :
       Math.round(closedDeals.reduce((s, d) => {
@@ -152,7 +249,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
         return s + days;
       }, 0) / closedDeals.length);
 
-    // Milestone funnel (active only)
     const MILESTONE_ORDER: DealMilestone[] = [
       'contract-received', 'emd-due', 'inspections-due', 'appraisal-ordered',
       'appraisal-received', 'title-opened', 'loan-commitment', 'closing-scheduled',
@@ -163,7 +259,6 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
       count: active.filter(d => d.milestone === m).length,
     })).filter(m => m.count > 0);
 
-    // Task KPIs (active deals only)
     const allTasks = active.flatMap(d => d.tasks ?? []);
     const todayStr2 = now.toISOString().slice(0, 10);
     const overdueTasks     = allTasks.filter(t => !t.completedAt && t.dueDate < todayStr2);
@@ -202,6 +297,12 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     document_requested: 'text-warning', document_confirmed: 'text-success',
     reminder_set: 'text-secondary', note: 'text-base-content/60',
     price_change: 'text-error',
+  };
+
+  const LIVE_ACTIVITY_COLORS: Record<string, string> = {
+    email: 'text-blue-500',
+    call: 'text-green-500',
+    request: 'text-amber-500',
   };
 
   const typeLabel: Record<string, string> = {
@@ -296,6 +397,52 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             sub={`${stats.allTasks.length} total tasks`}
             color="text-primary"
           />
+        </div>
+
+        {/* ── COMMUNICATIONS THIS WEEK (live from DB) ── */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Activity size={13} className="text-primary" />
+            <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Communications This Week</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="card bg-base-200 border border-base-300 hover:border-blue-400/40 transition-all">
+              <div className="card-body p-4 gap-1">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <Mail size={15} className="text-blue-500" />
+                </div>
+                <p className="text-2xl font-bold leading-none mt-1">{liveStats.emailsThisWeek}</p>
+                <p className="text-xs font-medium text-base-content/60">Emails Sent</p>
+              </div>
+            </div>
+            <div className="card bg-base-200 border border-base-300 hover:border-green-400/40 transition-all">
+              <div className="card-body p-4 gap-1">
+                <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <Phone size={15} className="text-green-500" />
+                </div>
+                <p className="text-2xl font-bold leading-none mt-1">{liveStats.callsThisWeek}</p>
+                <p className="text-xs font-medium text-base-content/60">Calls Made</p>
+              </div>
+            </div>
+            <div className="card bg-base-200 border border-base-300 hover:border-amber-400/40 transition-all">
+              <div className="card-body p-4 gap-1">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <ClipboardList size={15} className="text-amber-500" />
+                </div>
+                <p className="text-2xl font-bold leading-none mt-1">{liveStats.openRequests}</p>
+                <p className="text-xs font-medium text-base-content/60">Open Requests</p>
+              </div>
+            </div>
+            <div className="card bg-base-200 border border-base-300 hover:border-purple-400/40 transition-all">
+              <div className="card-body p-4 gap-1">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                  <Sparkles size={15} className="text-purple-500" />
+                </div>
+                <p className="text-2xl font-bold leading-none mt-1">{liveStats.aiSummaries}</p>
+                <p className="text-xs font-medium text-base-content/60">AI Summaries</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ── PIPELINE + ALERTS ROW ── */}
@@ -662,15 +809,53 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             </div>
           </div>
 
-          {/* Recent Activity Feed */}
+          {/* Recent Activity Feed — live from DB when loaded, fallback to in-memory */}
           <div className="card bg-base-200 border border-base-300">
             <div className="card-body p-4">
-              <h2 className="font-semibold text-sm flex items-center gap-2 mb-3">
-                <Activity size={15} className="text-primary" /> Recent Activity
-              </h2>
-              {stats.recentActivity.length === 0 ? (
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-sm flex items-center gap-2">
+                  <Activity size={15} className="text-primary" /> Recent Activity
+                </h2>
+                {liveLoaded && liveActivity.length > 0 && (
+                  <span className="badge badge-primary badge-xs badge-outline">Live</span>
+                )}
+              </div>
+
+              {/* Live DB activity */}
+              {liveLoaded && liveActivity.length > 0 ? (
+                <div className="space-y-1 max-h-52 overflow-y-auto">
+                  {liveActivity.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-start gap-2 p-1.5 rounded-md hover:bg-base-300/60 cursor-pointer"
+                      onClick={() => {
+                        if (entry.dealId) { onSelectDeal(entry.dealId); onGoToDeals(); }
+                      }}
+                    >
+                      <div className={`w-5 h-5 rounded-full bg-base-300 flex items-center justify-center shrink-0 mt-0.5 text-xs ${LIVE_ACTIVITY_COLORS[entry.type]}`}>
+                        {entry.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium leading-tight truncate">{entry.action}</p>
+                        {entry.dealAddress && (
+                          <p className="text-[10px] text-base-content/40 truncate">{entry.dealAddress}</p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-base-content/30 shrink-0 whitespace-nowrap">
+                        {new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : !liveLoaded ? (
+                <div className="flex items-center justify-center h-20 gap-2 text-base-content/30">
+                  <span className="loading loading-spinner loading-sm" />
+                  <span className="text-xs">Loading activity...</span>
+                </div>
+              ) : stats.recentActivity.length === 0 ? (
                 <p className="text-xs text-base-content/40 text-center py-4">No recent activity</p>
               ) : (
+                /* Fallback: in-memory activity log */
                 <div className="space-y-1 max-h-52 overflow-y-auto">
                   {stats.recentActivity.map((entry: any) => (
                     <div
