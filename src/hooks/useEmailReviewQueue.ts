@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase';
 export interface ReviewQueueItem {
   id: string;
   gmail_thread_id: string;
-  gmail_message_id: string;
+  // Derived from thread_from
   from_email: string;
   from_name: string | null;
+  // Derived from thread_subject / thread_snippet
   subject: string;
   snippet: string | null;
   received_at: string;
@@ -44,6 +45,21 @@ export interface ReviewQueueStats {
   total: number;
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Parse "Name <email@domain>" or plain email into { name, email } */
+function parseFrom(threadFrom: string | null): { email: string; name: string | null } {
+  if (!threadFrom) return { email: '', name: null };
+  const match = threadFrom.match(/^(.+?)\s*<(.+?)>$/);
+  if (match) return { email: match[2].trim(), name: match[1].trim() || null };
+  return { email: threadFrom.trim(), name: null };
+}
+
+/** Reconstruct "Name <email>" for inserts */
+function buildFrom(name: string | null, email: string): string {
+  return name ? `${name} <${email}>` : email;
+}
+
 // ─── Address parser ────────────────────────────────────────────────────────────
 export function parseAddressString(full: string): {
   property_address: string;
@@ -74,6 +90,49 @@ export function useEmailReviewQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /** Transform a raw email_review_queue row into ReviewQueueItem */
+  function mapQueueRow(row: any): ReviewQueueItem {
+    const { email, name } = parseFrom(row.thread_from);
+    return {
+      id: row.id,
+      gmail_thread_id: row.gmail_thread_id,
+      from_email: email,
+      from_name: name,
+      subject: row.thread_subject || '',
+      snippet: row.thread_snippet || null,
+      received_at: row.received_at,
+      has_attachment: !!row.has_attachment,
+      top_deal_id: row.top_deal_id ?? null,
+      top_deal_address: null,      // not stored in queue table
+      top_deal_score: row.top_deal_score ?? null,
+      runner_up_deal_id: row.runner_up_deal_id ?? null,
+      runner_up_deal_address: null, // not stored in queue table
+      runner_up_deal_score: row.runner_up_score ?? null,
+      ai_suggestion: row.ai_suggestion ?? null,
+      status: row.status,
+      score_breakdown: row.score_breakdown ?? null,
+      created_at: row.received_at, // alias
+    };
+  }
+
+  /** Transform a raw email_thread_links row into LinkedThread */
+  function mapLinkedRow(row: any): LinkedThread {
+    const { email, name } = parseFrom(row.thread_from);
+    return {
+      id: row.id,
+      gmail_thread_id: row.gmail_thread_id,
+      deal_id: row.deal_id,
+      deal_address: row.deals?.property_address ?? null,
+      from_email: email || null,
+      from_name: name || null,
+      subject: row.thread_subject || null,
+      snippet: row.thread_snippet || null,
+      score: row.score ?? null,
+      link_method: row.link_method,
+      created_at: row.linked_at,
+    };
+  }
+
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
@@ -97,26 +156,24 @@ export function useEmailReviewQueue() {
           .order('received_at', { ascending: false })
           .limit(50),
 
-        // Recently linked: auto + AI last 20
+        // Recently linked: auto + manual last 20
         supabase
           .from('email_thread_links')
           .select(`
             id, gmail_thread_id, deal_id,
-            from_email, from_name, subject, snippet,
-            score, link_method, created_at,
+            thread_from, thread_subject, thread_snippet,
+            score, link_method, linked_at,
+            has_attachment,
             deals!inner(property_address)
           `)
-          .in('link_method', ['auto', 'ai_suggested'])
-          .order('created_at', { ascending: false })
+          .in('link_method', ['auto', 'manual'])
+          .order('linked_at', { ascending: false })
           .limit(20),
       ]);
 
-      const reviewItems = (reviewRes.data || []) as ReviewQueueItem[];
-      const unmatchedItems = (unmatchedRes.data || []) as ReviewQueueItem[];
-      const linkedItems = ((linkedRes.data || []) as any[]).map(r => ({
-        ...r,
-        deal_address: r.deals?.property_address ?? null,
-      })) as LinkedThread[];
+      const reviewItems = (reviewRes.data || []).map(mapQueueRow);
+      const unmatchedItems = (unmatchedRes.data || []).map(mapQueueRow);
+      const linkedItems = (linkedRes.data || []).map(mapLinkedRow);
 
       setNeedsReview(reviewItems);
       setUnmatched(unmatchedItems);
@@ -140,19 +197,18 @@ export function useEmailReviewQueue() {
     return () => clearInterval(t);
   }, [fetchAll]);
 
-  const confirmLink = useCallback(async (item: ReviewQueueItem, dealId: string, dealAddress: string) => {
+  const confirmLink = useCallback(async (item: ReviewQueueItem, dealId: string, _dealAddress: string) => {
     await supabase.from('email_thread_links').upsert({
       gmail_thread_id: item.gmail_thread_id,
       deal_id: dealId,
-      from_email: item.from_email,
-      from_name: item.from_name,
-      subject: item.subject,
-      snippet: item.snippet,
-      received_at: item.received_at,
+      thread_from: buildFrom(item.from_name, item.from_email),
+      thread_subject: item.subject,
+      thread_snippet: item.snippet,
+      thread_date: item.received_at,
       has_attachment: item.has_attachment,
       score: item.top_deal_score ?? 0,
       score_breakdown: item.score_breakdown,
-      link_method: 'ai_suggested',
+      link_method: 'manual',
       is_unread: true,
     }, { onConflict: 'gmail_thread_id,deal_id' });
 
@@ -200,11 +256,10 @@ export function useEmailReviewQueue() {
       await supabase.from('email_thread_links').upsert({
         gmail_thread_id: item.gmail_thread_id,
         deal_id: dealId,
-        from_email: item.from_email,
-        from_name: item.from_name,
-        subject: item.subject,
-        snippet: item.snippet,
-        received_at: item.received_at,
+        thread_from: buildFrom(item.from_name, item.from_email),
+        thread_subject: item.subject,
+        thread_snippet: item.snippet,
+        thread_date: item.received_at,
         has_attachment: item.has_attachment,
         score: 100,
         score_breakdown: { manual_new_deal: 100 },
