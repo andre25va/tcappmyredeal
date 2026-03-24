@@ -34,16 +34,19 @@ export const CallButton: React.FC<CallButtonProps> = ({
   className = '',
   onCallStarted,
 }) => {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [callError, setCallError]   = useState<string | null>(null);
   const { profile } = useAuth();
 
   // Feature flag gate — disable all call buttons with one flag flip
   if (!FEATURE_FLAGS.outboundCallbacks) return null;
 
   const initiateCall = async (selectedDealId?: string) => {
+    setCallError(null);
+
     if (!profile?.id) {
-      console.warn('CallButton: no profile id — cannot initiate callback');
+      setCallError('Profile not loaded — cannot place call');
       return;
     }
 
@@ -54,7 +57,7 @@ export const CallButton: React.FC<CallButtonProps> = ({
       '';
 
     if (!staffPhone) {
-      console.warn('CallButton: no staff phone on profile — cannot initiate callback');
+      setCallError('No phone number on your profile — update in Settings');
       return;
     }
 
@@ -65,24 +68,29 @@ export const CallButton: React.FC<CallButtonProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contactId: contactId || undefined,
+          contactId:    contactId  || undefined,
           contactName,
           contactPhone: phoneNumber,
           staffPhone,
-          dealId: selectedDealId || undefined,
-          profileId: profile.id,
-          requestedBy: 'tc-app',
+          dealId:       selectedDealId || undefined,
+          profileId:    profile.id,
+          requestedBy:  'tc-app',
         }),
       });
       if (res.ok) {
         const data = await res.json();
         onCallStarted?.(data.callSid || data.staffCallSid || data.id || 'call-initiated');
       } else {
-        const err = await res.json().catch(() => ({}));
-        console.error('CallButton: initiate failed', res.status, err);
+        const errBody = await res.json().catch(() => ({}));
+        const msg = errBody?.error || `Call failed (${res.status})`;
+        console.error('CallButton: initiate failed', res.status, errBody);
+        setCallError(msg);
+        setTimeout(() => setCallError(null), 5000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to initiate call:', err);
+      setCallError('Network error — could not place call');
+      setTimeout(() => setCallError(null), 5000);
     } finally {
       setLoading(false);
     }
@@ -107,18 +115,21 @@ export const CallButton: React.FC<CallButtonProps> = ({
 
   if (variant === 'button') {
     return (
-      <div className={`relative inline-flex ${className}`}>
+      <div className={`relative inline-flex flex-col gap-0.5 ${className}`}>
         <button
           onClick={handleClick}
           disabled={loading}
-          className="btn btn-sm btn-ghost text-success hover:bg-success/10 gap-1.5 min-h-0 h-7"
-          title={`Call ${contactName}`}
+          className={`btn btn-sm btn-ghost gap-1.5 min-h-0 h-7 ${callError ? 'text-error hover:bg-error/10' : 'text-success hover:bg-success/10'}`}
+          title={callError || `Call ${contactName}`}
         >
           {loading
             ? <Loader2 size={s.icon} className="animate-spin" />
             : <Phone size={s.icon} />}
           <span className="text-xs font-medium">Call</span>
         </button>
+        {callError && (
+          <span className="text-xs text-error leading-tight max-w-[160px] whitespace-normal">{callError}</span>
+        )}
         {showPicker && (
           <DealPickerPopup
             deals={deals}
@@ -136,12 +147,12 @@ export const CallButton: React.FC<CallButtonProps> = ({
       <button
         onClick={handleClick}
         disabled={loading}
-        className={`btn btn-ghost btn-circle ${s.btn} text-success hover:bg-success/10 p-0 flex items-center justify-center`}
-        title={`Call ${contactName}`}
+        className={`btn btn-ghost btn-circle ${s.btn} ${callError ? 'text-error hover:bg-error/10' : 'text-success hover:bg-success/10'} p-0 flex items-center justify-center`}
+        title={callError || `Call ${contactName}`}
       >
         {loading
           ? <Loader2 size={s.icon} className="animate-spin" />
-          : <Phone size={s.icon} />}
+          : <Phone size={s.icon} className={callError ? 'animate-pulse' : ''} />}
       </button>
       {showPicker && (
         <DealPickerPopup
