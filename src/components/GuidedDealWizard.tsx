@@ -5,6 +5,7 @@ import {
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
 
 interface Props {
@@ -235,6 +236,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
 export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
+  const { primaryOrgId } = useAuth();
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
     secondaryAddress: '',
@@ -777,6 +779,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       }],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      orgId: primaryOrgId() ?? undefined,
     };
     onAdd(deal);
   };

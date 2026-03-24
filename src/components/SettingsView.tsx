@@ -137,7 +137,7 @@ export const SettingsView: React.FC<Props> = ({
   ddMasterItems = [], onSaveDdMasterItems,
 }) => {
   const [tab, setTab]             = useState<SettingsTab>('team');
-  const { profile, isMasterAdmin } = useAuth();
+  const { profile, isMasterAdmin, primaryOrgId } = useAuth();
 
   // Only show org tab for admins or team admins
   const showOrgTab = profile?.role === 'admin' || profile?.is_master_admin ||
@@ -301,7 +301,7 @@ export const SettingsView: React.FC<Props> = ({
         {tab === 'org-management' && <OrgManagementTab />}
         {tab === 'license-links' && <LicenseLinksTab />}
         {tab === 'email-templates' && (
-          <EmailTemplatesTab emailTemplates={emailTemplates} onSave={onSaveEmailTemplates} />
+          <EmailTemplatesTab emailTemplates={emailTemplates} onSave={onSaveEmailTemplates} orgId={primaryOrgId() ?? undefined} />
         )}
         {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'milestones' && <MilestonesTab contactRecords={contactRecords} />}

@@ -12,6 +12,7 @@ export interface EmailTemplate {
   buttons: ConfirmationButton[];
   category?: string;
   isDefault?: boolean;
+  orgId?: string;         // FK to organizations table — null means global template
   createdAt: string;
   updatedAt: string;
 }
@@ -459,6 +460,8 @@ export interface Deal {
   primaryClientAccountId?: string;     // FK to client_accounts
   assignedTcUserId?: string;           // FK to profiles
   assignedComplianceUserId?: string;   // FK to profiles
+  orgId?: string;                      // FK to organizations table
+  dealRef?: string;                    // human-readable ref like MRD-0042
   participants?: DealParticipant[];    // Loaded from deal_participants table
 
   // ── Legacy agent fields (populated from participants for backward compat) ──

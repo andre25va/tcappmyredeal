@@ -54,8 +54,9 @@ import WorkspaceEmailCompose from './WorkspaceEmailCompose';
 import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
+import { DealAccessPanel } from './DealAccessPanel';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
 
 interface Props {
   deal: Deal;
@@ -120,8 +121,10 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
 }
 
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
-  const { profile } = useAuth();
+  const { profile, isMasterAdmin } = useAuth();
   const isViewer = profile?.role === 'viewer';
+  const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
+    (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
   const [copied, setCopied] = useState(false);
   const [wsMenuOpen, setWsMenuOpen]     = useState(false);
@@ -174,6 +177,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
     { id: 'linked-emails', label: 'Emails', icon: <Inbox size={13} />, badge: linkedEmailUnread > 0 ? linkedEmailUnread : undefined },
     { id: 'amendments', label: 'Amendments', icon: <FileText size={13} /> },
+    ...(canManageAccess ? [{ id: 'access' as Tab, label: 'Access', icon: <Shield size={14} /> }] : []),
   ];
 
   return (
@@ -386,6 +390,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         )}
         {tab === 'requests'   && <WorkspaceRequests deal={deal} />}
         {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
+        {tab === 'access' && <DealAccessPanel deal={deal} />}
         {tab === 'linked-emails' && (
           <WorkspaceLinkedEmails
             deal={deal}

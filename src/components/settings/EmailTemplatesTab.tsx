@@ -3,6 +3,7 @@ import { Mail, Plus, Pencil, Trash2, X, Check } from 'lucide-react';
 import { EmailTemplate, ConfirmationButton } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 const MERGE_TAGS = [
   { tag: '{{address}}', desc: 'Property street address' },
@@ -30,14 +31,21 @@ interface TemplateFormState { name: string; subject: string; body: string; butto
 function emptyFormState(): TemplateFormState { return { name: '', subject: '', body: '', buttons: [], category: 'General' }; }
 function templateToFormState(t: EmailTemplate): TemplateFormState { return { name: t.name, subject: t.subject, body: t.body, buttons: t.buttons.map(b => ({ ...b })), category: t.category || 'General' }; }
 
-interface EmailTemplatesTabProps { emailTemplates: EmailTemplate[]; onSave: (templates: EmailTemplate[]) => void; }
+interface EmailTemplatesTabProps { emailTemplates: EmailTemplate[]; onSave: (templates: EmailTemplate[]) => void; orgId?: string; }
 
-export function EmailTemplatesTab({ emailTemplates, onSave }: EmailTemplatesTabProps) {
+export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTemplatesTabProps) {
   const [selectedId, setSelectedId] = useState<string | null>(emailTemplates[0]?.id ?? null);
   const [form, setForm] = useState<TemplateFormState | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showMergeTags, setShowMergeTags] = useState(false);
+  const [scope, setScope] = useState<'all' | 'global' | 'team'>('all');
+
+  const visibleTemplates = emailTemplates.filter(t => {
+    if (scope === 'global') return !t.orgId;
+    if (scope === 'team') return !!t.orgId && t.orgId === orgId;
+    return true;
+  });
 
   const selectedTemplate = emailTemplates.find(t => t.id === selectedId) ?? null;
   const startEdit = (t: EmailTemplate) => { setSelectedId(t.id); setForm(templateToFormState(t)); setIsNew(false); };
@@ -48,7 +56,7 @@ export function EmailTemplatesTab({ emailTemplates, onSave }: EmailTemplatesTabP
     if (!form || !form.name.trim()) return;
     const now = new Date().toISOString();
     if (isNew) {
-      const newTemplate: EmailTemplate = { id: generateId(), name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, category: form.category, createdAt: now, updatedAt: now };
+      const newTemplate: EmailTemplate = { id: generateId(), name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, category: form.category, createdAt: now, updatedAt: now, orgId: scope === 'team' ? orgId : undefined };
       onSave([...emailTemplates, newTemplate]); setSelectedId(newTemplate.id);
     } else {
       onSave(emailTemplates.map(t => t.id === selectedId ? { ...t, name: form.name.trim(), subject: form.subject.trim(), body: form.body, buttons: form.buttons, category: form.category, updatedAt: now } : t));
@@ -72,9 +80,22 @@ export function EmailTemplatesTab({ emailTemplates, onSave }: EmailTemplatesTabP
           <p className="text-xs font-bold text-base-content uppercase tracking-wide">Templates</p>
           <button className="btn btn-xs btn-primary gap-1" onClick={startNew}><Plus size={10} /> New</button>
         </div>
+        {orgId && (
+          <div className="flex items-center gap-1 p-2 border-b border-base-300">
+            {(['all', 'global', 'team'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setScope(s)}
+                className={`btn btn-xs ${scope === s ? 'btn-primary' : 'btn-ghost'} capitalize`}
+              >
+                {s === 'all' ? 'All' : s === 'global' ? 'Global' : 'My Team'}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex-1 p-2 space-y-1">
-          {emailTemplates.length === 0 && <p className="text-xs text-base-content/40 text-center py-4">No templates yet</p>}
-          {emailTemplates.map(t => (
+          {visibleTemplates.length === 0 && <p className="text-xs text-base-content/40 text-center py-4">No templates yet</p>}
+          {visibleTemplates.map(t => (
             <button key={t.id} onClick={() => { if (!form) startEdit(t); else setSelectedId(t.id); }} className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all text-xs ${selectedId === t.id ? 'bg-base-100 border-primary/40 shadow-sm font-semibold' : 'bg-transparent border-transparent hover:bg-base-100 hover:border-base-300 text-base-content/70'}`}>
               <div className="flex items-center gap-2"><Mail size={10} className={selectedId === t.id ? 'text-primary' : 'text-base-content/40'} /><span className="truncate">{t.name}</span></div>
               <div className="text-base-content/40 text-[10px] mt-0.5">{t.buttons.length} btn{t.buttons.length !== 1 ? 's' : ''}</div>

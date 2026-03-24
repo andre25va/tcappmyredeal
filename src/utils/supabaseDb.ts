@@ -168,7 +168,8 @@ export async function loadDeals(): Promise<Deal[]> {
       loan_type, loan_amount, down_payment, earnest_money, earnest_money_due_date,
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
-      home_warranty_paid_by, home_warranty_company, commission_paid_by
+      home_warranty_paid_by, home_warranty_company, commission_paid_by,
+      org_id, deal_ref
     `)
     .order('created_at', { ascending: false });
 
@@ -261,6 +262,8 @@ export async function loadDeals(): Promise<Deal[]> {
       surveyRequired: (dd.surveyRequired as boolean) ?? undefined,
       isHeartlandMls: (dd.isHeartlandMls as boolean) ?? undefined,
       archiveReason: (dd.archiveReason as string) ?? undefined,
+      orgId: row.org_id as string | undefined,
+      dealRef: row.deal_ref as string | undefined,
       createdAt: row.created_at || (dd.createdAt as string) || new Date().toISOString(),
       updatedAt: row.updated_at || (dd.updatedAt as string) || new Date().toISOString(),
     };
@@ -314,6 +317,7 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
     home_warranty_company: deal.homeWarrantyCompany || null,
     commission_paid_by: deal.commissionPaidBy || null,
+    org_id: deal.orgId ?? null,
     deal_data: dealToJsonBackup(deal),
     updated_at: new Date().toISOString(),
   }));
@@ -375,6 +379,7 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
+      org_id: deal.orgId ?? null,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },
@@ -675,11 +680,19 @@ export async function saveUsers(users: AppUser[]): Promise<void> {
 
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
 
-export async function loadEmailTemplates(): Promise<EmailTemplate[]> {
-  const { data, error } = await supabase
+export async function loadEmailTemplates(scope?: 'global' | 'team', orgId?: string): Promise<EmailTemplate[]> {
+  let query = supabase
     .from('email_templates')
-    .select('id, name, subject, body, buttons, is_default, created_at, updated_at')
+    .select('id, name, subject, body, buttons, category, is_default, org_id, created_at, updated_at')
     .order('created_at', { ascending: true });
+
+  if (scope === 'global') {
+    query = query.is('org_id', null);
+  } else if (scope === 'team' && orgId) {
+    query = query.eq('org_id', orgId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []).map((row) => ({
@@ -688,13 +701,15 @@ export async function loadEmailTemplates(): Promise<EmailTemplate[]> {
     subject: row.subject as string,
     body: row.body as string,
     buttons: (row.buttons as EmailTemplate['buttons']) ?? [],
+    category: row.category as string | undefined,
     isDefault: row.is_default as boolean,
+    orgId: row.org_id as string | undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }));
 }
 
-export async function saveEmailTemplates(templates: EmailTemplate[]): Promise<void> {
+export async function saveEmailTemplates(templates: EmailTemplate[], orgId?: string): Promise<void> {
   if (templates.length === 0) {
     await supabase.from('email_templates').delete().neq('id', '');
     return;
@@ -707,6 +722,7 @@ export async function saveEmailTemplates(templates: EmailTemplate[]): Promise<vo
     body: t.body,
     buttons: t.buttons ?? [],
     is_default: t.isDefault ?? false,
+    org_id: (t as any).orgId ?? orgId ?? null,
     updated_at: new Date().toISOString(),
   }));
 
@@ -1956,4 +1972,39 @@ export async function revokeDealAccess(token: string, dealId: string, profileId:
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? 'Failed to revoke deal access');
+}
+
+// ─── ORG TC PICKER ─────────────────────────────────────────────────────────
+
+export async function loadProfilesForOrg(orgId: string): Promise<{ id: string; name: string; role: string }[]> {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .select('profiles!inner(id, name, role)')
+    .eq('org_id', orgId)
+    .eq('status', 'active')
+    .in('role_in_org', ['tc', 'team_admin']);
+
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.profiles.id as string,
+    name: row.profiles.name as string,
+    role: row.profiles.role as string,
+  }));
+}
+
+// ─── DEAL ACCESS ─────────────────────────────────────────────────────────────
+
+export async function loadDealAccessGrants(dealId: string): Promise<{ id: string; userId: string; userName: string; grantedAt: string }[]> {
+  const { data, error } = await supabase
+    .from('deal_access')
+    .select('id, user_id, granted_at, profiles!inner(name)')
+    .eq('deal_id', dealId);
+
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id as string,
+    userId: row.user_id as string,
+    userName: row.profiles.name as string,
+    grantedAt: row.granted_at as string,
+  }));
 }
