@@ -19,12 +19,14 @@ function decodeBody(raw: string, encoding: string): string {
     if (enc === 'base64') {
       return Buffer.from(raw.replace(/\s/g, ''), 'base64').toString('utf-8');
     } else if (enc === 'quoted-printable') {
-      // Remove soft line breaks: optional trailing whitespace + = at end of line
-      // RFC 2045: trailing LWSP before soft break must be stripped by the encoder,
-      // but some mailers leave a trailing space/tab — handle both variants.
+      // Remove soft line breaks: RFC 2045 says "=" immediately before CRLF.
+      // Some mailers (e.g. Dotloop) add trailing whitespace AFTER the "=" before the
+      // line break ("= \r\n").  Others add it before ("  =\r\n").  Handle all variants:
+      //   [ \t]*  =  [ \t]*  \r\n   — ws before and/or after the = sign, CRLF
+      //   [ \t]*  =  [ \t]*  \n     — same, LF only
       const joined = raw
-        .replace(/[ \t]*=\r\n/g, '')   // CRLF soft break (with optional trailing ws)
-        .replace(/[ \t]*=\n/g, '');     // LF-only soft break (with optional trailing ws)
+        .replace(/[ \t]*=[ \t]*\r\n/g, '')   // CRLF soft break (ws anywhere around =)
+        .replace(/[ \t]*=[ \t]*\n/g, '');     // LF-only soft break (ws anywhere around =)
       // Decode =XX hex sequences, handling UTF-8 multi-byte sequences
       return joined.replace(/(=[0-9A-F]{2})+/gi, (match) => {
         try {
@@ -273,18 +275,38 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const { text, html, attachments } = extractPartsFromSource(source);
         const bodyHtml = html || '';
         let bodyText = text || (html ? stripHtml(html) : '');
-        // Fallback: if MIME parsing yielded nothing, extract raw body after header block
+        // Fallback: if MIME parsing yielded nothing, try two recovery strategies.
         if (!bodyText && !bodyHtml && source) {
-          const sep4 = source.indexOf('\r\n\r\n');
-          const sep2 = source.indexOf('\n\n');
-          const bodyStart = sep4 !== -1 ? sep4 + 4 : sep2 !== -1 ? sep2 + 2 : -1;
-          if (bodyStart !== -1) {
-            const headerBlock = source.substring(0, bodyStart);
-            const rawBody = source.substring(bodyStart);
-            const encMatch = headerBlock.match(/Content-Transfer-Encoding:\s*(\S+)/i);
-            const enc = encMatch ? encMatch[1].toLowerCase().trim() : '7bit';
-            const decoded = decodeBody(rawBody.trim(), enc);
-            bodyText = stripHtml(decoded).replace(/\s+/g, ' ').trim();
+          // Strategy 1: regex-scan the raw source for the first QP-encoded text part.
+          // This catches multipart emails where the top-level boundary parser fails.
+          const qpTextMatch = source.match(
+            /Content-Type:\s*text\/plain[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*Content-Transfer-Encoding:\s*quoted-printable[ \t]*\r?\n\r?\n([\s\S]*?)(?=\r?\n--)/i
+          );
+          const qpHtmlMatch = !qpTextMatch && source.match(
+            /Content-Type:\s*text\/html[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*Content-Transfer-Encoding:\s*quoted-printable[ \t]*\r?\n\r?\n([\s\S]*?)(?=\r?\n--)/i
+          );
+          if (qpTextMatch) {
+            bodyText = decodeBody(qpTextMatch[1], 'quoted-printable');
+          } else if (qpHtmlMatch) {
+            const decodedHtml = decodeBody(qpHtmlMatch[1], 'quoted-printable');
+            bodyText = stripHtml(decodedHtml);
+          } else {
+            // Strategy 2: read raw body after top-level header block.
+            // Detect QP artifacts even when the encoding header says 7bit (common for
+            // multipart wrappers) and decode before collapsing whitespace.
+            const sep4 = source.indexOf('\r\n\r\n');
+            const sep2 = source.indexOf('\n\n');
+            const bodyStart = sep4 !== -1 ? sep4 + 4 : sep2 !== -1 ? sep2 + 2 : -1;
+            if (bodyStart !== -1) {
+              const headerBlock = source.substring(0, bodyStart);
+              const rawBody = source.substring(bodyStart);
+              const encMatch = headerBlock.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+              const enc = encMatch ? encMatch[1].toLowerCase().trim() : '7bit';
+              // QP detection: =XX hex sequences or soft-break pattern
+              const hasQP = /=[0-9A-Fa-f]{2}/i.test(rawBody) || /=[ \t]*\r?\n/.test(rawBody);
+              const decoded = decodeBody(rawBody.trim(), hasQP ? 'quoted-printable' : enc);
+              bodyText = stripHtml(decoded).replace(/\s+/g, ' ').trim();
+            }
           }
         }
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
