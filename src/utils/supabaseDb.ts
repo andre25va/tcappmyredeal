@@ -1863,3 +1863,97 @@ export async function getAgentTeamPhonesForSMS(supabase: any, agentContactId: st
   if (error) return [];
   return (data || []).map((r: any) => r.phone).filter(Boolean);
 }
+
+// ── Org Management ────────────────────────────────────────────────────────
+
+export interface OrgMemberRecord {
+  membershipId: string;
+  userId: string;
+  roleInOrg: 'team_admin' | 'tc' | 'agent';
+  status: 'active' | 'inactive' | 'pending';
+  invitedAt: string | null;
+  joinedAt: string | null;
+  profile: {
+    id: string;
+    name: string;
+    phone: string;
+    role: string;
+    isActive: boolean;
+    lastLogin: string | null;
+    isMasterAdmin: boolean;
+  } | null;
+}
+
+export async function listOrgMembers(token: string, orgId: string): Promise<OrgMemberRecord[]> {
+  const res = await fetch(`/api/auth?action=org-management&orgId=${orgId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to list org members');
+  return data.members ?? [];
+}
+
+export async function listAllOrgs(token: string): Promise<{ id: string; name: string; orgCode: string; isActive: boolean; organizationType: string }[]> {
+  const res = await fetch(`/api/auth?action=org-management&listOrgs=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to list orgs');
+  return (data.orgs ?? []).map((o: any) => ({
+    id: o.id,
+    name: o.name,
+    orgCode: o.org_code,
+    isActive: o.is_active,
+    organizationType: o.organization_type,
+  }));
+}
+
+export async function addOrgMember(token: string, orgId: string, profileId: string, roleInOrg: string): Promise<void> {
+  const res = await fetch('/api/auth?action=org-management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: 'add-member', orgId, profileId, roleInOrg }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to add member');
+}
+
+export async function updateOrgMemberRole(token: string, membershipId: string, roleInOrg: string): Promise<void> {
+  const res = await fetch('/api/auth?action=org-management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: 'update-role', membershipId, roleInOrg }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to update role');
+}
+
+export async function removeOrgMember(token: string, membershipId: string): Promise<void> {
+  const res = await fetch('/api/auth?action=org-management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: 'remove-member', membershipId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to remove member');
+}
+
+export async function grantDealAccess(token: string, dealId: string, profileId: string): Promise<void> {
+  const res = await fetch('/api/auth?action=org-management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: 'grant-deal-access', dealId, profileId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to grant deal access');
+}
+
+export async function revokeDealAccess(token: string, dealId: string, profileId: string): Promise<void> {
+  const res = await fetch('/api/auth?action=org-management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: 'revoke-deal-access', dealId, profileId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Failed to revoke deal access');
+}
