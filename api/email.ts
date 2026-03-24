@@ -724,8 +724,13 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
       }
       // Fall through with partial results
     } else {
-      console.error('Email search-classify error:', err);
-      return res.status(500).json({ error: err.message||'Search failed' });
+      console.warn('[email] search-classify error:', err?.message || err);
+      return res.status(200).json({
+        emails: [],
+        addresses: [],
+        stats: { hardAccepted: 0, grayZone: 0, aiAccepted: 0, hardRejected: 0, totalScanned: 0 },
+        warning: err?.message || 'Search failed',
+      });
     }
   }
 

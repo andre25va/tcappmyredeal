@@ -89,7 +89,7 @@ export const roleLabel = (r: ContactRole): string => ({
   'buyer': 'Buyer',
   'seller': 'Seller',
   'lender': 'Lender',
-  'title': 'Title Co.',
+  'title': 'Title Company',
   'attorney': 'Attorney',
   'inspector': 'Inspector',
   'appraiser': 'Appraiser',
