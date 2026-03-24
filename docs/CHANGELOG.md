@@ -6,6 +6,7 @@
 - Fixed missing StatsBar.tsx + DealTable.tsx components from repo
 - Fixed `window.tasklet` TypeScript build error
 - Added maintenance playbook and build plan to `/docs`
+- Established `develop` branch — all future work goes here first
 
 ## [2026-03-22] — Agent Company Name Fix
 - GuidedDealWizard now saves `company` field for buyerAgent/sellerAgent
