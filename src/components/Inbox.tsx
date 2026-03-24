@@ -189,7 +189,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       const resp = await fetch(`/api/email?thread_id=${threadId}`);
       if (resp.ok) {
         const data = await resp.json();
-        setEmailMessages(data.messages || []);
+        setEmailMessages(data.threads?.[0]?.messages || data.messages || []);
       }
     } catch (e) {
       console.error('Failed to load email messages:', e);
