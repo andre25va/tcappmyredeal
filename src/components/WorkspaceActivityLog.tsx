@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Mail, Phone, ClipboardList, MessageSquare, Plus, RefreshCw,
-  Activity, ChevronDown, ChevronUp,
+  Activity, ChevronDown, ChevronUp, Smartphone,
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 
 interface ActivityItem {
   id: string;
-  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity';
+  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp';
   timestamp: string;
   title: string;
   body?: string;
@@ -27,6 +27,8 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   request_event: <ClipboardList size={13} className="text-orange-400" />,
   note:          <MessageSquare size={13} className="text-base-content/60" />,
   activity:      <Activity size={13} className="text-base-content/40" />,
+  sms:           <Smartphone size={13} className="text-teal-600" />,
+  whatsapp:      <Smartphone size={13} className="text-emerald-600" />,
 };
 
 const TYPE_BG: Record<string, string> = {
@@ -37,14 +39,17 @@ const TYPE_BG: Record<string, string> = {
   request_event: 'bg-orange-50/60',
   note:          'bg-base-300',
   activity:      'bg-base-200',
+  sms:           'bg-teal-50',
+  whatsapp:      'bg-emerald-50',
 };
 
 const FILTERS = [
-  { value: 'all',     label: 'All' },
-  { value: 'email',   label: '📧 Emails' },
-  { value: 'call',    label: '📞 Calls' },
-  { value: 'request', label: '📋 Requests' },
-  { value: 'note',    label: '📝 Notes' },
+  { value: 'all',      label: 'All' },
+  { value: 'email',    label: '📧 Emails' },
+  { value: 'call',     label: '📞 Calls' },
+  { value: 'sms',      label: '💬 SMS/Chat' },
+  { value: 'request',  label: '📋 Requests' },
+  { value: 'note',     label: '📝 Notes' },
 ];
 
 const fmtTime = (iso: string) =>
@@ -71,8 +76,8 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
 
   const loadData = useCallback(async () => {
     try {
-      // Step 1: parallel fetches for tables with deal_id
-      const [emailRes, callRes, callNoteRes, requestRes] = await Promise.all([
+      // Parallel fetches
+      const [emailRes, callRes, callNoteRes, requestRes, messagesRes] = await Promise.all([
         supabase
           .from('email_send_log')
           .select('id, subject, to_addresses, template_name, sent_by, sent_at')
@@ -97,9 +102,17 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
           .eq('deal_id', deal.id)
           .order('created_at', { ascending: false })
           .limit(100),
+        // SMS + WhatsApp messages tied to this deal
+        supabase
+          .from('messages')
+          .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id')
+          .eq('deal_id', deal.id)
+          .in('channel', ['sms', 'whatsapp'])
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
 
-      // Step 2: fetch request_events for the deal's requests
+      // Request events
       const requestIds = (requestRes.data || []).map((r: any) => r.id);
       const requestEventRes = requestIds.length > 0
         ? await supabase
@@ -183,6 +196,22 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
         });
       }
 
+      // SMS / WhatsApp messages
+      for (const m of messagesRes.data || []) {
+        const channel = m.channel === 'whatsapp' ? 'whatsapp' : 'sms';
+        const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'SMS';
+        const dirLabel = m.direction === 'inbound' ? '↙ Inbound' : '↗ Outbound';
+        const contact = m.direction === 'inbound' ? m.from_number : m.to_number;
+        normalized.push({
+          id: `msg-${m.id}`,
+          type: channel,
+          timestamp: m.sent_at || m.created_at,
+          title: `${dirLabel} ${channelLabel}${contact ? ` · ${contact}` : ''}`,
+          body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
+          meta: { status: m.status, messageId: m.id },
+        });
+      }
+
       // In-memory notes from deal.activityLog
       for (const entry of (deal.activityLog || [])) {
         normalized.push({
@@ -228,7 +257,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
       ? items.filter(i => i.type === 'call' || i.type === 'call_note')
       : filter === 'request'
         ? items.filter(i => i.type === 'request' || i.type === 'request_event')
-        : items.filter(i => i.type === filter);
+        : filter === 'sms'
+          ? items.filter(i => i.type === 'sms' || i.type === 'whatsapp')
+          : items.filter(i => i.type === filter);
 
   // Group by date
   const grouped: { date: string; entries: ActivityItem[] }[] = [];
@@ -240,6 +271,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
     if (last && last.date === date) last.entries.push(item);
     else grouped.push({ date, entries: [item] });
   });
+
+  // Count SMS for filter badge
+  const smsCount = items.filter(i => i.type === 'sms' || i.type === 'whatsapp').length;
 
   return (
     <div className="p-5 space-y-4">
@@ -278,6 +312,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
             className={`btn btn-xs ${filter === f.value ? 'btn-primary' : 'btn-ghost'}`}
           >
             {f.label}
+            {f.value === 'sms' && smsCount > 0 && (
+              <span className="ml-1 badge badge-xs badge-teal bg-teal-100 text-teal-700 border-teal-200">{smsCount}</span>
+            )}
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
@@ -326,12 +363,21 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                     <div className="flex-1 min-w-0 bg-base-200 rounded-xl border border-base-300 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-base-content leading-snug">{entry.title}</p>
-                        <span className="text-xs text-base-content/40 flex-none whitespace-nowrap">
-                          {fmtTime(entry.timestamp)}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-none">
+                          {/* SMS/WhatsApp channel badge */}
+                          {entry.type === 'sms' && (
+                            <span className="badge badge-xs bg-teal-100 text-teal-700 border-teal-200 font-medium">SMS</span>
+                          )}
+                          {entry.type === 'whatsapp' && (
+                            <span className="badge badge-xs bg-emerald-100 text-emerald-700 border-emerald-200 font-medium">WhatsApp</span>
+                          )}
+                          <span className="text-xs text-base-content/40 whitespace-nowrap">
+                            {fmtTime(entry.timestamp)}
+                          </span>
+                        </div>
                       </div>
                       {entry.body && (
-                        <p className="text-xs text-base-content/60 mt-0.5 leading-relaxed">{entry.body}</p>
+                        <p className="text-xs text-base-content/60 mt-0.5 leading-relaxed whitespace-pre-wrap">{entry.body}</p>
                       )}
                       {/* AI summary expand/collapse */}
                       {hasSummary && (
