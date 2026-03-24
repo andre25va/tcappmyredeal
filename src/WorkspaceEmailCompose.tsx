@@ -61,13 +61,8 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const agentPhone = agentClientRecord?.phone || '';
   const agentEmail = agentClientRecord?.email || '';
 
-  // TC Team Signature — uses agent's teamName if set, else agent's name
-  const agentTeamName = agentClientRecord?.teamName || '';
-  const tcTeamSignature = agentTeamName
-    ? `Transaction Coordinating Team for ${agentTeamName}`
-    : agentName
-      ? `TC Team for ${agentName}`
-      : 'TC Team';
+  // TC Team Signature — always "TC Team for [Agent Name]"
+  const tcTeamSignature = agentName ? `TC Team for ${agentName}` : 'TC Team';
 
   // Client name — buyer(s) or seller(s) we represent
   const clientContacts = (deal.contacts || []).filter(c =>
@@ -103,7 +98,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   // Names + company only — no contact details in outgoing templates
   if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
-  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}`);
+  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.company ? `, ${deal.sellerAgent.company}` : ''}`);
   else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
   if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.company ? ` (${a.company})` : ''}`));
@@ -116,7 +111,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   // Names + company only — no contact details in outgoing templates
   if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else buyerLines.push('  •   Buyers - [Buyer Name]');
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}`);
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.company ? `, ${deal.buyerAgent.company}` : ''}`);
   else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);

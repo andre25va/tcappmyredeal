@@ -380,6 +380,7 @@ export interface AgentContact {
   phone: string;
   email: string;
   isOurClient: boolean;
+  company?: string;
 }
 
 export interface Deal {

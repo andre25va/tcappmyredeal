@@ -419,12 +419,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Resolve merge tags before sending
       const ac = agentClients?.find(c => c.id === form.agentClientId);
       const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
-      const agentTeamName = ac?.teamName || '';
-      const tcTeamSig = agentTeamName
-        ? `Transaction Coordinating Team for ${agentTeamName}`
-        : ac?.fullName
-          ? `TC Team for ${ac.fullName}`
-          : 'TC Team';
+      const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
       const resolvedBody = form.introEmailBody
         .replace(/\{\{address\}\}/g, form.address || '')
         .replace(/\{\{city\}\}/g, form.city || '')

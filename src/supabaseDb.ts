@@ -148,6 +148,7 @@ function findAgentFromParticipants(
     phone: agent.contactPhone || '',
     email: agent.contactEmail || '',
     isOurClient: agent.isClientSide,
+    company: agent.organizationName || '',
   };
 }
 
