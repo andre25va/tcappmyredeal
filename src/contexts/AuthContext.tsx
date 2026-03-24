@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
+export interface OrgMembership {
+  id: string;
+  orgId: string;
+  orgName: string;
+  orgCode: string;
+  roleInOrg: 'team_admin' | 'tc' | 'agent';
+  status: 'active' | 'inactive';
+}
+
 export interface TCProfile {
   id: string;
   phone: string;
@@ -11,6 +20,9 @@ export interface TCProfile {
   is_active: boolean;
   last_login: string | null;
   created_at: string;
+  is_master_admin?: boolean;
+  contact_id?: string | null;
+  orgMemberships?: OrgMembership[];
 }
 
 interface AuthContextType {
@@ -19,6 +31,9 @@ interface AuthContextType {
   loading: boolean;
   isFirstLogin: boolean;
   isViewer: boolean;
+  isMasterAdmin: boolean;
+  primaryOrgId: string | null;
+  getOrgRole: (orgId: string) => OrgMembership['roleInOrg'] | null;
   login: (token: string, profile: TCProfile, firstLogin?: boolean) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => Promise<void>;
@@ -116,9 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isViewer = profile?.role === 'viewer';
 
+  const isMasterAdmin = profile?.is_master_admin === true;
+  const primaryOrgId = profile?.orgMemberships?.[0]?.orgId ?? null;
+  const getOrgRole = (orgId: string) => {
+    return profile?.orgMemberships?.find(m => m.orgId === orgId)?.roleInOrg ?? null;
+  };
+
   return (
     <AuthContext.Provider value={{
       profile, token, loading, isFirstLogin, isViewer,
+      isMasterAdmin, primaryOrgId, getOrgRole,
       login, logout, updateProfile, clearFirstLogin,
     }}>
       {children}
