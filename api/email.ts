@@ -271,7 +271,8 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
   try {
     await client.connect();
     if ((uid || thread_id)) {
-      const targetUid = (uid || thread_id) as string;
+      // Sanitize: strip any ":seq" suffix that might have been stored as part of the ID
+      const targetUid = ((uid || thread_id) as string).split(':')[0];
       const lock = await client.getMailboxLock(folder as string);
       try {
         const msg = await client.fetchOne(targetUid, { envelope: true, source: true }, { uid: true });
@@ -345,8 +346,12 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const fromAddr = msg.envelope?.from?.[0];
         const fromStr = fromAddr ? `${fromAddr.name ? fromAddr.name + ' ' : ''}<${fromAddr.address || ''}>`.trim() : '';
         const hasAttachment = JSON.stringify((msg as any).bodyStructure || {}).toLowerCase().includes('"attachment"');
+        // Defensive: strip any ":seq" suffix ImapFlow might append (e.g. "1010:1")
+        const rawUid = msg.uid;
+        console.log('[email] thread uid raw:', rawUid, 'type:', typeof rawUid, 'json:', JSON.stringify(rawUid));
+        const cleanId = String(rawUid ?? msg.seq).split(':')[0];
         threads.push({
-          id: msg.uid.toString(), subject: msg.envelope?.subject || '(no subject)',
+          id: cleanId, subject: msg.envelope?.subject || '(no subject)',
           from: fromStr, to: msg.envelope?.to?.map((a: any) => a.address).join(', ') || '',
           snippet: msg.envelope?.subject || '', internalDate: msgDate.getTime().toString(),
           messageCount: 1, isUnread: !msg.flags?.has('\\Seen'), hasAttachment, labelIds: [],
