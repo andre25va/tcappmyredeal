@@ -781,7 +781,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
   request, expanded, onToggle, onMarkReceived,
   onAccept, onReject, onInlineSend, inlineEdit,
   onInlineEditChange, sending, inboundMessages, loadingMessages,
-  getTypeLabel, fmtDate,
+  getTypeLabel, fmtDate, onUpdateStatus,
 }) => {
   // Doc preview state (local to each card)
   const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
