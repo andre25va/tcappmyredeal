@@ -304,6 +304,7 @@ export interface ContactRecord {
   phone: string;
   contactType: ContactRole;
   company: string;
+  teamName?: string;
   timezone: string;
   notes: string;
   isActive: boolean;
@@ -316,9 +317,6 @@ export interface ContactRecord {
   defaultInstructions?: string;
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
-  pin?: string;
-  deleted_at?: string;
-  deleted_by?: string;
 }
 
 export interface OrgMemberInfo {
@@ -386,7 +384,6 @@ export interface AgentContact {
 
 export interface Deal {
   id: string;
-  dealNumber?: number;          // Auto-assigned sequential deal number (001, 002, ...)
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
@@ -426,7 +423,6 @@ export interface Deal {
   loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
   loanAmount?: number;
   downPayment?: number;
-  earnestMoney?: number;           // Earnest money deposit amount
   earnestMoneyDueDate?: string;
   sellerConcessions?: number;
   totalSellerCredits?: number;
@@ -451,8 +447,6 @@ export interface Deal {
   tcFeeType?: 'percent' | 'flat';
   tcFeeValue?: number;
   commissionPaidBy?: string;           // 'seller'|'buyer'
-  clientAgentCommission?: number;      // dollar amount
-  clientAgentCommissionPct?: number;   // percentage
   tcFeePaidBy?: string;                // 'seller'|'buyer'|'listing-agent'|'buying-agent'
 
   // ── Relationships (Phase 4 relational) ─────────────────────────────────────
@@ -919,44 +913,4 @@ export interface AgentTeamMember {
   notifyEmail: boolean;
   notifySms: boolean;
   createdAt?: string;
-}
-
-export interface MilestoneNotificationSetting {
-  id?: string;
-  milestone: DealMilestone;
-  notifyBuyerAgent: boolean;
-  notifySellerAgent: boolean;
-  notifyLender: boolean;
-  notifyTitle: boolean;
-  notifyBuyer: boolean;
-  notifySeller: boolean;
-  sendEmail: boolean;
-  sendSms: boolean;
-  emailSubject?: string;
-  emailBody?: string;
-  smsBody?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface CustomMilestone {
-  id: string;
-  agentContactId?: string;
-  name: string;
-  description?: string;
-  insertAfter: string;
-  notifyBuyerAgent: boolean;
-  notifySellerAgent: boolean;
-  notifyLender: boolean;
-  notifyTitle: boolean;
-  notifyBuyer: boolean;
-  notifySeller: boolean;
-  sendEmail: boolean;
-  sendSms: boolean;
-  emailSubject?: string;
-  emailBody?: string;
-  smsBody?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  agentName?: string;
 }
