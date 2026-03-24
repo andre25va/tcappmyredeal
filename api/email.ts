@@ -120,6 +120,29 @@ function extractPartsRecursive(
 }
 
 
+/**
+ * Fallback HTML extractor: regex-scans raw MIME source for the first text/html part.
+ * Used when the structured MIME parser (extractPartsRecursive) returns empty html —
+ * e.g. Dotloop emails where the nested multipart boundary confuses the recursive splitter.
+ */
+function extractHtmlFallback(source: string): string {
+  const idx = source.search(/Content-Type:\s*text\/html/i);
+  if (idx === -1) return '';
+  const partSource = source.substring(idx);
+  let headerEnd = partSource.indexOf('\r\n\r\n');
+  let sepLen = 4;
+  if (headerEnd === -1) { headerEnd = partSource.indexOf('\n\n'); sepLen = 2; }
+  if (headerEnd === -1) return '';
+  const headers = partSource.substring(0, headerEnd);
+  const body = partSource.substring(headerEnd + sepLen);
+  // Trim at the next MIME boundary
+  const bodyEnd = body.search(/\r?\n--/);
+  const rawBody = bodyEnd !== -1 ? body.substring(0, bodyEnd) : body;
+  const encMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+  const encoding = encMatch ? encMatch[1].trim() : '7bit';
+  return decodeBody(rawBody, encoding);
+}
+
 function stripHtml(html: string): string {
   return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -179,7 +202,8 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
         if (!msg) continue;
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
-        const bodyText = text || (html ? stripHtml(html) : '');
+        const resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+        const bodyText = text || (resolvedHtml ? stripHtml(resolvedHtml) : '');
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
         const fromAddr = msg.envelope?.from?.[0];
         emails.push({
@@ -190,7 +214,7 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
           date: msgDate.toISOString(),
           internalDate: msgDate.getTime().toString(),
           snippet: bodyText.substring(0, 200),
-          bodyHtml: html || '',
+          bodyHtml: resolvedHtml,
           body: bodyText,
           attachments: attachments.map((a: any) => ({
             filename: a.filename, contentType: a.contentType, size: a.size,
@@ -279,8 +303,10 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         if (!msg) return res.status(404).json({ error: 'Message not found' });
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
-        const bodyHtml = html || '';
-        let bodyText = text || (html ? stripHtml(html) : '');
+        // HTML fallback: fires whenever structured parser missed the html part (e.g. Dotloop).
+        // Independent of whether text/plain was found — fixes emails that show plain text only.
+        let bodyHtml = html || (source ? extractHtmlFallback(source) : '');
+        let bodyText = text || (bodyHtml ? stripHtml(bodyHtml) : '');
         // Fallback: if MIME parsing yielded nothing, try two recovery strategies.
         if (!bodyText && !bodyHtml && source) {
           // Strategy 1: regex-scan the raw source for the first QP-encoded text part.
@@ -728,7 +754,8 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
             if (!msg) continue;
             const source = msg.source?.toString('utf-8')||'';
             const { text, html, attachments } = extractPartsFromSource(source);
-            const bodyText = text||(html ? stripHtml(html) : '');
+            const resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+            const bodyText = text||(resolvedHtml ? stripHtml(resolvedHtml) : '');
             const msgDate  = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
             const fromAddr = msg.envelope?.from?.[0];
             const hdrs     = extractEmailHeaders(source);
@@ -743,7 +770,7 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
               date: msgDate.toISOString(),
               internalDate: msgDate.getTime().toString(),
               snippet: bodyText.substring(0,200),
-              bodyHtml: html||'',
+              bodyHtml: resolvedHtml,
               body: bodyText,
               attachmentNames: attachments.map((a:any)=>a.filename),
               attachments: attachments.map((a:any)=>({
