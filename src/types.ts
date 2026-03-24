@@ -304,7 +304,6 @@ export interface ContactRecord {
   phone: string;
   contactType: ContactRole;
   company: string;
-  teamName?: string;
   timezone: string;
   notes: string;
   isActive: boolean;
@@ -318,6 +317,8 @@ export interface ContactRecord {
   briefingEnabled?: boolean;
   preferredLanguage?: 'en' | 'es';
   pin?: string;
+  deleted_at?: string;
+  deleted_by?: string;
 }
 
 export interface OrgMemberInfo {
@@ -381,14 +382,11 @@ export interface AgentContact {
   phone: string;
   email: string;
   isOurClient: boolean;
-  company?: string;
 }
 
 export interface Deal {
   id: string;
-  dealNumber?: string;
-  orgId?: string;
-  dealRef?: string;
+  dealNumber?: number;          // Auto-assigned sequential deal number (001, 002, ...)
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
@@ -428,7 +426,7 @@ export interface Deal {
   loanType?: string;                   // 'conventional'|'fha'|'va'|'usda'|'cash'|'other'
   loanAmount?: number;
   downPayment?: number;
-  earnestMoney?: number;
+  earnestMoney?: number;           // Earnest money deposit amount
   earnestMoneyDueDate?: string;
   sellerConcessions?: number;
   totalSellerCredits?: number;
@@ -450,11 +448,11 @@ export interface Deal {
   listingCommissionValue?: number;
   buyerCommissionType?: 'percent' | 'flat';
   buyerCommissionValue?: number;
-  clientAgentCommission?: number;
-  clientAgentCommissionPct?: number;
   tcFeeType?: 'percent' | 'flat';
   tcFeeValue?: number;
   commissionPaidBy?: string;           // 'seller'|'buyer'
+  clientAgentCommission?: number;      // dollar amount
+  clientAgentCommissionPct?: number;   // percentage
   tcFeePaidBy?: string;                // 'seller'|'buyer'|'listing-agent'|'buying-agent'
 
   // ── Relationships (Phase 4 relational) ─────────────────────────────────────
@@ -923,10 +921,8 @@ export interface AgentTeamMember {
   createdAt?: string;
 }
 
-// ── Milestone Notification Settings ─────────────────────────────────────────
-
 export interface MilestoneNotificationSetting {
-  id: string;
+  id?: string;
   milestone: DealMilestone;
   notifyBuyerAgent: boolean;
   notifySellerAgent: boolean;
@@ -939,8 +935,8 @@ export interface MilestoneNotificationSetting {
   emailSubject?: string;
   emailBody?: string;
   smsBody?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CustomMilestone {
@@ -960,7 +956,7 @@ export interface CustomMilestone {
   emailSubject?: string;
   emailBody?: string;
   smsBody?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
   agentName?: string;
 }

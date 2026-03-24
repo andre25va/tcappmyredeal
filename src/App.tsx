@@ -25,7 +25,6 @@ import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
 import { ActiveCallOverlay } from './components/ActiveCallOverlay';
-import { PostCallSummaryToast } from './components/PostCallSummaryToast';
 import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
@@ -37,6 +36,7 @@ import { useAudit } from './hooks/useAudit';
 import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
+import { RequestCenterView } from './components/RequestCenterView';
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -79,9 +79,6 @@ function AppInner() {
   const [inboxInitEmailSubTab, setInboxInitEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched' | undefined>(undefined);
   const [activeCall, setActiveCall]         = useState<{contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string} | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
-  const [postCallMeta, setPostCallMeta]     = useState<{ callSid: string; dealId?: string; contactId?: string } | null>(null);
-  const [postCallSummary, setPostCallSummary] = useState<string | null>(null);
-  const [summaryPolling, setSummaryPolling] = useState(false);
 
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
@@ -93,6 +90,8 @@ function AppInner() {
   const [emailTemplates, setEmailTemplates]     = useState<EmailTemplate[]>([]);
   const [complianceMasterItems, setComplianceMasterItems] = useState<ComplianceMasterItem[]>([]);
   const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
+  const [requestsPending, setRequestsPending] = useState(0);
+  const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
 
   // ── Load deals ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -181,42 +180,6 @@ function AppInner() {
       .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });
   }, [profile]);
 
-  // ── Poll for AI call summary after call ends ────────────────────────────────
-  useEffect(() => {
-    if (!postCallMeta) return;
-    setSummaryPolling(true);
-    setPostCallSummary(null);
-    let attempts = 0;
-    const MAX_ATTEMPTS = 12; // 12 × 8s = ~96s max wait
-    const INTERVAL_MS  = 8000;
-
-    const poll = async () => {
-      attempts++;
-      try {
-        const { data } = await supabase
-          .from('call_logs')
-          .select('ai_summary')
-          .eq('call_sid', postCallMeta.callSid)
-          .not('ai_summary', 'is', null)
-          .maybeSingle();
-        if (data?.ai_summary) {
-          setPostCallSummary(data.ai_summary);
-          setSummaryPolling(false);
-          clearInterval(timer);
-          return;
-        }
-      } catch { /* silent */ }
-      if (attempts >= MAX_ATTEMPTS) {
-        setSummaryPolling(false);
-        clearInterval(timer);
-      }
-    };
-
-    const timer = setInterval(poll, INTERVAL_MS);
-    poll(); // first check immediately
-    return () => clearInterval(timer);
-  }, [postCallMeta]);
-
   // ── Poll inbox unread count ──────────────────────────────────────────────────
   useEffect(() => {
     if (!profile) return;
@@ -287,17 +250,32 @@ function AppInner() {
     return () => clearInterval(t);
   }, [profile]);
 
+  // ── Poll requests pending count ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    const fetchRequestCount = async () => {
+      try {
+        const { count } = await supabase
+          .from('requests')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['reply_received', 'document_received', 'under_review']);
+        setRequestsPending(count || 0);
+      } catch { /* silent */ }
+    };
+    fetchRequestCount();
+    const t = setInterval(fetchRequestCount, 60000);
+    return () => clearInterval(t);
+  }, [profile]);
+
   // ── Keep selectedId valid ────────────────────────────────────────────────────
   useEffect(() => {
-    const activeDeals = deals.filter(d => d.milestone !== 'archived');
-    if (activeDeals.length === 0) {
+    if (deals.length === 0) {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
-    const stillActive = selectedId && activeDeals.some((deal) => deal.id === selectedId);
-    if (!stillActive) {
-      // Don't auto-select — let user pick from the list
-      setSelectedId(null);
+    const stillExists = selectedId && deals.some((deal) => deal.id === selectedId);
+    if (!stillExists) {
+      setSelectedId(deals[0].id);
     }
   }, [deals, selectedId]);
 
@@ -393,11 +371,6 @@ function AppInner() {
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
     setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
-    // Deselect the deal so the workspace doesn't keep showing an archived deal
-    if (selectedId === dealId) {
-      setSelectedId(null);
-      setTxPanel('list');
-    }
   };
 
   const handleRestoreDeal = (dealId: string) => {
@@ -423,8 +396,7 @@ function AppInner() {
   };
 
   const handleAdd = (deal: Deal) => {
-    // Use crypto.randomUUID() to generate a proper UUID — the deals table id column is uuid type
-    const withId = { ...deal, id: crypto.randomUUID() };
+    const withId = { ...deal, id: generateId() };
     const updated = [withId, ...deals];
     setDeals(updated);
     saveSingleDeal(withId).catch(console.error);
@@ -436,9 +408,15 @@ function AppInner() {
   };
 
   const handleSelectDeal = (id: string) => {
+    setPendingWorkspaceTab(null);
     setSelectedId(id);
     setTxPanel('workspace');
     setView('transactions');
+  };
+
+  const handleSelectDealWithTab = (id: string, tab: string) => {
+    setPendingWorkspaceTab(tab);
+    setSelectedId(id);
   };
 
   const handleSetView = (v: View) => {
@@ -504,6 +482,7 @@ function AppInner() {
     emailQueuePending,
     needsReviewCount,
     unmatchedCount,
+    requestsPending,
     onSetInboxSubTab: (subTab: 'needs_review' | 'unmatched') => {
       setInboxInitEmailSubTab(subTab);
       setView('inbox');
@@ -558,7 +537,7 @@ function AppInner() {
           <div className="flex items-center h-14 px-3 gap-2 w-full">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
-              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : 'Settings'}
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
             {!isViewer && (
@@ -651,7 +630,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={pendingWorkspaceTab ?? undefined} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>
@@ -742,6 +721,15 @@ function AppInner() {
             </div>
           )}
 
+          {view === 'requests' && (
+            <div className="flex-1 overflow-hidden">
+              <RequestCenterView
+                onSelectDeal={handleSelectDeal}
+                onSelectDealWithTab={handleSelectDealWithTab}
+              />
+            </div>
+          )}
+
           {view === 'settings' && (
             <div className="flex-1 overflow-hidden">
               <SettingsView
@@ -780,9 +768,7 @@ function AppInner() {
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
         onEndCall={async () => {
           // Tell Twilio to hang up the call before dismissing the UI
-          const sid       = activeCall?.callSid;
-          const dealId    = activeCall?.dealId;
-          const contactId = activeCall?.contactId;
+          const sid = activeCall?.callSid;
           if (sid && sid !== 'call-initiated') {
             try {
               await fetch('/api/end-call', {
@@ -793,70 +779,15 @@ function AppInner() {
             } catch (err) {
               console.error('Failed to end call via API:', err);
             }
-            // Start polling for AI summary (recording webhook fires async)
-            setPostCallMeta({ callSid: sid, dealId, contactId });
           }
           setActiveCall(null);
           setIsCallMinimized(false);
         }}
         onMinimize={() => setIsCallMinimized(prev => !prev)}
-        onAddNote={async (note) => {
-          if (!note.trim()) return;
-          try {
-            await supabase.from('call_notes').insert({
-              raw_notes:  note.trim(),
-              deal_id:    activeCall?.dealId    || null,
-              contact_id: activeCall?.contactId || null,
-              author_id:  profile?.id           || null,
-            });
-          } catch (err) {
-            console.error('onAddNote error:', err);
-          }
-        }}
-        onCreateTask={async (desc) => {
-          if (!desc.trim()) return;
-          const deal = activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined;
-          try {
-            await supabase.from('comm_tasks').insert({
-              title:        `Follow-up: ${activeCall?.contactName || 'Contact'}`,
-              description:  desc.trim(),
-              contact_id:   activeCall?.contactId || null,
-              contact_name: activeCall?.contactName || null,
-              deal_id:      activeCall?.dealId || null,
-              deal_address: deal?.propertyAddress || null,
-              channel:      'phone',
-              status:       'pending',
-              priority:     'normal',
-              source:       'call',
-            });
-          } catch (err) {
-            console.error('onCreateTask error:', err);
-          }
-        }}
+        onAddNote={(note) => { console.log('Call note:', note); }}
+        onCreateTask={(desc) => { console.log('Call task:', desc); }}
         isMinimized={isCallMinimized}
       />
-
-      {/* Post-call AI summary toast — polls call_logs after call ends */}
-      {(summaryPolling || postCallSummary) && (
-        <PostCallSummaryToast
-          loading={summaryPolling}
-          summary={postCallSummary}
-          onDismiss={() => {
-            setPostCallMeta(null);
-            setPostCallSummary(null);
-            setSummaryPolling(false);
-          }}
-          onSaveNote={async (note) => {
-            if (!note.trim() || !postCallMeta) return;
-            await supabase.from('call_notes').insert({
-              raw_notes:  note,
-              deal_id:    postCallMeta.dealId    || null,
-              contact_id: postCallMeta.contactId || null,
-              author_id:  profile?.id            || null,
-            });
-          }}
-        />
-      )}
 
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}

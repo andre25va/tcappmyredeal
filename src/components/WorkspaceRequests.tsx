@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardList, Plus, Send, CheckCircle, XCircle, Clock,
-  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink, Paperclip, X,
+  FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink,
 } from 'lucide-react';
 import type {
   Deal, DealParticipant,
@@ -20,8 +20,6 @@ interface InboundMessage {
   bodyText: string;
   receivedAt: string;
   classification: string;
-  gmailMessageId: string | null;
-  gmailThreadId: string | null;
 }
 
 // ── Request type configuration ─────────────────────────────────────────────────
@@ -79,22 +77,6 @@ const STATUS_CONFIG: Record<RequestStatus, { label: string; badge: string }> = {
   completed:         { label: 'Completed',         badge: 'bg-green-50 text-green-700 border-green-200' },
   overdue:           { label: 'Overdue',           badge: 'bg-red-50 text-red-700 border-red-200' },
   cancelled:         { label: 'Cancelled',         badge: 'bg-gray-100 text-gray-400 border-gray-200' },
-};
-
-// ── Valid state transitions (state machine guard) ──────────────────────────────
-const VALID_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
-  draft:             ['waiting', 'cancelled'],
-  sent:              ['waiting', 'reply_received', 'document_received', 'cancelled'],
-  waiting:           ['reply_received', 'document_received', 'needs_follow_up', 'cancelled'],
-  reply_received:    ['under_review', 'accepted', 'rejected', 'needs_follow_up'],
-  document_received: ['under_review', 'accepted', 'rejected', 'needs_follow_up'],
-  under_review:      ['accepted', 'rejected', 'needs_follow_up'],
-  rejected:          ['needs_follow_up', 'cancelled'],
-  needs_follow_up:   ['waiting', 'cancelled'],
-  accepted:          ['completed'],
-  overdue:           ['waiting', 'needs_follow_up', 'cancelled'],
-  completed:         [],
-  cancelled:         [],
 };
 
 const CLASSIFICATION_BADGE: Record<string, string> = {
@@ -215,8 +197,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [draftSubject, setDraftSubject] = useState('');
   const [draftBody, setDraftBody] = useState('');
   const [draftTo, setDraftTo] = useState('');
-  const [attachedFile, setAttachedFile] = useState<{ name: string; content: string; type: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
 
   // Inline send state (per-card)
@@ -228,7 +208,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   // Inbound messages per request (for review cards)
   const [inboundMessages, setInboundMessages] = useState<Record<string, InboundMessage[]>>({});
   const [loadingMessages, setLoadingMessages] = useState<Record<string, boolean>>({});
-
 
   const participants = deal.participants ?? [];
 
@@ -273,8 +252,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           bodyText: m.body_text,
           receivedAt: m.received_at,
           classification: m.classification,
-          gmailMessageId: m.gmail_message_id || null,
-          gmailThreadId: m.gmail_thread_id || null,
         })),
       }));
     } catch (err) {
@@ -312,14 +289,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   // ── Update status ────────────────────────────────────────────────────────────
   const updateStatus = async (requestId: string, status: RequestStatus, eventDesc?: string) => {
-    const current = requests.find(r => r.id === requestId);
-    if (current) {
-      const allowed = VALID_TRANSITIONS[current.status] ?? [];
-      if (!allowed.includes(status)) {
-        console.warn(`[RequestCenter] Invalid transition: ${current.status} → ${status}`);
-        return;
-      }
-    }
     await supabase
       .from('requests')
       .update({ status, updated_at: new Date().toISOString() })
@@ -434,7 +403,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       setShowNewModal(false);
       resetNewForm();
       await loadRequests();
-      await sendEmail(data.id, draftTo, realSubject, realBody, attachedFile);
+      await sendEmail(data.id, draftTo, realSubject, realBody);
     } catch (err) {
       console.error('Failed to create and send request:', err);
     } finally {
@@ -443,13 +412,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   };
 
   // ── Core send email ────────────────────────────────────────────────────────────
-  const sendEmail = async (
-    requestId: string,
-    to: string,
-    subject: string,
-    body: string,
-    attachment?: { name: string; content: string; type: string } | null,
-  ) => {
+  const sendEmail = async (requestId: string, to: string, subject: string, body: string) => {
     setSendingId(requestId);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -459,10 +422,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         line.trim() ? `<p style="margin:0 0 8px 0;">${line}</p>` : '<br/>'
       ).join('');
 
-      const attachments = attachment
-        ? [{ filename: attachment.name, content: attachment.content, mimeType: attachment.type }]
-        : [];
-
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -470,7 +429,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
           to: [to], cc: [], bcc: [], subject, bodyHtml,
           dealId: deal.id, emailType: 'deal',
           sentBy: profile?.name || 'Staff', requestId,
-          attachments,
         }),
       });
 
@@ -534,21 +492,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     setNewType('earnest_money_receipt');
     setNewRecipientId('');
     setNewNotes('');
-    setAttachedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // result is data:application/pdf;base64,XXXX — strip the prefix
-      const base64 = result.split(',')[1];
-      setAttachedFile({ name: file.name, content: base64, type: file.type || 'application/pdf' });
-    };
-    reader.readAsDataURL(file);
   };
 
   const getTypeLabel = (type: RequestType) => REQUEST_TYPES.find(t => t.type === type)?.label || type;
@@ -704,37 +647,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                     <textarea className="textarea textarea-bordered textarea-xs flex-1 font-mono text-xs leading-relaxed" rows={7} value={draftBody} onChange={e => setDraftBody(e.target.value)} />
                   </div>
                   <p className="text-[10px] text-base-content/30 pl-14">Reply token will be inserted into subject automatically on send.</p>
-                  {/* PDF Attachment */}
-                  <div className="flex items-center gap-2 pl-14">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                      className="hidden"
-                      onChange={handleFileSelect}
-                    />
-                    {attachedFile ? (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium">
-                        <Paperclip size={11} />
-                        <span className="max-w-[180px] truncate">{attachedFile.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => { setAttachedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                          className="ml-0.5 hover:text-error"
-                        >
-                          <X size={11} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-1.5 text-xs text-base-content/50 hover:text-primary transition-colors"
-                      >
-                        <Paperclip size={12} /> Attach PDF / document
-                      </button>
-                    )}
-                  </div>
                 </div>
               </div>
               <div>
@@ -781,40 +693,8 @@ const RequestCard: React.FC<RequestCardProps> = ({
   request, expanded, onToggle, onMarkReceived,
   onAccept, onReject, onInlineSend, inlineEdit,
   onInlineEditChange, sending, inboundMessages, loadingMessages,
-  getTypeLabel, fmtDate, onUpdateStatus,
+  getTypeLabel, fmtDate,
 }) => {
-  // Doc preview state (local to each card)
-  const [docPreviews, setDocPreviews] = useState<Record<string, { url: string; filename: string }>>({});
-  const [fetchingDocIds, setFetchingDocIds] = useState<Set<string>>(new Set());
-  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
-
-  const loadDocPreview = useCallback(async (docId: string) => {
-    if (fetchingDocIds.has(docId) || docPreviews[docId]) return;
-    setFetchingDocIds(prev => new Set(prev).add(docId));
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const res = await fetch(`${supabaseUrl}/functions/v1/fetch-attachment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ documentId: docId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Failed to fetch attachment');
-      }
-      const data = await res.json();
-      setDocPreviews(prev => ({ ...prev, [docId]: { url: data.url, filename: data.filename } }));
-    } catch (err: any) {
-      console.error('loadDocPreview error:', err);
-      setDocErrors(prev => ({ ...prev, [docId]: err.message || 'Failed to load preview' }));
-    } finally {
-      setFetchingDocIds(prev => { const s = new Set(prev); s.delete(docId); return s; });
-    }
-  }, [fetchingDocIds, docPreviews]);
-
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
   const isDraft = request.status === 'draft';
@@ -885,11 +765,6 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <Send size={11} /> Send Follow-Up
             </button>
           )}
-          {request.status === 'rejected' && (
-            <button className="btn btn-xs btn-outline btn-warning gap-1" onClick={e => { e.stopPropagation(); onUpdateStatus('needs_follow_up'); }}>
-              <RotateCcw size={11} /> Flag for Follow-Up
-            </button>
-          )}
         </div>
       )}
 
@@ -931,17 +806,6 @@ const RequestCard: React.FC<RequestCardProps> = ({
                               {msg.classification.replace(/_/g, ' ')}
                             </span>
                           )}
-                          {(msg.gmailThreadId || msg.gmailMessageId) && (
-                            <a
-                              href={`https://mail.google.com/mail/u/0/#all/${msg.gmailThreadId || msg.gmailMessageId}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="btn btn-xs btn-ghost gap-1 text-primary mt-0.5"
-                              onClick={e => e.stopPropagation()}
-                              title="Open in Gmail"
-                            >
-                              <ExternalLink size={10} /> Gmail
-                            </a>
-                          )}
                         </div>
                       </div>
                       <div className="px-3 py-3 max-h-48 overflow-y-auto">
@@ -962,127 +826,26 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                 <FileText size={11} /> Documents ({request.documents!.length})
               </p>
-              <div className="space-y-2">
-                {request.documents!.map(doc => {
-                  const preview = docPreviews[doc.id];
-                  const isFetching = fetchingDocIds.has(doc.id);
-                  const isPdf = (doc.fileName || '').toLowerCase().endsWith('.pdf') ||
-                    (preview?.filename || '').toLowerCase().endsWith('.pdf');
-
-                  return (
-                    <div key={doc.id} className="border border-base-200 rounded-lg overflow-hidden bg-white">
-                      {/* Doc row */}
-                      <div className="flex items-center gap-2 px-3 py-2">
-                        <FileText size={13} className="text-primary flex-none" />
-                        <span className="text-xs text-base-content/70 flex-1 truncate">{doc.fileName || 'Document'}</span>
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
-                          doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
-                          'bg-gray-100 text-gray-500'
-                        }`}>
-                          {doc.reviewStatus}
-                        </span>
-
-                        {/* If we already have a URL, show View + Preview toggle */}
-                        {(doc.fileUrl || preview) ? (
-                          <div className="flex items-center gap-1">
-                            <a href={doc.fileUrl || preview!.url} target="_blank" rel="noopener noreferrer"
-                              className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}>
-                              <ExternalLink size={11} /> Open
-                            </a>
-                            {isPdf && (
-                              <button
-                                className="btn btn-xs btn-ghost gap-1 text-primary"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  // Toggle preview: if already showing, remove it; otherwise keep
-                                  if (preview) {
-                                    setDocPreviews(prev => { const n = { ...prev }; delete n[doc.id]; return n; });
-                                  } else {
-                                    loadDocPreview(doc.id);
-                                  }
-                                }}
-                              >
-                                {preview ? 'Hide' : 'Preview'}
-                              </button>
-                            )}
-                          </div>
-                        ) : doc.gmailMessageId ? (
-                          /* Not yet fetched - show Load Preview button */
-                          <button
-                            className="btn btn-xs btn-primary gap-1"
-                            disabled={isFetching}
-                            onClick={e => { e.stopPropagation(); loadDocPreview(doc.id); }}
-                          >
-                            {isFetching ? (
-                              <span className="loading loading-spinner loading-xs" />
-                            ) : (
-                              <><FileText size={11} /> Preview</>
-                            )}
-                          </button>
-                        ) : null}
-                        {/* Always show Gmail link if we have a message ID */}
-                        {doc.gmailMessageId && !doc.fileUrl && !docErrors[doc.id] && (
-                          <a
-                            href={`https://mail.google.com/mail/u/0/#all/${doc.gmailMessageId}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="btn btn-xs btn-ghost gap-1 text-base-content/50"
-                            onClick={e => e.stopPropagation()}
-                            title="Open in Gmail"
-                          >
-                            <ExternalLink size={11} /> Gmail
-                          </a>
-                        )}
-                      </div>
-                      {/* Inline error */}
-                      {docErrors[doc.id] && (
-                        <div className="px-3 pb-2 flex items-center gap-2">
-                          <span className="text-[11px] text-error flex-1">{docErrors[doc.id]}</span>
-                          {doc.gmailMessageId && (
-                            <a
-                              href={`https://mail.google.com/mail/u/0/#all/${doc.gmailMessageId}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="btn btn-xs btn-ghost gap-1 text-primary"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              <ExternalLink size={11} /> Open in Gmail
-                            </a>
-                          )}
-                          <button
-                            className="btn btn-xs btn-ghost text-base-content/40"
-                            onClick={e => { e.stopPropagation(); setDocErrors(prev => { const n={...prev}; delete n[doc.id]; return n; }); }}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Inline PDF preview panel */}
-                      {preview && isPdf && (
-                        <div className="border-t border-base-200 bg-gray-50">
-                          <iframe
-                            src={preview.url}
-                            className="w-full rounded-b-lg"
-                            style={{ height: '480px', border: 'none' }}
-                            title={preview.filename}
-                          />
-                        </div>
-                      )}
-
-                      {/* Image preview for non-PDF */}
-                      {preview && !isPdf && (
-                        <div className="border-t border-base-200 bg-gray-50 p-2">
-                          <img
-                            src={preview.url}
-                            alt={preview.filename}
-                            className="max-w-full rounded"
-                            style={{ maxHeight: '480px', objectFit: 'contain' }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="space-y-1.5">
+                {request.documents!.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-2 px-3 py-2 bg-white border border-base-200 rounded-lg">
+                    <FileText size={13} className="text-primary flex-none" />
+                    <span className="text-xs text-base-content/70 flex-1 truncate">{doc.fileName || 'Document'}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      doc.reviewStatus === 'accepted' ? 'bg-green-50 text-green-600' :
+                      doc.reviewStatus === 'rejected' ? 'bg-red-50 text-red-600' :
+                      'bg-gray-100 text-gray-500'
+                    }`}>
+                      {doc.reviewStatus}
+                    </span>
+                    {doc.fileUrl && (
+                      <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+                        className="btn btn-xs btn-ghost gap-1 text-primary" onClick={e => e.stopPropagation()}>
+                        <ExternalLink size={11} /> View
+                      </a>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

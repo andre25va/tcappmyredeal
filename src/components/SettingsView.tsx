@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Users, FileDown, Plus, Pencil, Trash2, X, Check,
   Download, Building2, ClipboardList, Globe, Shield,
-  AlertCircle, Mail, Link, FileDown as _fd, Bell, Clock, Archive,
+  AlertCircle, Mail, Link, FileDown as _fd, Bell, Clock,
 } from 'lucide-react';
 import {
   AppUser, UserRole, Deal, ContactRecord, MlsEntry,
@@ -19,7 +19,6 @@ import { AccessUsersTab }          from './settings/AccessUsersTab';
 import { LicenseLinksTab }         from './settings/LicenseLinksTab';
 import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 import { MilestonesTab }           from './settings/MilestonesTab';
-import { ArchiveTab }              from './settings/ArchiveTab';
 
 // -- Props
 
@@ -39,7 +38,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'archive';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -268,7 +267,6 @@ export const SettingsView: React.FC<Props> = ({
           { id: 'dd-checklist' as SettingsTab,          label: 'Due Diligence',        icon: <ClipboardList size={14}/> },
           { id: 'compliance-checklist' as SettingsTab,  label: 'Compliance Checklist', icon: <Shield size={14}/> },
           { id: 'reports' as SettingsTab,               label: 'CSV Reports',          icon: <FileDown size={14}/> },
-          { id: 'archive' as SettingsTab,               label: 'Archive',              icon: <Archive size={14}/> },
         ].map(t => (
           <button
             key={t.id}
@@ -298,7 +296,6 @@ export const SettingsView: React.FC<Props> = ({
         )}
         {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'milestones' && <MilestonesTab contactRecords={contactRecords} />}
-        {tab === 'archive' && <ArchiveTab />}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
             <div className="bg-base-200 rounded-xl p-4 flex items-start gap-3">

@@ -7,7 +7,7 @@ import {
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
-  | 'email-review';
+  | 'email-review' | 'requests';
 
 const APP_VERSION = 'v2026.03.18.17';
 
@@ -22,6 +22,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
   { view: 'voice',         label: 'Voice',        icon: <Phone size={18} /> },
+  { view: 'requests',      label: 'Requests',     icon: <ClipboardList size={18} /> },
   { view: 'reports',       label: 'AI Reports',   icon: <BarChart2 size={18} /> },
   { view: 'settings',      label: 'Settings',     icon: <Settings size={18} /> },
 ];
@@ -36,6 +37,7 @@ interface SidebarProps {
   tasksPending: number;
   voicePending: number;
   emailQueuePending: number;
+  requestsPending: number;
   onLogout: () => void;
   userName: string;
   userRole: string;
@@ -57,7 +59,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
-  inboxUnread, tasksPending, voicePending, emailQueuePending,
+  inboxUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
   onLogout, userName, userRole, userInitials,
 }) => {
   const getBadge = (v: View): number => {
@@ -65,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (v === 'tasks') return tasksPending;
     if (v === 'voice') return voicePending;
     if (v === 'email-review') return emailQueuePending;
+    if (v === 'requests') return requestsPending;
     return 0;
   };
 

@@ -507,11 +507,7 @@ const MilestoneStepper: React.FC<{
 export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
-  // Show ALL agents in both dropdowns — include contacts with contactType 'agent'
-  // AND contacts marked as isClient (agent-clients may be stored with contactType 'client')
-  const agentOptions = (contactRecords || []).filter(c =>
-    c.contactType === 'agent' || c.isClient
-  );
+  const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
 
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
@@ -567,6 +563,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     tcFeeType: d.tcFeeType || 'flat',
     tcFeeValue: String(d.tcFeeValue ?? ''),
     tcFeePaidBy: d.tcFeePaidBy || 'seller',
+    // New Commission Fields
+    listingCommissionType: d.listingCommissionType || 'percent',
+    listingCommissionValue: String(d.listingCommissionValue ?? ''),
+    buyerCommissionType: d.buyerCommissionType || 'percent',
+    buyerCommissionValue: String(d.buyerCommissionValue ?? ''),
+    commissionPaidBy: d.commissionPaidBy || 'seller',
   });
   const [fields, setFields] = useState(() => buildFields(deal));
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
@@ -632,6 +634,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       tcFeeType: fields.tcFeeType as 'percent' | 'flat',
       tcFeeValue: fields.tcFeeValue ? pf(fields.tcFeeValue) : undefined,
       tcFeePaidBy: fields.tcFeePaidBy || undefined,
+      // New Commission Fields
+      listingCommissionType: fields.listingCommissionType as 'percent' | 'flat',
+      listingCommissionValue: fields.listingCommissionValue ? parseFloat(fields.listingCommissionValue) : undefined,
+      buyerCommissionType: fields.buyerCommissionType as 'percent' | 'flat',
+      buyerCommissionValue: fields.buyerCommissionValue ? parseFloat(fields.buyerCommissionValue) : undefined,
+      commissionPaidBy: fields.commissionPaidBy || undefined,
       // Agents
       buyerAgent: buyerDraft.name ? buyerDraft : undefined,
       sellerAgent: sellerDraft.name ? sellerDraft : undefined,
@@ -1237,7 +1245,63 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       </select>
                     </div>
                   </div>
-
+                  {/* New Commission Section */}
+                  <div>
+                    <p className="text-xs font-semibold text-base-content/60 mb-2">Commission</p>
+                    <div className="space-y-3">
+                      {/* Listing Commission */}
+                      <div>
+                        <label className="text-xs text-base-content/50 font-semibold block mb-1">Listing Commission</label>
+                        <div className="flex gap-2 items-center">
+                          <div className="flex gap-1">
+                            {(['percent', 'flat'] as const).map(t => (
+                              <button key={t} type="button"
+                                className={`btn btn-xs ${fields.listingCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                                onClick={() => setFields(p => ({ ...p, listingCommissionType: t }))}>
+                                {t === 'percent' ? '%' : '$'}
+                              </button>
+                            ))}
+                          </div>
+                          <input className="input input-bordered input-sm flex-1"
+                            placeholder={fields.listingCommissionType === 'percent' ? '3.0' : '0.00'}
+                            value={fields.listingCommissionValue}
+                            onChange={e => setFields(p => ({ ...p, listingCommissionValue: e.target.value }))} />
+                        </div>
+                      </div>
+                      {/* Buyer Commission */}
+                      <div>
+                        <label className="text-xs text-base-content/50 font-semibold block mb-1">Buyer Commission</label>
+                        <div className="flex gap-2 items-center">
+                          <div className="flex gap-1">
+                            {(['percent', 'flat'] as const).map(t => (
+                              <button key={t} type="button"
+                                className={`btn btn-xs ${fields.buyerCommissionType === t ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                                onClick={() => setFields(p => ({ ...p, buyerCommissionType: t }))}>
+                                {t === 'percent' ? '%' : '$'}
+                              </button>
+                            ))}
+                          </div>
+                          <input className="input input-bordered input-sm flex-1"
+                            placeholder={fields.buyerCommissionType === 'percent' ? '3.0' : '0.00'}
+                            value={fields.buyerCommissionValue}
+                            onChange={e => setFields(p => ({ ...p, buyerCommissionValue: e.target.value }))} />
+                        </div>
+                      </div>
+                      {/* Commission Paid By */}
+                      <div>
+                        <label className="text-xs text-base-content/50 mb-1 block">Commission Paid By</label>
+                        <div className="flex gap-2">
+                          {(['seller', 'buyer', 'split'] as const).map(opt => (
+                            <button key={opt} type="button"
+                              className={`btn btn-sm capitalize ${fields.commissionPaidBy === opt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                              onClick={() => setFields(p => ({ ...p, commissionPaidBy: opt }))}>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </section>
 

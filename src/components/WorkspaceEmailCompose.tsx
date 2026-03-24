@@ -22,9 +22,8 @@ import type {
   ComplianceTemplate,
   ConfirmationButton,
   EmailSendLogEntry,
-  ContactRecord,
 } from '../types';
-import { roleLabel, formatDate, formatCurrency } from '../utils/helpers';
+import { roleLabel, formatDate, formatCurrency, formatPhone } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import {
@@ -51,43 +50,16 @@ function addBusinessDays(dateStr: string, days: number): string {
 }
 
 // Replace {{merge}} tags in a string with deal data
-function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[], contactRecords?: ContactRecord[]): string {
+function populateTemplate(text: string, deal: Deal, complianceTemplates?: ComplianceTemplate[]): string {
   const milestone = MILESTONE_LABELS[deal.milestone] ?? 'In Progress';
 
-
-
-  // Live company lookup — always uses freshest data from contacts directory, not stale deal snapshot
-  const liveCompany = (c: { id?: string; company?: string }) =>
-    (contactRecords || []).find(r => r.id === c.id)?.company?.trim() || c.company?.trim() || '';
-
-  // Representing agent (agentClient) — for {{agentName}}, {{agentPhone}}, {{agentEmail}}
-  const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
-  const agentName  = agentClientRecord?.fullName || '';
-  const agentPhone = agentClientRecord?.phone || '';
-  const agentEmail = agentClientRecord?.email || '';
-  // TC signature: use team name (company field) if set, otherwise agent name
-  const agentTeamName = agentClientRecord?.company?.trim();
-  const tcTeamSignature = agentTeamName
-    ? `Transaction Coordinating Team for ${agentTeamName}`
-    : agentName
-    ? `TC Team for ${agentName}`
-    : 'TC Team';
-
-  // Client name — buyer(s) or seller(s) we represent
-  const clientContacts = (deal.contacts || []).filter(c =>
-    deal.transactionType === 'buyer' ? c.role === 'buyer' : c.role === 'seller'
-  );
-  const clientName = clientContacts.map(c => c.name).filter(Boolean).join(', ');
-
   const agentLines: string[] = [];
-  // Names only — no phone or email in outgoing templates
-  if (deal.buyerAgent?.name) agentLines.push(`  Buyer Agent:  ${deal.buyerAgent.name}${deal.buyerAgent.isOurClient ? ' ★ Our Client' : ''}`);
-  if (deal.sellerAgent?.name) agentLines.push(`  Seller Agent: ${deal.sellerAgent.name}${deal.sellerAgent.isOurClient ? ' ★ Our Client' : ''}`);
+  if (deal.buyerAgent?.name) agentLines.push(`  Buyer Agent:  ${deal.buyerAgent.name}${deal.buyerAgent.phone ? ` | ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? ` | ${deal.buyerAgent.email}` : ''}${deal.buyerAgent.isOurClient ? ' ★ Our Client' : ''}`);
+  if (deal.sellerAgent?.name) agentLines.push(`  Seller Agent: ${deal.sellerAgent.name}${deal.sellerAgent.phone ? ` | ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? ` | ${deal.sellerAgent.email}` : ''}${deal.sellerAgent.isOurClient ? ' ★ Our Client' : ''}`);
   const agentsText = agentLines.join('\n') || '  (No agents added yet)';
 
   const contactLines = deal.contacts
-    // Names + company only — no phone or email exposed in templates
-    .map(c => `  • ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''} — ${roleLabel(c.role)}`)
+    .map(c => `  • ${c.name}${c.company ? ` (${c.company})` : ''} — ${roleLabel(c.role)}${c.email ? `: ${c.email}` : ''}${c.phone ? ` | ${formatPhone(c.phone)}` : ''}`)
     .join('\n') || '  (No contacts added yet)';
 
   const pendingDocs = deal.documentRequests.filter(d => d.status !== 'confirmed');
@@ -103,41 +75,27 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellers = deal.contacts.filter(c => c.role === 'seller');
   const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
-  // Title contacts split by their stored side field
-  const allTitleContacts = deal.contacts.filter(c => c.role === 'title');
-  const sellSideTitleContacts = allTitleContacts.filter(c => !c.side || c.side === 'sell' || c.side === 'both');
-  const buySideTitleContacts  = allTitleContacts.filter(c => c.side === 'buy'  || c.side === 'both');
   const sellerLines: string[] = ['Sellers Side', ''];
-  // Names + company only — no contact details in outgoing templates
-  // BUG-001 FIX: Fall back to deal.sellerName if no seller contacts with role='seller'
-  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''}`));
-  else if (deal.sellerName) sellerLines.push(`  •   Sellers - ${deal.sellerName}`);
+  if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
-  // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
-  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}`);
+  if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}`);
+  else sellerLines.push('  •   Sellers Agent - [Seller Agent Name]');
   const sAtty = sellerAttorneys.length > 0 ? sellerAttorneys : (deal.transactionType !== 'buyer' ? allAttorneys.slice(0, 1) : []);
-  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${liveCompany(a) ? ` (${liveCompany(a)})` : ''}`));
-  if (sellSideTitleContacts.length > 0) {
-    sellSideTitleContacts.forEach(t => sellerLines.push(`  •   Title Company - ${t.name}${liveCompany(t) ? ` (${liveCompany(t)})` : ''}`));
-  }
+  if (sAtty.length > 0) sAtty.forEach(a => sellerLines.push(`  •   Sellers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  else sellerLines.push('  •   Sellers Attorney - [Attorney Name]');
   const sellersSide = sellerLines.join('\n');
 
   // Build Buyers Side block
   const buyers = deal.contacts.filter(c => c.role === 'buyer');
   const buyerLines: string[] = ['Buyers Side', ''];
-  // Names + company only — no contact details in outgoing templates
-  // BUG-001 FIX: Fall back to deal.buyerName if no buyer contacts with role='buyer'
-  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${liveCompany(c) ? ` (${liveCompany(c)})` : ''}`));
-  else if (deal.buyerName) buyerLines.push(`  •   Buyers - ${deal.buyerName}`);
+  if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.email ? `  ${c.email}` : ''}`));
   else buyerLines.push('  •   Buyers - [Buyer Name]');
-  // BUG-002 FIX: Omit agent/attorney lines when not set — don't write placeholder text into client emails
-  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${liveCompany(deal.buyerAgent) ? ` (${liveCompany(deal.buyerAgent)})` : ''}`);
+  if (deal.buyerAgent?.name) buyerLines.push(`  •   Buyers Agent - ${deal.buyerAgent.name}${deal.buyerAgent.phone ? `  ${formatPhone(deal.buyerAgent.phone)}` : ''}${deal.buyerAgent.email ? `  ${deal.buyerAgent.email}` : ''}`);
+  else buyerLines.push('  •   Buyers Agent - [Buyer Agent Name]');
   const bAtty = deal.transactionType === 'buyer' ? allAttorneys.slice(0, 1) : allAttorneys.slice(1, 2);
   const fallbackAtty = bAtty.length > 0 ? bAtty : (allAttorneys.length > 0 && sAtty.length === 0 ? allAttorneys.slice(0, 1) : []);
-  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${liveCompany(a) ? ` (${liveCompany(a)})` : ''}`));
-  if (buySideTitleContacts.length > 0) {
-    buySideTitleContacts.forEach(t => buyerLines.push(`  •   Title Company - ${t.name}${liveCompany(t) ? ` (${liveCompany(t)})` : ''}`));
-  }
+  if (fallbackAtty.length > 0) fallbackAtty.forEach(a => buyerLines.push(`  •   Buyers Attorney - ${a.name}${a.email ? `  ${a.email}` : ''}${a.phone ? `  ${formatPhone(a.phone)}` : ''}`));
+  else buyerLines.push('  •   Buyers Attorney - [Attorney Name]');
   const buyersSide = buyerLines.join('\n');
 
   // Inspection deadline: contractDate + inspectionPeriodDays from compliance template
@@ -172,180 +130,7 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     .replace(/\{\{pendingDocs\}\}/g, pendingText)
     .replace(/\{\{reminders\}\}/g, reminderLines)
     .replace(/\{\{sellersSide\}\}/g, sellersSide)
-    .replace(/\{\{buyersSide\}\}/g, buyersSide)
-    .replace(/\{\{agentName\}\}/g, agentName || '[Agent Name]')
-    .replace(/\{\{agentPhone\}\}/g, agentPhone || '[Agent Phone]')
-    .replace(/\{\{agentEmail\}\}/g, agentEmail || '[Agent Email]')
-    .replace(/\{\{clientName\}\}/g, clientName || '[Client Name]')
-    .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSignature)
-
-    // Future date fields — populated once new date fields are added to deals
-    .replace(/\{\{emDate\}\}/g, (deal as any).emDate ? formatDate((deal as any).emDate) : '[EM Date not set]')
-    .replace(/\{\{possessionDate\}\}/g, (deal as any).possessionDate ? formatDate((deal as any).possessionDate) : '[Possession Date not set]')
-    .replace(/\{\{inspectionDate\}\}/g, (deal as any).inspectionDate ? formatDate((deal as any).inspectionDate) : '[Inspection Date not set]')
-    .replace(/\{\{loanDate\}\}/g, (deal as any).loanDate ? formatDate((deal as any).loanDate) : '[Loan Commitment Date not set]')
-    .replace(/\{\{titleDate\}\}/g, (deal as any).titleDate ? formatDate((deal as any).titleDate) : '[Title Date not set]');
-}
-
-// ── Deal Contact Picker ──────────────────────────────────────────────────────
-
-interface PickerEntry {
-  key: string;
-  name: string;
-  email: string;
-  roleLabel: string;
-  side: 'buy' | 'sell';
-}
-
-function DealContactPicker({
-  deal,
-  selected,
-  onToggle,
-}: {
-  deal: Deal;
-  selected: string[];
-  onToggle: (email: string) => void;
-}) {
-  const buySide: PickerEntry[] = [];
-  const sellSide: PickerEntry[] = [];
-
-  // Buyer agent
-  if (deal.buyerAgent?.name) {
-    buySide.push({
-      key: 'buyerAgent',
-      name: deal.buyerAgent.name,
-      email: (deal.buyerAgent as any).email || '',
-      roleLabel: 'Buyer Agent',
-      side: 'buy',
-    });
-  }
-
-  // Seller agent
-  if (deal.sellerAgent?.name) {
-    sellSide.push({
-      key: 'sellerAgent',
-      name: deal.sellerAgent.name,
-      email: (deal.sellerAgent as any).email || '',
-      roleLabel: 'Seller Agent',
-      side: 'sell',
-    });
-  }
-
-  // Deal contacts by role
-  const roleSideMap: Record<string, 'buy' | 'sell'> = {
-    buyer: 'buy',
-    lender: 'buy',
-    seller: 'sell',
-    title: 'sell',
-    attorney: 'sell',
-    agent: 'buy',
-    other: 'buy',
-  };
-  const roleDisplayMap: Record<string, string> = {
-    buyer: 'Buyer',
-    seller: 'Seller',
-    lender: 'Lender',
-    title: 'Title Officer',
-    attorney: 'Attorney',
-    agent: 'Agent',
-    other: 'Other',
-  };
-
-  for (const c of deal.contacts || []) {
-    // Use the contact's stored side if available; fall back to role-based default
-    const storedSide = (c as any).side as 'buy' | 'sell' | 'both' | undefined;
-    const side: 'buy' | 'sell' =
-      storedSide === 'sell' ? 'sell'
-      : storedSide === 'buy' ? 'buy'
-      : roleSideMap[c.role] ?? 'buy';
-    const entry: PickerEntry = {
-      key: c.id || c.name,
-      name: c.name,
-      email: c.email || '',
-      roleLabel: roleDisplayMap[c.role] || roleLabel(c.role),
-      side,
-    };
-    if (storedSide === 'both') {
-      buySide.push({ ...entry, side: 'buy' });
-      sellSide.push({ ...entry, side: 'sell' });
-    } else if (side === 'buy') {
-      buySide.push(entry);
-    } else {
-      sellSide.push(entry);
-    }
-  }
-
-  const renderEntry = (entry: PickerEntry) => {
-    const hasEmail = !!entry.email;
-    const isSelected = hasEmail && selected.includes(entry.email);
-    return (
-      <button
-        key={entry.key}
-        type="button"
-        disabled={!hasEmail}
-        onClick={() => hasEmail && onToggle(entry.email)}
-        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors text-sm ${
-          isSelected
-            ? 'bg-primary/10 text-primary'
-            : hasEmail
-            ? 'hover:bg-gray-50 text-gray-700'
-            : 'opacity-40 cursor-not-allowed text-gray-400'
-        }`}
-      >
-        <span
-          className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-            isSelected ? 'bg-primary border-primary' : 'border-gray-300'
-          }`}
-        >
-          {isSelected && (
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="font-medium truncate block">{entry.name}</span>
-          <span className="text-xs truncate block text-gray-400">
-            {entry.roleLabel}
-            {entry.email ? ` · ${entry.email}` : ' · No email on file'}
-          </span>
-        </span>
-      </button>
-    );
-  };
-
-  const isEmpty = buySide.length === 0 && sellSide.length === 0;
-
-  if (isEmpty) return null;
-
-  return (
-    <div className="border border-gray-200 rounded-xl mb-3 overflow-hidden">
-      <div className="grid grid-cols-2 divide-x divide-gray-100">
-        {/* Buy Side */}
-        <div className="p-2">
-          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1 px-1">
-            Buy Side
-          </p>
-          {buySide.length > 0 ? (
-            buySide.map(renderEntry)
-          ) : (
-            <p className="text-xs text-gray-400 px-2 py-1">No buy-side contacts</p>
-          )}
-        </div>
-        {/* Sell Side */}
-        <div className="p-2">
-          <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1 px-1">
-            Sell Side
-          </p>
-          {sellSide.length > 0 ? (
-            sellSide.map(renderEntry)
-          ) : (
-            <p className="text-xs text-gray-400 px-2 py-1">No sell-side contacts</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+    .replace(/\{\{buyersSide\}\}/g, buyersSide);
 }
 
 // ── Email chip input ────────────────────────────────────────────────────────
@@ -633,7 +418,6 @@ interface Props {
   emailTemplates: EmailTemplate[];
   complianceTemplates?: ComplianceTemplate[];
   currentUser?: string;
-  contactRecords?: ContactRecord[];
 }
 
 export default function WorkspaceEmailCompose({
@@ -641,7 +425,6 @@ export default function WorkspaceEmailCompose({
   emailTemplates,
   complianceTemplates,
   currentUser,
-  contactRecords,
 }: Props) {
   // Template selection
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -664,7 +447,6 @@ export default function WorkspaceEmailCompose({
   const [spanishBody, setSpanishBody] = useState('');
   const [sendingSpanish, setSendingSpanish] = useState(false);
   const [scheduling, setScheduling] = useState(false);
-  const [showConfirmWarning, setShowConfirmWarning] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [toast, setToast] = useState<{
     type: 'success' | 'error';
@@ -676,22 +458,11 @@ export default function WorkspaceEmailCompose({
 
   const selectedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId);
 
-  // Agent-client record in component scope (needed for pre-checking email)
-  const agentClientRecord = (contactRecords || []).find(c => c.id === deal.agentClientId);
-
-  // Pre-fill recipients from deal contacts on notification list + always include agent-client
+  // Pre-fill recipients from deal contacts on notification list
   useEffect(() => {
     const notifyContacts = (deal.contacts || []).filter((c) => c.inNotificationList);
     const emails = notifyContacts.map((c) => c.email).filter(Boolean) as string[];
-
-    // Agent-client is always pre-checked by default
-    const agentClientEmail = agentClientRecord?.email;
-    if (agentClientEmail && !emails.includes(agentClientEmail)) {
-      emails.push(agentClientEmail);
-    }
-
     setToAddresses(emails);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
   // Auto-CC agent team members (admins/assistants) when deal loads
@@ -721,25 +492,14 @@ export default function WorkspaceEmailCompose({
     loadAgentTeamCC();
   }, [deal.id]);
 
-  // Helper: prefix address to subject if not already present
-  const withAddress = useCallback(
-    (rawSubject: string) => {
-      const addr = deal.propertyAddress?.trim();
-      if (!addr) return rawSubject;
-      if (rawSubject.includes(addr)) return rawSubject;
-      return rawSubject.trim() ? `${addr} – ${rawSubject}` : addr;
-    },
-    [deal.propertyAddress]
-  );
-
   // Populate template when selected
   const handleSelectTemplate = useCallback(
     (templateId: string) => {
       setSelectedTemplateId(templateId);
       const tpl = emailTemplates.find((t) => t.id === templateId);
       if (tpl) {
-        setSubject(withAddress(populateTemplate(tpl.subject, deal, complianceTemplates, contactRecords)));
-        setBodyText(populateTemplate(tpl.body, deal, complianceTemplates, contactRecords));
+        setSubject(populateTemplate(tpl.subject, deal, complianceTemplates));
+        setBodyText(populateTemplate(tpl.body, deal, complianceTemplates));
         // Handle confirmation buttons
         if (tpl.buttons && tpl.buttons.length > 0) {
           const c: Record<string, boolean> = {};
@@ -758,8 +518,8 @@ export default function WorkspaceEmailCompose({
   const handleSelectComplianceTemplate = useCallback(
     (tpl: ComplianceTemplate) => {
       setSelectedTemplateId('');
-      setSubject(withAddress(populateTemplate(tpl.name || '', deal, complianceTemplates, contactRecords)));
-      setBodyText(populateTemplate(tpl.description || '', deal, complianceTemplates, contactRecords));
+      setSubject(populateTemplate(tpl.name || '', deal, complianceTemplates));
+      setBodyText(populateTemplate(tpl.description || '', deal, complianceTemplates));
       setConfirmations({});
     },
     [deal]
@@ -804,19 +564,16 @@ export default function WorkspaceEmailCompose({
     if (toAddresses.length === 0) return 'Please add at least one recipient.';
     if (!subject.trim()) return 'Subject is required.';
     if (!bodyText.trim()) return 'Email body is empty.';
+    // Check confirmations
+    const unconfirmed = Object.entries(confirmations).filter(([, v]) => !v);
+    if (unconfirmed.length > 0) return 'Please check all confirmation items before sending.';
     return null;
-  };
-
-  // Separate confirmation gate — triggers warning modal instead of toast
-  const hasUnconfirmedItems = (): boolean => {
-    return Object.entries(confirmations).some(([, v]) => !v);
   };
 
   // Preview in Spanish
   const handlePreviewSpanish = async () => {
     const err = validate();
     if (err) { showToast('error', err); return; }
-    if (hasUnconfirmedItems()) { setShowConfirmWarning(true); return; }
     setTranslating(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -877,10 +634,6 @@ export default function WorkspaceEmailCompose({
       showToast('error', err);
       return;
     }
-    if (hasUnconfirmedItems()) {
-      setShowConfirmWarning(true);
-      return;
-    }
 
     setSending(true);
     try {
@@ -915,9 +668,20 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      // BUG-003 FIX: Removed duplicate logEmailSend() call.
-      // The Edge function (send-email) already inserts into email_send_log.
-      // Calling it here a second time caused every sent email to be logged twice.
+      // Log locally
+      await logEmailSend({
+        dealId: deal.id,
+        templateId: selectedTemplate?.id,
+        templateName: selectedTemplate?.name,
+        toAddresses,
+        ccAddresses,
+        subject,
+        bodyHtml,
+        gmailMessageId: data.messageId,
+        gmailThreadId: data.threadId,
+        emailType: 'deal',
+        sentBy: currentUser,
+      });
 
       showToast('success', 'Email sent successfully!');
       setHistoryKey((k) => k + 1);
@@ -1042,24 +806,13 @@ export default function WorkspaceEmailCompose({
 
       {/* ── Right Panel: Compose + History ──────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
-        {/* Deal Contact Picker */}
-        <DealContactPicker
-          deal={deal}
-          selected={toAddresses}
-          onToggle={(email) =>
-            setToAddresses((prev) =>
-              prev.includes(email) ? prev.filter((e) => e !== email) : [...prev, email]
-            )
-          }
-        />
-
         {/* Recipients */}
         <div className="space-y-2 mb-4">
           <EmailChipInput
             label="To"
             emails={toAddresses}
             onChange={setToAddresses}
-            placeholder="Add external email…"
+            placeholder="Add recipient email…"
           />
 
           {!showCcBcc ? (
@@ -1215,41 +968,6 @@ export default function WorkspaceEmailCompose({
         {/* Sent History */}
         <SentHistory key={historyKey} dealId={deal.id} />
       </div>
-
-      {/* ── Confirmation Warning Modal ───────────────────────────────── */}
-      {showConfirmWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-base-100 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="bg-amber-100 rounded-full p-2">
-                <AlertCircle size={22} className="text-amber-600" />
-              </div>
-              <h3 className="font-semibold text-base">Action Required Before Sending</h3>
-            </div>
-            <p className="text-sm text-base-content/70 mb-4">
-              This template requires you to confirm the following items before the email can be sent:
-            </p>
-            <ul className="space-y-2 mb-5">
-              {Object.entries(confirmations)
-                .filter(([, v]) => !v)
-                .map(([item]) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    <span className="mt-0.5 shrink-0">⚠️</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-            </ul>
-            <div className="flex justify-end gap-2">
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setShowConfirmWarning(false)}
-              >
-                Go Back & Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Schedule Modal ──────────────────────────────────────────── */}
       <ScheduleModal
