@@ -158,6 +158,7 @@ export async function loadDeals(): Promise<Deal[]> {
     .from('deals')
     .select(`
       id, property_address, city, state, zip, mls_number,
+      org_id, deal_ref,
       deal_type, status, pipeline_stage,
       contract_date, closing_date, purchase_price, notes, legal_description,
       primary_client_account_id, transaction_type, risk_level,
@@ -194,6 +195,8 @@ export async function loadDeals(): Promise<Deal[]> {
     const deal: Deal = {
       id: row.id,
       dealNumber: row.deal_number ?? undefined,
+      orgId: row.org_id ?? undefined,
+      dealRef: row.deal_ref ?? undefined,
       propertyAddress: row.property_address || (dd.address as string) || '',
       city: row.city || (dd.city as string) || '',
       state: row.state || (dd.state as string) || '',
@@ -314,6 +317,8 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
     home_warranty_company: deal.homeWarrantyCompany || null,
     commission_paid_by: deal.commissionPaidBy || null,
+    org_id: (deal as any).orgId ?? null,
+    deal_ref: (deal as any).dealRef ?? null,
     deal_data: dealToJsonBackup(deal),
     updated_at: new Date().toISOString(),
   }));
@@ -375,6 +380,8 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
+      org_id: (deal as any).orgId ?? null,
+      deal_ref: (deal as any).dealRef ?? null,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },
@@ -1663,11 +1670,13 @@ export async function logEmailSend(entry: {
   gmailThreadId?: string;
   emailType: EmailType;
   sentBy?: string;
+  orgId?: string;
 }): Promise<string> {
   const { data, error } = await supabase
     .from('email_send_log')
     .insert({
       deal_id: entry.dealId || null,
+      org_id: entry.orgId || null,
       template_id: entry.templateId || null,
       template_name: entry.templateName || null,
       to_addresses: entry.toAddresses,
@@ -1865,4 +1874,95 @@ export async function getAgentTeamPhonesForSMS(supabase: any, agentContactId: st
     .not('phone', 'is', null);
   if (error) return [];
   return (data || []).map((r: any) => r.phone).filter(Boolean);
+}
+
+
+// ── ORG MEMBERSHIP MANAGEMENT ──────────────────────────────────────────────
+
+export async function loadUserOrgMemberships(userId: string) {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .select('*, organizations:org_id(id, name, org_code, organization_type)')
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  if (error) throw error;
+  return (data ?? []).map((m: any) => ({
+    id: m.id,
+    userId: m.user_id,
+    orgId: m.org_id,
+    roleInOrg: m.role_in_org,
+    status: m.status,
+    orgName: m.organizations?.name ?? '',
+    orgCode: m.organizations?.org_code ?? '',
+    orgType: m.organizations?.organization_type ?? '',
+  }));
+}
+
+export async function loadOrgMembers(orgId: string) {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .select('*, profiles:user_id(id, name, phone, contact_id, is_master_admin)')
+    .eq('org_id', orgId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addOrgMember(params: {
+  userId: string;
+  orgId: string;
+  roleInOrg: 'team_admin' | 'tc' | 'agent';
+}): Promise<string> {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .insert({
+      user_id: params.userId,
+      org_id: params.orgId,
+      role_in_org: params.roleInOrg,
+      status: 'active',
+      joined_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function deactivateOrgMembership(membershipId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_org_memberships')
+    .update({ status: 'inactive' })
+    .eq('id', membershipId);
+  if (error) throw error;
+}
+
+export async function loadDealAccessList(dealId: string) {
+  const { data, error } = await supabase
+    .from('deal_access')
+    .select('*, profiles:user_id(id, name, phone)')
+    .eq('deal_id', dealId);
+  if (error) throw error;
+  return (data ?? []).map((a: any) => ({
+    id: a.id,
+    dealId: a.deal_id,
+    userId: a.user_id,
+    grantedBy: a.granted_by,
+    grantedAt: a.granted_at,
+    userName: a.profiles?.name ?? '',
+  }));
+}
+
+export async function grantDealAccess(dealId: string, userId: string, grantedBy: string): Promise<void> {
+  const { error } = await supabase
+    .from('deal_access')
+    .insert({ deal_id: dealId, user_id: userId, granted_by: grantedBy, granted_at: new Date().toISOString() });
+  if (error && !error.message.includes('duplicate')) throw error;
+}
+
+export async function revokeDealAccess(dealId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('deal_access')
+    .delete()
+    .eq('deal_id', dealId)
+    .eq('user_id', userId);
+  if (error) throw error;
 }

@@ -387,6 +387,8 @@ export interface AgentContact {
 export interface Deal {
   id: string;
   dealNumber?: string;
+  orgId?: string;
+  dealRef?: string;
 
   // ── Property info ──────────────────────────────────────────────────────────
   propertyAddress: string;       // Phase 4: canonical name (was `address`)
