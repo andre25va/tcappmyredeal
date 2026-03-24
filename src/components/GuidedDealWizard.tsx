@@ -399,7 +399,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -419,13 +419,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Resolve merge tags before sending
       const ac = agentClients?.find(c => c.id === form.agentClientId);
       const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+      const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
       const resolvedBody = form.introEmailBody
         .replace(/\{\{address\}\}/g, form.address || '')
         .replace(/\{\{city\}\}/g, form.city || '')
         .replace(/\{\{state\}\}/g, form.state || '')
         .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
         .replace(/\{\{agentPhone\}\}/g, ac?.phone || '')
-        .replace(/\{\{agentEmail\}\}/g, ac?.email || '');
+        .replace(/\{\{agentEmail\}\}/g, ac?.email || '')
+        .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSig);
       const bodyLines = resolvedBody.split('\n');
       const bodyHtml = '<p>' + bodyLines.map(l => l.trim() === '' ? '</p><p>' : l).join('<br/>') + '</p>';
       const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
@@ -719,12 +721,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         phone: agentClient.phone || '',
         email: agentClient.email || '',
         isOurClient: true,
+        company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
       sellerAgent: form.transactionType === 'seller' && agentClient ? {
         name: agentClient.fullName,
         phone: agentClient.phone || '',
         email: agentClient.email || '',
         isOurClient: true,
+        company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
       contacts: (() => {
         if (!form.titleContactId) return [];
@@ -1809,7 +1813,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
+                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');
