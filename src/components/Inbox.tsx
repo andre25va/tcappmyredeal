@@ -137,7 +137,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     setEmailLoading(true);
     setEmailError('');
     try {
-      const resp = await fetch('/api/email/threads?max_results=30');
+      const resp = await fetch('/api/email?max_results=30');
       if (resp.ok) {
         const data = await resp.json();
         setEmailThreads(data.threads || []);
@@ -186,7 +186,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const loadEmailMessages = useCallback(async (threadId: string) => {
     setEmailMsgLoading(true);
     try {
-      const resp = await fetch(`/api/email/threads?thread_id=${threadId}`);
+      const resp = await fetch(`/api/email?thread_id=${threadId}`);
       if (resp.ok) {
         const data = await resp.json();
         setEmailMessages(data.messages || []);
