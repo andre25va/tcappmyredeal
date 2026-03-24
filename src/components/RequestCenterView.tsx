@@ -42,9 +42,10 @@ interface RequestRow extends RequestRecord {
 // ── Component ──────────────────────────────────────────────────────────────────
 interface Props {
   onSelectDeal?: (dealId: string) => void;
+  onSelectDealWithTab?: (dealId: string, tab: string) => void;
 }
 
-export const RequestCenterView: React.FC<Props> = ({ onSelectDeal }) => {
+export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealWithTab }) => {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('active');

@@ -253,7 +253,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
-    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '',
+    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '',
     legalDescription: '',
   });
   const [error, setError] = useState('');
@@ -399,7 +399,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
+        introEmailBody: `Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -416,19 +416,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      // Resolve merge tags before sending
-      const ac = agentClients?.find(c => c.id === form.agentClientId);
-      const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
-      const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
-      const resolvedBody = form.introEmailBody
-        .replace(/\{\{address\}\}/g, form.address || '')
-        .replace(/\{\{city\}\}/g, form.city || '')
-        .replace(/\{\{state\}\}/g, form.state || '')
-        .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
-        .replace(/\{\{agentPhone\}\}/g, ac?.phone || '')
-        .replace(/\{\{agentEmail\}\}/g, ac?.email || '')
-        .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSig);
-      const bodyLines = resolvedBody.split('\n');
+      const bodyLines = form.introEmailBody.split('\n');
       const bodyHtml = '<p>' + bodyLines.map(l => l.trim() === '' ? '</p><p>' : l).join('<br/>') + '</p>';
       const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
@@ -721,14 +709,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         phone: agentClient.phone || '',
         email: agentClient.email || '',
         isOurClient: true,
-        company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
       sellerAgent: form.transactionType === 'seller' && agentClient ? {
         name: agentClient.fullName,
         phone: agentClient.phone || '',
         email: agentClient.email || '',
         isOurClient: true,
-        company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
       contacts: (() => {
         if (!form.titleContactId) return [];
@@ -742,7 +728,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           role: ((tc as any).role || 'title') as any,
           company: (tc as any).company || '',
           inNotificationList: false,
-          side: form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell'),
         }];
       })(),
       notes: form.specialNotes.trim(),
@@ -1747,31 +1732,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <p className="text-sm text-base-content/60">Select the title or escrow company for this deal. You can also send them an intro email right now.</p>
 
-                  {/* Side selector — auto-matches transaction side from step 3 */}
-                  {(() => {
-                    const effectiveSide = form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-base-content/70">Assign to:</span>
-                        <div className="join">
-                          <button
-                            type="button"
-                            className={`join-item btn btn-sm ${effectiveSide === 'buy' ? 'btn-primary' : 'btn-outline'}`}
-                            onClick={() => setForm(p => ({ ...p, titleSide: 'buy' }))}
-                          >Buy Side</button>
-                          <button
-                            type="button"
-                            className={`join-item btn btn-sm ${effectiveSide === 'sell' ? 'btn-primary' : 'btn-outline'}`}
-                            onClick={() => setForm(p => ({ ...p, titleSide: 'sell' }))}
-                          >Sell Side</button>
-                        </div>
-                        {!form.titleSide && (
-                          <span className="text-xs text-base-content/40 italic">auto-matched from transaction side</span>
-                        )}
-                      </div>
-                    );
-                  })()}
-
                   {/* Contact search / selected card */}
                   {selectedTitleContact ? (
                     <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
@@ -1813,7 +1773,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`,
+                                    introEmailBody: `Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: ${addr}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\nTC Team`,
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');

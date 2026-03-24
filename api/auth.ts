@@ -218,29 +218,7 @@ async function handleSession(req: VercelRequest, res: VercelResponse) {
     }
 
     await supabase.from('sessions').update({ last_used: new Date().toISOString() }).eq('token', token);
-
-    // After getting session.profiles, fetch org memberships
-    const { data: orgMemberships } = await supabase
-      .from('user_org_memberships')
-      .select('id, org_id, role_in_org, status, organizations:org_id(name, org_code)')
-      .eq('user_id', session.user_id)
-      .eq('status', 'active');
-
-    // Return enriched profile
-    return res.status(200).json({
-      valid: true,
-      profile: {
-        ...session.profiles,
-        orgMemberships: (orgMemberships ?? []).map((m: any) => ({
-          id: m.id,
-          orgId: m.org_id,
-          orgName: m.organizations?.name ?? '',
-          orgCode: m.organizations?.org_code ?? '',
-          roleInOrg: m.role_in_org,
-          status: m.status,
-        })),
-      }
-    });
+    return res.status(200).json({ valid: true, profile: session.profiles });
   } catch {
     return res.status(401).json({ error: 'Invalid session' });
   }
@@ -601,84 +579,6 @@ async function handleDeleteUser(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-// ── Org Management ────────────────────────────────────────────────────────────
-
-async function handleOrgManagement(req: VercelRequest, res: VercelResponse) {
-  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { data: session } = await supabase
-    .from('sessions')
-    .select('user_id, profiles(is_master_admin)')
-    .eq('token', token)
-    .eq('is_active', true)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-
-  if (!session) return res.status(401).json({ error: 'Session expired' });
-
-  const profile = session.profiles as any;
-  const { action: subAction } = req.body || {};
-
-  // Add member to org
-  if (subAction === 'add-member') {
-    const { orgId, userId, roleInOrg } = req.body;
-    if (!orgId || !userId || !roleInOrg) return res.status(400).json({ error: 'orgId, userId, roleInOrg required' });
-    const { data, error } = await supabase.from('user_org_memberships').insert({
-      user_id: userId, org_id: orgId, role_in_org: roleInOrg, status: 'active', joined_at: new Date().toISOString()
-    }).select().single();
-    if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ success: true, membership: data });
-  }
-
-  // Remove/deactivate member from org
-  if (subAction === 'remove-member') {
-    const { membershipId } = req.body;
-    if (!membershipId) return res.status(400).json({ error: 'membershipId required' });
-    const { error } = await supabase.from('user_org_memberships')
-      .update({ status: 'inactive' })
-      .eq('id', membershipId);
-    if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ success: true });
-  }
-
-  // List org members
-  if (subAction === 'list-members') {
-    const { orgId } = req.body;
-    if (!orgId) return res.status(400).json({ error: 'orgId required' });
-    const { data, error } = await supabase.from('user_org_memberships')
-      .select('*, profiles:user_id(id, name, phone, is_master_admin, contact_id)')
-      .eq('org_id', orgId);
-    if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ success: true, members: data });
-  }
-
-  // Grant deal access
-  if (subAction === 'grant-deal-access') {
-    const { dealId, userId } = req.body;
-    if (!dealId || !userId) return res.status(400).json({ error: 'dealId, userId required' });
-    const { data, error } = await supabase.from('deal_access').insert({
-      deal_id: dealId, user_id: userId, granted_by: session.user_id, granted_at: new Date().toISOString()
-    }).select().single();
-    if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ success: true, access: data });
-  }
-
-  // Revoke deal access
-  if (subAction === 'revoke-deal-access') {
-    const { dealId, userId } = req.body;
-    if (!dealId || !userId) return res.status(400).json({ error: 'dealId, userId required' });
-    const { error } = await supabase.from('deal_access')
-      .delete()
-      .eq('deal_id', dealId)
-      .eq('user_id', userId);
-    if (error) return res.status(400).json({ error: error.message });
-    return res.status(200).json({ success: true });
-  }
-
-  return res.status(400).json({ error: 'Unknown org action' });
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = req.query.action as string;
   switch (action) {
@@ -693,7 +593,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'add-user':          return handleAddUser(req, res);
     case 'edit-user':         return handleEditUser(req, res);
     case 'delete-user':       return handleDeleteUser(req, res);
-    case 'org-management':    return handleOrgManagement(req, res);
     default: return res.status(404).json({ error: `Unknown auth action: ${action}` });
   }
 }

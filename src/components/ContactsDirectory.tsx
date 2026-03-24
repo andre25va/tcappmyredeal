@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Save, Building2, Star,
@@ -59,15 +58,14 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'title', label: 'Title', roles: ['title'], icon: <FileText size={22} />, bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600' },
   { key: 'attorney', label: 'Attorneys', roles: ['attorney'], icon: <Scale size={22} />, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600' },
   { key: 'inspector', label: 'Inspectors', roles: ['inspector'], icon: <ClipboardCheck size={22} />, bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-600' },
-  { key: 'buyer_seller', label: 'Buyers / Sellers', roles: ['buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
+  { key: 'buyer_seller', label: 'Clients', roles: ['client', 'buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
   { key: 'tc', label: 'TCs', roles: ['tc'], icon: <Shield size={22} />, bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600' },
   { key: 'other', label: 'Other', roles: ['appraiser', 'other'], icon: <Users size={22} />, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600' },
 ];
 
 const ROLE_OPTIONS: { value: ContactRole; label: string }[] = [
   { value: 'agent', label: 'Agent' },
-  { value: 'buyer', label: 'Buyer' },
-  { value: 'seller', label: 'Seller' },
+  { value: 'client', label: 'Client' },
   { value: 'lender', label: 'Lender' },
   { value: 'title', label: 'Title' },
   { value: 'attorney', label: 'Attorney' },
@@ -84,6 +82,7 @@ function roleColor(r: ContactRole): string {
     title: 'bg-orange-100 text-orange-700',
     attorney: 'bg-red-100 text-red-700',
     inspector: 'bg-gray-100 text-gray-700',
+    client: 'bg-teal-100 text-teal-700',
     buyer: 'bg-teal-100 text-teal-700',
     seller: 'bg-teal-100 text-teal-700',
     tc: 'bg-indigo-100 text-indigo-700',
@@ -100,6 +99,7 @@ function avatarBg(r: ContactRole): string {
     title: 'bg-orange-200 text-orange-800',
     attorney: 'bg-red-200 text-red-800',
     inspector: 'bg-gray-200 text-gray-800',
+    client: 'bg-teal-200 text-teal-800',
     buyer: 'bg-teal-200 text-teal-800',
     seller: 'bg-teal-200 text-teal-800',
     tc: 'bg-indigo-200 text-indigo-800',
@@ -137,8 +137,6 @@ interface EditForm {
   originalIsClient: boolean;
   clientAccountId?: string;
   preferredLanguage: 'en' | 'es';
-  pin: string;
-  teamName: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
 }
@@ -178,8 +176,6 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     originalIsClient: false,
     clientAccountId: undefined,
     preferredLanguage: 'en',
-    pin: '',
-    teamName: '',
     licenses: [],
     mlsMemberships: [],
   };
@@ -201,8 +197,6 @@ function contactToForm(c: ContactRecord): EditForm {
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
     preferredLanguage: c.preferredLanguage || 'en',
-    pin: c.pin || '',
-    teamName: c.teamName || '',
     licenses: c.licenses.map(l => ({
       id: l.id,
       isNew: false,
@@ -348,7 +342,6 @@ function TeamMemberRow({ member, isEditing, onEdit, onCancelEdit, onSave, onDele
 }
 
 export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted, onContactUpdated }: Props) {
-  const { profile } = useAuth();
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -367,12 +360,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [timezoneError, setTimezoneError] = useState(false);
   const [emailDup, setEmailDup] = useState<ContactRecord | null>(null);
   const [phoneDup, setPhoneDup] = useState<ContactRecord | null>(null);
-  const [pinEditing, setPinEditing] = useState(false);
-  const [pinDraft, setPinDraft] = useState('');
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
-  const [deleteNameConfirm, setDeleteNameConfirm] = useState('');
 
   // Onboarding wizard
   const [onboardingContact, setOnboardingContact] = useState<ContactRecord | null>(null);
@@ -597,45 +587,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setTimezoneError(false);
   };
 
-  // ── Duplicate phone/email detection ────────────────────────────────────────
-  useEffect(() => {
-    const raw = form.phone.replace(/\D/g, '');
-    if (raw.length < 10) { setPhoneDup(null); return; }
-    const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name')
-        .ilike('phone', `%${raw.slice(-10)}%`)
-        .neq('id', form.id || '00000000-0000-0000-0000-000000000000')
-        .limit(1);
-      if (data && data.length > 0) {
-        setPhoneDup({ ...data[0], firstName: data[0].first_name, lastName: data[0].last_name } as unknown as ContactRecord);
-      } else {
-        setPhoneDup(null);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [form.phone, form.id]);
-
-  useEffect(() => {
-    const email = form.email.trim().toLowerCase();
-    if (!email || !email.includes('@')) { setEmailDup(null); return; }
-    const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name')
-        .ilike('email', email)
-        .neq('id', form.id || '00000000-0000-0000-0000-000000000000')
-        .limit(1);
-      if (data && data.length > 0) {
-        setEmailDup({ ...data[0], firstName: data[0].first_name, lastName: data[0].last_name } as unknown as ContactRecord);
-      } else {
-        setEmailDup(null);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [form.email, form.id]);
-
   // ── Form helpers ───────────────────────────────────────────────────────────
   const updateField = <K extends keyof EditForm>(key: K, val: EditForm[K]) => {
     setForm(prev => ({ ...prev, [key]: val }));
@@ -760,8 +711,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         notes: form.notes.trim() || undefined,
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
         preferredLanguage: form.preferredLanguage,
-        pin: form.pin.trim() || undefined,
-        teamName: form.isClient ? (form.teamName.trim() || undefined) : undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -837,22 +786,14 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    if (deleteNameConfirm !== profile?.name) return;
     try {
-      await deleteContactRecord(deleteTarget.id, profile?.name ?? 'Unknown', {
-        name: `${deleteTarget.firstName} ${deleteTarget.lastName}`.trim(),
-        email: deleteTarget.email,
-        phone: deleteTarget.phone,
-        contactType: deleteTarget.contactType,
-        company: deleteTarget.company,
-      });
+      await deleteContactRecord(deleteTarget.id, 'TC');
       await refresh();
       onDirectoryChanged?.();
     } catch (err) {
       console.error('Delete failed:', err);
     }
     setDeleteTarget(null);
-    setDeleteNameConfirm('');
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -997,7 +938,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       <button className="btn btn-ghost btn-xs text-purple-500" onClick={() => setOnboardingContact(c)} title="Open Onboarding Wizard">
                         <Sparkles size={13} />
                       </button>
-                      <button className="btn btn-ghost btn-xs text-error" onClick={() => { setDeleteTarget(c); setDeleteNameConfirm(''); }} title="Delete">
+                      <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(c)} title="Delete">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -1070,21 +1011,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <label className="label py-0"><span className="label-text text-xs">Company</span></label>
                   <input className="input input-sm input-bordered w-full" value={form.company} onChange={e => updateField('company', e.target.value)} />
                 </div>
-                {form.isClient && (
-                  <div className="mt-2">
-                    <label className="label py-0">
-                      <span className="label-text text-xs">Team Name</span>
-                      <span className="label-text-alt text-xs text-amber-500 font-semibold">Agent client branding</span>
-                    </label>
-                    <input
-                      className="input input-sm input-bordered w-full border-amber-300 bg-amber-50/30"
-                      placeholder="e.g. The Aguilar Group"
-                      value={form.teamName}
-                      onChange={e => updateField('teamName', e.target.value)}
-                    />
-                    <p className="text-xs text-base-content/40 mt-0.5">For client branding – not used in email signatures</p>
-                  </div>
-                )}
                 <div className="mt-2">
                   <label className="label py-0">
                     <span className="label-text text-xs">Timezone *</span>
@@ -1118,45 +1044,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                       Espa&#241;ol
                     </button>
                   </div>
-                </div>
-                <div className="mt-2">
-                  <label className="label py-0"><span className="label-text text-xs">Client Portal PIN <span className="text-base-content/40">(4 digits)</span></span></label>
-                  {pinEditing ? (
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <input
-                        className="input input-sm input-bordered w-24 font-mono tracking-widest text-center"
-                        autoComplete="off"
-                        maxLength={4}
-                        placeholder="0000"
-                        autoFocus
-                        value={pinDraft}
-                        onChange={e => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-primary"
-                        disabled={pinDraft.length !== 4}
-                        onClick={() => { updateField('pin', pinDraft); setPinEditing(false); }}
-                      >Confirm</button>
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-ghost"
-                        onClick={() => { setPinDraft(form.pin || ''); setPinEditing(false); }}
-                      >Cancel</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-sm tracking-widest text-base-content/60">
-                        {form.pin ? '●●●●' : <span className="text-base-content/30 font-sans text-xs">Not set</span>}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-ghost"
-                        onClick={() => { setPinDraft(form.pin || ''); setPinEditing(true); }}
-                      >Change</button>
-                    </div>
-                  )}
-                  <p className="text-xs text-base-content/50 mt-1">Share with client to access the Client Portal</p>
                 </div>
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
@@ -1508,7 +1395,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
               <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
-              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim() || !!phoneDup || !!emailDup}>
+              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim()}>
                 {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
                 {isEditing ? 'Save Changes' : 'Add Contact'}
               </button>
@@ -1518,78 +1405,16 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         </div>
       )}
 
-      {/* Delete confirmation — requires staff name retype */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-base-100 rounded-xl shadow-2xl w-full max-w-md">
-            {/* Header */}
-            <div className="flex items-center gap-3 p-5 border-b border-base-300">
-              <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center shrink-0">
-                <Trash2 size={18} className="text-error" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-base">Delete Contact</h3>
-                <p className="text-xs text-base-content/50">This action cannot be undone</p>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div className="p-5 space-y-4">
-              <p className="text-sm text-base-content/80">
-                You are about to permanently delete{' '}
-                <span className="font-semibold text-base-content">"{deleteTarget.fullName}"</span>.
-                This will also remove their licenses and MLS memberships.
-              </p>
-
-              {/* Staff name display (greyed out) */}
-              <div>
-                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide block mb-1">
-                  Authorized by
-                </label>
-                <div className="input input-bordered w-full flex items-center bg-base-200 text-base-content/40 text-sm cursor-not-allowed select-none rounded-lg px-3 py-2">
-                  {profile?.name ?? 'Staff Member'}
-                </div>
-              </div>
-
-              {/* Staff must retype their name */}
-              <div>
-                <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">
-                  Type your name to confirm
-                </label>
-                <input
-                  type="text"
-                  className="input input-bordered w-full text-sm"
-                  placeholder={profile?.name ?? 'Your name'}
-                  value={deleteNameConfirm}
-                  onChange={e => setDeleteNameConfirm(e.target.value)}
-                  autoFocus
-                />
-                {deleteNameConfirm.length > 0 && deleteNameConfirm !== profile?.name && (
-                  <p className="text-xs text-error mt-1">Name doesn't match — type exactly: {profile?.name}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2 px-5 pb-5">
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => { setDeleteTarget(null); setDeleteNameConfirm(''); }}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-error btn-sm"
-                disabled={deleteNameConfirm !== profile?.name}
-                onClick={handleDelete}
-              >
-                <Trash2 size={14} />
-                Delete Contact
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete confirmation */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Delete Contact"
+        message={deleteTarget ? `Are you sure you want to delete "${deleteTarget.fullName}"? This will also remove their licenses and MLS memberships.` : ''}
+        confirmLabel="Delete"
+        confirmClass="btn-error"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Quick Send Onboarding Modal */}
       {sendOnboardingTarget && (

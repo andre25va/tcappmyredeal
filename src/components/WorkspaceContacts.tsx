@@ -23,6 +23,7 @@ interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: Cont
 const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   if (['buyer'].includes(role)) return 'buy';
   if (['seller'].includes(role)) return 'sell';
+  if (['client'].includes(role)) return 'both';
   if (['lender'].includes(role)) return 'buy';
   if (['title', 'attorney'].includes(role)) return 'sell';
   return 'both';
@@ -121,7 +122,7 @@ const ContactPopup: React.FC<{
   dealState?: string;
   deal?: Deal;
   onCallStarted?: (callData: CallStartedData) => void;
-  onEdit: (updates: Partial<Contact> & { notes?: string }) => Promise<void>;
+  onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
 }> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -129,7 +130,7 @@ const ContactPopup: React.FC<{
     name: contact.name,
     phone: contact.phone || '',
     email: contact.email || '',
-    company: cr?.company || contact.company || '',
+    company: contact.company || cr?.company || '',
     notes: cr?.notes || '',
   });
   const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
@@ -336,10 +337,10 @@ const ContactPopup: React.FC<{
               </div>
             </div>
           )}
-          {(cr?.company || contact.company) && (
+          {(contact.company || cr?.company) && (
             <div className="flex items-center gap-3">
               <Building2 size={14} className="text-gray-400 flex-none" />
-              <span className="text-sm text-black">{cr?.company || contact.company}</span>
+              <span className="text-sm text-black">{contact.company || cr?.company}</span>
             </div>
           )}
           {cr?.notes && (
@@ -384,29 +385,6 @@ const ContactPopup: React.FC<{
               : <><BellOff size={13} className="text-gray-300" /><span className="text-xs text-gray-400">Not on notification list</span></>
             }
           </div>
-
-          {/* Both Sides toggle for provider contacts */}
-          {(['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
-            <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-xs checkbox-primary"
-                  checked={contact.side === 'both'}
-                  onChange={async (e) => {
-                    if (e.target.checked) {
-                      // Remember current side before switching to both
-                      await onEdit({ side: 'both', originalSide: contact.side || defaultSide(contact.role) || 'sell' } as any);
-                    } else {
-                      // Revert to the side they were on before
-                      await onEdit({ side: ((contact as any).originalSide || defaultSide(contact.role) || 'sell') as any });
-                    }
-                  }}
-                />
-                <span className="text-xs text-gray-500">Show on both sides</span>
-              </label>
-            </div>
-          )}
         </div>
 
         {/* Actions */}
@@ -583,8 +561,7 @@ const ContactPicker: React.FC<{
             <option value="title">Title Officer</option>
             <option value="inspector">Inspector</option>
             <option value="tc">TC</option>
-            <option value="buyer">Buyer</option>
-            <option value="seller">Seller</option>
+            <option value="client">Client</option>
             <option value="other">Other</option>
           </select>
           <div className="flex gap-2 pt-1">
@@ -762,7 +739,7 @@ const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () 
       <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-        {(cr?.company || contact.company) && <span className="text-xs text-gray-400">· {cr?.company || contact.company}</span>}
+        {(contact.company || cr?.company) && <span className="text-xs text-gray-400">· {contact.company || cr?.company}</span>}
       </div>
     </div>
     <div className="flex items-center gap-1.5 flex-none">
@@ -935,7 +912,12 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const existingDirIds = deal.contacts.filter(c => c.directoryId).map(c => c.directoryId!);
 
-  const contactTypeToParticipantRole = (ct: string): DealParticipantRole => {
+  const contactTypeToParticipantRole = (ct: string, side?: 'buy' | 'sell' | 'both'): DealParticipantRole => {
+    if (ct === 'client') {
+      if (side === 'buy') return 'buyer';
+      if (side === 'sell') return 'seller';
+      return 'other';
+    }
     const map: Record<string, DealParticipantRole> = {
       agent: 'lead_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
       inspector: 'inspector', appraiser: 'appraiser', buyer: 'buyer', seller: 'seller', tc: 'tc', other: 'other',
@@ -946,7 +928,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   const addFromDirectory = async (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => {
     const effectiveSide = cr.contactType === 'lender' ? 'buy' : side;
     const dealSide = effectiveSide === 'buy' ? 'buyer' : effectiveSide === 'sell' ? 'listing' : 'both' as any;
-    const dealRole = contactTypeToParticipantRole(cr.contactType);
+    const dealRole = contactTypeToParticipantRole(cr.contactType, effectiveSide);
 
     try {
       await saveDealParticipant({
@@ -967,7 +949,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       name: cr.fullName,
       email: cr.email || '',
       phone: cr.phone || '',
-      role: cr.contactType as ContactRole,
+      role: (cr.contactType === 'client' ? dealRole : cr.contactType) as ContactRole,
       company: cr.company,
       inNotificationList: true,
       side: effectiveSide,
@@ -1025,66 +1007,45 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const editContact = async (
     contactId: string,
-    updates: Partial<Contact> & { notes?: string }
+    updates: { name: string; phone: string; email: string; company: string; notes: string }
   ) => {
     const contact = deal.contacts.find(c => c.id === contactId);
-    // For synthetic injected agents, only handle side updates in local state
-    const isSyntheticAgent = contactId.startsWith('__agent_');
+    if (!contact) return;
 
-    if (!isSyntheticAgent && contact?.directoryId && (updates.name || updates.phone !== undefined || updates.email !== undefined || updates.company !== undefined || updates.notes !== undefined)) {
-      const nameParts = (updates.name || contact.name).trim().split(' ');
+    if (contact.directoryId) {
+      const nameParts = updates.name.trim().split(' ');
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || null;
       await supabase.from('contacts').update({
         first_name: firstName,
         last_name: lastName,
-        phone: updates.phone ?? contact.phone ?? null,
-        email: updates.email ?? contact.email ?? null,
-        company: updates.company ?? contact.company ?? null,
+        phone: updates.phone || null,
+        email: updates.email || null,
+        company: updates.company || null,
         notes: updates.notes || null,
       }).eq('id', contact.directoryId);
     }
 
-    if (!isSyntheticAgent && contact) {
-      onUpdate({
-        ...deal,
-        contacts: deal.contacts.map(c =>
-          c.id === contactId ? { ...c, ...updates } : c
-        ),
-        activityLog: updates.name ? [
-          { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
-          ...deal.activityLog,
-        ] : deal.activityLog,
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    onUpdate({
+      ...deal,
+      contacts: deal.contacts.map(c =>
+        c.id === contactId
+          ? { ...c, name: updates.name, phone: updates.phone, email: updates.email, company: updates.company }
+          : c
+      ),
+      activityLog: [
+        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
+        ...deal.activityLog,
+      ],
+      updatedAt: new Date().toISOString(),
+    });
   };
 
-  // Inject buyer/seller agents from deal overview into the contacts panels
-  const agentToContact = (agent: NonNullable<typeof deal.buyerAgent>, side: 'buy' | 'sell'): Contact => ({
-    id: `__agent_${side}`,
-    name: agent.name,
-    email: agent.email,
-    phone: agent.phone,
-    role: side === 'buy' ? 'buyer' : 'seller' as any,
-    side,
-  } as Contact);
-  const buyerAlreadyInContacts = !deal.buyerAgent?.name ||
-    deal.contacts.some(c => c.email === deal.buyerAgent!.email || c.name === deal.buyerAgent!.name);
-  const sellerAlreadyInContacts = !deal.sellerAgent?.name ||
-    deal.contacts.some(c => c.email === deal.sellerAgent!.email || c.name === deal.sellerAgent!.name);
-  const buySide: Contact[] = [
-    ...(buyerAlreadyInContacts ? [] : [agentToContact(deal.buyerAgent!, 'buy')]),
-    ...deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy')),
-  ];
-  const sellSide: Contact[] = [
-    ...(sellerAlreadyInContacts ? [] : [agentToContact(deal.sellerAgent!, 'sell')]),
-    ...deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell')),
-  ];
+  const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy'));
+  const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell'));
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
-  const allDisplayedContacts = [...buySide, ...sellSide.filter(c => !buySide.some(b => b.id === c.id))];
-  const popupContact = popupContactId ? allDisplayedContacts.find(c => c.id === popupContactId) : null;
+  const popupContact = popupContactId ? deal.contacts.find(c => c.id === popupContactId) : null;
   const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
 
   // Normalize deal state to 2-letter uppercase code
