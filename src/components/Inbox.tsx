@@ -210,6 +210,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
   useEffect(() => {
     if (selectedEmailThread) {
+      setEmailMessages([]); // Clear stale messages immediately so the new email doesn't ghost the previous one
       loadEmailMessages(selectedEmailThread.id);
       setEmailNeedReply(false);
     }
