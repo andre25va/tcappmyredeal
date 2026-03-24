@@ -767,7 +767,6 @@ function AppInner() {
         callData={activeCall}
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
         onEndCall={async () => {
-          // Tell Twilio to hang up the call before dismissing the UI
           const sid = activeCall?.callSid;
           if (sid && sid !== 'call-initiated') {
             try {
@@ -787,13 +786,13 @@ function AppInner() {
         onAddNote={(note) => {
           if (activeCall?.dealId) {
             const deal = deals.find(d => d.id === activeCall.dealId);
-            if (deal) handleUpdateDeal({ ...deal, notes: (deal.notes ? deal.notes + '\n' : '') + `[Call] ${note}` });
+            if (deal) handleUpdate({ ...deal, notes: (deal.notes ? deal.notes + '\n' : '') + `[Call] ${note}` });
           }
         }}
         onCreateTask={(desc) => {
           if (activeCall?.dealId) {
             const deal = deals.find(d => d.id === activeCall.dealId);
-            if (deal) handleUpdateDeal({ ...deal, tasks: [...(deal.tasks || []), { id: Date.now().toString(), text: desc, done: false, dueDate: '', priority: 'medium', assignedTo: '' }] });
+            if (deal) handleUpdate({ ...deal, tasks: [...(deal.tasks || []), { id: Date.now().toString(), text: desc, done: false, dueDate: '', priority: 'medium', assignedTo: '' }] });
           }
         }}
         isMinimized={isCallMinimized}
