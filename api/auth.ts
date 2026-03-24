@@ -182,7 +182,21 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
       action: 'login', entity_type: 'user', entity_id: profile.id, entity_name: profile.name || normalized,
       metadata: { ip, ua, isFirstLogin, forced: force }, ip_address: ip, user_agent: ua,
     });
-    return res.status(200).json({ success: true, token, profile, isFirstLogin });
+
+    // Fetch org memberships for this user
+    const { data: membershipRows } = await supabase
+      .from('user_org_memberships')
+      .select('*, organizations:org_id ( name )')
+      .eq('user_id', profile.id)
+      .eq('status', 'active');
+    const orgMemberships = (membershipRows ?? []).map((m: any) => ({
+      orgId: m.org_id,
+      orgName: m.organizations?.name ?? '',
+      roleInOrg: m.role_in_org,
+      status: m.status,
+    }));
+
+    return res.status(200).json({ success: true, token, profile, isFirstLogin, orgMemberships });
   } catch (err: any) {
     console.error('verify-otp error:', err);
     return res.status(500).json({ error: 'Verification failed. Please try again.' });
@@ -218,7 +232,25 @@ async function handleSession(req: VercelRequest, res: VercelResponse) {
     }
 
     await supabase.from('sessions').update({ last_used: new Date().toISOString() }).eq('token', token);
-    return res.status(200).json({ valid: true, profile: session.profiles });
+
+    // Fetch org memberships for the authenticated user
+    const profileData = session.profiles as any;
+    let orgMemberships: Array<{ orgId: string; orgName: string; roleInOrg: string; status: string }> = [];
+    if (profileData?.id) {
+      const { data: membershipRows } = await supabase
+        .from('user_org_memberships')
+        .select('*, organizations:org_id ( name )')
+        .eq('user_id', profileData.id)
+        .eq('status', 'active');
+      orgMemberships = (membershipRows ?? []).map((m: any) => ({
+        orgId: m.org_id,
+        orgName: m.organizations?.name ?? '',
+        roleInOrg: m.role_in_org,
+        status: m.status,
+      }));
+    }
+
+    return res.status(200).json({ valid: true, profile: session.profiles, orgMemberships });
   } catch {
     return res.status(401).json({ error: 'Invalid session' });
   }

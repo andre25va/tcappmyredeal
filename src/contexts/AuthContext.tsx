@@ -11,6 +11,16 @@ export interface TCProfile {
   is_active: boolean;
   last_login: string | null;
   created_at: string;
+  // Multi-tenancy fields
+  org_id?: string;
+  is_master_admin?: boolean;
+  contact_id?: string;
+  orgMemberships?: Array<{
+    orgId: string;
+    orgName: string;
+    roleInOrg: 'team_admin' | 'tc' | 'agent';
+    status: 'active' | 'inactive';
+  }>;
 }
 
 interface AuthContextType {
@@ -19,7 +29,10 @@ interface AuthContextType {
   loading: boolean;
   isFirstLogin: boolean;
   isViewer: boolean;
-  login: (token: string, profile: TCProfile, firstLogin?: boolean) => void;
+  orgMemberships: Array<{ orgId: string; orgName: string; roleInOrg: string; status: string }>;
+  isMasterAdmin: boolean;
+  primaryOrgId: string | null;
+  login: (token: string, profile: TCProfile, firstLogin?: boolean, orgMemberships?: TCProfile['orgMemberships']) => void;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => Promise<void>;
   clearFirstLogin: () => void;
@@ -34,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [orgMemberships, setOrgMemberships] = useState<Array<{ orgId: string; orgName: string; roleInOrg: string; status: string }>>([]);
 
   // Validate session on mount
   useEffect(() => {
@@ -48,9 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.valid && data.profile) {
           setToken(storedToken);
           setProfile(data.profile);
+          if (data.orgMemberships) {
+            setOrgMemberships(data.orgMemberships);
+          }
         } else {
           localStorage.removeItem(SESSION_KEY);
-
         }
       })
       .catch(() => localStorage.removeItem(SESSION_KEY))
@@ -70,18 +86,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(SESSION_KEY);
           setToken(null);
           setProfile(null);
-
+          setOrgMemberships([]);
         }
       } catch { /* silent network error */ }
     }, 2 * 60 * 1000);
     return () => clearInterval(interval);
   }, [token]);
 
-  const login = useCallback((tok: string, prof: TCProfile, firstLogin = false) => {
+  const login = useCallback((tok: string, prof: TCProfile, firstLogin = false, memberships?: TCProfile['orgMemberships']) => {
     localStorage.setItem(SESSION_KEY, tok);
     setToken(tok);
     setProfile(prof);
     setIsFirstLogin(firstLogin);
+    setOrgMemberships(memberships ?? []);
   }, []);
 
   const logout = useCallback(async () => {
@@ -98,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setProfile(null);
     setIsFirstLogin(false);
+    setOrgMemberships([]);
   }, []);
 
   const updateProfile = useCallback(async (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => {
@@ -115,10 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearFirstLogin = useCallback(() => setIsFirstLogin(false), []);
 
   const isViewer = profile?.role === 'viewer';
+  const isMasterAdmin = profile?.is_master_admin === true;
+  const primaryOrgId = profile?.org_id ?? (orgMemberships.find(m => m.status === 'active')?.orgId ?? null);
 
   return (
     <AuthContext.Provider value={{
       profile, token, loading, isFirstLogin, isViewer,
+      orgMemberships, isMasterAdmin, primaryOrgId,
       login, logout, updateProfile, clearFirstLogin,
     }}>
       {children}

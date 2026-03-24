@@ -168,7 +168,8 @@ export async function loadDeals(): Promise<Deal[]> {
       loan_type, loan_amount, down_payment, earnest_money, earnest_money_due_date,
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
-      home_warranty_paid_by, home_warranty_company, commission_paid_by
+      home_warranty_paid_by, home_warranty_company, commission_paid_by,
+      org_id, created_by_user_id
     `)
     .order('created_at', { ascending: false });
 
@@ -263,6 +264,8 @@ export async function loadDeals(): Promise<Deal[]> {
       archiveReason: (dd.archiveReason as string) ?? undefined,
       createdAt: row.created_at || (dd.createdAt as string) || new Date().toISOString(),
       updatedAt: row.updated_at || (dd.updatedAt as string) || new Date().toISOString(),
+      orgId: row.org_id ?? undefined,
+      createdByUserId: row.created_by_user_id ?? undefined,
     };
     return deal;
   });
@@ -314,6 +317,8 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
     home_warranty_company: deal.homeWarrantyCompany || null,
     commission_paid_by: deal.commissionPaidBy || null,
+    org_id: deal.orgId ?? null,
+    created_by_user_id: deal.createdByUserId ?? null,
     deal_data: dealToJsonBackup(deal),
     updated_at: new Date().toISOString(),
   }));
@@ -375,6 +380,8 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       home_warranty_paid_by: deal.homeWarrantyPaidBy || null,
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
+      org_id: deal.orgId ?? null,
+      created_by_user_id: deal.createdByUserId ?? null,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },
@@ -675,11 +682,17 @@ export async function saveUsers(users: AppUser[]): Promise<void> {
 
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
 
-export async function loadEmailTemplates(): Promise<EmailTemplate[]> {
-  const { data, error } = await supabase
+export async function loadEmailTemplates(opts?: { orgId?: string }): Promise<EmailTemplate[]> {
+  let query = supabase
     .from('email_templates')
     .select('id, name, subject, body, buttons, is_default, created_at, updated_at')
     .order('created_at', { ascending: true });
+
+  if (opts?.orgId) {
+    query = (query as any).or(`org_id.is.null,org_id.eq.${opts.orgId}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []).map((row) => ({
@@ -1663,6 +1676,7 @@ export async function logEmailSend(entry: {
   gmailThreadId?: string;
   emailType: EmailType;
   sentBy?: string;
+  orgId?: string;
 }): Promise<string> {
   const { data, error } = await supabase
     .from('email_send_log')
@@ -1678,6 +1692,7 @@ export async function logEmailSend(entry: {
       gmail_thread_id: entry.gmailThreadId || null,
       email_type: entry.emailType,
       sent_by: entry.sentBy || null,
+      org_id: entry.orgId || null,
       sent_at: new Date().toISOString(),
     })
     .select('id')
@@ -1866,3 +1881,130 @@ export async function getAgentTeamPhonesForSMS(supabase: any, agentContactId: st
   if (error) return [];
   return (data || []).map((r: any) => r.phone).filter(Boolean);
 }
+
+// ── ORG MEMBERSHIPS ──────────────────────────────────────────────────────────
+
+export async function loadUserOrgMemberships(userId: string): Promise<Array<{
+  id: string;
+  orgId: string;
+  orgName: string;
+  roleInOrg: 'team_admin' | 'tc' | 'agent';
+  status: 'active' | 'inactive';
+  joinedAt?: string;
+}>> {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .select('*, organizations:org_id ( name )')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    orgId: row.org_id,
+    orgName: row.organizations?.name ?? '',
+    roleInOrg: row.role_in_org,
+    status: row.status,
+    joinedAt: row.joined_at ?? undefined,
+  }));
+}
+
+export async function loadOrgMembers(orgId: string): Promise<Array<{
+  membershipId: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  roleInOrg: string;
+  status: string;
+  contactId?: string;
+  joinedAt?: string;
+}>> {
+  const { data, error } = await supabase
+    .from('user_org_memberships')
+    .select('*, profiles:user_id ( id, name, phone, contact_id )')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    membershipId: row.id,
+    userId: row.user_id,
+    userName: row.profiles?.name ?? '',
+    userPhone: row.profiles?.phone ?? '',
+    roleInOrg: row.role_in_org,
+    status: row.status,
+    contactId: row.profiles?.contact_id ?? undefined,
+    joinedAt: row.joined_at ?? undefined,
+  }));
+}
+
+export async function upsertOrgMembership(params: {
+  userId: string;
+  orgId: string;
+  roleInOrg: 'team_admin' | 'tc' | 'agent';
+  status?: 'active' | 'inactive';
+}): Promise<void> {
+  const { error } = await supabase
+    .from('user_org_memberships')
+    .upsert({
+      user_id: params.userId,
+      org_id: params.orgId,
+      role_in_org: params.roleInOrg,
+      status: params.status ?? 'active',
+      joined_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,org_id' });
+  if (error) throw error;
+}
+
+export async function deactivateOrgMembership(userId: string, orgId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_org_memberships')
+    .update({ status: 'inactive' })
+    .eq('user_id', userId)
+    .eq('org_id', orgId);
+  if (error) throw error;
+}
+
+// ── DEAL ACCESS ──────────────────────────────────────────────────────────────
+
+export async function loadDealAccess(dealId: string): Promise<Array<{
+  id: string;
+  userId: string;
+  userName: string;
+  grantedBy: string;
+  grantedAt: string;
+}>> {
+  const { data, error } = await supabase
+    .from('deal_access')
+    .select('*, profiles:user_id ( name )')
+    .eq('deal_id', dealId)
+    .order('granted_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.profiles?.name ?? '',
+    grantedBy: row.granted_by,
+    grantedAt: row.granted_at,
+  }));
+}
+
+export async function grantDealAccess(dealId: string, userId: string, grantedBy: string): Promise<void> {
+  const { error } = await supabase
+    .from('deal_access')
+    .upsert({
+      deal_id: dealId,
+      user_id: userId,
+      granted_by: grantedBy,
+      granted_at: new Date().toISOString(),
+    }, { onConflict: 'deal_id,user_id' });
+  if (error) throw error;
+}
+
+export async function revokeDealAccess(dealId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('deal_access')
+    .delete()
+    .eq('deal_id', dealId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
