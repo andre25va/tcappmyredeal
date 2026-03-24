@@ -620,7 +620,7 @@ export default async function handler(req: any, res: any) {
 
   const openaiKey = process.env.OPENAI_API_KEY;
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!openaiKey || !supabaseUrl || !supabaseKey) {
     console.error('Missing env vars:', { hasOpenAI: !!openaiKey, hasSupabaseUrl: !!supabaseUrl, hasSupabaseKey: !!supabaseKey });

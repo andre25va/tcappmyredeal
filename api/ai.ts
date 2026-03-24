@@ -696,7 +696,7 @@ async function handleProcessRecording(apiKey: string, body: any) {
   const { recordingSid, recordingUrl, callerContactId, dealId, phoneE164, callSid } = body;
   if (!recordingSid || !recordingUrl) throw new Error('Missing recordingSid or recordingUrl');
 
-  const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+  const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
   // 1. Fetch recording MP3 from Twilio (authenticated)
   const audioUrl = `${recordingUrl}.mp3`;

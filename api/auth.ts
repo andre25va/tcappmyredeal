@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 import { randomUUID } from 'crypto';
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 const DEMO_PHONE = '+17085069000';
 
