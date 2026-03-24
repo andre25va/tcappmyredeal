@@ -441,6 +441,8 @@ export default function WorkspaceEmailCompose({
 
   // Sending state
   const [sending, setSending] = useState(false);
+  const [justSent, setJustSent] = useState(false);
+  const sendingRef = useRef(false);
   const [translating, setTranslating] = useState(false);
   const [showSpanishPreview, setShowSpanishPreview] = useState(false);
   const [spanishSubject, setSpanishSubject] = useState('');
@@ -629,12 +631,14 @@ export default function WorkspaceEmailCompose({
 
   // Send Now
   const handleSendNow = async () => {
+    if (sendingRef.current) return; // Guard against rapid double-clicks
     const err = validate();
     if (err) {
       showToast('error', err);
       return;
     }
 
+    sendingRef.current = true;
     setSending(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -685,6 +689,8 @@ export default function WorkspaceEmailCompose({
 
       showToast('success', 'Email sent successfully!');
       setHistoryKey((k) => k + 1);
+      setJustSent(true);
+      setTimeout(() => setJustSent(false), 3000);
 
       // Reset compose
       setSubject('');
@@ -695,6 +701,7 @@ export default function WorkspaceEmailCompose({
       console.error('Send email error:', error);
       showToast('error', error.message || 'Failed to send email.');
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
@@ -893,16 +900,18 @@ export default function WorkspaceEmailCompose({
         {/* Action buttons */}
         <div className="flex items-center gap-2 mb-2">
           <button
-            className="btn btn-primary btn-sm gap-1.5"
+            className={`btn btn-sm gap-1.5 ${justSent ? 'btn-success' : 'btn-primary'}`}
             onClick={handleSendNow}
-            disabled={sending || scheduling}
+            disabled={sending || scheduling || justSent}
           >
             {sending ? (
               <Loader2 size={14} className="animate-spin" />
+            ) : justSent ? (
+              <CheckCircle2 size={14} />
             ) : (
               <Send size={14} />
             )}
-            Send Now
+            {justSent ? 'Sent!' : 'Send Now'}
           </button>
 
           <button
