@@ -25,6 +25,7 @@ import { SettingsView } from './components/SettingsView';
 import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
 import { ActiveCallOverlay } from './components/ActiveCallOverlay';
+import { PostCallSummaryToast } from './components/PostCallSummaryToast';
 import { Inbox } from './components/Inbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
@@ -78,6 +79,9 @@ function AppInner() {
   const [inboxInitEmailSubTab, setInboxInitEmailSubTab] = useState<'all' | 'linked' | 'needs_review' | 'unmatched' | undefined>(undefined);
   const [activeCall, setActiveCall]         = useState<{contactName:string;contactPhone:string;contactId?:string;dealId?:string;callSid?:string;startedAt:string} | null>(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [postCallMeta, setPostCallMeta]     = useState<{ callSid: string; dealId?: string; contactId?: string } | null>(null);
+  const [postCallSummary, setPostCallSummary] = useState<string | null>(null);
+  const [summaryPolling, setSummaryPolling] = useState(false);
 
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
@@ -176,6 +180,42 @@ function AppInner() {
       .then(data => setDdMasterItems(data as DDMasterItem[]))
       .catch(err => { console.error('Failed to load DD master:', err); setDdMasterItems([]); });
   }, [profile]);
+
+  // ── Poll for AI call summary after call ends ────────────────────────────────
+  useEffect(() => {
+    if (!postCallMeta) return;
+    setSummaryPolling(true);
+    setPostCallSummary(null);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 12; // 12 × 8s = ~96s max wait
+    const INTERVAL_MS  = 8000;
+
+    const poll = async () => {
+      attempts++;
+      try {
+        const { data } = await supabase
+          .from('call_logs')
+          .select('ai_summary')
+          .eq('call_sid', postCallMeta.callSid)
+          .not('ai_summary', 'is', null)
+          .maybeSingle();
+        if (data?.ai_summary) {
+          setPostCallSummary(data.ai_summary);
+          setSummaryPolling(false);
+          clearInterval(timer);
+          return;
+        }
+      } catch { /* silent */ }
+      if (attempts >= MAX_ATTEMPTS) {
+        setSummaryPolling(false);
+        clearInterval(timer);
+      }
+    };
+
+    const timer = setInterval(poll, INTERVAL_MS);
+    poll(); // first check immediately
+    return () => clearInterval(timer);
+  }, [postCallMeta]);
 
   // ── Poll inbox unread count ──────────────────────────────────────────────────
   useEffect(() => {
@@ -740,7 +780,9 @@ function AppInner() {
         deal={activeCall?.dealId ? deals.find(d => d.id === activeCall.dealId) : undefined}
         onEndCall={async () => {
           // Tell Twilio to hang up the call before dismissing the UI
-          const sid = activeCall?.callSid;
+          const sid       = activeCall?.callSid;
+          const dealId    = activeCall?.dealId;
+          const contactId = activeCall?.contactId;
           if (sid && sid !== 'call-initiated') {
             try {
               await fetch('/api/end-call', {
@@ -751,6 +793,8 @@ function AppInner() {
             } catch (err) {
               console.error('Failed to end call via API:', err);
             }
+            // Start polling for AI summary (recording webhook fires async)
+            setPostCallMeta({ callSid: sid, dealId, contactId });
           }
           setActiveCall(null);
           setIsCallMinimized(false);
@@ -791,6 +835,28 @@ function AppInner() {
         }}
         isMinimized={isCallMinimized}
       />
+
+      {/* Post-call AI summary toast — polls call_logs after call ends */}
+      {(summaryPolling || postCallSummary) && (
+        <PostCallSummaryToast
+          loading={summaryPolling}
+          summary={postCallSummary}
+          onDismiss={() => {
+            setPostCallMeta(null);
+            setPostCallSummary(null);
+            setSummaryPolling(false);
+          }}
+          onSaveNote={async (note) => {
+            if (!note.trim() || !postCallMeta) return;
+            await supabase.from('call_notes').insert({
+              raw_notes:  note,
+              deal_id:    postCallMeta.dealId    || null,
+              contact_id: postCallMeta.contactId || null,
+              author_id:  profile?.id            || null,
+            });
+          }}
+        />
+      )}
 
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
