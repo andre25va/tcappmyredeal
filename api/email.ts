@@ -205,7 +205,10 @@ async function handleSearch(req: VercelRequest, res: VercelResponse) {
         if (!msg) continue;
         const source = msg.source?.toString('utf-8') || '';
         const { text, html, attachments } = extractPartsFromSource(source);
-        const resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+        let resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+        // Safety net: =3D is never valid HTML — it always indicates undecoded quoted-printable.
+        // Some MIME structures confuse encoding detection; force-decode when artifacts survive.
+        if (resolvedHtml && /=3D/i.test(resolvedHtml)) resolvedHtml = decodeBody(resolvedHtml, 'quoted-printable');
         const bodyText = text || (resolvedHtml ? stripHtml(resolvedHtml) : '');
         const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
         const fromAddr = msg.envelope?.from?.[0];
@@ -308,8 +311,12 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
         const { text, html, attachments } = extractPartsFromSource(source);
         // HTML fallback: fires whenever structured parser missed the html part (e.g. Dotloop).
         // Independent of whether text/plain was found — fixes emails rendering as plain-text wall.
-        const bodyHtml = html || (source ? extractHtmlFallback(source) : '');
+        let bodyHtml = html || (source ? extractHtmlFallback(source) : '');
+        // Safety net: =3D is never valid HTML — always indicates undecoded quoted-printable.
+        if (bodyHtml && /=3D/i.test(bodyHtml)) bodyHtml = decodeBody(bodyHtml, 'quoted-printable');
         let bodyText = text || (bodyHtml ? stripHtml(bodyHtml) : '');
+        // Safety net for standalone text parts with missed QP decoding
+        if (bodyText && text && /=3D/i.test(bodyText)) bodyText = decodeBody(bodyText, 'quoted-printable');
         // Fallback: if MIME parsing yielded nothing, try two recovery strategies.
         if (!bodyText && !bodyHtml && source) {
           // Strategy 1: regex-scan the raw source for the first QP-encoded text part.
@@ -783,7 +790,9 @@ async function handleSearchClassify(req: VercelRequest, res: VercelResponse) {
             if (!msg) continue;
             const source = msg.source?.toString('utf-8')||'';
             const { text, html, attachments } = extractPartsFromSource(source);
-            const resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+            let resolvedHtml = html || (source ? extractHtmlFallback(source) : '');
+            // Safety net: =3D is never valid HTML — always indicates undecoded quoted-printable.
+            if (resolvedHtml && /=3D/i.test(resolvedHtml)) resolvedHtml = decodeBody(resolvedHtml, 'quoted-printable');
             const bodyText = text||(resolvedHtml ? stripHtml(resolvedHtml) : '');
             const msgDate  = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
             const fromAddr = msg.envelope?.from?.[0];
