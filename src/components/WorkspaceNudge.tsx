@@ -236,9 +236,26 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
       return;
     }
 
+    // Look up recipient's contact info
+    const participant = deal.participants?.find((p) => p.contactId === recipientId);
+    const contact = (deal as any).contacts?.find((c: any) => c.id === recipientId);
+
+    const recipientEmail = participant?.contactEmail || contact?.email;
+    const recipientPhone = participant?.contactPhone || contact?.phone;
+
+    if (channel === 'email' && !recipientEmail) {
+      setToast('Selected recipient has no email address.');
+      return;
+    }
+    if (channel === 'sms' && !recipientPhone) {
+      setToast('Selected recipient has no phone number.');
+      return;
+    }
+
     setSending(true);
     try {
-      const { error } = await supabase.from('nudge_log').insert({
+      // 1. Insert nudge_log with 'pending' status
+      const { data: logData, error: logErr } = await supabase.from('nudge_log').insert({
         task_id: selectedTask.task_id,
         deal_id: deal.id,
         template_id: selectedTemplateId || null,
@@ -247,21 +264,120 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
         channel,
         subject: channel === 'email' ? subject : null,
         body,
-        delivery_status: 'sent',
-      });
+        delivery_status: 'pending',
+      }).select('id').single();
 
-      if (error) {
-        console.error('Error logging nudge:', error);
+      if (logErr) {
+        console.error('Error logging nudge:', logErr);
         setToast('Failed to log nudge. Please try again.');
+        return;
+      }
+
+      const nudgeLogId = logData.id;
+
+      // 2. Attempt actual delivery
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      let deliveryStatus: 'delivered' | 'failed' = 'failed';
+      let errorMsg = '';
+
+      if (channel === 'email') {
+        // Build branded HTML email
+        const escapedBody = body
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br/>');
+
+        const bodyHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f4f4f4;">
+  <div style="max-width:600px;margin:20px auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+    <div style="background:#2563eb;padding:16px 24px;">
+      <img src="https://myredeal.com/logo-white.png" alt="MyReDeal.com" style="height:28px;" />
+    </div>
+    <div style="padding:24px;font-size:14px;line-height:1.6;color:#333;">
+      ${escapedBody}
+    </div>
+    <div style="border-top:1px solid #eee;padding:16px 24px;text-align:center;font-size:11px;color:#999;">
+      Sent via <a href="https://myredeal.com" style="color:#2563eb;text-decoration:none;">MyReDeal.com</a> — Transaction Coordination Platform
+    </div>
+  </div>
+</body>
+</html>`;
+
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              to: [recipientEmail],
+              subject,
+              bodyHtml,
+              dealId: deal.id,
+              emailType: 'nudge',
+              sentBy: profile?.name || 'TC',
+            }),
+          });
+
+          if (res.ok) {
+            deliveryStatus = 'delivered';
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            errorMsg = (errData as any).error || `Send failed (${res.status})`;
+          }
+        } catch (err: any) {
+          errorMsg = err.message || 'Network error';
+        }
       } else {
-        setToast('Nudge logged! Email/SMS delivery coming in Phase 4.');
+        // SMS channel
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              to: recipientPhone,
+              body: body,
+              dealId: deal.id,
+              nudgeLogId,
+              sentBy: profile?.name || 'TC',
+            }),
+          });
+
+          if (res.ok) {
+            deliveryStatus = 'delivered';
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            errorMsg = (errData as any).error || `SMS send failed (${res.status})`;
+          }
+        } catch (err: any) {
+          errorMsg = err.message || 'Network error';
+        }
+      }
+
+      // 3. Update nudge_log with actual delivery status
+      await supabase.from('nudge_log').update({
+        delivery_status: deliveryStatus,
+      }).eq('id', nudgeLogId);
+
+      if (deliveryStatus === 'delivered') {
+        setToast(`Nudge ${channel === 'email' ? 'emailed' : 'texted'} successfully!`);
         // Reset compose form
         setSelectedTemplateId('');
         setRecipientId('');
         setSubject('');
         setBody('');
-        // Refresh data
         fetchData();
+        fetchLog();
+      } else {
+        setToast(`Nudge logged but delivery failed: ${errorMsg}`);
         fetchLog();
       }
     } catch (err) {
@@ -507,7 +623,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                   ) : (
                     <Send size={14} />
                   )}
-                  {sending ? 'Logging...' : 'Send Nudge'}
+                  {sending ? 'Sending...' : 'Send Nudge'}
                 </button>
               </div>
             )}
