@@ -450,6 +450,7 @@ const ContactPicker: React.FC<{
   onAdd: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
   onClose: () => void;
 }> = ({ contactRecords, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
+  const { profile, primaryOrgId } = useAuth();
   const [search, setSearch] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
