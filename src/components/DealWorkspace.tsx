@@ -8,7 +8,8 @@ import { DealChatPanel } from './DealChatPanel';
 import { DealCommTimeline } from './DealCommTimeline';
 import { DealTimeline } from './DealTimeline';
 import { dealToRecord } from '../ai/dealConverter';
-import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate, DealTask } from '../types';
+import { DealTask } from '../ai/types';
+import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { pendingDocCount } from '../utils/helpers';
@@ -132,7 +133,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         top_deal_id: dealId,
         status: 'linked',
         reviewed_at: new Date().toISOString(),
-        reviewed_by: profile?.fullName || 'TC',
+        reviewed_by: profile?.name || 'TC',
       })
       .eq('gmail_thread_id', threadId);
   }, [profile]);
