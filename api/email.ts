@@ -1001,10 +1001,140 @@ async function handleInboundWebhook(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+
+// ── Link-scan: reads recent INBOX messages and routes new ones through email-link ──
+async function handleLinkScan(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).end();
+
+  const supabase = sbClient();
+
+  try {
+    // 1. Connect to Gmail IMAP and fetch last 30 messages
+    const client = new ImapFlow({
+      host: 'imap.gmail.com', port: 993, secure: true,
+      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      logger: false,
+      connectionTimeout: 9000,
+      socketTimeout: 9000,
+    });
+
+    const rawEmails: {
+      msgId: string;
+      subject: string;
+      from: string;
+      snippet: string;
+      date: string;
+      hasAttachment: boolean;
+      inReplyTo?: string;
+    }[] = [];
+
+    await Promise.race([
+      (async () => {
+        await client.connect();
+        const lock = await client.getMailboxLock('INBOX');
+        try {
+          // Fetch last 30 messages by sequence (most recent first)
+          const status = await client.status('INBOX', { messages: true });
+          const total = status?.messages ?? 0;
+          if (total === 0) { lock.release(); return; }
+          const from = Math.max(1, total - 29);
+          const msgRange = `${from}:${total}`;
+          for await (const msg of client.fetch(msgRange, { envelope: true, source: true })) {
+            try {
+              const source = msg.source?.toString('utf-8') || '';
+              const hdrs = extractEmailHeaders(source);
+              const { text, html, attachments } = extractPartsFromSource(source);
+              const resolvedHtml = html || extractHtmlFallback(source) || '';
+              const bodyText = text || (resolvedHtml ? stripHtml(resolvedHtml) : '');
+              const fromAddr = msg.envelope?.from?.[0];
+              // Build "Name <email>" — ensure address is present
+              let fromStr = '';
+              if (fromAddr?.address) {
+                fromStr = fromAddr.name
+                  ? `${fromAddr.name} <${fromAddr.address}>`
+                  : fromAddr.address;
+              }
+              const msgDate = msg.envelope?.date ? new Date(msg.envelope.date) : new Date();
+              const msgId = hdrs.messageId || msg.uid.toString();
+              rawEmails.push({
+                msgId,
+                subject: msg.envelope?.subject || '(no subject)',
+                from: fromStr,
+                snippet: bodyText.substring(0, 300),
+                date: msgDate.toISOString(),
+                hasAttachment: attachments.length > 0,
+                inReplyTo: hdrs.inReplyTo,
+              });
+            } catch (e) { /* skip individual message errors */ }
+          }
+        } finally {
+          lock.release();
+        }
+        await client.logout();
+      })(),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('IMAP_TIMEOUT')), 9500)),
+    ]);
+
+    if (rawEmails.length === 0) {
+      return res.status(200).json({ queued: 0, scanned: 0 });
+    }
+
+    // 2. Check which message-IDs are already in queue or links
+    const msgIds = rawEmails.map(e => e.msgId);
+    const [queueRes, linksRes] = await Promise.all([
+      supabase.from('email_review_queue').select('gmail_thread_id').in('gmail_thread_id', msgIds),
+      supabase.from('email_thread_links').select('gmail_thread_id').in('gmail_thread_id', msgIds),
+    ]);
+    const alreadyProcessed = new Set<string>([
+      ...((queueRes.data || []).map((r: any) => r.gmail_thread_id)),
+      ...((linksRes.data || []).map((r: any) => r.gmail_thread_id)),
+    ]);
+
+    const newEmails = rawEmails.filter(e => !alreadyProcessed.has(e.msgId));
+    if (newEmails.length === 0) {
+      return res.status(200).json({ queued: 0, scanned: rawEmails.length, alreadyProcessed: alreadyProcessed.size });
+    }
+
+    // 3. Route each new email through email-link
+    const BASE_URL = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'https://tcappmyredeal.vercel.app';
+
+    let queued = 0;
+    for (const email of newEmails) {
+      try {
+        const resp = await fetch(`${BASE_URL}/api/email-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gmailThreadId: email.msgId,
+            subject: email.subject,
+            from: email.from,
+            snippet: email.snippet,
+            bodyText: email.snippet,
+            date: email.date,
+            hasAttachment: email.hasAttachment,
+            inReplyTo: email.inReplyTo,
+            isUnread: true,
+          }),
+        });
+        if (resp.ok) queued++;
+      } catch (e) { /* log and continue */ }
+    }
+
+    return res.status(200).json({ queued, scanned: rawEmails.length, newFound: newEmails.length });
+
+  } catch (err: any) {
+    console.error('Link-scan error:', err);
+    return res.status(500).json({ error: err.message || 'Link scan failed' });
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel rewrite passes path segment as query param:
   // /api/email/threads -> action='threads', /api/email/send -> action='send', /api/email/attachment -> action='attachment'
   const action = req.query.action as string;
+  if (action === 'link-scan') return handleLinkScan(req, res);
   if (action === 'send') return handleSend(req, res);
   if (action === 'attachment') return handleAttachment(req, res);
   if (action === 'search') return handleSearch(req, res);
