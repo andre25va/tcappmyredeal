@@ -15,6 +15,7 @@ import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
 import { DealList } from './components/DealList';
 import { AgentCardView } from './components/AgentCardView';
+import { ByTaskView } from './components/ByTaskView';
 import { DealWorkspace } from './components/DealWorkspace';
 import { GuidedDealWizard } from './components/GuidedDealWizard';
 import { HomeDashboard } from './components/HomeDashboard';
@@ -48,12 +49,12 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 }
 
 function AppInner() {
-  const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
+  const { profile, loading: authLoading, isFirstLogin, logout } = useAuth();
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
-  const [listMode, setListMode]             = useState<'deals' | 'agents'>('agents');
+  const [listMode, setListMode]             = useState<'deals' | 'agents' | 'tasks'>('agents');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
   const [deals, setDeals]                   = useState<Deal[]>([]);
@@ -143,7 +144,7 @@ function AppInner() {
   // ── Load compliance templates ─────────────────────────────────────────────────
   useEffect(() => {
     if (!profile) return;
-    loadCompliance(primaryOrgId())
+    loadCompliance()
       .then(data => setComplianceTemplates(data))
       .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });
   }, [profile]);
@@ -303,7 +304,7 @@ function AppInner() {
 
   const persistCompliance = (updated: ComplianceTemplate[]) => {
     setComplianceTemplates(updated);
-    saveCompliance(updated, primaryOrgId()).catch(console.error);
+    saveCompliance(updated).catch(console.error);
   };
 
   const persistUsers = (updated: AppUser[]) => {
@@ -318,12 +319,12 @@ function AppInner() {
 
   const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
     setComplianceMasterItems(updated);
-    saveMasterItems('compliance', updated, primaryOrgId()).catch(console.error);
+    saveMasterItems('compliance', updated).catch(console.error);
   };
 
   const persistDdMasterItems = (updated: DDMasterItem[]) => {
     setDdMasterItems(updated);
-    saveMasterItems('dd', updated, primaryOrgId()).catch(console.error);
+    saveMasterItems('dd', updated).catch(console.error);
   };
 
   const handleResizeStart = (e: React.MouseEvent) => {
@@ -588,6 +589,12 @@ function AppInner() {
                     >
                       By Agent
                     </button>
+                    <button
+                      className={`flex-1 py-2 text-xs font-bold tracking-wide transition-all ${listMode === 'tasks' ? 'text-primary border-b-2 border-primary' : 'text-base-content/40 hover:text-base-content hover:bg-base-100'}`}
+                      onClick={() => { setListMode('tasks'); setSelectedId(null); }}
+                    >
+                      By Task
+                    </button>
                   </div>
                   {listMode === 'deals' ? (
                     <DealList
@@ -601,7 +608,7 @@ function AppInner() {
                       onRestoreDeal={handleRestoreDeal}
                       onChangeStatus={handleChangeStatus}
                     />
-                  ) : (
+                  ) : listMode === 'agents' ? (
                     <AgentCardView
                       deals={deals}
                       selectedId={selectedId}
@@ -609,6 +616,15 @@ function AppInner() {
                       onArchiveDeal={handleArchiveDeal}
                       onRestoreDeal={handleRestoreDeal}
                       onChangeStatus={handleChangeStatus}
+                    />
+                  ) : (
+                    <ByTaskView
+                      deals={deals}
+                      onSelectDeal={(id) => {
+                        setSelectedId(id);
+                        setTxPanel('workspace');
+                        setPendingWorkspaceTab('tasks');
+                      }}
                     />
                   )}
                 </div>
