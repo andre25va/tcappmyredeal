@@ -191,11 +191,23 @@ export function useEmailReviewQueue() {
     }
   }, []);
 
+  // Auto-scan Gmail for new emails whenever the queue is opened / refreshed
+  const triggerScan = useCallback(async () => {
+    try {
+      await fetch('/api/email?action=link-scan', { method: 'POST' });
+    } catch {
+      // scan errors are non-fatal — queue will show whatever is already in DB
+    }
+  }, []);
+
   useEffect(() => {
-    fetchAll();
-    const t = setInterval(fetchAll, 60000);
+    // Scan first, then fetch so newly-ingested emails appear immediately
+    triggerScan().then(() => fetchAll());
+    const t = setInterval(() => {
+      triggerScan().then(() => fetchAll());
+    }, 600000);
     return () => clearInterval(t);
-  }, [fetchAll]);
+  }, [fetchAll, triggerScan]);
 
   const confirmLink = useCallback(async (item: ReviewQueueItem, dealId: string, _dealAddress: string) => {
     await supabase.from('email_thread_links').upsert({
@@ -282,6 +294,6 @@ export function useEmailReviewQueue() {
   return {
     needsReview, unmatched, recentlyLinked, stats,
     loading, error, refetch: fetchAll,
-    confirmLink, dismissItem, markNewDeal, createAndLink,
+    confirmLink, dismissItem, markNewDeal, createAndLink, triggerScan,
   };
 }
