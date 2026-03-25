@@ -53,6 +53,7 @@ function mapToRawEmail(email: EmailApiItem): RawEmail {
     to: email.to ? email.to.split(', ') : [],
     snippet: email.snippet,
     bodyText: email.body,
+    bodyHtml: email.bodyHtml,
     receivedAt: email.date,
     attachmentNames: email.attachments?.map((a) => a.filename) || [],
   };
