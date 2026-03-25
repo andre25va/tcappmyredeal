@@ -1,12 +1,13 @@
 import React, { useCallback,  useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList, Bell,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList, Bell, StickyNote, CalendarClock,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
 import { DealCommTimeline } from './DealCommTimeline';
-import { DealTimeline } from './DealTimeline';
+import WorkspaceTimeline from './WorkspaceTimeline';
+import WorkspaceNotes from './WorkspaceNotes';
 import { dealToRecord } from '../ai/dealConverter';
 import { DealTask } from '../ai/types';
 import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
@@ -59,7 +60,7 @@ import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
 import { WorkspaceNudge } from './WorkspaceNudge';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'nudge' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'nudge' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'notes' | 'linked-emails' | 'amendments' | 'access';
 
 interface Props {
   deal: Deal;
@@ -201,7 +202,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} /> },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
-    { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
+    { id: 'timeline',   label: 'Timeline',   icon: <CalendarClock size={13} /> },
+    { id: 'notes',      label: 'Notes',      icon: <StickyNote size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
@@ -404,7 +406,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailCompose deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} currentUser={profile?.name} />}
-        {tab === 'timeline'   && <DealTimeline deal={deal} />}
+        {tab === 'timeline'   && <div className="p-4 h-full overflow-y-auto"><WorkspaceTimeline deal={deal} /></div>}
+        {tab === 'notes'      && <div className="p-4 h-full overflow-y-auto"><WorkspaceNotes deal={deal} /></div>}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
         {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
         {tab === 'ai-emails' && (
