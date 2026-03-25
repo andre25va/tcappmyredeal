@@ -1063,6 +1063,134 @@ Set extractedFields to an array of field names that had non-null values found.`;
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
+
+// ── Portfolio Report Schema & Handler (Tier 3) ────────────────────────────
+
+const bottleneckSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    stage: { type: 'string' },
+    dealCount: { type: 'number' },
+    avgDaysStuck: { type: 'number' },
+    description: { type: 'string' },
+    recommendation: { type: 'string' },
+  },
+  required: ['stage', 'dealCount', 'avgDaysStuck', 'description', 'recommendation'],
+};
+
+const agentPerfSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    agentName: { type: 'string' },
+    activeDealCount: { type: 'number' },
+    avgDaysToClose: { type: 'number' },
+    taskCompletionRate: { type: 'number' },
+    riskLevel: { type: 'string' },
+    notes: { type: 'string' },
+  },
+  required: ['agentName', 'activeDealCount', 'avgDaysToClose', 'taskCompletionRate', 'riskLevel', 'notes'],
+};
+
+const closingForecastSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    period: { type: 'string' },
+    expectedClosings: { type: 'number' },
+    totalVolume: { type: 'number' },
+    confidence: { type: 'string' },
+  },
+  required: ['period', 'expectedClosings', 'totalVolume', 'confidence'],
+};
+
+const portfolioReportSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    executiveSummary: { type: 'string' },
+    bottlenecks: { type: 'array', items: bottleneckSchema },
+    agentPerformance: { type: 'array', items: agentPerfSchema },
+    complianceOverview: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        overallScore: { type: 'number' },
+        atRiskDeals: { type: 'number' },
+        commonGaps: { type: 'array', items: { type: 'string' } },
+        recommendation: { type: 'string' },
+      },
+      required: ['overallScore', 'atRiskDeals', 'commonGaps', 'recommendation'],
+    },
+    closingForecast: { type: 'array', items: closingForecastSchema },
+    actionItems: { type: 'array', items: { type: 'string' } },
+    generatedAt: { type: 'string' },
+  },
+  required: ['executiveSummary', 'bottlenecks', 'agentPerformance', 'complianceOverview', 'closingForecast', 'actionItems', 'generatedAt'],
+};
+
+async function handlePortfolioReport(apiKey: string, body: any) {
+  const { deals } = body;
+  if (!deals?.length) throw new Error('Missing deals data');
+
+  const systemPrompt = `You are a senior real estate transaction coordinator analyzing a portfolio of active deals. Provide a concise executive summary, identify bottlenecks, assess agent performance, give compliance overview, forecast closings, and list top action items. Base your analysis ONLY on the provided data. Today: ${new Date().toISOString().split('T')[0]}`;
+
+  const userContent = `PORTFOLIO DATA (${deals.length} deals):
+${JSON.stringify(deals, null, 2)}`;
+
+  const result = await callOpenAI(apiKey, systemPrompt, userContent, portfolioReportSchema, 'portfolio_report_response', 'gpt-4o');
+  result.generatedAt = new Date().toISOString();
+  return result;
+}
+
+// ── Evaluate Rules Schema & Handler (Tier 3) ────────────────────────────────
+
+const triggeredRuleItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    ruleId: { type: 'string' },
+    ruleName: { type: 'string' },
+    dealId: { type: 'string' },
+    dealAddress: { type: 'string' },
+    triggerReason: { type: 'string' },
+    suggestedAction: { type: 'string' },
+    actionType: { type: 'string' },
+    priority: { type: 'string' },
+    confidence: { type: 'number' },
+  },
+  required: ['ruleId', 'ruleName', 'dealId', 'dealAddress', 'triggerReason', 'suggestedAction', 'actionType', 'priority', 'confidence'],
+};
+
+const evaluateRulesSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    triggeredRules: { type: 'array', items: triggeredRuleItemSchema },
+    summary: { type: 'string' },
+    rulesChecked: { type: 'number' },
+    dealsScanned: { type: 'number' },
+  },
+  required: ['triggeredRules', 'summary', 'rulesChecked', 'dealsScanned'],
+};
+
+async function handleEvaluateRules(apiKey: string, body: any) {
+  const { deals, rules } = body;
+  if (!deals?.length) throw new Error('Missing deals data');
+  if (!rules?.length) return { triggeredRules: [], summary: 'No rules to evaluate.', rulesChecked: 0, dealsScanned: deals.length };
+
+  const systemPrompt = `You are evaluating automation rules against a set of real estate deals. For each rule that is triggered by the data, return a triggered rule entry with a specific reason and suggested action. Only flag rules that clearly match the deal data conditions. Today: ${new Date().toISOString().split('T')[0]}`;
+
+  const userContent = `RULES:
+${JSON.stringify(rules, null, 2)}
+
+DEALS (${deals.length}):
+${JSON.stringify(deals, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, evaluateRulesSchema, 'evaluate_rules_response', 'gpt-4o');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -1122,6 +1250,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'extract-deal':
         result = await handleExtractDeal(apiKey, req.body);
+        break;
+      case 'portfolio-report':
+        result = await handlePortfolioReport(apiKey, req.body);
+        break;
+      case 'evaluate-rules':
+        result = await handleEvaluateRules(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
