@@ -194,13 +194,15 @@ export default function WorkspaceTimeline({ deal }: Props) {
     setSeeding(true);
     setError(null);
     const seeds: { milestone: string; label: string; due_date: string }[] = [];
+    // Some date fields exist in the DB but not the Deal TypeScript interface — cast to access them
+    const d = deal as Record<string, any>;
     const map: [string | undefined, string, string][] = [
-      [deal.contractDate, 'contract', 'Contract Date'],
-      [deal.optionPeriodEnd, 'option_period', 'Option Period End'],
-      [deal.inspectionDate, 'inspection', 'Inspection Deadline'],
-      [deal.appraisalDate, 'appraisal', 'Appraisal Deadline'],
-      [deal.financeDeadline, 'financing', 'Financing Deadline'],
-      [deal.closingDate, 'closing', 'Closing Date'],
+      [d.contractDate, 'contract', 'Contract Date'],
+      [d.optionPeriodEnd ?? d.option_period_end, 'option_period', 'Option Period End'],
+      [d.inspectionDate ?? d.inspection_date, 'inspection', 'Inspection Deadline'],
+      [d.appraisalDate ?? d.appraisal_date, 'appraisal', 'Appraisal Deadline'],
+      [d.financeDeadline ?? d.finance_deadline, 'financing', 'Financing Deadline'],
+      [d.closingDate, 'closing', 'Closing Date'],
     ];
     map.forEach(([val, ms, lbl]) => {
       if (val) seeds.push({ milestone: ms, label: lbl, due_date: val });
