@@ -13,7 +13,7 @@ function formatPhoneDisplay(raw: string) {
 }
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, kickReason, clearKickReason } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -259,6 +259,18 @@ export function LoginPage() {
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 px-4"
     >
 <div className="w-full max-w-sm">
+        {/* Signed out — new desktop session banner */}
+        {kickReason === 'other_device' && (
+          <div className="alert alert-warning mb-4 flex items-start gap-3 shadow">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-sm">You were signed out</p>
+              <p className="text-xs opacity-80">A new session was started on another computer. Sign in again to continue.</p>
+            </div>
+            <button className="btn btn-ghost btn-xs" onClick={clearKickReason}>✕</button>
+          </div>
+        )}
+
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg mb-4">

@@ -38,6 +38,13 @@ function parseDeviceLabel(ua: string): string {
   return 'Another device';
 }
 
+/** Returns true if the user-agent is a desktop browser (not mobile/tablet) */
+function isDesktopDevice(ua: string): boolean {
+  if (!ua) return false;
+  if (/iPhone|iPad|Android/i.test(ua)) return false;
+  return /Mac|Windows|Linux/i.test(ua);
+}
+
 /** Verify admin token — returns userId or null */
 async function requireAdmin(token: string): Promise<string | null> {
   if (!token) return null;
@@ -177,6 +184,29 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     await supabase.from('sessions').insert({ token, user_id: profile.id, expires_at: expiresAt, ip_address: ip, user_agent: ua, is_active: true });
+
+    // If the new session is from a desktop, invalidate all other active desktop sessions
+    // for this user so stale data isn't seen on old machines. Mobile sessions are left alone.
+    if (isDesktopDevice(ua)) {
+      const { data: existingSessions } = await supabase
+        .from('sessions')
+        .select('id, user_agent')
+        .eq('user_id', profile.id)
+        .eq('is_active', true)
+        .neq('token', token);
+
+      const staleDesktopIds = (existingSessions || [])
+        .filter(s => isDesktopDevice(s.user_agent || ''))
+        .map(s => s.id);
+
+      if (staleDesktopIds.length > 0) {
+        await supabase
+          .from('sessions')
+          .update({ is_active: false, invalidated_reason: 'new_desktop_session' })
+          .in('id', staleDesktopIds);
+      }
+    }
+
     await supabase.from('audit_log').insert({
       user_id: profile.id, user_name: profile.name || normalized, user_phone: normalized,
       action: 'login', entity_type: 'user', entity_id: profile.id, entity_name: profile.name || normalized,

@@ -32,6 +32,7 @@ interface AuthContextType {
   loading: boolean;
   isFirstLogin: boolean;
   isViewer: boolean;
+  kickReason: string | null;
   isMasterAdmin: () => boolean;
   primaryOrgId: () => string | null;
   getOrgRole: (orgId: string) => OrgMembership['roleInOrg'] | null;
@@ -39,6 +40,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<Pick<TCProfile, 'name' | 'timezone' | 'avatar_color'>>) => Promise<void>;
   clearFirstLogin: () => void;
+  clearKickReason: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -50,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [kickReason, setKickReason] = useState<string | null>(null);
 
   useEffect(() => {
     const storedToken = localStorage.getItem(SESSION_KEY);
@@ -83,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(SESSION_KEY);
           setToken(null);
           setProfile(null);
+          if (data.reason) setKickReason(data.reason);
         }
       } catch { /* silent */ }
     }, 2 * 60 * 1000);
@@ -125,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearFirstLogin = useCallback(() => setIsFirstLogin(false), []);
+  const clearKickReason = useCallback(() => setKickReason(null), []);
 
   const isViewer = profile?.role === 'viewer';
 
@@ -150,9 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      profile, token, loading, isFirstLogin, isViewer,
+      profile, token, loading, isFirstLogin, isViewer, kickReason,
       isMasterAdmin, primaryOrgId, getOrgRole,
-      login, logout, updateProfile, clearFirstLogin,
+      login, logout, updateProfile, clearFirstLogin, clearKickReason,
     }}>
       {children}
     </AuthContext.Provider>
