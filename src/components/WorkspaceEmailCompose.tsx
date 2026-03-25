@@ -553,7 +553,6 @@ export default function WorkspaceEmailCompose({
       await res.json();
       showToast('success', 'Spanish email sent successfully!');
       setShowSpanishPreview(false);
-      setHistoryKey(k => k + 1);
       setSubject(''); setBodyText(''); setSelectedTemplateId(''); setConfirmations({});
     } catch (error: any) {
       showToast('error', error.message || 'Failed to send Spanish email.');
@@ -627,7 +626,6 @@ export default function WorkspaceEmailCompose({
       }).catch((err) => console.warn('Email log (non-critical):', err));
 
       showToast('success', 'Email sent successfully!');
-      setHistoryKey((k) => k + 1);
       setJustSent(true);
       setTimeout(() => setJustSent(false), 3000);
 
