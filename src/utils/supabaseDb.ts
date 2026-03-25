@@ -219,7 +219,9 @@ export async function loadDeals(): Promise<Deal[]> {
       complianceTemplateId: (dd.complianceTemplateId as string) ?? undefined,
       buyerAgent: findAgentFromParticipants(participants, 'buyer') ?? (dd.buyerAgent as AgentContact) ?? undefined,
       sellerAgent: findAgentFromParticipants(participants, 'listing') ?? (dd.sellerAgent as AgentContact) ?? undefined,
-      contacts: participantsToLegacyContacts(participants),
+      contacts: participants.length > 0
+        ? participantsToLegacyContacts(participants)
+        : ((dd.contacts as Contact[]) ?? []),
       dueDiligenceChecklist: (dd.dueDiligenceChecklist as ChecklistItem[]) ?? [],
       complianceChecklist: (dd.complianceChecklist as ChecklistItem[]) ?? [],
       documentRequests: (dd.documentRequests as DocumentRequest[]) ?? [],
