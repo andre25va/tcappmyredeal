@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from "react";
 import {
-  Mail, LinkIcon, ListTodo, Zap, ChevronRight,
+  Mail, LinkIcon, ListTodo, Zap, ChevronRight, ChevronDown,
   Loader2, Brain, ShieldCheck, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { classifyEmailForDeal } from "../ai/emailClassifier";
@@ -28,6 +28,7 @@ export const EmailCommandCenter: React.FC<Props> = ({
   onCreateTasks,
 }) => {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
   const [classificationResults, setClassificationResults] = useState<Record<string, string>>({});
   const [classifyLoading, setClassifyLoading] = useState<Record<string, boolean>>({});
 
@@ -404,17 +405,63 @@ export const EmailCommandCenter: React.FC<Props> = ({
                 <h4 className="font-medium text-sm mb-2">
                   Emails in Thread ({selectedThread.emails.length})
                 </h4>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {selectedThread.emails.map((email) => (
-                    <div key={email.id} className="rounded-lg border p-3 bg-white">
-                      <div className="font-medium text-sm">{email.subject}</div>
-                      <div className="text-xs text-gray-600">{email.from}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {new Date(email.receivedAt).toLocaleString()}
+                    <div key={email.id} className="rounded-lg border bg-white overflow-hidden">
+                      {/* Header */}
+                      <div className="p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{email.subject}</div>
+                            <div className="text-xs text-gray-600">{email.from}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              {new Date(email.receivedAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-xs btn-ghost flex-shrink-0 gap-1 text-blue-600"
+                            onClick={() =>
+                              setExpandedEmailId(expandedEmailId === email.id ? null : email.id)
+                            }
+                          >
+                            <ChevronDown
+                              size={12}
+                              className={expandedEmailId === email.id ? "rotate-180 transition-transform" : "transition-transform"}
+                            />
+                            {expandedEmailId === email.id ? "Collapse" : "View"}
+                          </button>
+                        </div>
+                        {expandedEmailId !== email.id && (
+                          <div className="text-xs mt-1.5 text-gray-500 italic line-clamp-2">
+                            {email.snippet || email.bodyText?.slice(0, 120) || "No preview"}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm mt-2 text-gray-700">
-                        {email.snippet || email.bodyText?.slice(0, 300) || "No preview"}
-                      </div>
+                      {/* Expanded body */}
+                      {expandedEmailId === email.id && (
+                        <div className="border-t bg-gray-50">
+                          {email.bodyHtml ? (
+                            <iframe
+                              srcDoc={email.bodyHtml}
+                              sandbox="allow-same-origin"
+                              className="w-full"
+                              style={{ border: "none", minHeight: "300px", maxHeight: "520px", display: "block" }}
+                              title={`Email: ${email.subject}`}
+                              onLoad={(e) => {
+                                const iframe = e.currentTarget;
+                                try {
+                                  const h = iframe.contentDocument?.body?.scrollHeight;
+                                  if (h) iframe.style.height = Math.min(h + 24, 520) + "px";
+                                } catch {}
+                              }}
+                            />
+                          ) : (
+                            <pre className="text-xs text-gray-700 whitespace-pre-wrap p-3 max-h-[420px] overflow-y-auto font-sans leading-relaxed">
+                              {email.bodyText || email.snippet || "No content available"}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

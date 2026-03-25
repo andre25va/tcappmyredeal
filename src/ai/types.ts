@@ -43,6 +43,7 @@ export type RawEmail = {
   cc?: string[];
   snippet?: string;
   bodyText?: string;
+  bodyHtml?: string;
   receivedAt: string;
   attachmentNames?: string[];
 };
