@@ -287,6 +287,7 @@ export interface Contact {
   timezone?: string;       // Phase 4: IANA timezone
   inNotificationList: boolean;
   side?: 'buy' | 'sell' | 'both';
+  isCompany?: boolean;
   additionalPeople?: AdditionalPerson[];
   // Phase 4: relational joins (populated by data layer)
   organizations?: OrganizationMember[];

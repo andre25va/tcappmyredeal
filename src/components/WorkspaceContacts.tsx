@@ -123,7 +123,8 @@ const ContactPopup: React.FC<{
   deal?: Deal;
   onCallStarted?: (callData: CallStartedData) => void;
   onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
-}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit }) => {
+  onUpdateContact?: (updated: Contact) => void;
+}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit, onUpdateContact }) => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -379,12 +380,30 @@ const ContactPopup: React.FC<{
             </div>
           )}
 
+          {contact.side === 'both' && (
+            <div className="flex items-center gap-1 pt-1">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">
+                <Building2 size={9} /> Both Sides
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
             {contact.inNotificationList
               ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
               : <><BellOff size={13} className="text-gray-300" /><span className="text-xs text-gray-400">Not on notification list</span></>
             }
           </div>
+
+          {/* Additional people (co-buyers / co-sellers / spouses) for client-side contacts */}
+          {onUpdateContact && (['buyer', 'seller', 'client'].includes(contact.role) || !(['agent', 'lender', 'title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc'] as string[]).includes(contact.role)) && (
+            <div className="pt-1 border-t border-gray-100">
+              <AdditionalPeopleSection
+                contact={contact}
+                onUpdateContact={onUpdateContact}
+                side={contact.side || (contact.role === 'buyer' ? 'buy' : contact.role === 'seller' ? 'sell' : undefined)}
+              />
+            </div>
+          )}
 
           {/* Both Sides toggle for provider contacts */}
           {(['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
@@ -457,7 +476,9 @@ const ContactPicker: React.FC<{
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newCompany, setNewCompany] = useState('');
-  const [newRole, setNewRole] = useState('agent');
+  const [isCompany, setIsCompany] = useState(false);
+  const defaultRole = presetSide === 'buy' ? 'buyer' : presetSide === 'sell' ? 'seller' : 'agent';
+  const [newRole, setNewRole] = useState(defaultRole);
   const side = presetSide;
   const ref = useRef<HTMLDivElement>(null);
 
@@ -478,6 +499,7 @@ const ContactPicker: React.FC<{
         company: newCompany || null,
         contact_type: newRole,
         org_id: orgId,
+        is_company: isCompany || null,
       }).select().single();
       if (error) throw error;
       const cr: ContactRecord = {
@@ -565,20 +587,35 @@ const ContactPicker: React.FC<{
       {/* Create new contact inline */}
       {showCreateForm ? (
         <div className="border-t border-gray-100 p-3 space-y-2 bg-gray-50">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">New Contact</p>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Contact</p>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={isCompany} onChange={e => setIsCompany(e.target.checked)} />
+              <span className="text-xs text-gray-500">Company</span>
+            </label>
+          </div>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={isCompany ? "Contact name *" : "Full name *"}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone"
+          {isCompany && (
+            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company name"
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-yellow-50" />
+          )}
+          <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone (optional)"
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email"
+          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email (optional)"
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company"
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          {!isCompany && (
+            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company (optional)"
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+          )}
           <select value={newRole} onChange={e => setNewRole(e.target.value)}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white">
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
             <option value="agent">Agent</option>
             <option value="lender">Lender</option>
             <option value="title">Title Officer</option>
+            <option value="attorney">Attorney</option>
             <option value="inspector">Inspector</option>
             <option value="tc">TC</option>
             <option value="client">Client</option>
@@ -607,12 +644,13 @@ const ContactPicker: React.FC<{
 
 // ── Additional People (spouses/co-buyers) inside agent client card ───────────
 const MARITAL_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated', 'Other'];
-const RELATIONSHIP_OPTIONS = ['Spouse', 'Co-Buyer', 'Co-Seller', 'Partner', 'Family Member', 'Other'];
+const RELATIONSHIP_OPTIONS = ['Spouse', 'Co-Buyer', 'Co-Seller', 'Partner', 'Guarantor', 'POA', 'Family Member', 'Other'];
 
 const AdditionalPeopleSection: React.FC<{
   contact: Contact;
   onUpdateContact: (updated: Contact) => void;
-}> = ({ contact, onUpdateContact }) => {
+  side?: 'buy' | 'sell' | 'both';
+}> = ({ contact, onUpdateContact, side }) => {
   const [expanded, setExpanded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -654,7 +692,7 @@ const AdditionalPeopleSection: React.FC<{
         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary transition-colors px-1 py-0.5 rounded-md hover:bg-white/50"
       >
         <Users size={11} />
-        <span className="font-medium">Spouse / Co-Buyer</span>
+        <span className="font-medium">{side === 'sell' ? 'Co-Seller / Partner' : 'Spouse / Co-Buyer'}</span>
         {people.length > 0 && (
           <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0 text-[10px] font-bold">{people.length}</span>
         )}
@@ -756,7 +794,10 @@ const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () 
       {getInitials(contact.name)}
     </div>
     <div className="flex-1 min-w-0">
-      <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
+      <div className="flex items-center gap-1 min-w-0">
+        {contact.isCompany && <Building2 size={11} className="text-indigo-500 flex-none" />}
+        <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
+      </div>
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
         {(contact.company || cr?.company) && <span className="text-xs text-gray-400">· {contact.company || cr?.company}</span>}
@@ -973,6 +1014,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       company: cr.company,
       inNotificationList: true,
       side: effectiveSide,
+      isCompany: (cr as any).isCompany || false,
     };
     const isClientSideFlag = !!cr.isClient || pickerConfig?.type === 'client';
     // Sync agent contacts to deal.buyerAgent / deal.sellerAgent so Overview shows them
@@ -1138,6 +1180,13 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           deal={deal}
           onCallStarted={onCallStarted}
           onEdit={async (updates) => editContact(popupContact.id, updates)}
+          onUpdateContact={(updated) => {
+            onUpdate({
+              ...deal,
+              contacts: deal.contacts.map(c => c.id === updated.id ? updated : c),
+              updatedAt: new Date().toISOString(),
+            });
+          }}
         />
       )}
 
