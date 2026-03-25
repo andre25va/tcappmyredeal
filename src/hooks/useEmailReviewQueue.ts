@@ -205,7 +205,7 @@ export function useEmailReviewQueue() {
     triggerScan().then(() => fetchAll());
     const t = setInterval(() => {
       triggerScan().then(() => fetchAll());
-    }, 60000);
+    }, 600000);
     return () => clearInterval(t);
   }, [fetchAll, triggerScan]);
 
