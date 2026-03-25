@@ -730,7 +730,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       transactionType: form.transactionType as TransactionType,
       contractDate: form.contractDate,
       closingDate: form.closingDate,
-      agentId: agentClient?.id || generateId(),
+      agentId: agentClient?.id ?? '',
       agentName: agentClient?.fullName || '',
       agentClientId: form.agentClientId || undefined,
       // Set buyer/seller agent based on transaction type

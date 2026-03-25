@@ -59,7 +59,7 @@ const DealSheetEmailModal: React.FC<{
   ].filter(Boolean);
   const defaultBody = lines.join('\n');
 
-  const { profile } = useAuth();
+  const { profile, primaryOrgId } = useAuth();
   const userName = profile?.name || 'TC Staff';
 
   const [to, setTo] = React.useState(contact.email || '');
@@ -450,6 +450,7 @@ const ContactPicker: React.FC<{
   onAdd: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
   onClose: () => void;
 }> = ({ contactRecords, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
+  const { profile, primaryOrgId } = useAuth();
   const [search, setSearch] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -464,11 +465,8 @@ const ContactPicker: React.FC<{
     if (!newName.trim()) return;
     try {
       const { supabase } = await import('../lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      // Get org from profile
-      const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', userId).single();
-      const orgId = profile?.organization_id;
+      const userId = profile?.id ?? null;
+      const orgId = primaryOrgId() ?? null;
       const nameParts = newName.trim().split(' ');
       const firstName = nameParts[0];
       const lastName = nameParts.slice(1).join(' ') || '';
@@ -479,8 +477,7 @@ const ContactPicker: React.FC<{
         phone: newPhone || null,
         company: newCompany || null,
         contact_type: newRole,
-        organization_id: orgId,
-        created_by: userId,
+        org_id: orgId,
       }).select().single();
       if (error) throw error;
       const cr: ContactRecord = {
