@@ -332,29 +332,6 @@ function ScheduleModal({
   );
 }
 
-// ── Sent History ────────────────────────────────────────────────────────────
-
-function SentHistory({ dealId }: { dealId: string }) {
-  const [entries, setEntries] = useState<EmailSendLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(true);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadEmailSendLog({ dealId, limit: 20 })
-      .then(setEntries)
-      .finally(() => setLoading(false));
-  }, [dealId]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-4 text-gray-400 text-sm">
-        <Loader2 size={14} className="animate-spin" />
-        Loading sent history…
-      </div>
-    );
-  }
-
   return (
     <div className="border-t border-gray-100 mt-4 pt-3">
       <button
@@ -477,8 +454,6 @@ export default function WorkspaceEmailCompose({
   } | null>(null);
 
   // Track refreshes for sent history
-  const [historyKey, setHistoryKey] = useState(0);
-
   const selectedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId);
 
   // Pre-fill recipients from deal contacts on notification list + always include agent-client
@@ -852,6 +827,43 @@ export default function WorkspaceEmailCompose({
 
       {/* ── Right Panel: Compose + History ──────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
+        {/* ── Contact quick-pick chips ──────────────────────────────── */}
+        {(() => {
+          const pickable = (deal.contacts || []).filter((c) => c.email);
+          if (pickable.length === 0) return null;
+          return (
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              <span className="text-xs text-gray-400 font-medium shrink-0">Quick add:</span>
+              {pickable.map((c) => {
+                const active = toAddresses.includes(c.email!);
+                const label = c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email!;
+                const role = c.role ? ` · ${c.role.charAt(0).toUpperCase() + c.role.slice(1)}` : '';
+                return (
+                  <button
+                    key={c.id || c.email}
+                    type="button"
+                    title={c.email}
+                    onClick={() => {
+                      if (active) {
+                        setToAddresses(toAddresses.filter((e) => e !== c.email));
+                      } else {
+                        setToAddresses([...toAddresses, c.email!]);
+                      }
+                    }}
+                    className={`badge badge-sm cursor-pointer transition-all border ${
+                      active
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                    }`}
+                  >
+                    {label}{role}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* Recipients */}
         <div className="space-y-2 mb-4">
           <EmailChipInput
@@ -1013,8 +1025,7 @@ export default function WorkspaceEmailCompose({
           </div>
         )}
 
-        {/* Sent History */}
-        <SentHistory key={historyKey} dealId={deal.id} />
+
       </div>
 
       {/* ── Confirmation Warning Modal ───────────────────────────────── */}
