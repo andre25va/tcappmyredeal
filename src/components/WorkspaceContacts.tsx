@@ -1103,8 +1103,8 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     });
   };
 
-  const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'buy'));
-  const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && defaultSide(c.role) === 'sell'));
+  const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && (defaultSide(c.role) === 'buy' || defaultSide(c.role) === 'both')));
+  const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && (defaultSide(c.role) === 'sell' || defaultSide(c.role) === 'both')));
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
   const allDisplayedContacts = [...buySide, ...sellSide.filter(c => !buySide.some(b => b.id === c.id))];
