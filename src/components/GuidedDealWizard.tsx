@@ -7,6 +7,7 @@ import {
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
+import { saveDealParticipant } from '../utils/supabaseDb';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -747,19 +748,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
       contacts: (() => {
-        if (!form.titleContactId) return [];
-        const tc = allContacts.find(c => c.id === form.titleContactId);
-        if (!tc) return [];
-        return [{
-          id: tc.id,
-          name: (tc as any).fullName || '',
-          email: (tc as any).email || '',
-          phone: (tc as any).phone || '',
-          role: ((tc as any).role || 'title') as any,
-          company: (tc as any).company || '',
-          inNotificationList: false,
-          side: form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell'),
-        }];
+        const result: any[] = [];
+        // Add agent client to contacts
+        if (agentClient) {
+          result.push({
+            id: agentClient.id,
+            directoryId: agentClient.id,
+            name: agentClient.fullName || '',
+            email: agentClient.email || '',
+            phone: agentClient.phone || '',
+            role: 'agent' as any,
+            company: (agentClient as any).company || '',
+            inNotificationList: true,
+            side: form.transactionType === 'buyer' ? 'buy' : 'sell',
+          });
+        }
+        // Add title contact
+        if (form.titleContactId) {
+          const tc = allContacts.find(c => c.id === form.titleContactId);
+          if (tc) {
+            result.push({
+              id: tc.id,
+              directoryId: tc.id,
+              name: (tc as any).fullName || '',
+              email: (tc as any).email || '',
+              phone: (tc as any).phone || '',
+              role: ((tc as any).role || 'title') as any,
+              company: (tc as any).company || '',
+              inNotificationList: false,
+              side: form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell'),
+            });
+          }
+        }
+        return result;
       })(),
       notes: form.specialNotes.trim(),
       loanType: form.loanType || undefined,
@@ -811,6 +832,36 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       orgId: primaryOrgId() ?? undefined,
     };
     onAdd(deal);
+
+    // Persist participants to deal_participants table (async, non-blocking)
+    (async () => {
+      try {
+        // Save agent client as participant
+        if (agentClient) {
+          await saveDealParticipant({
+            dealId: deal.id,
+            contactId: agentClient.id,
+            side: form.transactionType === 'buyer' ? 'buyer' : 'listing',
+            dealRole: 'lead_agent',
+            isPrimary: true,
+            isClientSide: true,
+          });
+        }
+        // Save title contact as participant
+        if (form.titleContactId) {
+          await saveDealParticipant({
+            dealId: deal.id,
+            contactId: form.titleContactId,
+            side: form.titleSide === 'buy' ? 'buyer' : form.titleSide === 'sell' ? 'listing' : (form.transactionType === 'buyer' ? 'buyer' : 'listing'),
+            dealRole: 'title_officer',
+            isPrimary: false,
+            isClientSide: false,
+          });
+        }
+      } catch (err) {
+        console.error('[GuidedDealWizard] Failed to save deal participants:', err);
+      }
+    })();
   };
 
   const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
