@@ -48,7 +48,7 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 }
 
 function AppInner() {
-  const { profile, loading: authLoading, isFirstLogin, logout } = useAuth();
+  const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
@@ -143,7 +143,7 @@ function AppInner() {
   // ── Load compliance templates ─────────────────────────────────────────────────
   useEffect(() => {
     if (!profile) return;
-    loadCompliance()
+    loadCompliance(primaryOrgId())
       .then(data => setComplianceTemplates(data))
       .catch(err => { console.error('Failed to load compliance:', err); setComplianceTemplates([]); });
   }, [profile]);
@@ -303,7 +303,7 @@ function AppInner() {
 
   const persistCompliance = (updated: ComplianceTemplate[]) => {
     setComplianceTemplates(updated);
-    saveCompliance(updated).catch(console.error);
+    saveCompliance(updated, primaryOrgId()).catch(console.error);
   };
 
   const persistUsers = (updated: AppUser[]) => {
@@ -318,12 +318,12 @@ function AppInner() {
 
   const persistComplianceMasterItems = (updated: ComplianceMasterItem[]) => {
     setComplianceMasterItems(updated);
-    saveMasterItems('compliance', updated).catch(console.error);
+    saveMasterItems('compliance', updated, primaryOrgId()).catch(console.error);
   };
 
   const persistDdMasterItems = (updated: DDMasterItem[]) => {
     setDdMasterItems(updated);
-    saveMasterItems('dd', updated).catch(console.error);
+    saveMasterItems('dd', updated, primaryOrgId()).catch(console.error);
   };
 
   const handleResizeStart = (e: React.MouseEvent) => {
