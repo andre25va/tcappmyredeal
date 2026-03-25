@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Shield, Calendar, AlertTriangle, CheckCircle, Clock, Zap, ChevronDown, ChevronUp, Play, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { portfolioReportAI, PortfolioReportResponse, evaluateRulesAI, RulesEvaluationResponse } from '../ai/apiClient';
 import { Deal } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   deals: Deal[];
@@ -74,6 +75,7 @@ function generateRuleId(): string {
 export const AIReports: React.FC<Props> = ({ deals }) => {
   const [report, setReport] = useState<PortfolioReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [appliedRules, setAppliedRules] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   // Auto rules state

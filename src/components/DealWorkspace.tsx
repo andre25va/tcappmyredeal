@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback,  useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
   Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList,
@@ -8,8 +8,9 @@ import { DealChatPanel } from './DealChatPanel';
 import { DealCommTimeline } from './DealCommTimeline';
 import { DealTimeline } from './DealTimeline';
 import { dealToRecord } from '../ai/dealConverter';
-import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
+import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate, DealTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import { pendingDocCount } from '../utils/helpers';
 import { useDealEmails } from '../hooks/useDealEmails';
 
@@ -122,6 +123,32 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
 
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
   const { profile, isMasterAdmin } = useAuth();
+
+  // ── Email Command Center handlers ─────────────────────────────────────────
+  const handleLinkThread = useCallback(async (dealId: string, threadId: string) => {
+    await supabase
+      .from('email_review_queue')
+      .update({
+        top_deal_id: dealId,
+        status: 'linked',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: profile?.fullName || 'TC',
+      })
+      .eq('gmail_thread_id', threadId);
+  }, [profile]);
+
+  const handleCreateTasks = useCallback(async (_dealId: string, tasks: DealTask[]) => {
+    if (!tasks.length) return;
+    const rows = tasks.map((t, idx) => ({
+      deal_id: _dealId,
+      title: t.title,
+      description: t.description ?? null,
+      priority: (t.priority as string) ?? 'normal',
+      status: 'pending',
+      sort_order: idx,
+    }));
+    await supabase.from('tasks').insert(rows);
+  }, []);
   const isViewer = profile?.role === 'viewer';
   const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
     (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
@@ -384,7 +411,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                 <span className="ml-3 text-sm text-base-content/60">Searching & classifying emails…</span>
               </div>
             ) : (
-              <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} />
+              <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} onLinkThread={handleLinkThread} onCreateTasks={handleCreateTasks} />
             )}
           </div>
         )}
