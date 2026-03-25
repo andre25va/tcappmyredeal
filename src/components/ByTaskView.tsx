@@ -214,9 +214,9 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal }) => {
                         {task.title}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {deal?.deal_ref && (
+                        {deal?.dealRef && (
                           <span className="text-[10px] font-mono bg-base-200 text-base-content/50 px-1.5 py-0.5 rounded shrink-0">
-                            {deal.deal_ref}
+                            {deal.dealRef}
                           </span>
                         )}
                         <span className="text-xs text-base-content/50 truncate">{addr}</span>
