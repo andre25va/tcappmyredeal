@@ -398,20 +398,18 @@ function AppInner() {
 
   const handleUpdate = (deal: Deal) => {
     setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
-    saveSingleDeal(deal).catch(console.error);
+    saveSingleDeal(deal, profile?.id).catch(console.error);
     logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
   const handleAdd = (deal: Deal) => {
-    const withId = { ...deal, id: generateId() };
-    const updated = [withId, ...deals];
-    setDeals(updated);
-    saveSingleDeal(withId).catch(console.error);
-    setSelectedId(withId.id);
+    setDeals(prev => [deal, ...prev]);
+    saveSingleDeal(deal, profile?.id).catch(console.error);
+    setSelectedId(deal.id);
     setTxPanel('workspace');
     setShowAdd(false);
     setView('transactions');
-    logAction('create', 'deal', withId.id, withId.propertyAddress);
+    logAction('create', 'deal', deal.id, deal.propertyAddress);
   };
 
   const handleSelectDeal = (id: string) => {

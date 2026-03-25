@@ -3,7 +3,7 @@ import {
   ChecklistItem, DocumentRequest
 } from '../types';
 
-export const generateId = () => Math.random().toString(36).slice(2, 10);
+export const generateId = () => crypto.randomUUID();
 
 /** Strips non-digits and formats as +1-xxx-xxx-xxxx. Returns raw input if not 10/11 digits. */
 export const formatPhone = (raw: string): string => {

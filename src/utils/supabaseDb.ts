@@ -337,7 +337,16 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
   }
 }
 
-export async function saveSingleDeal(deal: Deal): Promise<void> {
+export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Promise<void> {
+  // Resolve FK contact IDs for relational columns
+  const agentContactId: string | null =
+    deal.agentClientId || deal.agentId || null;
+  const titleContact = deal.contacts?.find(
+    (c: any) => c.role === 'title' || c.role === 'title_officer',
+  );
+  const titleContactId: string | null =
+    titleContact?.directoryId || titleContact?.id || null;
+
   const { error } = await supabase.from('deals').upsert(
     {
       id: deal.id,
@@ -380,6 +389,16 @@ export async function saveSingleDeal(deal: Deal): Promise<void> {
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
       org_id: deal.orgId ?? null,
+      created_by_user_id: (deal as any).createdByUserId ?? createdByUserId ?? null,
+      buyers_agent_id:
+        deal.transactionType === 'buyer' && agentContactId
+          ? agentContactId
+          : null,
+      listing_agent_id:
+        deal.transactionType === 'seller' && agentContactId
+          ? agentContactId
+          : null,
+      title_company_id: titleContactId,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },

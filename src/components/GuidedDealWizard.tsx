@@ -385,6 +385,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         email: newTitleContact.email.trim() || null,
         phone: newTitleContact.phone.trim() || null,
         contact_type: 'title',
+        org_id: primaryOrgId() ?? null,
       });
       if (error) throw error;
       const created = {
