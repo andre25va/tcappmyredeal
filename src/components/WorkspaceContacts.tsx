@@ -147,9 +147,9 @@ const ContactPopup: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch license lookup URL for the deal's state
+  // Fetch license lookup URL for the deal's state — agents only
   useEffect(() => {
-    if (!dealState) return;
+    if (!dealState || contact.role !== 'agent') return;
     supabase
       .from('state_license_links')
       .select('lookup_url')
@@ -432,7 +432,7 @@ const ContactPopup: React.FC<{
         {/* Actions */}
         <div className="px-5 pb-4 space-y-2">
           {/* Look Up License button — only if state has a portal URL */}
-          {licenseUrl && (
+          {licenseUrl && contact.role === 'agent' && (
             <a
               href={licenseUrl}
               target="_blank"
