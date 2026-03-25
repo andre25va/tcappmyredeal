@@ -1452,7 +1452,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
               <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
-              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim()}>
+              <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim() || !form.timezone}>
                 {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
                 {isEditing ? 'Save Changes' : 'Add Contact'}
               </button>
