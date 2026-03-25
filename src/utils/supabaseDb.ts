@@ -169,7 +169,7 @@ export async function loadDeals(): Promise<Deal[]> {
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
       home_warranty_paid_by, home_warranty_company, commission_paid_by,
-      org_id, deal_ref
+      org_id, deal_ref, buyers_agent_id, listing_agent_id, title_company_id, created_by_user_id
     `)
     .order('created_at', { ascending: false });
 
@@ -655,17 +655,17 @@ export async function saveCompliance(templates: ComplianceTemplate[]): Promise<v
 
 export async function loadUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase
-    .from('app_users')
-    .select('id, name, email, role, active, created_at')
+    .from('profiles')
+    .select('id, name, role, is_active, created_at, contacts:contact_id ( email )')
     .order('created_at', { ascending: true });
 
   if (error) throw error;
   return (data ?? []).map((row) => ({
     id: row.id as string,
-    name: row.name as string,
-    email: row.email as string,
-    role: row.role as AppUser['role'],
-    active: row.active as boolean,
+    name: (row.name as string) || '',
+    email: (row.contacts as any)?.email || '',
+    role: (row.role as AppUser['role']) || 'tc',
+    active: (row.is_active as boolean) ?? true,
     createdAt: row.created_at as string,
   }));
 }
@@ -763,11 +763,24 @@ export async function saveEmailTemplates(templates: EmailTemplate[], orgId?: str
 export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
   ComplianceMasterItem[] | DDMasterItem[]
 > {
-  const { data, error } = await supabase
-    .from('master_items')
-    .select('id, title, required, order_index')
-    .eq('type', type)
-    .order('order_index', { ascending: true });
+  // Query global checklist templates (org_id IS NULL = global)
+  const templateRes = await supabase
+    .from('checklist_templates')
+    .select('id')
+    .is('org_id', null)
+    .eq('deal_type', type === 'compliance' ? 'buyer' : 'buyer') // global templates
+    .limit(1)
+    .maybeSingle();
+
+  const templateId = templateRes.data?.id;
+
+  const { data, error } = templateId
+    ? await supabase
+        .from('checklist_template_items')
+        .select('id, title, is_required, sort_order')
+        .eq('template_id', templateId)
+        .order('sort_order', { ascending: true })
+    : { data: [], error: null };
 
   if (error) throw error;
 
@@ -775,15 +788,15 @@ export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
     return (data ?? []).map((row) => ({
       id: row.id as string,
       title: row.title as string,
-      order: row.order_index as number,
+      order: (row as any).sort_order as number,
     })) as ComplianceMasterItem[];
   }
 
   return (data ?? []).map((row) => ({
     id: row.id as string,
     title: row.title as string,
-    required: row.required as boolean,
-    order: row.order_index as number,
+    required: (row as any).is_required as boolean,
+    order: (row as any).sort_order as number,
   })) as DDMasterItem[];
 }
 
@@ -832,7 +845,7 @@ export async function logActivity(params: {
 export async function loadContactsFull(): Promise<ContactRecord[]> {
   const { data, error } = await supabase
     .from('contacts')
-    .select('*')
+    .select('*, organizations:org_id ( id, name, organization_type )')
     .is('deleted_at', null)
     .order('last_name', { ascending: true });
   if (error) throw error;
@@ -843,7 +856,7 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
   const [licRes, mlsRes, orgRes, clientRes] = await Promise.all([
     supabase.from('contact_licenses').select('*').in('contact_id', ids),
     supabase.from('contact_mls_memberships').select('*').in('contact_id', ids),
-    supabase.from('organization_members').select('*, organizations:organization_id ( name, organization_type )').in('contact_id', ids),
+    supabase.from('organizations').select('id, name, organization_type').eq('id', 'placeholder').limit(0), // unused placeholder
     supabase.from('client_account_members').select('contact_id, client_account_id').in('contact_id', ids),
   ]);
 
@@ -859,11 +872,7 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     mlsByContact[m.contact_id].push(m);
   }
 
-  const orgByContact: Record<string, any[]> = {};
-  for (const o of orgRes.data ?? []) {
-    if (!orgByContact[o.contact_id]) orgByContact[o.contact_id] = [];
-    orgByContact[o.contact_id].push(o);
-  }
+  const orgByContact: Record<string, any[]> = {}; // now unused — org comes from contacts.org_id directly
 
   const clientByContact: Record<string, string> = {};
   for (const c of clientRes.data ?? []) {
