@@ -613,19 +613,28 @@ export async function saveMls(entries: MlsEntry[]): Promise<void> {
 
 // ─── COMPLIANCE TEMPLATES ─────────────────────────────────────────────────────
 
-export async function loadCompliance(): Promise<ComplianceTemplate[]> {
-  const { data, error } = await supabase
+export async function loadCompliance(orgId?: string | null): Promise<ComplianceTemplate[]> {
+  const query = supabase
     .from('app_compliance_templates')
     .select('data')
     .order('created_at', { ascending: true });
+
+  const { data, error } = orgId
+    ? await query.eq('org_id', orgId)
+    : await query.is('org_id', null);
 
   if (error) throw error;
   return (data ?? []).map((row) => row.data as ComplianceTemplate);
 }
 
-export async function saveCompliance(templates: ComplianceTemplate[]): Promise<void> {
+export async function saveCompliance(templates: ComplianceTemplate[], orgId?: string | null): Promise<void> {
+  const orgFilter = orgId ?? null;
+
   if (templates.length === 0) {
-    await supabase.from('app_compliance_templates').delete().neq('id', '');
+    const delQ = supabase.from('app_compliance_templates');
+    orgId
+      ? await delQ.delete().eq('org_id', orgId)
+      : await delQ.delete().is('org_id', null);
     return;
   }
 
@@ -635,6 +644,7 @@ export async function saveCompliance(templates: ComplianceTemplate[]): Promise<v
     description: t.description ?? null,
     state: t.state ?? null,
     data: t,
+    org_id: orgFilter,
     updated_at: new Date().toISOString(),
   }));
 
@@ -642,7 +652,10 @@ export async function saveCompliance(templates: ComplianceTemplate[]): Promise<v
   if (error) throw error;
 
   const newIds = templates.map((t) => t.id);
-  const { data: existing } = await supabase.from('app_compliance_templates').select('id');
+  const existQ = supabase.from('app_compliance_templates').select('id');
+  const { data: existing } = orgId
+    ? await existQ.eq('org_id', orgId)
+    : await existQ.is('org_id', null);
   const toDelete = (existing ?? [])
     .map((r) => r.id as string)
     .filter((id) => !newIds.includes(id));
@@ -768,7 +781,8 @@ export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
     .from('checklist_templates')
     .select('id')
     .is('org_id', null)
-    .eq('deal_type', type === 'compliance' ? 'buyer' : 'buyer') // global templates
+    .eq('checklist_type', type) // 'dd' or 'compliance'
+    .eq('is_active', true)
     .limit(1)
     .maybeSingle();
 
@@ -803,20 +817,53 @@ export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
 export async function saveMasterItems(
   type: 'compliance' | 'dd',
   items: ComplianceMasterItem[] | DDMasterItem[],
+  orgId?: string | null,
 ): Promise<void> {
-  await supabase.from('master_items').delete().eq('type', type);
+  // 1. Find or create the global template for this type
+  const filterQuery = supabase
+    .from('checklist_templates')
+    .select('id')
+    .eq('checklist_type', type)
+    .eq('is_active', true);
+
+  const templateRes = orgId
+    ? await filterQuery.eq('org_id', orgId).limit(1).maybeSingle()
+    : await filterQuery.is('org_id', null).limit(1).maybeSingle();
+
+  let templateId = templateRes.data?.id as string | undefined;
+
+  if (!templateId) {
+    // Create the template if it doesn't exist
+    const { data: newTemplate, error: tErr } = await supabase
+      .from('checklist_templates')
+      .insert({
+        name: type === 'dd' ? 'DD Checklist' : 'Compliance Checklist',
+        checklist_type: type,
+        deal_type: 'buyer',
+        is_active: true,
+        org_id: orgId ?? null,
+      })
+      .select('id')
+      .single();
+    if (tErr) throw tErr;
+    templateId = newTemplate.id as string;
+  }
+
+  // 2. Delete existing items for this template
+  await supabase.from('checklist_template_items').delete().eq('template_id', templateId);
 
   if (items.length === 0) return;
 
+  // 3. Insert new items
   const rows = items.map((item, idx) => ({
     id: item.id,
-    type,
+    template_id: templateId,
     title: item.title,
-    required: (item as DDMasterItem).required ?? false,
-    order_index: item.order ?? idx,
+    is_required: (item as DDMasterItem).required ?? false,
+    sort_order: item.order ?? idx,
   }));
 
-  const { error } = await supabase.from('master_items').insert(rows);
+  const { error } = await supabase.from('checklist_template_items').insert(rows);
   if (error) throw error;
 }
 
