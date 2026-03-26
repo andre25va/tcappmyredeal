@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { roleAvatarBg, roleBadge, roleLabel, getInitials } from '../utils/helpers';
+import { MRDChip } from './ui/MRDChip';
 
 export interface DealContact {
   participantId: string;
@@ -173,29 +173,14 @@ export function DealContactPicker({
           : false;
 
         return (
-          <button
+          <MRDChip
             key={c.participantId}
-            type="button"
-            title={c.email || c.phone || ''}
+            name={c.name}
+            role={c.role}
+            selected={isActive}
             onClick={() => onToggle(c)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border shadow-sm transition-all ${
-              isActive
-                ? 'bg-white border-primary ring-2 ring-primary/20 shadow-md'
-                : 'bg-white border-gray-200 hover:border-primary/40 hover:shadow-md'
-            }`}
-          >
-            <div
-              className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(
-                c.role as any
-              )}`}
-            >
-              {getInitials(c.name)}
-            </div>
-            <span className="text-xs font-medium text-black">{c.name}</span>
-            <span className={`badge badge-xs ${roleBadge(c.role as any)}`}>
-              {roleLabel(c.role as any)}
-            </span>
-          </button>
+            className={c.email || c.phone ? '' : 'opacity-60'}
+          />
         );
       })}
     </div>
