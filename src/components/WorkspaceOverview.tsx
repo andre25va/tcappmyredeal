@@ -7,6 +7,7 @@ import { DraftFollowUp } from './DraftFollowUp';
 import { SmartSuggestions } from './SmartSuggestions';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone } from '../utils/helpers';
+import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder, DealTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -571,6 +572,17 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     commissionPaidBy: d.commissionPaidBy || 'seller',
   });
   const [fields, setFields] = useState(() => buildFields(deal));
+  // ─── Deal participants (mini-panel) ───
+  const [participants, setParticipants] = useState<any[]>([]);
+  useEffect(() => {
+    if (!deal.id) return;
+    supabase
+      .from('deal_participants')
+      .select(`id, deal_role, side, is_primary, is_client_side, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
+      .eq('deal_id', deal.id)
+      .then(({ data }) => { if (data) setParticipants(data); });
+  }, [deal.id]);
+
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
   const [sellerDraft, setSellerDraft] = useState<AgentContact>(deal.sellerAgent ?? emptyAgent());
 
@@ -761,120 +773,179 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
         {deal.notes && <div className="col-span-3"><span className="text-base-content/50 text-xs">Notes</span><p className="text-base-content/80">{deal.notes}</p></div>}
       </div>
 
-      {/* ─── Agent Rows ─── */}
+      {/* ─── Deal Contacts Mini-Panel ─── */}
       <div>
         <button
           className="font-semibold text-sm text-black flex items-center gap-2 mb-2 hover:text-primary transition-colors"
           onClick={onGoToContacts}
         >
-          <Users size={14} className="opacity-60" /> Agents
-          <span className="text-[10px] text-base-content/40 font-normal">— click to view all deal contacts</span>
+          <Users size={14} className="opacity-60" /> Deal Contacts
+          <span className="text-[10px] text-base-content/40 font-normal">— click to manage</span>
         </button>
-        <div className="flex flex-col gap-2">
-          {agentPanels.map(p => (
-            <div
-              key={p.label}
-              className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
-            >
-              {/* Red dot for our client */}
-              <div className="flex-none w-5 flex items-center justify-center">
-                {p.agent?.isOurClient
-                  ? <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]" title="Our Client" />
-                  : <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
-                }
-              </div>
 
-              {/* Label + Name — clicking here goes to Contacts tab */}
-              <button
-                className="flex-1 min-w-0 text-left"
-                onClick={onGoToContacts}
+        {participants.length === 0 ? (
+          // ── Fallback: show old agentPanels + Title if deal_participants is empty ──
+          <div className="flex flex-col gap-2">
+            {agentPanels.map(p => (
+              <div
+                key={p.label}
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
               >
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">
-                  {p.label}{p.agent?.isOurClient && <span className="ml-1.5 text-red-500">· Our Client</span>}
-                </p>
-                <p className="text-sm font-semibold text-black truncate">
-                  {p.agent?.name || <span className="italic text-gray-300 font-normal">Not set</span>}
-                </p>
-              </button>
-
-              {/* Phone number + phone icon — opens popup with live call + email */}
-              {p.agent?.phone && (
-                <div className="flex items-center gap-1.5 flex-none">
-                  <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">
-                    {formatPhone(p.agent.phone)}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent }); }}
-                    className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
-                    title={`View ${p.agent?.name || 'agent'} contact info`}
-                  >
-                    <Phone size={14} />
-                  </button>
-                </div>
-              )}
-
-              {/* Arrow — opens agent detail popup */}
-              <button
-                onClick={() => p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent })}
-                className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
-                title="View contact details"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          ))}
-          {/* ─── Title Company Row ─── */}
-          {(() => {
-            const titleContact = deal.contacts.find(c => c.role === 'title');
-            if (!titleContact) return (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
                 <div className="flex-none w-5 flex items-center justify-center">
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                  {p.agent?.isOurClient
+                    ? <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]" title="Our Client" />
+                    : <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                  }
                 </div>
                 <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
-                  <p className="text-sm italic text-gray-300 font-normal">Not set</p>
-                </button>
-              </div>
-            );
-            const cr = titleContact.directoryId ? contactRecords.find(r => r.id === titleContact.directoryId) : undefined;
-            const companyName = (titleContact as any).company || cr?.company || '';
-            return (
-              <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all">
-                <div className="flex-none w-5 flex items-center justify-center">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                </div>
-                <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">
+                    {p.label}{p.agent?.isOurClient && <span className="ml-1.5 text-red-500">· Our Client</span>}
+                  </p>
                   <p className="text-sm font-semibold text-black truncate">
-                    {titleContact.name}{companyName ? <span className="font-normal text-gray-500"> ({companyName})</span> : ''}
+                    {p.agent?.name || <span className="italic text-gray-300 font-normal">Not set</span>}
                   </p>
                 </button>
-                {titleContact.phone && (
+                {p.agent?.phone && (
                   <div className="flex items-center gap-1.5 flex-none">
-                    <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">
-                      {formatPhone(titleContact.phone)}
-                    </span>
+                    <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{formatPhone(p.agent.phone)}</span>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' }); }}
+                      onClick={(e) => { e.stopPropagation(); p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent }); }}
                       className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
-                      title={`View ${titleContact.name} contact info`}
-                    >
-                      <Phone size={14} />
-                    </button>
+                    ><Phone size={14} /></button>
                   </div>
                 )}
                 <button
-                  onClick={() => setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' })}
+                  onClick={() => p.agent && setAgentPopup({ label: p.label, agent: p.agent, accent: p.accent })}
                   className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
-                  title="View contact details"
+                ><ChevronRight size={14} /></button>
+              </div>
+            ))}
+            {(() => {
+              const titleContact = deal.contacts.find(c => c.role === 'title');
+              if (!titleContact) return (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
+                  <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /></div>
+                  <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
+                    <p className="text-sm italic text-gray-300 font-normal">Not set</p>
+                  </button>
+                </div>
+              );
+              const cr = titleContact.directoryId ? contactRecords.find(r => r.id === titleContact.directoryId) : undefined;
+              const companyName = (titleContact as any).company || cr?.company || '';
+              return (
+                <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all">
+                  <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /></div>
+                  <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">Title Company</p>
+                    <p className="text-sm font-semibold text-black truncate">
+                      {titleContact.name}{companyName ? <span className="font-normal text-gray-500"> ({companyName})</span> : ''}
+                    </p>
+                  </button>
+                  {titleContact.phone && (
+                    <div className="flex items-center gap-1.5 flex-none">
+                      <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{formatPhone(titleContact.phone)}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' }); }}
+                        className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
+                      ><Phone size={14} /></button>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setAgentPopup({ label: 'Title Company', agent: { name: titleContact.name, phone: titleContact.phone || '', email: titleContact.email || '', isOurClient: false }, accent: 'text-success' })}
+                    className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
+                  ><ChevronRight size={14} /></button>
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
+          // ── Live: show all deal_participants split by Buy Side / Sell Side ──
+          (() => {
+            const roleLabel = (role: string) => {
+              const MAP: Record<string, string> = {
+                buyers_agent: 'Buyer Agent', listing_agent: 'Seller Agent',
+                buyer: 'Buyer', seller: 'Seller',
+                title: 'Title Company', title_officer: 'Title Officer',
+                lender: 'Lender', inspector: 'Inspector',
+                appraiser: 'Appraiser', attorney: 'Attorney',
+              };
+              return MAP[role] || role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            };
+            const dotColor = (role: string) => {
+              if (role === 'buyers_agent' || role === 'listing_agent') return 'bg-purple-400';
+              if (role === 'title' || role === 'title_officer') return 'bg-emerald-500';
+              if (role === 'lender') return 'bg-sky-400';
+              if (role === 'inspector') return 'bg-orange-400';
+              if (role === 'appraiser') return 'bg-yellow-400';
+              if (role === 'attorney') return 'bg-rose-400';
+              return 'bg-blue-400';
+            };
+            const renderCard = (p: any) => {
+              const c = p.contacts;
+              if (!c) return null;
+              const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+              const agentContact = { name: fullName, phone: c.phone || '', email: c.email || '', isOurClient: !!p.is_client_side };
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
                 >
-                  <ChevronRight size={14} />
-                </button>
+                  <div className="flex-none w-5 flex items-center justify-center">
+                    {p.is_client_side
+                      ? <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]" title="Our Client" />
+                      : <span className={`w-2.5 h-2.5 rounded-full ${dotColor(p.deal_role)}`} />
+                    }
+                  </div>
+                  <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">
+                      {roleLabel(p.deal_role)}{p.is_client_side && <span className="ml-1.5 text-red-500">· Our Client</span>}
+                    </p>
+                    <p className="text-sm font-semibold text-black truncate">
+                      {fullName}{c.company ? <span className="font-normal text-gray-400"> ({c.company})</span> : ''}
+                    </p>
+                  </button>
+                  {c.phone && (
+                    <div className="flex items-center gap-1.5 flex-none">
+                      <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{formatPhone(c.phone)}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAgentPopup({ label: roleLabel(p.deal_role), agent: agentContact, accent: 'text-primary' }); }}
+                        className="btn btn-ghost btn-circle w-7 h-7 min-h-0 text-success hover:bg-success/10 p-0 flex items-center justify-center"
+                        title={`Call ${fullName}`}
+                      ><Phone size={14} /></button>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setAgentPopup({ label: roleLabel(p.deal_role), agent: agentContact, accent: 'text-primary' })}
+                    className="btn btn-ghost btn-xs btn-square text-gray-300 hover:text-primary transition-colors flex-none"
+                  ><ChevronRight size={14} /></button>
+                </div>
+              );
+            };
+
+            const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both');
+            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'both');
+
+            return (
+              <div className="flex flex-col gap-3">
+                {/* Buy Side */}
+                {buySide.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1.5 pl-1">Buy Side</p>
+                    <div className="flex flex-col gap-2">{buySide.map(renderCard)}</div>
+                  </div>
+                )}
+                {/* Sell Side */}
+                {sellSide.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1.5 pl-1">Sell Side</p>
+                    <div className="flex flex-col gap-2">{sellSide.map(renderCard)}</div>
+                  </div>
+                )}
               </div>
             );
-          })()}
-        </div>
+          })()
+        )}
       </div>
 
       {/* ─── Agent Contact Popup ─── */}
