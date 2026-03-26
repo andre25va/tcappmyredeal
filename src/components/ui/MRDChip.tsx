@@ -17,8 +17,8 @@
  */
 
 import React from 'react';
-import { roleLabel, roleBadge, roleAvatarBg, roleChipSolid, getInitials } from '../utils/helpers';
-import type { ContactRole } from '../utils/helpers';
+import { roleLabel, roleBadge, roleAvatarBg, roleChipSolid, getInitials } from '../../utils/helpers';
+import type { ContactRole } from '../../utils/helpers';
 
 export interface MRDChipProps {
   /** Full display name shown in the chip */
