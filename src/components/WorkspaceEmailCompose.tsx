@@ -76,11 +76,9 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   const sellers = deal.contacts.filter(c => c.role === 'seller');
   const sellerAttorneys = deal.contacts.filter(c => c.role === 'attorney' && deal.transactionType === 'seller');
   const allAttorneys = deal.contacts.filter(c => c.role === 'attorney');
-  // Title contacts split by their stored side field
   const allTitleContacts = deal.contacts.filter(c => c.role === 'title');
   const sellSideTitleContacts = allTitleContacts.filter(c => !c.side || c.side === 'sell' || c.side === 'both');
   const buySideTitleContacts  = allTitleContacts.filter(c => c.side === 'buy'  || c.side === 'both');
-  // TC signature: use agent company if set, otherwise agent name
   const ourAgent = deal.buyerAgent?.isOurClient ? deal.buyerAgent : deal.sellerAgent?.isOurClient ? deal.sellerAgent : (deal.buyerAgent || deal.sellerAgent);
   const agentTeamName = (ourAgent as any)?.company?.trim();
   const tcTeamSignature = agentTeamName
@@ -89,7 +87,6 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
     ? `TC Team for ${ourAgent.name}`
     : 'TC Team';
   const sellerLines: string[] = ['Sellers Side', ''];
-  // Names + company only — no contact details in outgoing templates
   if (sellers.length > 0) sellers.forEach(c => sellerLines.push(`  •   Sellers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
   else sellerLines.push('  •   Sellers - [Seller Name]');
   if (deal.sellerAgent?.name) sellerLines.push(`  •   Sellers Agent - ${deal.sellerAgent.name}${deal.sellerAgent.phone ? `  ${formatPhone(deal.sellerAgent.phone)}` : ''}${deal.sellerAgent.email ? `  ${deal.sellerAgent.email}` : ''}${ (deal.sellerAgent as any).company ? ` (${(deal.sellerAgent as any).company})` : ''}`);
@@ -102,7 +99,6 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   }
   const sellersSide = sellerLines.join('\n');
 
-  // Build Buyers Side block
   const buyers = deal.contacts.filter(c => c.role === 'buyer');
   const buyerLines: string[] = ['Buyers Side', ''];
   if (buyers.length > 0) buyers.forEach(c => buyerLines.push(`  •   Buyers - ${c.name}${c.company ? ` (${c.company})` : ''}`));
@@ -118,7 +114,6 @@ function populateTemplate(text: string, deal: Deal, complianceTemplates?: Compli
   }
   const buyersSide = buyerLines.join('\n');
 
-  // Inspection deadline: contractDate + inspectionPeriodDays from compliance template
   const complianceTpl = (complianceTemplates ?? []).find((t) =>
     (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(deal.agentClientId ?? '')
   );
@@ -379,7 +374,6 @@ export default function WorkspaceEmailCompose({
     message: string;
   } | null>(null);
 
-  // Track refreshes for sent history
   const selectedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId);
 
   // Pre-fill recipients from deal contacts on notification list + always include agent-client
@@ -387,7 +381,6 @@ export default function WorkspaceEmailCompose({
     const notifyContacts = (deal.contacts || []).filter((c) => c.inNotificationList);
     const emails = notifyContacts.map((c) => c.email).filter(Boolean) as string[];
 
-    // Agent-client is always pre-checked by default
     const ourClientAgent = deal.buyerAgent?.isOurClient ? deal.buyerAgent : deal.sellerAgent?.isOurClient ? deal.sellerAgent : null;
     const agentClientEmail = ourClientAgent?.email;
     if (agentClientEmail && !emails.includes(agentClientEmail)) {
@@ -398,14 +391,11 @@ export default function WorkspaceEmailCompose({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal.id]);
 
-  // Auto-CC agent team members (admins/assistants) when deal loads
+  // Auto-CC agent team members
   useEffect(() => {
     async function loadAgentTeamCC() {
       try {
-        // Find agent-type contacts on this deal (buyer agent, seller agent)
-        const agentContacts = (deal.contacts || []).filter(
-          (c) => c.role === 'agent'
-        );
+        const agentContacts = (deal.contacts || []).filter((c) => c.role === 'agent');
         if (agentContacts.length === 0) return;
         const allTeamEmails: string[] = [];
         for (const agent of agentContacts) {
@@ -416,16 +406,15 @@ export default function WorkspaceEmailCompose({
         const unique = [...new Set(allTeamEmails)].filter(Boolean);
         if (unique.length > 0) {
           setCcAddresses(unique);
-          setShowCcBcc(true); // auto-expand CC row so TC sees it
+          setShowCcBcc(true);
         }
       } catch (_) {
-        // silently fail — team CC is additive, not critical
+        // silently fail
       }
     }
     loadAgentTeamCC();
   }, [deal.id]);
 
-  // Populate template when selected
   const handleSelectTemplate = useCallback(
     (templateId: string) => {
       setSelectedTemplateId(templateId);
@@ -433,12 +422,9 @@ export default function WorkspaceEmailCompose({
       if (tpl) {
         setSubject(populateTemplate(tpl.subject, deal, complianceTemplates));
         setBodyText(populateTemplate(tpl.body, deal, complianceTemplates));
-        // Handle confirmation buttons
         if (tpl.buttons && tpl.buttons.length > 0) {
           const c: Record<string, boolean> = {};
-          tpl.buttons.forEach((btn: ConfirmationButton) => {
-            c[btn.label] = false;
-          });
+          tpl.buttons.forEach((btn: ConfirmationButton) => { c[btn.label] = false; });
           setConfirmations(c);
         } else {
           setConfirmations({});
@@ -458,7 +444,6 @@ export default function WorkspaceEmailCompose({
     [deal]
   );
 
-  // Build final HTML body with branding
   const buildBodyHtml = (overrideBody?: string): string => {
     const escapedBody = (overrideBody ?? bodyText)
       .replace(/&/g, '&amp;')
@@ -486,13 +471,11 @@ export default function WorkspaceEmailCompose({
 </html>`.trim();
   };
 
-  // Show toast
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Validate before send
   const validate = (): string | null => {
     if (toAddresses.length === 0) return 'Please add at least one recipient.';
     if (!subject.trim()) return 'Subject is required.';
@@ -500,12 +483,9 @@ export default function WorkspaceEmailCompose({
     return null;
   };
 
-  // Separate confirmation gate — triggers warning modal instead of toast
-  const hasUnconfirmedItems = (): boolean => {
-    return Object.entries(confirmations).some(([, v]) => !v);
-  };
+  const hasUnconfirmedItems = (): boolean =>
+    Object.entries(confirmations).some(([, v]) => !v);
 
-  // Preview in Spanish
   const handlePreviewSpanish = async () => {
     const err = validate();
     if (err) { showToast('error', err); return; }
@@ -531,7 +511,6 @@ export default function WorkspaceEmailCompose({
     }
   };
 
-  // Send Spanish Version
   const handleSendSpanish = async () => {
     setSendingSpanish(true);
     try {
@@ -562,40 +541,25 @@ export default function WorkspaceEmailCompose({
     }
   };
 
-  // Send Now
   const handleSendNow = async () => {
-    if (sendingRef.current) return; // Guard against rapid double-clicks
+    if (sendingRef.current) return;
     const err = validate();
-    if (err) {
-      showToast('error', err);
-      return;
-    }
-
-    if (hasUnconfirmedItems()) {
-      setShowConfirmWarning(true);
-      return;
-    }
+    if (err) { showToast('error', err); return; }
+    if (hasUnconfirmedItems()) { setShowConfirmWarning(true); return; }
 
     sendingRef.current = true;
     setSending(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
       const bodyHtml = buildBodyHtml();
 
       const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${supabaseAnonKey}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({
-          to: toAddresses,
-          cc: ccAddresses,
-          bcc: bccAddresses,
-          subject,
-          bodyHtml,
+          to: toAddresses, cc: ccAddresses, bcc: bccAddresses,
+          subject, bodyHtml,
           dealId: deal.id,
           templateId: selectedTemplate?.id,
           templateName: selectedTemplate?.name,
@@ -610,16 +574,11 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      // Edge function already logs to email_send_log — this is a best-effort local duplicate
-      // It must NEVER throw and block the success toast
       logEmailSend({
         dealId: deal.id,
         templateId: selectedTemplate?.id,
         templateName: selectedTemplate?.name,
-        toAddresses,
-        ccAddresses,
-        subject,
-        bodyHtml,
+        toAddresses, ccAddresses, subject, bodyHtml,
         gmailMessageId: data.messageId,
         gmailThreadId: data.threadId,
         emailType: 'deal',
@@ -629,12 +588,7 @@ export default function WorkspaceEmailCompose({
       showToast('success', 'Email sent successfully!');
       setJustSent(true);
       setTimeout(() => setJustSent(false), 3000);
-
-      // Reset compose
-      setSubject('');
-      setBodyText('');
-      setSelectedTemplateId('');
-      setConfirmations({});
+      setSubject(''); setBodyText(''); setSelectedTemplateId(''); setConfirmations({});
     } catch (error: any) {
       console.error('Send email error:', error);
       showToast('error', error.message || 'Failed to send email.');
@@ -644,13 +598,9 @@ export default function WorkspaceEmailCompose({
     }
   };
 
-  // Schedule
   const handleSchedule = async (scheduledAt: string) => {
     const err = validate();
-    if (err) {
-      showToast('error', err);
-      return;
-    }
+    if (err) { showToast('error', err); return; }
 
     setScheduling(true);
     try {
@@ -658,24 +608,14 @@ export default function WorkspaceEmailCompose({
       await createScheduledEmail({
         dealId: deal.id,
         templateId: selectedTemplate?.id,
-        toAddresses,
-        ccAddresses,
-        bccAddresses,
-        subject,
-        bodyHtml,
-        scheduledAt,
+        toAddresses, ccAddresses, bccAddresses,
+        subject, bodyHtml, scheduledAt,
         emailType: 'deal',
         createdBy: currentUser,
       });
-
       showToast('success', `Email scheduled for ${new Date(scheduledAt).toLocaleString()}`);
       setShowScheduleModal(false);
-
-      // Reset compose
-      setSubject('');
-      setBodyText('');
-      setSelectedTemplateId('');
-      setConfirmations({});
+      setSubject(''); setBodyText(''); setSelectedTemplateId(''); setConfirmations({});
     } catch (error: any) {
       console.error('Schedule email error:', error);
       showToast('error', error.message || 'Failed to schedule email.');
@@ -684,7 +624,6 @@ export default function WorkspaceEmailCompose({
     }
   };
 
-  // All templates grouped
   const templateCategories = emailTemplates.reduce<Record<string, EmailTemplate[]>>((acc, t) => {
     const cat = t.category || 'General';
     if (!acc[cat]) acc[cat] = [];
@@ -729,11 +668,7 @@ export default function WorkspaceEmailCompose({
               onClick={() => setShowComplianceTemplates(!showComplianceTemplates)}
             >
               Compliance
-              {showComplianceTemplates ? (
-                <ChevronUp size={12} />
-              ) : (
-                <ChevronDown size={12} />
-              )}
+              {showComplianceTemplates ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
             {showComplianceTemplates &&
               complianceTemplates.map((tpl) => (
@@ -749,11 +684,11 @@ export default function WorkspaceEmailCompose({
         )}
       </div>
 
-      {/* ── Right Panel: Compose + History ──────────────────────────── */}
+      {/* ── Right Panel: Compose ──────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
-        {/* Quick add from deal contacts */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="text-xs text-gray-400 font-medium flex-none">Quick add:</span>
+
+        {/* Contact Picker — grouped by side */}
+        <div className="mb-4">
           <DealContactPicker
             dealId={deal.id}
             selectedEmails={toAddresses}
@@ -787,18 +722,8 @@ export default function WorkspaceEmailCompose({
             </button>
           ) : (
             <>
-              <EmailChipInput
-                label="CC"
-                emails={ccAddresses}
-                onChange={setCcAddresses}
-                placeholder="CC…"
-              />
-              <EmailChipInput
-                label="BCC"
-                emails={bccAddresses}
-                onChange={setBccAddresses}
-                placeholder="BCC…"
-              />
+              <EmailChipInput label="CC" emails={ccAddresses} onChange={setCcAddresses} placeholder="CC…" />
+              <EmailChipInput label="BCC" emails={bccAddresses} onChange={setBccAddresses} placeholder="BCC…" />
             </>
           )}
         </div>
@@ -828,24 +753,14 @@ export default function WorkspaceEmailCompose({
         {/* Confirmations */}
         {Object.keys(confirmations).length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <p className="text-xs font-semibold text-amber-700 mb-2">
-              Confirm before sending:
-            </p>
+            <p className="text-xs font-semibold text-amber-700 mb-2">Confirm before sending:</p>
             {Object.entries(confirmations).map(([item, checked]) => (
-              <label
-                key={item}
-                className="flex items-center gap-2 text-sm text-amber-800 cursor-pointer mb-1"
-              >
+              <label key={item} className="flex items-center gap-2 text-sm text-amber-800 cursor-pointer mb-1">
                 <input
                   type="checkbox"
                   className="checkbox checkbox-xs checkbox-warning"
                   checked={checked}
-                  onChange={(e) =>
-                    setConfirmations((prev) => ({
-                      ...prev,
-                      [item]: e.target.checked,
-                    }))
-                  }
+                  onChange={(e) => setConfirmations((prev) => ({ ...prev, [item]: e.target.checked }))}
                 />
                 {item}
               </label>
@@ -860,13 +775,7 @@ export default function WorkspaceEmailCompose({
             onClick={handleSendNow}
             disabled={sending || scheduling || justSent}
           >
-            {sending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : justSent ? (
-              <CheckCircle2 size={14} />
-            ) : (
-              <Send size={14} />
-            )}
+            {sending ? <Loader2 size={14} className="animate-spin" /> : justSent ? <CheckCircle2 size={14} /> : <Send size={14} />}
             {justSent ? 'Sent!' : 'Send Now'}
           </button>
 
@@ -890,7 +799,6 @@ export default function WorkspaceEmailCompose({
           </button>
 
           <div className="flex-1" />
-
           <span className="text-xs text-gray-400">
             {toAddresses.length} recipient{toAddresses.length !== 1 ? 's' : ''}
           </span>
@@ -929,8 +837,6 @@ export default function WorkspaceEmailCompose({
             </div>
           </div>
         )}
-
-
       </div>
 
       {/* ── Confirmation Warning Modal ───────────────────────────────── */}
@@ -957,10 +863,7 @@ export default function WorkspaceEmailCompose({
                 ))}
             </ul>
             <div className="flex justify-end gap-2">
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setShowConfirmWarning(false)}
-              >
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowConfirmWarning(false)}>
                 Go Back & Confirm
               </button>
             </div>
@@ -979,18 +882,10 @@ export default function WorkspaceEmailCompose({
       {/* ── Toast ───────────────────────────────────────────────────── */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4">
-          <div
-            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
-              toast.type === 'success'
-                ? 'bg-green-600 text-white'
-                : 'bg-red-600 text-white'
-            }`}
-          >
-            {toast.type === 'success' ? (
-              <CheckCircle2 size={16} />
-            ) : (
-              <AlertCircle size={16} />
-            )}
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
             {toast.message}
           </div>
         </div>
