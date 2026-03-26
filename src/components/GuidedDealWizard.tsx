@@ -237,7 +237,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
 export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
-  const { primaryOrgId } = useAuth();
+  const { primaryOrgId, profile } = useAuth();
   const [form, setForm] = useState({
     address: '', city: '', state: '', zipCode: '',
     secondaryAddress: '',
@@ -706,7 +706,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       : `${form.address}, ${form.city} ${form.state}`;
 
     const initLog: ActivityEntry[] = [
-      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: addressDisplay, user: 'TC Staff', type: 'deal_created' },
+      { id: generateId(), timestamp: new Date().toISOString(), action: 'Deal created', detail: addressDisplay, user: profile?.name || 'TC Staff', type: 'deal_created' },
       ...(isMF ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Multi-Family Addendum auto-flagged', detail: 'System detected multi-family property and created required document alert.', user: 'System', type: 'document_requested' as const }] : []),
       ...(hasTwoAddresses && form.secondaryAddress.trim() ? [{ id: generateId(), timestamp: new Date().toISOString(), action: 'Duplex — dual address recorded', detail: `Unit A: ${form.address} | Unit B: ${form.secondaryAddress}`, user: 'System', type: 'deal_created' as const }] : []),
     ];
