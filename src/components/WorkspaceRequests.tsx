@@ -191,9 +191,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
 
-  // New request form state
+  // New request form state — multi-select contacts
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
-  const [selectedContact, setSelectedContact] = useState<DealContact | null>(null);
+  const [selectedContacts, setSelectedContacts] = useState<DealContact[]>([]);
   const [newNotes, setNewNotes] = useState('');
   const [draftSubject, setDraftSubject] = useState('');
   const [draftBody, setDraftBody] = useState('');
@@ -262,20 +262,22 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     }
   }, [inboundMessages, loadingMessages]);
 
-  // ── Rebuild inline email when type or recipient changes ─────────────────────
+  // ── Rebuild inline email when type or recipients change ─────────────────────
   useEffect(() => {
     const token = '[REQ-????????]';
+    // Use first selected contact's name for greeting; join all emails for To field
+    const primary = selectedContacts[0] ?? null;
     const emailContent = getDefaultEmailContent(
       newType,
-      selectedContact?.name || '',
+      primary?.name || '',
       deal.propertyAddress,
       profile?.name || 'TC',
       token,
     );
-    setDraftTo(selectedContact?.email || '');
+    setDraftTo(selectedContacts.map(c => c.email).filter(Boolean).join(', '));
     setDraftSubject(emailContent.subject);
     setDraftBody(emailContent.body);
-  }, [newType, selectedContact, deal.propertyAddress, profile?.name]);
+  }, [newType, selectedContacts, deal.propertyAddress, profile?.name]);
 
   // ── Add event helper ─────────────────────────────────────────────────────────
   const addEvent = async (requestId: string, eventType: RequestEventType, description?: string) => {
@@ -331,7 +333,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const handleCreateDraft = async () => {
     setCreating(true);
     try {
-      const participant = selectedContact;
+      // Primary contact = first selected (for DB FK); all contacts go in To field
+      const primary = selectedContacts[0] ?? null;
       const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
       const tempId = crypto.randomUUID();
       const token = shortToken(tempId);
@@ -341,9 +344,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         deal_id: deal.id,
         request_type: newType,
         status: 'draft',
-        requested_from_contact_id: participant?.contactId || null,
-        requested_from_name: participant?.name || null,
-        requested_from_email: participant?.email || null,
+        requested_from_contact_id: primary?.contactId || null,
+        requested_from_name: primary?.name || null,
+        requested_from_email: primary?.email || null,
         subject_token: token,
         notes: newNotes || null,
         requires_review: true,
@@ -376,7 +379,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const handleCreateAndSend = async () => {
     setCreating(true);
     try {
-      const participant = selectedContact;
+      const primary = selectedContacts[0] ?? null;
       const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
       const tempId = crypto.randomUUID();
       const token = shortToken(tempId);
@@ -388,9 +391,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         deal_id: deal.id,
         request_type: newType,
         status: 'draft',
-        requested_from_contact_id: participant?.contactId || null,
-        requested_from_name: participant?.name || null,
-        requested_from_email: draftTo || participant?.email || null,
+        requested_from_contact_id: primary?.contactId || null,
+        requested_from_name: primary?.name || null,
+        requested_from_email: draftTo || primary?.email || null,
         subject_token: token,
         notes: newNotes || null,
         requires_review: true,
@@ -411,7 +414,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     }
   };
 
-  // ── Core send email ────────────────────────────────────────────────────────────
+  // ── Core send email — supports comma-separated To addresses ──────────────────
   const sendEmail = async (requestId: string, to: string, subject: string, body: string) => {
     setSendingId(requestId);
     try {
@@ -421,11 +424,14 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         line.trim() ? `<p style="margin:0 0 8px 0;">${line}</p>` : '<br/>'
       ).join('');
 
+      // Support comma-separated addresses from multi-select
+      const toArray = to.split(',').map(e => e.trim()).filter(Boolean);
+
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({
-          to: [to], cc: [], bcc: [], subject, bodyHtml,
+          to: toArray, cc: [], bcc: [], subject, bodyHtml,
           dealId: deal.id, emailType: 'deal',
           sentBy: profile?.name || 'Staff', requestId,
         }),
@@ -489,7 +495,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   const resetNewForm = () => {
     setNewType('earnest_money_receipt');
-    setSelectedContact(null);
+    setSelectedContacts([]);
     setNewNotes('');
   };
 
@@ -608,24 +614,29 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                   ))}
                 </div>
               </div>
-              {/* Send To */}
+
+              {/* Send To — multi-select */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-2 block">Send To</label>
+                <label className="text-xs font-semibold text-gray-500 mb-2 block">
+                  Send To
+                  {selectedContacts.length > 1 && (
+                    <span className="ml-2 badge badge-primary badge-xs">{selectedContacts.length} selected</span>
+                  )}
+                </label>
                 <DealContactPicker
                   dealId={deal.id}
-                  selectedContactIds={selectedContact ? [selectedContact.contactId] : []}
+                  selectedContactIds={selectedContacts.map(c => c.contactId)}
                   onToggle={(c) => {
-                    if (selectedContact?.contactId === c.contactId) {
-                      setSelectedContact(null);
-                      setDraftTo('');
-                    } else {
-                      setSelectedContact(c);
-                      setDraftTo(c.email || '');
-                    }
+                    setSelectedContacts(prev =>
+                      prev.some(x => x.contactId === c.contactId)
+                        ? prev.filter(x => x.contactId !== c.contactId)
+                        : [...prev, c]
+                    );
                   }}
                   mode="email"
                 />
               </div>
+
               <div className="border border-base-300 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 bg-base-200/60 border-b border-base-300">
                   <Mail size={13} className="text-primary" />
@@ -634,9 +645,15 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                   <span className="text-xs text-base-content/30">Editable</span>
                 </div>
                 <div className="p-3 space-y-2.5 bg-white">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium">To</span>
-                    <input type="email" className="input input-bordered input-xs flex-1 font-mono" value={draftTo} onChange={e => setDraftTo(e.target.value)} placeholder="recipient@email.com" />
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium pt-1.5">To</span>
+                    <input
+                      type="text"
+                      className="input input-bordered input-xs flex-1 font-mono"
+                      value={draftTo}
+                      onChange={e => setDraftTo(e.target.value)}
+                      placeholder="recipient@email.com, another@email.com"
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-base-content/40 w-12 flex-none font-medium">Subject</span>
@@ -877,7 +894,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <div className="p-3 space-y-2 bg-white">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-base-content/40 w-14 flex-none font-medium">To</span>
-                  <input type="email" className="input input-bordered input-xs flex-1 font-mono"
+                  <input type="text" className="input input-bordered input-xs flex-1 font-mono"
                     value={inlineEdit.to} onChange={e => onInlineEditChange('to', e.target.value)} onClick={e => e.stopPropagation()} />
                 </div>
                 <div className="flex items-center gap-2">
