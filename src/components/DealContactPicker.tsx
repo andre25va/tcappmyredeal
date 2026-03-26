@@ -24,6 +24,12 @@ interface Props {
   className?: string;
 }
 
+function applyModeFilter(contacts: DealContact[], mode: 'email' | 'sms' | 'any'): DealContact[] {
+  if (mode === 'email') return contacts.filter((c) => c.email);
+  if (mode === 'sms') return contacts.filter((c) => c.phone);
+  return contacts;
+}
+
 export function DealContactPicker({
   dealId,
   selectedContactIds,
@@ -38,7 +44,9 @@ export function DealContactPicker({
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // ── Pass 1: deal_participants table (the canonical source) ────────────────
+      const { data: dpData, error: dpError } = await supabase
         .from('deal_participants')
         .select(`
           id,
@@ -54,8 +62,8 @@ export function DealContactPicker({
         `)
         .eq('deal_id', dealId);
 
-      if (!error && data) {
-        const mapped: DealContact[] = (data as any[])
+      if (!dpError && dpData && dpData.length > 0) {
+        const mapped: DealContact[] = (dpData as any[])
           .map((dp) => {
             const c = dp.contacts;
             if (!c) return null;
@@ -75,17 +83,67 @@ export function DealContactPicker({
           })
           .filter(Boolean) as DealContact[];
 
-        const filtered =
-          mode === 'email'
-            ? mapped.filter((c) => c.email)
-            : mode === 'sms'
-            ? mapped.filter((c) => c.phone)
-            : mapped;
-
-        setContacts(filtered);
+        setContacts(applyModeFilter(mapped, mode));
+        setLoading(false);
+        return;
       }
+
+      // ── Pass 2: fallback to deal FK columns ────────────────────────────────────
+      // Covers deals created before deal_participants was populated
+      const { data: dealRow } = await supabase
+        .from('deals')
+        .select('buyers_agent_id, listing_agent_id, title_company_id')
+        .eq('id', dealId)
+        .single();
+
+      if (dealRow) {
+        const fkEntries: { id: string; role: string; side: string }[] = [];
+        if (dealRow.buyers_agent_id)
+          fkEntries.push({ id: dealRow.buyers_agent_id, role: 'buyers_agent', side: 'buyer' });
+        if (dealRow.listing_agent_id)
+          fkEntries.push({ id: dealRow.listing_agent_id, role: 'listing_agent', side: 'seller' });
+        if (dealRow.title_company_id)
+          fkEntries.push({ id: dealRow.title_company_id, role: 'title_officer', side: 'both' });
+
+        if (fkEntries.length > 0) {
+          const { data: contactRows } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, email, phone')
+            .in('id', fkEntries.map((f) => f.id));
+
+          if (contactRows) {
+            const mapped: DealContact[] = fkEntries
+              .map((fk) => {
+                const c = contactRows.find((r: any) => r.id === fk.id);
+                if (!c) return null;
+                const name =
+                  [c.first_name, c.last_name].filter(Boolean).join(' ') ||
+                  c.email ||
+                  'Unknown';
+                return {
+                  participantId: fk.id,
+                  contactId: fk.id,
+                  name,
+                  role: fk.role,
+                  side: fk.side,
+                  email: c.email || null,
+                  phone: c.phone || null,
+                } as DealContact;
+              })
+              .filter(Boolean) as DealContact[];
+
+            setContacts(applyModeFilter(mapped, mode));
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // No contacts found from either source
+      setContacts([]);
       setLoading(false);
     }
+
     load();
   }, [dealId, mode]);
 
@@ -99,7 +157,9 @@ export function DealContactPicker({
 
   if (contacts.length === 0) {
     return (
-      <p className="text-sm text-gray-400 italic">No contacts found on this deal.</p>
+      <p className="text-sm text-gray-400 italic">
+        No contacts found on this deal.
+      </p>
     );
   }
 
