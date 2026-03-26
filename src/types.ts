@@ -198,6 +198,7 @@ export interface DealParticipant {
   contactEmail?: string;
   contactPhone?: string;
   organizationName?: string;
+  company?: string;
 }
 
 // ── Compliance ───────────────────────────────────────────────────────────────
@@ -421,6 +422,7 @@ export interface Deal {
   buyerName?: string;
   sellerName?: string;
   titleCompanyName?: string;
+  titleCompanySide?: 'buyer' | 'seller' | 'internal';  // which side the title company represents
   loanOfficerName?: string;
 
   // ── Property extras ────────────────────────────────────────────────────────

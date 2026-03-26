@@ -578,12 +578,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
     if (!deal.id) return;
     supabase
       .from('deal_participants')
-      .select(`id, deal_role, side, is_primary, is_client_side, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
+      .select(`id, deal_role, side, is_extracted, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
       .eq('deal_id', deal.id)
       .then(({ data }) => {
         if (data) setParticipants(data.map((p: any) => ({
           ...p,
-          side: p.side === 'vendor' ? 'both' : p.side === 'listing' ? 'seller' : p.side,
+          side: p.side === 'listing' ? 'seller' : p.side,
         })));
       });
   }, [deal.id]);
@@ -897,22 +897,20 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
             const renderCard = (p: any) => {
               const c = p.contacts;
               if (!c) return null;
-              const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
-              const agentContact = { name: fullName, phone: c.phone || '', email: c.email || '', isOurClient: !!p.is_client_side };
+              // company-type contacts (e.g. title company) have no first/last name — use company field
+              const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || 'Unknown';
+              const agentContact = { name: fullName, phone: c.phone || '', email: c.email || '', isOurClient: false };
               return (
                 <div
                   key={p.id}
                   className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all"
                 >
                   <div className="flex-none w-5 flex items-center justify-center">
-                    {p.is_client_side
-                      ? <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]" title="Our Client" />
-                      : <span className={`w-2.5 h-2.5 rounded-full ${dotColor(p.deal_role)}`} />
-                    }
+                    <span className={`w-2.5 h-2.5 rounded-full ${dotColor(p.deal_role)}`} />
                   </div>
                   <button className="flex-1 min-w-0 text-left" onClick={onGoToContacts}>
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5">
-                      {roleLabel(p.deal_role)}{p.is_client_side && <span className="ml-1.5 text-red-500">· Our Client</span>}
+                      {roleLabel(p.deal_role)}
                     </p>
                     <p className="text-sm font-semibold text-black truncate">
                       {fullName}{c.company ? <span className="font-normal text-gray-400"> ({c.company})</span> : ''}
@@ -937,7 +935,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
             };
 
             const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both' || p.side === 'vendor');
-            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both' || p.side === 'vendor');
+            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both');
 
             return (
               <div className="flex flex-col gap-3">

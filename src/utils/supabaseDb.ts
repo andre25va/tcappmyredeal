@@ -375,6 +375,7 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       buyer_name: deal.buyerName || null,
       seller_name: deal.sellerName || null,
       title_company_name: deal.titleCompanyName || null,
+      title_company_side: (deal as any).titleCompanySide || null,
       loan_officer_name: deal.loanOfficerName || null,
       property_type: deal.propertyType || null,
       list_price: deal.listPrice ?? null,
@@ -417,6 +418,8 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
     buyerName: deal.buyerName,
     sellerName: deal.sellerName,
     loanOfficerName: deal.loanOfficerName,
+    titleCompanyName: deal.titleCompanyName,
+    titleCompanySide: (deal as any).titleCompanySide,
     orgId: deal.orgId,
   }).catch((e) => console.warn('[saveSingleDeal] participant sync error:', e));
 }
@@ -474,23 +477,25 @@ export async function upsertBuyerSellerParticipants(params: {
   buyerName?: string;
   sellerName?: string;
   loanOfficerName?: string;
+  titleCompanyName?: string;
+  titleCompanySide?: string;
   orgId?: string;
 }): Promise<void> {
-  const { dealId, buyerName, sellerName, loanOfficerName, orgId } = params;
+  const { dealId, buyerName, sellerName, loanOfficerName, titleCompanyName, titleCompanySide, orgId } = params;
 
   // Skip if nothing to sync
-  if (!buyerName && !sellerName && !loanOfficerName) return;
+  if (!buyerName && !sellerName && !loanOfficerName && !titleCompanyName) return;
 
   // Find which roles already have a participant for this deal
   const { data: existing } = await supabase
     .from('deal_participants')
     .select('deal_role')
     .eq('deal_id', dealId)
-    .in('deal_role', ['buyer', 'seller', 'lender']);
+    .in('deal_role', ['buyer', 'seller', 'lender', 'title_officer']);
 
   const existingRoles = new Set((existing ?? []).map((r: any) => r.deal_role as string));
 
-  // Helper: create a stub contact in contacts then link via deal_participants
+  // Helper: create a stub person contact then link via deal_participants
   async function createStubParticipant(
     fullName: string,
     side: string,
@@ -538,6 +543,52 @@ export async function upsertBuyerSellerParticipants(params: {
     }
   }
 
+  // Helper: create a company-type contact (e.g. title company) then link via deal_participants
+  async function createCompanyParticipant(
+    companyName: string,
+    side: string,
+    dealRole: string,
+  ): Promise<void> {
+    const trimmed = companyName.trim();
+    if (!trimmed) return;
+
+    const contactId = crypto.randomUUID();
+
+    // Insert company contact — first_name/last_name are null (allowed after migration)
+    const { error: contactErr } = await supabase.from('contacts').insert({
+      id: contactId,
+      first_name: null,
+      last_name: null,
+      full_name: trimmed,
+      company: trimmed,
+      contact_type: 'company',
+      email: null,
+      phone: null,
+      is_active: true,
+      org_id: orgId ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (contactErr) {
+      console.error('[upsertBuyerSellerParticipants] company contact insert failed:', contactErr);
+      return;
+    }
+
+    // Link to deal_participants
+    const { error: partErr } = await supabase.from('deal_participants').insert({
+      deal_id: dealId,
+      contact_id: contactId,
+      side,
+      deal_role: dealRole,
+      is_primary: false,
+      is_client_side: false,
+      is_extracted: false,
+      organization_id: orgId ?? null,
+    });
+    if (partErr) {
+      console.error('[upsertBuyerSellerParticipants] company participant insert failed:', partErr);
+    }
+  }
+
   if (buyerName && !existingRoles.has('buyer')) {
     await createStubParticipant(buyerName, 'buyer', 'buyer');
   }
@@ -548,6 +599,11 @@ export async function upsertBuyerSellerParticipants(params: {
     // Parse "Name Company Phone" format — use everything before first digit sequence as name
     const namePart = loanOfficerName.replace(/\d[\d.\s-]*$/, '').trim() || loanOfficerName;
     await createStubParticipant(namePart, 'buyer', 'lender');
+  }
+  if (titleCompanyName && !existingRoles.has('title_officer')) {
+    // Title company = vendor side, stored as company-type contact
+    const compSide = titleCompanySide === 'sell' ? 'seller' : titleCompanySide === 'both' ? 'internal' : 'buyer';
+    await createCompanyParticipant(titleCompanyName, compSide, 'title_officer');
   }
 }
 
