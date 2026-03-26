@@ -77,46 +77,65 @@ interface Props {
 
 /**
  * Derive representation from deal_participants (is_client_side flag).
- * Uses participants array directly — more reliable than deprecated buyerAgent/sellerAgent fields.
+ * Falls back to deal.transactionType when participants table is empty.
  */
 function getRepresentation(deal: Deal): { label: string; style: string; tooltip: string } | null {
   const participants = deal.participants ?? [];
 
-  // Find client-side agents by side
-  const buyerClients = participants.filter(
-    p => (p.side === 'buyer') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
-  );
-  const sellerClients = participants.filter(
-    p => (p.side === 'listing' || p.side === 'seller') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
-  );
+  // ── Primary path: use deal_participants when populated ──────────────────
+  if (participants.length > 0) {
+    const buyerClients = participants.filter(
+      p => p.side === 'buyer' && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+    );
+    const sellerClients = participants.filter(
+      p => (p.side === 'listing' || p.side === 'seller') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+    );
 
-  const hasBuyer = buyerClients.length > 0;
-  const hasSeller = sellerClients.length > 0;
+    const hasBuyer  = buyerClients.length > 0;
+    const hasSeller = sellerClients.length > 0;
+    const buyerNames  = buyerClients.map(p => p.contactName).filter(Boolean).join(', ');
+    const sellerNames = sellerClients.map(p => p.contactName).filter(Boolean).join(', ');
 
-  const buyerNames = buyerClients.map(p => p.contactName).filter(Boolean).join(', ');
-  const sellerNames = sellerClients.map(p => p.contactName).filter(Boolean).join(', ');
-
-  if (hasBuyer && hasSeller) {
-    return {
-      label: 'Representing Both Sides',
-      style: 'bg-violet-100 text-violet-700 border-violet-300',
-      tooltip: `Buy side: ${buyerNames || 'Client Agent'} · Sell side: ${sellerNames || 'Client Agent'}`,
-    };
+    if (hasBuyer && hasSeller) {
+      return {
+        label: 'Representing Both Sides',
+        style: 'bg-violet-100 text-violet-700 border-violet-300',
+        tooltip: `Buy side: ${buyerNames || 'Client Agent'} · Sell side: ${sellerNames || 'Client Agent'}`,
+      };
+    }
+    if (hasBuyer) {
+      return {
+        label: 'Representing Buyer',
+        style: 'bg-blue-50 text-blue-700 border-blue-300',
+        tooltip: `Our client: ${buyerNames || 'Buyer Agent'}`,
+      };
+    }
+    if (hasSeller) {
+      return {
+        label: 'Representing Seller',
+        style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
+        tooltip: `Our client: ${sellerNames || 'Seller Agent'}`,
+      };
+    }
   }
-  if (hasBuyer) {
+
+  // ── Fallback: use transactionType when deal_participants is empty ─────────
+  const txType = deal.transactionType;
+  if (txType === 'buyer') {
     return {
       label: 'Representing Buyer',
       style: 'bg-blue-50 text-blue-700 border-blue-300',
-      tooltip: `Our client: ${buyerNames || 'Buyer Agent'}`,
+      tooltip: 'Buyer-side transaction',
     };
   }
-  if (hasSeller) {
+  if (txType === 'seller') {
     return {
       label: 'Representing Seller',
       style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-      tooltip: `Our client: ${sellerNames || 'Seller Agent'}`,
+      tooltip: 'Seller-side transaction',
     };
   }
+
   return null;
 }
 
@@ -176,7 +195,6 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
     { id: 'linked-emails', label: 'Emails', icon: <Inbox size={13} />, badge: linkedEmailUnread > 0 ? linkedEmailUnread : undefined },
-    // Amendments & Addenda are handled inside the Documents tab
     ...(canManageAccess ? [{ id: 'access' as Tab, label: 'Access', icon: <Shield size={14} /> }] : []),
   ];
 
@@ -341,7 +359,6 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
       {/* Tab Bar */}
       <div className="flex-none border-b border-base-300 bg-base-200 flex items-center overflow-x-auto scrollbar-none">
-        {/* Tabs */}
         <div className="flex items-center gap-0 flex-none md:flex-1 overflow-x-auto scrollbar-none px-1 md:px-4">
           {tabs.map(t => (
             <button
