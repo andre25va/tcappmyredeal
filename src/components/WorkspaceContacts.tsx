@@ -64,7 +64,7 @@ interface RoleSlot {
 // ── Role slot definitions ────────────────────────────────────────────────────
 
 const BUY_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'buyers_agent', label: 'Buyer Agent',  contact_type: 'agent'     },
+  { deal_role: 'lead_agent',   label: 'Buyer Agent',   contact_type: 'agent'     },
   { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer'     },
   { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender'    },
   { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector' },
@@ -72,13 +72,13 @@ const BUY_SIDE_ROLES: RoleSlot[] = [
 ];
 
 const SELL_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'listing_agent', label: 'Seller Agent', contact_type: 'agent'    },
+  { deal_role: 'lead_agent',    label: 'Seller Agent', contact_type: 'agent'    },
   { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller'   },
   { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney' },
 ];
 
 const BOTH_SIDES_ROLES: RoleSlot[] = [
-  { deal_role: 'title', label: 'Title Company', contact_type: 'title' },
+  { deal_role: 'title_officer', label: 'Title Company', contact_type: 'title' },
 ];
 
 // Which side a role defaults to (used for legacy deal.contacts fallback)
@@ -1274,7 +1274,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         const fallback: DealParticipantRow[] = deal.contacts.map(c => {
           const side = c.side === 'buy' ? 'buyer' : c.side === 'sell' ? 'seller' : 'both';
           const deal_role = c.role === 'agent'
-            ? (c.side === 'buy' ? 'buyers_agent' : 'listing_agent')
+            ? 'lead_agent'
             : c.role as string;
           return {
             dp_id: c.id,
@@ -1345,7 +1345,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         name: contactName,
         email: '',
         phone: '',
-        role: (deal_role === 'buyers_agent' || deal_role === 'listing_agent' ? 'agent' : deal_role) as ContactRole,
+        role: (deal_role === 'lead_agent' ? 'agent' : deal_role) as ContactRole,
         inNotificationList: true,
         side: side === 'buyer' ? 'buy' : side === 'seller' ? 'sell' : 'both',
       };
@@ -1476,7 +1476,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   // Build Contact from DealParticipantRow for popup (backward compat)
   const dpRowToContact = (dp: DealParticipantRow): Contact => {
     const name = dp.full_name || [dp.first_name, dp.last_name].filter(Boolean).join(' ') || 'Unknown';
-    const role = (dp.deal_role === 'buyers_agent' || dp.deal_role === 'listing_agent' ? 'agent' : dp.deal_role) as ContactRole;
+    const role = (dp.deal_role === 'lead_agent' ? 'agent' : dp.deal_role) as ContactRole;
     const sideUi = dp.side === 'buyer' ? 'buy' : dp.side === 'seller' ? 'sell' : 'both';
     const legacyContact = deal.contacts.find(c => c.directoryId === dp.contact_id || c.id === dp.contact_id);
     return {
