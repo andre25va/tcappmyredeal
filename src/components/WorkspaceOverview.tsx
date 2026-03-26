@@ -826,7 +826,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </div>
             ))}
             {(() => {
-              const titleContact = deal.contacts.find(c => c.role === 'title_officer' || c.role === 'title');
+              const titleContact = deal.contacts.find(c => c.role === 'title' || (c.role as string) === 'title_officer');
               if (!titleContact) return (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
                   <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /></div>
