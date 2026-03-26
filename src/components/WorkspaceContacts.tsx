@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink, FileText, Send, PhoneCall, PhoneOff } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight,
+  Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2,
+  ExternalLink, FileText, Send, AlertCircle, CheckCircle2, Info,
+} from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
 import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
@@ -8,6 +12,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 import { MRDChip } from './ui/MRDChip';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface CallStartedData {
   contactName: string;
@@ -18,9 +24,64 @@ interface CallStartedData {
   startedAt: string;
 }
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onCallStarted?: (callData: CallStartedData) => void; }
+interface Props {
+  deal: Deal;
+  onUpdate: (d: Deal) => void;
+  contactRecords?: ContactRecord[];
+  onCallStarted?: (callData: CallStartedData) => void;
+}
 
-// Which side a role defaults to
+interface DealParticipantRow {
+  dp_id: string;
+  deal_role: string;
+  side: 'buyer' | 'seller' | 'both';
+  is_primary: boolean;
+  is_client_side: boolean;
+  is_extracted: boolean;
+  dp_notes?: string;
+  contact_id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  contact_type?: string;
+  full_name?: string;
+}
+
+interface ChangeDiff {
+  field: string;
+  old_value: string;
+  new_value: string;
+}
+
+interface RoleSlot {
+  deal_role: string;
+  label: string;
+  contact_type: string;
+}
+
+// ── Role slot definitions ────────────────────────────────────────────────────
+
+const BUY_SIDE_ROLES: RoleSlot[] = [
+  { deal_role: 'buyers_agent', label: 'Buyer Agent',  contact_type: 'agent'     },
+  { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer'     },
+  { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender'    },
+  { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector' },
+  { deal_role: 'appraiser',    label: 'Appraiser',     contact_type: 'appraiser' },
+];
+
+const SELL_SIDE_ROLES: RoleSlot[] = [
+  { deal_role: 'listing_agent', label: 'Seller Agent', contact_type: 'agent'    },
+  { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller'   },
+  { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney' },
+];
+
+const BOTH_SIDES_ROLES: RoleSlot[] = [
+  { deal_role: 'title', label: 'Title Company', contact_type: 'title' },
+];
+
+// Which side a role defaults to (used for legacy deal.contacts fallback)
 const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   if (['buyer'].includes(role)) return 'buy';
   if (['seller'].includes(role)) return 'sell';
@@ -30,6 +91,105 @@ const defaultSide = (role: ContactRole): 'buy' | 'sell' | 'both' => {
   return 'both';
 };
 
+// ── Edit Confirm Modal ────────────────────────────────────────────────────────
+const EditConfirmModal: React.FC<{
+  isOpen: boolean;
+  diffs: ChangeDiff[];
+  profileName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  title?: string;
+  subtitle?: string;
+  actionLabel?: string;
+}> = ({ isOpen, diffs, profileName, onConfirm, onCancel, title = 'Confirm Contact Update', subtitle, actionLabel = 'Confirm Update' }) => {
+  const [firstNameInput, setFirstNameInput] = useState('');
+  const profileFirstName = (profileName || '').split(' ')[0];
+  const canConfirm = firstNameInput.trim().toLowerCase() === profileFirstName.toLowerCase();
+
+  useEffect(() => { if (!isOpen) setFirstNameInput(''); }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50" onClick={onCancel}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gray-50 border-b border-gray-200 px-5 py-4">
+          <p className="font-bold text-black text-sm">{title}</p>
+          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Blue info banner */}
+          <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5">
+            <Info size={14} className="text-blue-500 flex-none mt-0.5" />
+            <p className="text-xs text-blue-700 leading-relaxed">
+              This updates the master contact record — changes reflect across all deals &amp; the contacts directory.
+            </p>
+          </div>
+
+          {/* Staff identity */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-none">
+              <span className="text-xs font-bold text-primary">{getInitials(profileName || 'TC')}</span>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-black">{profileName || 'TC Staff'}</p>
+              <p className="text-[11px] text-gray-400">Making this change</p>
+            </div>
+          </div>
+
+          {/* Diff list */}
+          {diffs.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-gray-500">What's changing:</p>
+              {diffs.map((d, i) => (
+                <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-1.5">
+                  <p className="text-[11px] font-semibold text-gray-500 mb-0.5">{d.field}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs text-gray-400 line-through">{d.old_value || '(empty)'}</span>
+                    <span className="text-gray-300">→</span>
+                    <span className="text-xs font-semibold text-black">{d.new_value || '(empty)'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* First name confirmation */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">
+              Type your first name to confirm: <span className="text-primary">{profileFirstName}</span>
+            </label>
+            <input
+              className="input input-bordered input-sm w-full"
+              placeholder={`Type "${profileFirstName}" to confirm`}
+              value={firstNameInput}
+              onChange={e => setFirstNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && canConfirm && onConfirm()}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-4 flex gap-2">
+          <button onClick={onCancel} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className="btn btn-primary btn-sm flex-1 gap-1.5"
+          >
+            <CheckCircle2 size={13} /> {actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ── Deal Sheet Email Compose Modal ───────────────────────────────────────────
 const DealSheetEmailModal: React.FC<{
@@ -60,8 +220,7 @@ const DealSheetEmailModal: React.FC<{
   ].filter(Boolean);
   const defaultBody = lines.join('\n');
 
-  const { profile, primaryOrgId } = useAuth();
-  const userName = profile?.name || 'TC Staff';
+  const { profile } = useAuth();
 
   const [to, setTo] = React.useState(contact.email || '');
   const [subject, setSubject] = React.useState(defaultSubject);
@@ -111,8 +270,7 @@ const DealSheetEmailModal: React.FC<{
   );
 };
 
-// ── Live Call Popup ──────────────────────────────────────────────────────────
-// ── Full contact info popup ──────────────────────────────────────────────────
+// ── Contact Popup ─────────────────────────────────────────────────────────────
 const ContactPopup: React.FC<{
   contact: Contact;
   cr?: ContactRecord;
@@ -122,10 +280,14 @@ const ContactPopup: React.FC<{
   dealId: string;
   dealState?: string;
   deal?: Deal;
+  dpId?: string;
   onCallStarted?: (callData: CallStartedData) => void;
   onEdit: (updates: { name: string; phone: string; email: string; company: string; notes: string }) => Promise<void>;
   onUpdateContact?: (updated: Contact) => void;
-}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, onCallStarted, onEdit, onUpdateContact }) => {
+  onUpdateSide?: (dpId: string, side: 'buyer' | 'seller' | 'both') => Promise<void>;
+  primaryOrgId?: () => string | null;
+}> = ({ contact, cr, onClose, onToggleNotif, onRemove, dealId, dealState, deal, dpId, onCallStarted, onEdit, onUpdateContact, onUpdateSide, primaryOrgId }) => {
+  const { profile } = useAuth();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -140,6 +302,11 @@ const ContactPopup: React.FC<{
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
   const emailMenuRef = useRef<HTMLDivElement>(null);
 
+  // Edit confirm modal state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDiffs, setPendingDiffs] = useState<ChangeDiff[]>([]);
+  const [pendingForm, setPendingForm] = useState<typeof form | null>(null);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (emailMenuRef.current && !emailMenuRef.current.contains(e.target as Node)) setEmailMenuOpen(false);
@@ -148,7 +315,6 @@ const ContactPopup: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Fetch license lookup URL for the deal's state
   useEffect(() => {
     if (!dealState) return;
     supabase
@@ -161,17 +327,43 @@ const ContactPopup: React.FC<{
       });
   }, [dealState]);
 
-  // MLS memberships matching the deal's state
   const stateMls = dealState && cr?.mlsMemberships?.length
     ? cr.mlsMemberships.filter(m => m.stateCode === dealState)
     : [];
 
-  const handleSave = async () => {
+  // Compute diff between form and original contact values
+  const computeDiff = (f: typeof form): ChangeDiff[] => {
+    const diffs: ChangeDiff[] = [];
+    const origName = contact.name || '';
+    const origPhone = contact.phone || '';
+    const origEmail = contact.email || '';
+    const origCompany = contact.company || cr?.company || '';
+    if (f.name.trim() !== origName)    diffs.push({ field: 'Name',    old_value: origName,    new_value: f.name.trim() });
+    if (f.phone !== origPhone)          diffs.push({ field: 'Phone',   old_value: origPhone,   new_value: f.phone });
+    if (f.email !== origEmail)          diffs.push({ field: 'Email',   old_value: origEmail,   new_value: f.email });
+    if (f.company !== origCompany)      diffs.push({ field: 'Company', old_value: origCompany, new_value: f.company });
+    return diffs;
+  };
+
+  const handleSaveClick = () => {
     if (!form.name.trim()) return;
+    const diffs = computeDiff(form);
+    if (diffs.length === 0) {
+      setEditing(false);
+      return;
+    }
+    setPendingDiffs(diffs);
+    setPendingForm({ ...form });
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmSave = async () => {
+    if (!pendingForm) return;
     setSaving(true);
     try {
-      await onEdit(form);
+      await onEdit(pendingForm);
       setEditing(false);
+      setConfirmOpen(false);
     } finally {
       setSaving(false);
     }
@@ -179,84 +371,94 @@ const ContactPopup: React.FC<{
 
   if (editing) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditing(false)}>
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-          {/* Header */}
-          <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-none ${roleAvatarBg(contact.role)}`}>
-              {getInitials(form.name || contact.name)}
+      <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditing(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-none ${roleAvatarBg(contact.role)}`}>
+                {getInitials(form.name || contact.name)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-black text-base leading-tight">Edit Contact</p>
+                <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
+              </div>
+              <button onClick={() => setEditing(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-black text-base leading-tight">Edit Contact</p>
-              <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
-            </div>
-            <button onClick={() => setEditing(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
-          </div>
-          {/* Edit form */}
-          <div className="px-5 py-4 space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Full Name</label>
-              <input
-                className="input input-bordered input-sm w-full"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Full name"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* Edit form */}
+            <div className="px-5 py-4 space-y-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Phone</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Full Name</label>
                 <input
                   className="input input-bordered input-sm w-full"
-                  value={form.phone}
-                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                  placeholder="Phone"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">Phone</label>
+                  <input
+                    className="input input-bordered input-sm w-full"
+                    value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="Phone"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">Email</label>
+                  <input
+                    className="input input-bordered input-sm w-full"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="Email"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Company</label>
+                <input
+                  className="input input-bordered input-sm w-full"
+                  value={form.company}
+                  onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                  placeholder="Company"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Email</label>
-                <input
-                  className="input input-bordered input-sm w-full"
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="Email"
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Notes</label>
+                <textarea
+                  className="textarea textarea-bordered w-full text-sm resize-none"
+                  rows={2}
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Notes..."
                 />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Company</label>
-              <input
-                className="input input-bordered input-sm w-full"
-                value={form.company}
-                onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
-                placeholder="Company"
-              />
+            {/* Footer */}
+            <div className="px-5 pb-4 flex gap-2">
+              <button onClick={() => setEditing(false)} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+              <button
+                onClick={handleSaveClick}
+                disabled={saving || !form.name.trim()}
+                className="btn btn-primary btn-sm flex-1 gap-1.5"
+              >
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Save Changes
+              </button>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Notes</label>
-              <textarea
-                className="textarea textarea-bordered w-full text-sm resize-none"
-                rows={2}
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Notes..."
-              />
-            </div>
-          </div>
-          {/* Footer */}
-          <div className="px-5 pb-4 flex gap-2">
-            <button onClick={() => setEditing(false)} className="btn btn-ghost btn-sm flex-1">Cancel</button>
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.name.trim()}
-              className="btn btn-primary btn-sm flex-1 gap-1.5"
-            >
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              Save Changes
-            </button>
           </div>
         </div>
-      </div>
+        {/* Edit confirm modal */}
+        <EditConfirmModal
+          isOpen={confirmOpen}
+          diffs={pendingDiffs}
+          profileName={profile?.name || 'TC Staff'}
+          onConfirm={handleConfirmSave}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      </>
     );
   }
 
@@ -318,7 +520,13 @@ const ContactPopup: React.FC<{
           {contact.phone && (
             <div className="flex items-center gap-3">
               <Phone size={14} className="text-gray-400 flex-none" />
-              <a href={`tel:${contact.phone}`} onClick={() => onCallStarted?.({ contactName: contact.name, contactPhone: contact.phone!, contactId: contact.id, dealId, startedAt: new Date().toISOString() })} className="text-sm text-black hover:text-primary">{formatPhone(contact.phone)}</a>
+              <a
+                href={`tel:${contact.phone}`}
+                onClick={() => onCallStarted?.({ contactName: contact.name, contactPhone: contact.phone!, contactId: contact.id, dealId, startedAt: new Date().toISOString() })}
+                className="text-sm text-black hover:text-primary"
+              >
+                {formatPhone(contact.phone)}
+              </a>
               <div onClick={() => onCallStarted?.({ contactName: contact.name, contactPhone: contact.phone!, contactId: contact.id, dealId, startedAt: new Date().toISOString() })}>
                 <CallButton
                   phoneNumber={contact.phone}
@@ -352,7 +560,7 @@ const ContactPopup: React.FC<{
             </div>
           )}
 
-          {/* ── State-matched MLS memberships ── */}
+          {/* State-matched MLS memberships */}
           {stateMls.length > 0 && (
             <div className="pt-1 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-400 mb-1.5 flex items-center gap-1.5">
@@ -372,9 +580,7 @@ const ContactPopup: React.FC<{
                     {mls.boardName && (
                       <p className="text-xs text-gray-500 mt-0.5">{mls.boardName}</p>
                     )}
-                    <span className={`badge badge-xs mt-1 ${
-                      mls.status === 'active' ? 'badge-success' : 'badge-warning'
-                    }`}>{mls.status}</span>
+                    <span className={`badge badge-xs mt-1 ${mls.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{mls.status}</span>
                   </div>
                 ))}
               </div>
@@ -388,6 +594,7 @@ const ContactPopup: React.FC<{
               </span>
             </div>
           )}
+
           <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
             {contact.inNotificationList
               ? <><Bell size={13} className="text-primary" /><span className="text-xs text-gray-500">On notification list</span></>
@@ -395,7 +602,7 @@ const ContactPopup: React.FC<{
             }
           </div>
 
-          {/* Additional people (co-buyers / co-sellers / spouses) for client-side contacts */}
+          {/* Additional people for client-side contacts */}
           {onUpdateContact && (['buyer', 'seller', 'client'].includes(contact.role) || !(['agent', 'lender', 'title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc'] as string[]).includes(contact.role)) && (
             <div className="pt-1 border-t border-gray-100">
               <AdditionalPeopleSection
@@ -406,8 +613,26 @@ const ContactPopup: React.FC<{
             </div>
           )}
 
-          {/* Both Sides toggle for provider contacts */}
-          {(['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
+          {/* Representing both sides toggle */}
+          {dpId && onUpdateSide && (['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
+            <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-xs checkbox-primary"
+                  checked={contact.side === 'both'}
+                  onChange={async (e) => {
+                    const newSide = e.target.checked ? 'both' : ((contact as any).originalSide || defaultSide(contact.role) === 'buy' ? 'buyer' : 'seller');
+                    await onUpdateSide(dpId, newSide as 'buyer' | 'seller' | 'both');
+                  }}
+                />
+                <span className="text-xs text-gray-500">Representing both sides</span>
+              </label>
+            </div>
+          )}
+
+          {/* Legacy both sides toggle for contacts without dpId */}
+          {!dpId && (['title', 'escrow', 'attorney', 'inspector', 'appraiser', 'tc', 'other'] as string[]).includes(contact.role) && !contact.id.startsWith('__agent_') && (
             <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
@@ -416,10 +641,8 @@ const ContactPopup: React.FC<{
                   checked={contact.side === 'both'}
                   onChange={async (e) => {
                     if (e.target.checked) {
-                      // Remember current side before switching to both
                       await onEdit({ side: 'both', originalSide: contact.side || defaultSide(contact.role) || 'sell' } as any);
                     } else {
-                      // Revert to the side they were on before
                       await onEdit({ side: ((contact as any).originalSide || defaultSide(contact.role) || 'sell') } as any);
                     }
                   }}
@@ -432,7 +655,6 @@ const ContactPopup: React.FC<{
 
         {/* Actions */}
         <div className="px-5 pb-4 space-y-2">
-          {/* Look Up License button — only if state has a portal URL */}
           {licenseUrl && (
             <a
               href={licenseUrl}
@@ -456,194 +678,11 @@ const ContactPopup: React.FC<{
           </div>
         </div>
       </div>
-
     </div>
   );
 };
 
-// ── Searchable contact picker ────────────────────────────────────────────────
-const ContactPicker: React.FC<{
-  contactRecords: ContactRecord[];
-  existingIds: string[];
-  defaultSide: 'buy' | 'sell' | 'both';
-  pickerType: 'client' | 'team' | 'contact';
-  onAdd: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
-  onClose: () => void;
-}> = ({ contactRecords, existingIds, defaultSide: presetSide, pickerType, onAdd, onClose }) => {
-  const { profile, primaryOrgId } = useAuth();
-  const [search, setSearch] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newCompany, setNewCompany] = useState('');
-  const [isCompany, setIsCompany] = useState(false);
-  const defaultRole = presetSide === 'buy' ? 'buyer' : presetSide === 'sell' ? 'seller' : 'agent';
-  const [newRole, setNewRole] = useState(defaultRole);
-  const side = presetSide;
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleCreateContact = async () => {
-    if (!newName.trim()) return;
-    try {
-      const { supabase } = await import('../lib/supabase');
-      const userId = profile?.id ?? null;
-      const orgId = primaryOrgId() ?? null;
-      const nameParts = newName.trim().split(' ');
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(' ') || '';
-      const { data: newContact, error } = await supabase.from('contacts').insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: newEmail || null,
-        phone: newPhone || null,
-        company: newCompany || null,
-        contact_type: newRole,
-        org_id: orgId,
-        is_company: isCompany || null,
-      }).select().single();
-      if (error) throw error;
-      const cr: ContactRecord = {
-        id: newContact.id,
-        fullName: newName.trim(),
-        firstName,
-        lastName,
-        email: newEmail || '',
-        phone: newPhone || '',
-        company: newCompany || '',
-        contactType: newRole as any,
-        isClient: false,
-        timezone: '',
-        notes: '',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        licenses: [],
-        mlsMemberships: [],
-        organizations: [],
-      };
-      onAdd(cr, side);
-      onClose();
-    } catch (err) {
-      console.error('Failed to create contact:', err);
-    }
-  };
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  const byType = (cr: ContactRecord) => {
-    if (pickerType === 'client') return cr.contactType === 'agent' && cr.isClient;
-    if (pickerType === 'team') return ['agent', 'tc', 'other', 'inspector'].includes(cr.contactType);
-    return true;
-  };
-
-  const filtered = contactRecords.filter(cr =>
-    !existingIds.includes(cr.id) &&
-    byType(cr) &&
-    (cr.fullName.toLowerCase().includes(search.toLowerCase()) ||
-     cr.email?.toLowerCase().includes(search.toLowerCase()) ||
-     roleLabel(cr.contactType).toLowerCase().includes(search.toLowerCase()) ||
-     cr.company?.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const pickerLabel = pickerType === 'client' ? 'Select Agent Client'
-    : pickerType === 'team' ? 'Select Team Member'
-    : 'Select Contact';
-
-  return (
-    <div ref={ref} className="absolute right-0 z-40 bg-white border border-gray-200 rounded-2xl shadow-2xl w-72 overflow-hidden">
-      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full flex-none ${side === 'buy' ? 'bg-blue-500' : side === 'sell' ? 'bg-green-500' : 'bg-gray-400'}`} />
-        <span className="text-xs font-semibold text-gray-600">
-          {pickerLabel} — {side === 'buy' ? 'Buy Side' : side === 'sell' ? 'Sell Side' : 'Both Sides'}
-        </span>
-      </div>
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
-        <Search size={13} className="text-gray-400 flex-none" />
-        <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-          className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-          placeholder="Search contacts..." />
-        {search && <button onClick={() => setSearch('')}><X size={12} className="text-gray-300" /></button>}
-      </div>
-      <div className="max-h-56 overflow-y-auto">
-        {filtered.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-4">No contacts found</p>
-        )}
-        {filtered.map(cr => (
-          <button key={cr.id} onClick={() => { onAdd(cr, side); onClose(); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(cr.contactType)}`}>
-              {getInitials(cr.fullName)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-black truncate">{cr.fullName}</p>
-              <p className="text-xs text-gray-400 truncate">{roleLabel(cr.contactType)}{cr.company ? ` · ${cr.company}` : ''}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-      {/* Create new contact inline */}
-      {showCreateForm ? (
-        <div className="border-t border-gray-100 p-3 space-y-2 bg-gray-50">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Contact</p>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" className="checkbox checkbox-xs checkbox-primary" checked={isCompany} onChange={e => setIsCompany(e.target.checked)} />
-              <span className="text-xs text-gray-500">Company</span>
-            </label>
-          </div>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={isCompany ? "Contact name *" : "Full name *"}
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          {isCompany && (
-            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company name"
-              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-yellow-50" />
-          )}
-          <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone (optional)"
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email (optional)"
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          {!isCompany && (
-            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company (optional)"
-              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
-          )}
-          <select value={newRole} onChange={e => setNewRole(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white">
-            <option value="buyer">Buyer</option>
-            <option value="seller">Seller</option>
-            <option value="agent">Agent</option>
-            <option value="lender">Lender</option>
-            <option value="title">Title Officer</option>
-            <option value="attorney">Attorney</option>
-            <option value="inspector">Inspector</option>
-            <option value="tc">TC</option>
-            <option value="client">Client</option>
-            <option value="other">Other</option>
-          </select>
-          <div className="flex gap-2 pt-1">
-            <button onClick={handleCreateContact} disabled={!newName.trim()}
-              className="flex-1 btn btn-primary btn-xs text-white rounded-lg disabled:opacity-40">
-              Create &amp; Add
-            </button>
-            <button onClick={() => setShowCreateForm(false)} className="btn btn-ghost btn-xs rounded-lg">Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <button onClick={() => setShowCreateForm(true)}
-          className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-gray-100 hover:bg-gray-50 transition-colors text-left">
-          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-none">
-            <UserPlus size={13} className="text-primary" />
-          </div>
-          <span className="text-sm font-medium text-primary">Create new contact</span>
-        </button>
-      )}
-    </div>
-  );
-};
-
-// ── Additional People (spouses/co-buyers) inside agent client card ───────────
+// ── Additional People Section ─────────────────────────────────────────────────
 const MARITAL_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated', 'Other'];
 const RELATIONSHIP_OPTIONS = ['Spouse', 'Co-Buyer', 'Co-Seller', 'Partner', 'Guarantor', 'POA', 'Family Member', 'Other'];
 
@@ -757,7 +796,7 @@ const AdditionalPeopleSection: React.FC<{
   );
 };
 
-// ── Agent Client Card (highlighted, prominent) ───────────────────────────────
+// ── Agent Client Card ─────────────────────────────────────────────────────────
 const AgentClientCard: React.FC<{
   contact: Contact;
   onClick: () => void;
@@ -787,190 +826,676 @@ const AgentClientCard: React.FC<{
   </div>
 );
 
-// ── Regular Contact Card ─────────────────────────────────────────────────────
-const ContactCard: React.FC<{ contact: Contact; cr?: ContactRecord; onClick: () => void }> = ({ contact, cr, onClick }) => (
-  <button onClick={onClick}
-    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all text-left group">
-    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(contact.role)}`}>
-      {getInitials(contact.name)}
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-1 min-w-0">
-        {contact.isCompany && <Building2 size={11} className="text-indigo-500 flex-none" />}
-        <span className="text-sm font-semibold text-black truncate block">{contact.name}</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-gray-500">{roleLabel(contact.role)}</span>
-        {(contact.company || cr?.company) && <span className="text-xs text-gray-400">· {contact.company || cr?.company}</span>}
-      </div>
-    </div>
-    <div className="flex items-center gap-1.5 flex-none">
-      {contact.inNotificationList && <Bell size={11} className="text-primary/50" />}
-      <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors" />
-    </div>
-  </button>
-);
+// ── Contact Search Modal (for empty role slots) ────────────────────────────────
+const ContactSearchModal: React.FC<{
+  slot: RoleSlot;
+  columnSide: 'buyer' | 'seller';
+  dealId: string;
+  orgId: string | null;
+  profileName: string;
+  onClose: () => void;
+  onConfirmAdd: (contactId: string, contactName: string, deal_role: string, side: 'buyer' | 'seller' | 'both') => Promise<void>;
+}> = ({ slot, columnSide, dealId, orgId, profileName, onClose, onConfirmAdd }) => {
+  const [search, setSearch] = useState('');
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [allContacts, setAllContacts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newCompany, setNewCompany] = useState('');
 
-// ── Side Section (one column) ────────────────────────────────────────────────
-interface SideSectionProps {
-  title: string;
-  dotColor: string;
-  contacts: Contact[];
-  side: 'buy' | 'sell';
-  showAddMenu: 'buy' | 'sell' | null;
-  setShowAddMenu: (v: 'buy' | 'sell' | null) => void;
-  pickerConfig: { side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null;
-  setPickerConfig: (v: { side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null) => void;
-  existingDirIds: string[];
-  contactRecords: ContactRecord[];
-  addFromDirectory: (cr: ContactRecord, side: 'buy' | 'sell' | 'both') => void;
-  deal: Deal;
-  onUpdate: (d: Deal) => void;
-  setPopupContactId: (id: string | null) => void;
-}
+  // Add confirm modal state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<any>(null);
 
-const SideSection: React.FC<SideSectionProps> = ({
-  title, dotColor, contacts, side,
-  showAddMenu, setShowAddMenu,
-  pickerConfig, setPickerConfig,
-  existingDirIds, contactRecords,
-  addFromDirectory, deal, onUpdate,
-  setPopupContactId,
-}) => {
-  const agentClient = contacts.find(c => deal.participants?.some(p => p.contactId === (c.directoryId || c.id) && p.isClientSide));
-  const otherContacts = contacts.filter(c => c.id !== agentClient?.id);
-  const hasAgentClient = !!agentClient;
+  const { profile, primaryOrgId } = useAuth();
 
-  const menuWrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) {
-        if (showAddMenu === side) setShowAddMenu(null);
+    const load = async () => {
+      setLoading(true);
+      try {
+        const effectiveOrgId = orgId || primaryOrgId?.();
+        // Role-matched
+        const { data: matched } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
+          .eq('contact_type', slot.contact_type)
+          .is('deleted_at', null)
+          .order('first_name')
+          .limit(30);
+        setContacts(matched || []);
+
+        // All contacts for fallback
+        const { data: all } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
+          .is('deleted_at', null)
+          .order('first_name')
+          .limit(100);
+        setAllContacts(all || []);
+      } catch (err) {
+        console.error('ContactSearchModal load error:', err);
+      } finally {
+        setLoading(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [side, showAddMenu, setShowAddMenu]);
+    load();
+  }, [slot.contact_type, orgId]);
 
-  const openMenu = () => { setShowAddMenu(showAddMenu === side ? null : side); setPickerConfig(null); };
-  const openPicker = (type: 'client' | 'team' | 'contact') => { setPickerConfig({ side, type }); setShowAddMenu(null); };
+  const sideLabel = columnSide === 'buyer' ? 'Buy Side' : 'Sell Side';
+
+  const displayList = showAll ? allContacts : contacts;
+  const filtered = displayList.filter(c => {
+    const name = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ');
+    const q = search.toLowerCase();
+    return !q || name.toLowerCase().includes(q) || (c.company || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q);
+  });
+
+  const otherCount = allContacts.length - contacts.length;
+
+  const handleSelectContact = (c: any) => {
+    setSelectedContact(c);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmAdd = async () => {
+    if (!selectedContact) return;
+    const name = selectedContact.full_name || [selectedContact.first_name, selectedContact.last_name].filter(Boolean).join(' ') || 'Contact';
+    await onConfirmAdd(selectedContact.id, name, slot.deal_role, columnSide);
+    setConfirmOpen(false);
+    onClose();
+  };
+
+  const handleCreateContact = async () => {
+    if (!newName.trim()) return;
+    try {
+      const effectiveOrgId = orgId || primaryOrgId?.();
+      const parts = newName.trim().split(' ');
+      const { data: newContact, error } = await supabase.from('contacts').insert({
+        first_name: parts[0],
+        last_name: parts.slice(1).join(' ') || null,
+        email: newEmail || null,
+        phone: newPhone || null,
+        company: newCompany || null,
+        contact_type: slot.contact_type,
+        org_id: effectiveOrgId,
+      }).select().single();
+      if (error) throw error;
+      const name = newName.trim();
+      await onConfirmAdd(newContact.id, name, slot.deal_role, columnSide);
+      onClose();
+    } catch (err) {
+      console.error('Failed to create contact:', err);
+    }
+  };
+
+  const confirmSubtitle = selectedContact
+    ? `Adding ${selectedContact.full_name || [selectedContact.first_name, selectedContact.last_name].filter(Boolean).join(' ')} as ${slot.label} on ${sideLabel}`
+    : '';
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
-          <h3 className="font-bold text-base text-black">{title}</h3>
-          <span className="text-xs text-gray-400 font-medium">({contacts.length})</span>
-        </div>
-        <div className="relative" ref={menuWrapRef}>
-          <button onClick={openMenu}
-            className="btn btn-xs btn-outline gap-1 border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400">
-            <Plus size={11} /> Add <ChevronDown size={10} />
-          </button>
-
-          {showAddMenu === side && (
-            <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden w-52">
-              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                <p className="text-xs text-gray-500 font-semibold">Add to {title}</p>
-              </div>
-              <button onClick={() => openPicker('client')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 transition-colors text-left">
-                <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center flex-none">
-                  <UserCheck size={13} className="text-red-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-black">Agent Client</p>
-                  <p className="text-xs text-gray-400">Our client (red dot)</p>
-                </div>
-              </button>
-              {hasAgentClient && (
-                <button onClick={() => openPicker('team')}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 transition-colors text-left">
-                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-none">
-                    <Users size={13} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-black">Team Member</p>
-                    <p className="text-xs text-gray-400">TC, showing agent…</p>
-                  </div>
-                </button>
-              )}
-              <button onClick={() => openPicker('contact')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-green-50 transition-colors text-left">
-                <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center flex-none">
-                  <User size={13} className="text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-black">Contact</p>
-                  <p className="text-xs text-gray-400">Lender, Title, End Client…</p>
-                </div>
-              </button>
+    <>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={onClose}>
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className="bg-gray-50 border-b border-gray-200 px-5 py-4 flex items-center justify-between flex-none">
+            <div>
+              <p className="font-bold text-black text-sm">Add {slot.label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">Showing {slot.label}s from your contacts directory</p>
             </div>
-          )}
+            <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+          </div>
 
-          {pickerConfig?.side === side && (
-            <ContactPicker
-              contactRecords={contactRecords}
-              existingIds={existingDirIds}
-              defaultSide={side}
-              pickerType={pickerConfig.type}
-              onAdd={addFromDirectory}
-              onClose={() => setPickerConfig(null)}
+          {/* Search */}
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-none">
+            <Search size={13} className="text-gray-400 flex-none" />
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+              placeholder="Search by name, company..."
             />
-          )}
+            {search && <button onClick={() => setSearch('')}><X size={12} className="text-gray-300" /></button>}
+          </div>
+
+          {/* Results */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="loading loading-spinner loading-sm text-primary" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+                <User size={24} className="text-gray-200 mb-2" />
+                <p className="text-sm text-gray-400 font-medium">No {slot.label}s in your directory yet</p>
+                <p className="text-xs text-gray-300 mt-0.5">Create a new contact below</p>
+              </div>
+            ) : (
+              filtered.map(c => {
+                const name = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => handleSelectContact(c)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${roleAvatarBg(c.contact_type as ContactRole)}`}>
+                      {getInitials(name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-black truncate">{name}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        {c.company && <span className="truncate">{c.company}</span>}
+                        {c.company && c.email && <span>·</span>}
+                        {c.email && <span className="truncate">{c.email}</span>}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+
+            {/* Show all fallback */}
+            {!showAll && otherCount > 0 && !loading && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="w-full text-xs text-primary/70 hover:text-primary py-2 px-4 border-t border-gray-100 text-left hover:bg-gray-50"
+              >
+                Search all contacts instead ({otherCount} others)
+              </button>
+            )}
+          </div>
+
+          {/* Create new contact */}
+          <div className="flex-none border-t border-gray-100">
+            {showCreateForm ? (
+              <div className="p-3 space-y-2 bg-gray-50">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New {slot.label}</p>
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name *"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone (optional)"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email (optional)"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+                <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company (optional)"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary" />
+                <div className="flex gap-2 pt-1">
+                  <button onClick={handleCreateContact} disabled={!newName.trim()}
+                    className="flex-1 btn btn-primary btn-xs disabled:opacity-40">
+                    Create &amp; Add
+                  </button>
+                  <button onClick={() => setShowCreateForm(false)} className="btn btn-ghost btn-xs">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-none">
+                  <UserPlus size={13} className="text-primary" />
+                </div>
+                <span className="text-sm font-medium text-primary">Create new contact</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Contact cards */}
-      {contacts.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center py-8 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-          <Users size={20} className="text-gray-300 mb-2" />
-          <p className="text-sm text-gray-400 font-medium">No contacts yet</p>
-          <button onClick={() => setShowAddMenu(side)} className="text-xs text-primary mt-1 hover:underline font-medium">+ Add first contact</button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {/* Agent client card (if present) */}
-          {agentClient && (
-            <AgentClientCard
-              contact={agentClient}
-              onClick={() => setPopupContactId(agentClient.id)}
-              onUpdateContact={(updated) => {
-                onUpdate({
-                  ...deal,
-                  contacts: deal.contacts.map(c => c.id === updated.id ? updated : c),
-                  updatedAt: new Date().toISOString(),
-                });
-              }}
-            />
-          )}
+      {/* Add confirm modal */}
+      <EditConfirmModal
+        isOpen={confirmOpen}
+        diffs={[]}
+        profileName={profileName}
+        onConfirm={handleConfirmAdd}
+        onCancel={() => setConfirmOpen(false)}
+        title={`Add ${slot.label}`}
+        subtitle={confirmSubtitle}
+        actionLabel="Confirm Add"
+      />
+    </>
+  );
+};
 
-          {/* Other contacts — flat list, no tree lines */}
-          {otherContacts.map(c => (
-            <ContactCard
-              key={c.id}
-              contact={c}
-              cr={contactRecords.find(d => d.id === c.directoryId)}
-              onClick={() => setPopupContactId(c.id)}
-            />
-          ))}
+// ── Role Slot Row ─────────────────────────────────────────────────────────────
+const RoleSlotRow: React.FC<{
+  slot: RoleSlot;
+  participant?: DealParticipantRow;
+  columnSide: 'buyer' | 'seller';
+  dealId: string;
+  onOpenContact: (dp: DealParticipantRow) => void;
+  onOpenSearch: (slot: RoleSlot, side: 'buyer' | 'seller') => void;
+  onCallStarted?: (data: CallStartedData) => void;
+}> = ({ slot, participant, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted }) => {
+  if (!participant) {
+    return (
+      <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 transition-all group">
+        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-none">
+          <Search size={12} className="text-gray-300" />
         </div>
-      )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-400">{slot.label}</p>
+          <p className="text-[11px] text-gray-300">Not set</p>
+        </div>
+        <button
+          onClick={() => onOpenSearch(slot, columnSide)}
+          className="opacity-0 group-hover:opacity-100 btn btn-ghost btn-xs btn-square transition-opacity"
+          title={`Add ${slot.label}`}
+        >
+          <Plus size={12} className="text-gray-400" />
+        </button>
+      </div>
+    );
+  }
+
+  const name = participant.full_name ||
+    [participant.first_name, participant.last_name].filter(Boolean).join(' ') ||
+    'Unknown';
+  const avatarBg = roleAvatarBg((participant.contact_type || slot.contact_type) as ContactRole);
+
+  return (
+    <button
+      onClick={() => onOpenContact(participant)}
+      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all text-left group"
+    >
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${avatarBg}`}>
+        {getInitials(name)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="text-sm font-semibold text-black truncate">{name}</p>
+          {participant.is_extracted && (
+            <span className="badge badge-xs bg-green-100 text-green-700 border-green-200 flex-none text-[10px]">extracted</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-500">{slot.label}</span>
+          {participant.company && <span className="text-xs text-gray-400">· {participant.company}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-none">
+        {participant.phone && (
+          <div onClick={e => e.stopPropagation()}>
+            <CallButton
+              phoneNumber={participant.phone}
+              contactName={name}
+              contactId={participant.contact_id}
+              dealId={dealId}
+              size="sm"
+              variant="icon"
+              onCallStarted={(callId) => onCallStarted?.({
+                contactName: name,
+                contactPhone: participant.phone!,
+                contactId: participant.contact_id,
+                dealId,
+                callSid: callId,
+                startedAt: new Date().toISOString(),
+              })}
+            />
+          </div>
+        )}
+        <ChevronRight size={12} className="text-gray-300 group-hover:text-primary transition-colors" />
+      </div>
+    </button>
+  );
+};
+
+// ── Role-Slot Column ──────────────────────────────────────────────────────────
+const RoleSlotColumn: React.FC<{
+  title: string;
+  dotColor: string;
+  bgColor: string;
+  borderColor: string;
+  roles: RoleSlot[];
+  sharedRoles: RoleSlot[];
+  participants: DealParticipantRow[];
+  columnSide: 'buyer' | 'seller';
+  dealId: string;
+  onOpenContact: (dp: DealParticipantRow) => void;
+  onOpenSearch: (slot: RoleSlot, side: 'buyer' | 'seller') => void;
+  onCallStarted?: (data: CallStartedData) => void;
+}> = ({ title, dotColor, bgColor, borderColor, roles, sharedRoles, participants, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted }) => {
+  // Find participant for a given slot
+  const getParticipant = (deal_role: string): DealParticipantRow | undefined => {
+    return participants.find(p =>
+      p.deal_role === deal_role &&
+      (p.side === columnSide || p.side === 'both')
+    );
+  };
+
+  const allSlots = [...roles, ...sharedRoles];
+
+  return (
+    <div className={`${bgColor} ${borderColor} border rounded-xl p-4`}>
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+        <h3 className="font-bold text-base text-black">{title}</h3>
+        <span className="text-xs text-gray-400 font-medium">
+          ({participants.filter(p => p.side === columnSide || p.side === 'both').length})
+        </span>
+      </div>
+      <div className="space-y-2">
+        {allSlots.map(slot => (
+          <RoleSlotRow
+            key={slot.deal_role}
+            slot={slot}
+            participant={getParticipant(slot.deal_role)}
+            columnSide={columnSide}
+            dealId={dealId}
+            onOpenContact={onOpenContact}
+            onOpenSearch={onOpenSearch}
+            onCallStarted={onCallStarted}
+          />
+        ))}
+      </div>
     </div>
   );
 };
 
-// ── Main Component ───────────────────────────────────────────────────────────
+// ── Main Component ────────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
-  const { profile } = useAuth();
+  const { profile, primaryOrgId } = useAuth();
   const userName = profile?.name || 'TC Staff';
+
+  // Legacy state (kept for notification list + popup)
   const [showAddMenu, setShowAddMenu] = useState<'buy' | 'sell' | null>(null);
   const [pickerConfig, setPickerConfig] = useState<{ side: 'buy' | 'sell'; type: 'client' | 'team' | 'contact' } | null>(null);
-  const [popupContactId, setPopupContactId] = useState<string | null>(null);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // DB-backed participants state
+  const [participants, setParticipants] = useState<DealParticipantRow[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(true);
+
+  // Popup state — keyed by dp_id for DB participants, or contact id for legacy
+  const [popupDp, setPopupDp] = useState<DealParticipantRow | null>(null);
+
+  // Contact search modal
+  const [searchSlot, setSearchSlot] = useState<{ slot: RoleSlot; side: 'buyer' | 'seller' } | null>(null);
+
+  // Normalize deal state
+  const dealState = deal.state?.trim().toUpperCase().slice(0, 2) || undefined;
+
+  // Load participants from DB
+  const loadParticipants = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('deal_participants')
+        .select(`
+          id,
+          deal_role,
+          side,
+          is_primary,
+          is_client_side,
+          is_extracted,
+          notes,
+          contact:contact_id (
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            company,
+            contact_type,
+            full_name
+          )
+        `)
+        .eq('deal_id', deal.id);
+
+      if (error) throw error;
+
+      const rows: DealParticipantRow[] = (data || []).map((dp: any) => {
+        const c = dp.contact as any;
+        return {
+          dp_id: dp.id,
+          deal_role: dp.deal_role,
+          side: dp.side as 'buyer' | 'seller' | 'both',
+          is_primary: dp.is_primary ?? false,
+          is_client_side: dp.is_client_side ?? false,
+          is_extracted: dp.is_extracted ?? false,
+          dp_notes: dp.notes,
+          contact_id: c?.id,
+          first_name: c?.first_name,
+          last_name: c?.last_name,
+          email: c?.email,
+          phone: c?.phone,
+          company: c?.company,
+          contact_type: c?.contact_type,
+          full_name: c?.full_name,
+        };
+      });
+
+      // If no participants in DB, fall back to deal.contacts to map to participant rows
+      if (rows.length === 0 && deal.contacts?.length > 0) {
+        const fallback: DealParticipantRow[] = deal.contacts.map(c => {
+          const side = c.side === 'buy' ? 'buyer' : c.side === 'sell' ? 'seller' : 'both';
+          const deal_role = c.role === 'agent'
+            ? (c.side === 'buy' ? 'buyers_agent' : 'listing_agent')
+            : c.role as string;
+          return {
+            dp_id: c.id,
+            deal_role,
+            side: (side as 'buyer' | 'seller' | 'both'),
+            is_primary: false,
+            is_client_side: false,
+            is_extracted: false,
+            dp_notes: undefined,
+            contact_id: c.directoryId || c.id,
+            first_name: c.firstName || c.name.split(' ')[0],
+            last_name: c.lastName || c.name.split(' ').slice(1).join(' '),
+            email: c.email,
+            phone: c.phone,
+            company: c.company,
+            contact_type: c.role,
+            full_name: c.name,
+          };
+        });
+        setParticipants(fallback);
+      } else {
+        setParticipants(rows);
+      }
+    } catch (err) {
+      console.error('WorkspaceContacts: Failed to load participants', err);
+    } finally {
+      setLoadingParticipants(false);
+    }
+  }, [deal.id, deal.contacts]);
+
+  useEffect(() => { loadParticipants(); }, [loadParticipants]);
+
+  // Add participant from search modal
+  const addParticipant = async (contactId: string, contactName: string, deal_role: string, side: 'buyer' | 'seller' | 'both') => {
+    const orgId = primaryOrgId?.() ?? null;
+    try {
+      const { data: inserted } = await supabase
+        .from('deal_participants')
+        .insert({
+          deal_id: deal.id,
+          contact_id: contactId,
+          side,
+          deal_role,
+          is_primary: false,
+          is_client_side: false,
+          org_id: orgId,
+        })
+        .select('id')
+        .single();
+
+      // Write to contact_change_log
+      await supabase.from('contact_change_log').insert({
+        deal_id: deal.id,
+        contact_id: contactId,
+        changed_by: profile?.id ?? null,
+        changed_by_name: profile?.name ?? 'TC Staff',
+        action_type: 'add',
+        changes: [],
+        contact_name: contactName,
+        org_id: orgId,
+      });
+
+      // Also update deal.contacts for backward compat
+      const nameParts = contactName.split(' ');
+      const newContact: Contact = {
+        id: contactId,
+        directoryId: contactId,
+        name: contactName,
+        email: '',
+        phone: '',
+        role: (deal_role === 'buyers_agent' || deal_role === 'listing_agent' ? 'agent' : deal_role) as ContactRole,
+        inNotificationList: true,
+        side: side === 'buyer' ? 'buy' : side === 'seller' ? 'sell' : 'both',
+      };
+      onUpdate({
+        ...deal,
+        contacts: [...(deal.contacts || []), newContact],
+        activityLog: [
+          { id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contactName}`, detail: `Role: ${deal_role}`, user: userName, type: 'contact_added' },
+          ...deal.activityLog,
+        ],
+        updatedAt: new Date().toISOString(),
+      });
+
+      await loadParticipants();
+    } catch (err) {
+      console.error('Failed to add participant:', err);
+    }
+  };
+
+  // Edit contact in master contacts table + log to contact_change_log
+  const editParticipantContact = async (
+    contactId: string,
+    dpContactName: string,
+    updates: { name: string; phone: string; email: string; company: string; notes: string }
+  ) => {
+    const orgId = primaryOrgId?.() ?? null;
+    // Compute diff (called from ContactPopup's onEdit handler)
+    const origContact = deal.contacts.find(c => c.directoryId === contactId || c.id === contactId);
+    const diffs: ChangeDiff[] = [];
+    if (origContact) {
+      if (updates.name.trim() !== origContact.name) diffs.push({ field: 'Name', old_value: origContact.name, new_value: updates.name.trim() });
+      if (updates.phone !== (origContact.phone || '')) diffs.push({ field: 'Phone', old_value: origContact.phone || '', new_value: updates.phone });
+      if (updates.email !== (origContact.email || '')) diffs.push({ field: 'Email', old_value: origContact.email || '', new_value: updates.email });
+      if (updates.company !== (origContact.company || '')) diffs.push({ field: 'Company', old_value: origContact.company || '', new_value: updates.company });
+    }
+
+    try {
+      // Update contacts table
+      const nameParts = updates.name.trim().split(' ');
+      await supabase.from('contacts').update({
+        first_name: nameParts[0] || '',
+        last_name: nameParts.slice(1).join(' ') || null,
+        phone: updates.phone || null,
+        email: updates.email || null,
+        company: updates.company || null,
+        notes: updates.notes || null,
+      }).eq('id', contactId);
+
+      // Write to contact_change_log
+      if (diffs.length > 0) {
+        await supabase.from('contact_change_log').insert({
+          deal_id: deal.id,
+          contact_id: contactId,
+          changed_by: profile?.id ?? null,
+          changed_by_name: profile?.name ?? 'TC Staff',
+          action_type: 'update',
+          changes: diffs,
+          contact_name: dpContactName || updates.name.trim(),
+          org_id: orgId,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update contact:', err);
+    }
+
+    // Also update deal.contacts for UI
+    onUpdate({
+      ...deal,
+      contacts: deal.contacts.map(c =>
+        (c.directoryId === contactId || c.id === contactId)
+          ? { ...c, name: updates.name, phone: updates.phone, email: updates.email, company: updates.company }
+          : c
+      ),
+      activityLog: [
+        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
+        ...deal.activityLog,
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+
+    await loadParticipants();
+  };
+
+  // Update side for a deal_participant
+  const updateParticipantSide = async (dpId: string, side: 'buyer' | 'seller' | 'both') => {
+    try {
+      await supabase.from('deal_participants').update({ side }).eq('id', dpId);
+      await loadParticipants();
+    } catch (err) {
+      console.error('Failed to update participant side:', err);
+    }
+  };
+
+  // Remove participant
+  const removeParticipant = async (dpId: string) => {
+    const dp = participants.find(p => p.dp_id === dpId);
+    const orgId = primaryOrgId?.() ?? null;
+    try {
+      await supabase.from('deal_participants').delete().eq('id', dpId);
+      if (dp) {
+        const name = dp.full_name || [dp.first_name, dp.last_name].filter(Boolean).join(' ') || 'Contact';
+        await supabase.from('contact_change_log').insert({
+          deal_id: deal.id,
+          contact_id: dp.contact_id,
+          changed_by: profile?.id ?? null,
+          changed_by_name: profile?.name ?? 'TC Staff',
+          action_type: 'remove',
+          changes: [],
+          contact_name: name,
+          org_id: orgId,
+        });
+        onUpdate({
+          ...deal,
+          contacts: deal.contacts.filter(c => c.directoryId !== dp.contact_id && c.id !== dp.contact_id),
+          activityLog: [
+            { id: generateId(), timestamp: new Date().toISOString(), action: `Contact removed: ${name}`, user: userName, type: 'contact_added' },
+            ...deal.activityLog,
+          ],
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      await loadParticipants();
+    } catch (err) {
+      console.error('Failed to remove participant:', err);
+    }
+  };
+
+  // Build Contact from DealParticipantRow for popup (backward compat)
+  const dpRowToContact = (dp: DealParticipantRow): Contact => {
+    const name = dp.full_name || [dp.first_name, dp.last_name].filter(Boolean).join(' ') || 'Unknown';
+    const role = (dp.deal_role === 'buyers_agent' || dp.deal_role === 'listing_agent' ? 'agent' : dp.deal_role) as ContactRole;
+    const sideUi = dp.side === 'buyer' ? 'buy' : dp.side === 'seller' ? 'sell' : 'both';
+    const legacyContact = deal.contacts.find(c => c.directoryId === dp.contact_id || c.id === dp.contact_id);
+    return {
+      id: dp.contact_id,
+      directoryId: dp.contact_id,
+      name,
+      email: dp.email || '',
+      phone: dp.phone || '',
+      role,
+      company: dp.company,
+      inNotificationList: legacyContact?.inNotificationList ?? false,
+      side: sideUi as 'buy' | 'sell' | 'both',
+    };
+  };
+
+  // Legacy methods
+  const toggleNotif = (id: string) => {
+    onUpdate({ ...deal, contacts: deal.contacts.map(c => c.id === id ? { ...c, inNotificationList: !c.inNotificationList } : c), updatedAt: new Date().toISOString() });
+  };
 
   const existingDirIds = deal.contacts.filter(c => c.directoryId).map(c => c.directoryId!);
 
@@ -1017,22 +1542,20 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       side: effectiveSide,
       isCompany: (cr as any).isCompany || false,
     };
-    const isClientSideFlag = !!cr.isClient || pickerConfig?.type === 'client';
-    // Sync agent contacts to deal.buyerAgent / deal.sellerAgent so Overview shows them
-    const agentOverride: Partial<import('../types').Deal> = {};
+    const agentOverride: Partial<Deal> = {};
     if (cr.contactType === 'agent') {
       const agentData = { name: cr.fullName, phone: cr.phone || '', email: cr.email || '', isOurClient: !!cr.isClient };
       if (effectiveSide === 'buy') agentOverride.buyerAgent = agentData;
       else if (effectiveSide === 'sell') agentOverride.sellerAgent = agentData;
     }
-    const newParticipant: import('../types').DealParticipant = {
-      id: crypto.randomUUID() as import('../types').DealParticipant['id'],
+    const newParticipant = {
+      id: crypto.randomUUID() as any,
       contactId: cr.id,
       dealId: deal.id,
       side: dealSide,
       dealRole,
       isPrimary: false,
-      isClientSide: isClientSideFlag,
+      isClientSide: !!cr.isClient || pickerConfig?.type === 'client',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1041,79 +1564,25 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       ...agentOverride,
       contacts: [...deal.contacts, contact],
       participants: [...(deal.participants || []), newParticipant],
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)} · ${effectiveSide === 'buy' ? 'Buy' : effectiveSide === 'sell' ? 'Sell' : 'Both'} Side`, user: userName, type: 'contact_added' }, ...deal.activityLog],
-      updatedAt: new Date().toISOString(),
-    });
-  };
-
-  const toggleNotif = (id: string) => {
-    onUpdate({ ...deal, contacts: deal.contacts.map(c => c.id === id ? { ...c, inNotificationList: !c.inNotificationList } : c), updatedAt: new Date().toISOString() });
-  };
-
-  const remove = async (id: string) => {
-    const participant = deal.participants?.find(p => p.contactId === id || p.contactId === deal.contacts.find(c => c.id === id)?.directoryId);
-    if (participant) {
-      try {
-        await deleteDealParticipant(participant.id);
-      } catch (err) {
-        console.error('Failed to remove participant:', err);
-      }
-    }
-    const c = deal.contacts.find(x => x.id === id);
-    onUpdate({
-      ...deal,
-      contacts: deal.contacts.filter(x => x.id !== id),
-      activityLog: [{ id: generateId(), timestamp: new Date().toISOString(), action: `Contact removed: ${c?.name}`, user: userName, type: 'contact_added' }, ...deal.activityLog],
-      updatedAt: new Date().toISOString(),
-    });
-  };
-
-  const editContact = async (
-    contactId: string,
-    updates: { name: string; phone: string; email: string; company: string; notes: string }
-  ) => {
-    const contact = deal.contacts.find(c => c.id === contactId);
-    if (!contact) return;
-
-    if (contact.directoryId) {
-      const nameParts = updates.name.trim().split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || null;
-      await supabase.from('contacts').update({
-        first_name: firstName,
-        last_name: lastName,
-        phone: updates.phone || null,
-        email: updates.email || null,
-        company: updates.company || null,
-        notes: updates.notes || null,
-      }).eq('id', contact.directoryId);
-    }
-
-    onUpdate({
-      ...deal,
-      contacts: deal.contacts.map(c =>
-        c.id === contactId
-          ? { ...c, name: updates.name, phone: updates.phone, email: updates.email, company: updates.company }
-          : c
-      ),
       activityLog: [
-        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact updated: ${updates.name}`, user: userName, type: 'contact_added' },
+        { id: generateId(), timestamp: new Date().toISOString(), action: `Contact added: ${contact.name}`, detail: `Role: ${roleLabel(contact.role)}`, user: userName, type: 'contact_added' },
         ...deal.activityLog,
       ],
       updatedAt: new Date().toISOString(),
     });
+
+    await loadParticipants();
   };
 
-  const buySide = deal.contacts.filter(c => c.side === 'buy' || c.side === 'both' || (!c.side && (defaultSide(c.role) === 'buy' || defaultSide(c.role) === 'both')));
-  const sellSide = deal.contacts.filter(c => c.side === 'sell' || c.side === 'both' || (!c.side && (defaultSide(c.role) === 'sell' || defaultSide(c.role) === 'both')));
+  // Notification list from deal.contacts
   const notifList = deal.contacts.filter(c => c.inNotificationList);
 
-  const allDisplayedContacts = [...buySide, ...sellSide.filter(c => !buySide.some(b => b.id === c.id))];
-  const popupContact = popupContactId ? allDisplayedContacts.find(c => c.id === popupContactId) : null;
-  const popupCr = popupContact?.directoryId ? contactRecords.find(d => d.id === popupContact.directoryId) : undefined;
+  // All contacts for popup (combining legacy + dp-based)
+  const allDisplayedContacts = deal.contacts;
 
-  // Normalize deal state to 2-letter uppercase code
-  const dealState = deal.state?.trim().toUpperCase().slice(0, 2) || undefined;
+  // Popup contact from dp row
+  const popupContact = popupDp ? dpRowToContact(popupDp) : null;
+  const popupCr = popupDp ? contactRecords.find(d => d.id === popupDp.contact_id) : undefined;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
@@ -1135,50 +1604,71 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
                 name={c.name}
                 role={c.role}
                 isNotifier
-                onClick={() => setPopupContactId(c.id)}
+                onClick={() => {
+                  // Try to find dp row for this contact
+                  const dp = participants.find(p => p.contact_id === c.directoryId || p.contact_id === c.id);
+                  if (dp) setPopupDp(dp);
+                }}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Two-column grid: Buy Side | Sell Side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/30">
-          <SideSection
-            title="Buy Side" dotColor="bg-blue-500" contacts={buySide} side="buy"
-            showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
-            pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
-            existingDirIds={existingDirIds} contactRecords={contactRecords}
-            addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
-            setPopupContactId={setPopupContactId}
+      {/* Two-column role-slot grid */}
+      {loadingParticipants ? (
+        <div className="flex items-center justify-center py-8">
+          <span className="loading loading-spinner loading-md text-primary" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          <RoleSlotColumn
+            title="Buy Side"
+            dotColor="bg-blue-500"
+            bgColor="bg-blue-50/30"
+            borderColor="border-blue-200"
+            roles={BUY_SIDE_ROLES}
+            sharedRoles={BOTH_SIDES_ROLES}
+            participants={participants}
+            columnSide="buyer"
+            dealId={deal.id}
+            onOpenContact={(dp) => setPopupDp(dp)}
+            onOpenSearch={(slot, side) => setSearchSlot({ slot, side })}
+            onCallStarted={onCallStarted}
+          />
+          <RoleSlotColumn
+            title="Sell Side"
+            dotColor="bg-green-500"
+            bgColor="bg-green-50/30"
+            borderColor="border-green-200"
+            roles={SELL_SIDE_ROLES}
+            sharedRoles={BOTH_SIDES_ROLES}
+            participants={participants}
+            columnSide="seller"
+            dealId={deal.id}
+            onOpenContact={(dp) => setPopupDp(dp)}
+            onOpenSearch={(slot, side) => setSearchSlot({ slot, side })}
+            onCallStarted={onCallStarted}
           />
         </div>
-        <div className="border border-green-200 rounded-xl p-4 bg-green-50/30">
-          <SideSection
-            title="Sell Side" dotColor="bg-green-500" contacts={sellSide} side="sell"
-            showAddMenu={showAddMenu} setShowAddMenu={setShowAddMenu}
-            pickerConfig={pickerConfig} setPickerConfig={setPickerConfig}
-            existingDirIds={existingDirIds} contactRecords={contactRecords}
-            addFromDirectory={addFromDirectory} deal={deal} onUpdate={onUpdate}
-            setPopupContactId={setPopupContactId}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Contact info popup */}
-      {popupContact && (
+      {popupContact && popupDp && (
         <ContactPopup
           contact={popupContact}
           cr={popupCr}
-          onClose={() => setPopupContactId(null)}
+          onClose={() => setPopupDp(null)}
           onToggleNotif={() => toggleNotif(popupContact.id)}
-          onRemove={() => { setPopupContactId(null); setRemoveId(popupContact.id); }}
+          onRemove={() => { setPopupDp(null); removeParticipant(popupDp.dp_id); }}
           dealId={deal.id}
           dealState={dealState}
           deal={deal}
+          dpId={popupDp.dp_id}
           onCallStarted={onCallStarted}
-          onEdit={async (updates) => editContact(popupContact.id, updates)}
+          onEdit={async (updates) => {
+            await editParticipantContact(popupDp.contact_id, popupContact.name, updates);
+          }}
           onUpdateContact={(updated) => {
             onUpdate({
               ...deal,
@@ -1186,6 +1676,21 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
               updatedAt: new Date().toISOString(),
             });
           }}
+          onUpdateSide={updateParticipantSide}
+          primaryOrgId={primaryOrgId}
+        />
+      )}
+
+      {/* Contact search modal for empty slots */}
+      {searchSlot && (
+        <ContactSearchModal
+          slot={searchSlot.slot}
+          columnSide={searchSlot.side}
+          dealId={deal.id}
+          orgId={primaryOrgId?.() ?? null}
+          profileName={userName}
+          onClose={() => setSearchSlot(null)}
+          onConfirmAdd={addParticipant}
         />
       )}
 
@@ -1195,9 +1700,11 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         title="Remove from Deal?"
         message="This contact will be removed from the deal."
         confirmLabel="Yes, Remove"
-        onConfirm={() => { if (removeId) { remove(removeId); setRemoveId(null); } }}
+        onConfirm={() => { if (removeId) { removeId && removeParticipant(removeId); setRemoveId(null); } }}
         onCancel={() => setRemoveId(null)}
       />
     </div>
   );
 };
+
+export default WorkspaceContacts;
