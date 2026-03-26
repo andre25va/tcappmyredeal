@@ -41,6 +41,7 @@ interface SideSectionProps {
 }
 
 function SideSection({ label, color, dot, contacts, isActive, onToggle }: SideSectionProps) {
+  if (contacts.length === 0) return null;
   const selectedCount = contacts.filter(isActive).length;
 
   return (
@@ -116,7 +117,7 @@ export function DealContactPicker({
               contactId: dp.contact_id,
               name,
               role: dp.deal_role || 'other',
-              side: dp.side || 'both',
+              side: dp.side || 'buyer',
               email: c.email || null,
               phone: c.phone || null,
             } as DealContact;
@@ -193,9 +194,10 @@ export function DealContactPicker({
     );
   }
 
-  const buyers  = contacts.filter((c) => c.side === 'buyer');
-  const sellers = contacts.filter((c) => c.side === 'seller');
-  const both    = contacts.filter((c) => c.side !== 'buyer' && c.side !== 'seller');
+  // Contacts with side='both' appear in BOTH buy and sell sections
+  // (same behavior as WorkspaceContacts which shows title co on whichever sides exist)
+  const buyers  = contacts.filter((c) => c.side === 'buyer' || c.side === 'both');
+  const sellers = contacts.filter((c) => c.side === 'seller' || c.side === 'both');
 
   const checkActive = (c: DealContact): boolean =>
     selectedContactIds
@@ -205,6 +207,9 @@ export function DealContactPicker({
       : false;
 
   const totalSelected = contacts.filter(checkActive).length;
+
+  const hasBuyers  = buyers.length > 0;
+  const hasSellers = sellers.length > 0;
 
   return (
     <div className={`rounded-xl overflow-hidden border border-base-300 ${className || ''}`}>
@@ -235,7 +240,7 @@ export function DealContactPicker({
             <p className="text-sm text-gray-400 italic">No contacts found on this deal.</p>
           ) : (
             <>
-              {buyers.length > 0 && (
+              {hasBuyers && (
                 <SideSection
                   label="Buy Side"
                   color="text-blue-500"
@@ -245,7 +250,7 @@ export function DealContactPicker({
                   onToggle={onToggle}
                 />
               )}
-              {sellers.length > 0 && (
+              {hasSellers && (
                 <SideSection
                   label="Sell Side"
                   color="text-orange-500"
@@ -255,16 +260,8 @@ export function DealContactPicker({
                   onToggle={onToggle}
                 />
               )}
-              {both.length > 0 && (
-                <SideSection
-                  label="Both Sides"
-                  color="text-base-content/50"
-                  dot="bg-base-content/30"
-                  contacts={both}
-                  isActive={checkActive}
-                  onToggle={onToggle}
-                />
-              )}
+              {/* No standalone Both Sides section — contacts with side='both'
+                  are included in both Buy Side and Sell Side above */}
             </>
           )}
         </div>
