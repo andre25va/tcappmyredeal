@@ -1097,8 +1097,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             </div>
           </div>
 
-          <div className={`flex-1 overflow-hidden${showPdfPanel ? ' flex flex-row' : ''}`}>
-          <div className={showPdfPanel ? 'w-1/2 flex-none overflow-y-auto p-5 border-r border-base-300' : 'overflow-y-auto h-full p-5'}>
+          <div className={`flex-1 overflow-hidden${showPdfPanel ? ' flex flex-row-reverse' : ''}`}>
+          <div className={showPdfPanel ? 'w-1/2 flex-none overflow-y-auto p-5 border-l border-base-300' : 'overflow-y-auto h-full p-5'}>
             {error && <div className="alert alert-error mb-4 text-sm py-2">{error}</div>}
 
             {step === 1 && (
