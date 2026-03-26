@@ -59,26 +59,29 @@ interface RoleSlot {
   deal_role: string;
   label: string;
   contact_type: string;
+  allowMultiple?: boolean;
 }
 
 // ── Role slot definitions ────────────────────────────────────────────────────
 
 const BUY_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'lead_agent',   label: 'Buyer Agent',   contact_type: 'agent'     },
-  { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer'     },
-  { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender'    },
-  { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector' },
-  { deal_role: 'appraiser',    label: 'Appraiser',     contact_type: 'appraiser' },
+  { deal_role: 'lead_agent',   label: 'Buyer Agent',   contact_type: 'agent',     allowMultiple: true },
+  { deal_role: 'co_agent',     label: 'Co-Agent',      contact_type: 'agent',     allowMultiple: true },
+  { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer',     allowMultiple: true },
+  { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender',    allowMultiple: true },
+  { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector', allowMultiple: true },
+  { deal_role: 'appraiser',    label: 'Appraiser',     contact_type: 'appraiser', allowMultiple: true },
 ];
 
 const SELL_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'lead_agent',    label: 'Seller Agent', contact_type: 'agent'    },
-  { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller'   },
-  { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney' },
+  { deal_role: 'lead_agent',    label: 'Seller Agent', contact_type: 'agent',    allowMultiple: true },
+  { deal_role: 'co_agent',      label: 'Co-Agent',     contact_type: 'agent',    allowMultiple: true },
+  { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller',   allowMultiple: true },
+  { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney', allowMultiple: true },
 ];
 
 const BOTH_SIDES_ROLES: RoleSlot[] = [
-  { deal_role: 'title_officer', label: 'Title Company', contact_type: 'title' },
+  { deal_role: 'title_officer', label: 'Title Company', contact_type: 'title', allowMultiple: true },
 ];
 
 // Which side a role defaults to (used for legacy deal.contacts fallback)
@@ -1070,7 +1073,8 @@ const RoleSlotRow: React.FC<{
   onOpenContact: (dp: DealParticipantRow) => void;
   onOpenSearch: (slot: RoleSlot, side: 'buyer' | 'seller') => void;
   onCallStarted?: (data: CallStartedData) => void;
-}> = ({ slot, participant, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted }) => {
+  onMoveSide?: (dpId: string, newSide: 'buyer' | 'seller') => Promise<void>;
+}> = ({ slot, participant, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted, onMoveSide }) => {
   if (!participant) {
     return (
       <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 transition-all group">
@@ -1097,10 +1101,22 @@ const RoleSlotRow: React.FC<{
     'Unknown';
   const avatarBg = roleAvatarBg((participant.contact_type || slot.contact_type) as ContactRole);
 
+  const canDrag = !!onMoveSide && !!participant.dp_id && participant.side !== 'both';
+
   return (
     <button
       onClick={() => onOpenContact(participant)}
-      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all text-left group"
+      draggable={canDrag}
+      onDragStart={canDrag ? (e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ dpId: participant.dp_id, currentSide: columnSide }));
+        (e.currentTarget as HTMLElement).style.opacity = '0.5';
+      } : undefined}
+      onDragEnd={canDrag ? (e) => {
+        (e.currentTarget as HTMLElement).style.opacity = '1';
+      } : undefined}
+      title={canDrag ? `Drag to move to ${columnSide === 'buyer' ? 'Sell' : 'Buy'} Side` : undefined}
+      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all text-left group${canDrag ? ' cursor-grab active:cursor-grabbing' : ''}`}
     >
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-none ${avatarBg}`}>
         {getInitials(name)}
@@ -1145,6 +1161,15 @@ const RoleSlotRow: React.FC<{
 };
 
 // ── Role-Slot Column ──────────────────────────────────────────────────────────
+// Role display order: agents first, buyers/sellers second, then support roles
+const ROLE_PRIORITY: Record<string, number> = {
+  lead_agent: 0, co_agent: 1,
+  buyer: 2, seller: 2,
+  lender: 3, title_officer: 4, attorney: 5,
+  inspector: 6, appraiser: 7,
+  tc: 8, other: 9,
+};
+
 const RoleSlotColumn: React.FC<{
   title: string;
   dotColor: string;
@@ -1158,23 +1183,55 @@ const RoleSlotColumn: React.FC<{
   onOpenContact: (dp: DealParticipantRow) => void;
   onOpenSearch: (slot: RoleSlot, side: 'buyer' | 'seller') => void;
   onCallStarted?: (data: CallStartedData) => void;
-}> = ({ title, dotColor, bgColor, borderColor, roles, sharedRoles, participants, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted }) => {
-  // Find participant for a given slot
-  const getParticipant = (deal_role: string): DealParticipantRow | undefined => {
-    return participants.find(p =>
+  onMoveSide?: (dpId: string, newSide: 'buyer' | 'seller') => Promise<void>;
+}> = ({ title, dotColor, bgColor, borderColor, roles, sharedRoles, participants, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted, onMoveSide }) => {
+  const [isDragOver, setIsDragOver] = React.useState(false);
+
+  // Find all participants for a given slot
+  const getParticipants = (deal_role: string): DealParticipantRow[] => {
+    return participants.filter(p =>
       p.deal_role === deal_role &&
       (p.side === columnSide || p.side === 'both')
     );
   };
 
   const allSlots = [...roles, ...sharedRoles].sort((a, b) => {
-    const aFilled = !!getParticipant(a.deal_role);
-    const bFilled = !!getParticipant(b.deal_role);
-    return Number(bFilled) - Number(aFilled); // filled contacts float to top
+    const aPri = ROLE_PRIORITY[a.deal_role] ?? 99;
+    const bPri = ROLE_PRIORITY[b.deal_role] ?? 99;
+    if (aPri !== bPri) return aPri - bPri;
+    // Within same priority, filled ones float up
+    const aFilled = getParticipants(a.deal_role).length > 0;
+    const bFilled = getParticipants(b.deal_role).length > 0;
+    return Number(bFilled) - Number(aFilled);
   });
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false);
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (!onMoveSide) return;
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      if (data.dpId && data.currentSide !== columnSide) {
+        await onMoveSide(data.dpId, columnSide);
+      }
+    } catch {}
+  };
+
   return (
-    <div className={`${bgColor} ${borderColor} border rounded-xl p-4`}>
+    <div
+      className={`${bgColor} ${borderColor} border rounded-xl p-4 transition-all ${isDragOver ? 'ring-2 ring-primary/40 bg-primary/5' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
         <h3 className="font-bold text-base text-black">{title}</h3>
@@ -1183,18 +1240,51 @@ const RoleSlotColumn: React.FC<{
         </span>
       </div>
       <div className="space-y-2">
-        {allSlots.map(slot => (
-          <RoleSlotRow
-            key={slot.deal_role}
-            slot={slot}
-            participant={getParticipant(slot.deal_role)}
-            columnSide={columnSide}
-            dealId={dealId}
-            onOpenContact={onOpenContact}
-            onOpenSearch={onOpenSearch}
-            onCallStarted={onCallStarted}
-          />
-        ))}
+        {allSlots.map(slot => {
+          const slotParticipants = getParticipants(slot.deal_role);
+          return (
+            <div key={slot.deal_role} className="space-y-1.5">
+              {slotParticipants.length === 0 ? (
+                <RoleSlotRow
+                  slot={slot}
+                  participant={undefined}
+                  columnSide={columnSide}
+                  dealId={dealId}
+                  onOpenContact={onOpenContact}
+                  onOpenSearch={onOpenSearch}
+                  onCallStarted={onCallStarted}
+                />
+              ) : (
+                <>
+                  {slotParticipants.map(p => (
+                    <RoleSlotRow
+                      key={p.dp_id}
+                      slot={slot}
+                      participant={p}
+                      columnSide={columnSide}
+                      dealId={dealId}
+                      onOpenContact={onOpenContact}
+                      onOpenSearch={onOpenSearch}
+                      onCallStarted={onCallStarted}
+                      onMoveSide={onMoveSide}
+                    />
+                  ))}
+                  {slot.allowMultiple && (
+                    <button
+                      onClick={() => onOpenSearch(slot, columnSide)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-none">
+                        <Plus size={10} className="text-primary" />
+                      </div>
+                      <span className="text-xs font-medium text-primary/70 group-hover:text-primary">Add another {slot.label}</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1349,7 +1439,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         name: contactName,
         email: '',
         phone: '',
-        role: (deal_role === 'lead_agent' ? 'agent' : deal_role) as ContactRole,
+        role: (['lead_agent', 'co_agent'].includes(deal_role) ? 'agent' : deal_role) as ContactRole,
         inNotificationList: true,
         side: side === 'buyer' ? 'buy' : side === 'seller' ? 'sell' : 'both',
       };
@@ -1510,7 +1600,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       return 'other';
     }
     const map: Record<string, DealParticipantRole> = {
-      agent: 'lead_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
+      agent: 'lead_agent', co_agent: 'co_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
       inspector: 'inspector', appraiser: 'appraiser', buyer: 'buyer', seller: 'seller', tc: 'tc', other: 'other',
     };
     return map[ct] || 'other';
@@ -1639,6 +1729,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
             onOpenContact={(dp) => setPopupDp(dp)}
             onOpenSearch={(slot, side) => setSearchSlot({ slot, side })}
             onCallStarted={onCallStarted}
+            onMoveSide={async (dpId, newSide) => { await updateParticipantSide(dpId, newSide); }}
           />
           <RoleSlotColumn
             title="Sell Side"
@@ -1653,6 +1744,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
             onOpenContact={(dp) => setPopupDp(dp)}
             onOpenSearch={(slot, side) => setSearchSlot({ slot, side })}
             onCallStarted={onCallStarted}
+            onMoveSide={async (dpId, newSide) => { await updateParticipantSide(dpId, newSide); }}
           />
         </div>
       )}
