@@ -264,7 +264,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   // ── Rebuild inline email when type or recipient changes ─────────────────────
   useEffect(() => {
-    const token = '[REQ-????????]';
+    const token = '[REQ-NEW]';
     const emailContent = getDefaultEmailContent(
       newType,
       selectedContact?.name || '',
@@ -354,8 +354,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       if (error) throw error;
       await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
 
-      const realSubject = draftSubject.replace('[REQ-????????]', token);
-      const realBody = draftBody.replace('[REQ-????????]', token);
+      const realSubject = draftSubject.replace('[REQ-NEW]', token);
+      const realBody = draftBody.replace('[REQ-NEW]', token);
       setInlineEdits(prev => ({
         ...prev,
         [data.id]: { to: draftTo, subject: realSubject, body: realBody },
@@ -380,8 +380,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
       const tempId = crypto.randomUUID();
       const token = shortToken(tempId);
-      const realSubject = draftSubject.replace('[REQ-????????]', token);
-      const realBody = draftBody.replace('[REQ-????????]', token);
+      const realSubject = draftSubject.replace('[REQ-NEW]', token);
+      const realBody = draftBody.replace('[REQ-NEW]', token);
 
       const { data, error } = await supabase.from('requests').insert({
         id: tempId,

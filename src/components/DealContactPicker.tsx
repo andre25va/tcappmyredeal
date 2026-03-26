@@ -99,11 +99,11 @@ export function DealContactPicker({
       if (dealRow) {
         const fkEntries: { id: string; role: string; side: string }[] = [];
         if (dealRow.buyers_agent_id)
-          fkEntries.push({ id: dealRow.buyers_agent_id, role: 'buyers_agent', side: 'buyer' });
+          fkEntries.push({ id: dealRow.buyers_agent_id, role: 'agent', side: 'buyer' });
         if (dealRow.listing_agent_id)
-          fkEntries.push({ id: dealRow.listing_agent_id, role: 'listing_agent', side: 'seller' });
+          fkEntries.push({ id: dealRow.listing_agent_id, role: 'agent', side: 'seller' });
         if (dealRow.title_company_id)
-          fkEntries.push({ id: dealRow.title_company_id, role: 'title_officer', side: 'both' });
+          fkEntries.push({ id: dealRow.title_company_id, role: 'title', side: 'both' });
 
         if (fkEntries.length > 0) {
           const { data: contactRows } = await supabase
