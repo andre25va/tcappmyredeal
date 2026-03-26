@@ -602,7 +602,7 @@ export async function upsertBuyerSellerParticipants(params: {
   }
   if (titleCompanyName && !existingRoles.has('title_officer')) {
     // Title company = vendor side, stored as company-type contact
-    const compSide = titleCompanySide === 'sell' ? 'seller' : titleCompanySide === 'both' ? 'internal' : 'vendor';
+    const compSide = titleCompanySide === 'sell' ? 'seller' : titleCompanySide === 'both' ? 'internal' : 'buyer';
     await createCompanyParticipant(titleCompanyName, compSide, 'title_officer');
   }
 }
