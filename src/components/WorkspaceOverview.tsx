@@ -826,8 +826,15 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </div>
             ))}
             {(() => {
-              const titleContact = deal.participants?.find(p => p.dealRole === 'title_officer')
-                ?? deal.contacts.find(c => c.role === 'title');
+              const titleContact = (() => {
+                const raw = deal.participants?.find(p => p.dealRole === 'title_officer')
+                  ?? deal.contacts.find(c => c.role === 'title');
+                if (!raw) return null;
+                if ('dealRole' in raw) {
+                  return { name: (raw as any).contactName ?? '', phone: (raw as any).contactPhone ?? '', email: (raw as any).contactEmail ?? '', directoryId: undefined as string | undefined, company: undefined as string | undefined };
+                }
+                return { name: (raw as any).name, phone: (raw as any).phone, email: (raw as any).email, directoryId: (raw as any).directoryId, company: (raw as any).company };
+              })();
               if (!titleContact) return (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
                   <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /></div>
@@ -838,7 +845,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 </div>
               );
               const cr = titleContact.directoryId ? contactRecords.find(r => r.id === titleContact.directoryId) : undefined;
-              const companyName = (titleContact as any).company || cr?.company || '';
+              const companyName = titleContact.company || cr?.company || '';
               return (
                 <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all">
                   <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /></div>
