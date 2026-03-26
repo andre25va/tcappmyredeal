@@ -313,11 +313,12 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-base-100">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-base-300 bg-base-100 sticky top-0 z-10">
+      <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-base-300 bg-base-100 sticky top-0 z-10">
         <div>
-          <h1 className="text-lg font-bold text-base-content">Command Center</h1>
+          <h1 className="hidden md:block text-lg font-bold text-base-content">Command Center</h1>
           <p className="text-xs text-base-content/50">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            <span className="hidden md:inline">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            <span className="md:hidden">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
           </p>
         </div>
         <button onClick={onGoToDeals} className="btn btn-sm gap-1.5 bg-green-600 hover:bg-green-700 text-white border-none">
@@ -325,7 +326,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
         </button>
       </div>
 
-      <div className="p-5 space-y-5 max-w-[1600px] mx-auto w-full">
+      <div className="p-4 md:p-5 space-y-4 md:space-y-5 max-w-[1600px] mx-auto w-full">
 
         {/* ── TOP KPI CARDS ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-3">
