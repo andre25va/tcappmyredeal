@@ -1148,6 +1148,7 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     defaultInstructions: row.default_instructions || '',
     briefingEnabled: row.briefing_enabled ?? false,
     preferredLanguage: (row.preferred_language || 'en') as 'en' | 'es',
+    pin: row.pin ?? undefined,
   }));
 }
 
