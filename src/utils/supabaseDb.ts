@@ -452,6 +452,95 @@ export async function deleteDealParticipant(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Syncs free-text buyer/seller/lender names from the Edit Deal form into
+ * deal_participants + contacts. Only creates stub records when a participant
+ * with that role does not already exist for the deal.
+ *
+ * Called fire-and-forget from WorkspaceOverview handleSave.
+ */
+export async function upsertBuyerSellerParticipants(params: {
+  dealId: string;
+  buyerName?: string;
+  sellerName?: string;
+  loanOfficerName?: string;
+  orgId?: string;
+}): Promise<void> {
+  const { dealId, buyerName, sellerName, loanOfficerName, orgId } = params;
+
+  // Skip if nothing to sync
+  if (!buyerName && !sellerName && !loanOfficerName) return;
+
+  // Find which roles already have a participant for this deal
+  const { data: existing } = await supabase
+    .from('deal_participants')
+    .select('deal_role')
+    .eq('deal_id', dealId)
+    .in('deal_role', ['buyer', 'seller', 'lender']);
+
+  const existingRoles = new Set((existing ?? []).map((r: any) => r.deal_role as string));
+
+  // Helper: create a stub contact in contacts then link via deal_participants
+  async function createStubParticipant(
+    fullName: string,
+    side: string,
+    dealRole: string,
+  ): Promise<void> {
+    const trimmed = fullName.trim();
+    if (!trimmed) return;
+
+    const parts = trimmed.split(/\s+/);
+    const firstName = parts[0] || '';
+    const lastName = parts.slice(1).join(' ') || '';
+    const contactId = crypto.randomUUID();
+
+    // Insert stub contact (name only — phone/email empty until filled via Contacts tab)
+    const { error: contactErr } = await supabase.from('contacts').insert({
+      id: contactId,
+      first_name: firstName,
+      last_name: lastName,
+      full_name: trimmed,
+      contact_type: 'other',
+      email: null,
+      phone: null,
+      is_active: true,
+      org_id: orgId ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (contactErr) {
+      console.error('[upsertBuyerSellerParticipants] contact insert failed:', contactErr);
+      return;
+    }
+
+    // Link to deal_participants
+    const { error: partErr } = await supabase.from('deal_participants').insert({
+      deal_id: dealId,
+      contact_id: contactId,
+      side,
+      deal_role: dealRole,
+      is_primary: true,
+      is_client_side: false,
+      is_extracted: false,
+      organization_id: orgId ?? null,
+    });
+    if (partErr) {
+      console.error('[upsertBuyerSellerParticipants] participant insert failed:', partErr);
+    }
+  }
+
+  if (buyerName && !existingRoles.has('buyer')) {
+    await createStubParticipant(buyerName, 'buyer', 'buyer');
+  }
+  if (sellerName && !existingRoles.has('seller')) {
+    await createStubParticipant(sellerName, 'seller', 'seller');
+  }
+  if (loanOfficerName && !existingRoles.has('lender')) {
+    // Parse "Name Company Phone" format — use everything before first digit sequence as name
+    const namePart = loanOfficerName.replace(/\d[\d.\s-]*$/, '').trim() || loanOfficerName;
+    await createStubParticipant(namePart, 'buyer', 'lender');
+  }
+}
+
 // ─── ORGANIZATIONS ──────────────────────────────────────────────────────────
 
 export async function loadOrganizations(): Promise<Organization[]> {
@@ -1931,8 +2020,7 @@ export async function updateAgentTeamMember(supabase: any, id: string, updates: 
   const payload: any = {};
   if (updates.name !== undefined) payload.name = updates.name;
   if (updates.email !== undefined) payload.email = updates.email;
-  if (updates.phone !== undefined) payload.phone = updates.phone;
-  if (updates.role !== undefined) payload.role = updates.role;
+  if (updates.phone !== undefined) payload.role = updates.role;
   if (updates.notifyEmail !== undefined) payload.notify_email = updates.notifyEmail;
   if (updates.notifySms !== undefined) payload.notify_sms = updates.notifySms;
   const { error } = await supabase.from('agent_team_members').update(payload).eq('id', id);
