@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { DealContactPicker, DealContact } from './DealContactPicker';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -192,7 +193,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   // New request form state
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
-  const [newRecipientId, setNewRecipientId] = useState('');
+  const [selectedContact, setSelectedContact] = useState<DealContact | null>(null);
   const [newNotes, setNewNotes] = useState('');
   const [draftSubject, setDraftSubject] = useState('');
   const [draftBody, setDraftBody] = useState('');
@@ -263,19 +264,18 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   // ── Rebuild inline email when type or recipient changes ─────────────────────
   useEffect(() => {
-    const participant = participants.find(p => p.id === newRecipientId);
     const token = '[REQ-????????]';
-    const content = getDefaultEmailContent(
+    const emailContent = getDefaultEmailContent(
       newType,
-      participant?.contactName || '',
+      selectedContact?.name || '',
       deal.propertyAddress,
       profile?.name || 'TC',
       token,
     );
-    setDraftTo(participant?.contactEmail || '');
-    setDraftSubject(content.subject);
-    setDraftBody(content.body);
-  }, [newType, newRecipientId, participants, deal.propertyAddress, profile?.name]);
+    setDraftTo(selectedContact?.email || '');
+    setDraftSubject(emailContent.subject);
+    setDraftBody(emailContent.body);
+  }, [newType, selectedContact, deal.propertyAddress, profile?.name]);
 
   // ── Add event helper ─────────────────────────────────────────────────────────
   const addEvent = async (requestId: string, eventType: RequestEventType, description?: string) => {
@@ -331,7 +331,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const handleCreateDraft = async () => {
     setCreating(true);
     try {
-      const participant = participants.find(p => p.id === newRecipientId);
+      const participant = selectedContact;
       const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
       const tempId = crypto.randomUUID();
       const token = shortToken(tempId);
@@ -342,8 +342,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         request_type: newType,
         status: 'draft',
         requested_from_contact_id: participant?.contactId || null,
-        requested_from_name: participant?.contactName || null,
-        requested_from_email: participant?.contactEmail || null,
+        requested_from_name: participant?.name || null,
+        requested_from_email: participant?.email || null,
         subject_token: token,
         notes: newNotes || null,
         requires_review: true,
@@ -376,7 +376,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const handleCreateAndSend = async () => {
     setCreating(true);
     try {
-      const participant = participants.find(p => p.id === newRecipientId);
+      const participant = selectedContact;
       const typeConfig = REQUEST_TYPES.find(t => t.type === newType)!;
       const tempId = crypto.randomUUID();
       const token = shortToken(tempId);
@@ -389,8 +389,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
         request_type: newType,
         status: 'draft',
         requested_from_contact_id: participant?.contactId || null,
-        requested_from_name: participant?.contactName || null,
-        requested_from_email: draftTo || participant?.contactEmail || null,
+        requested_from_name: participant?.name || null,
+        requested_from_email: draftTo || participant?.email || null,
         subject_token: token,
         notes: newNotes || null,
         requires_review: true,
@@ -489,7 +489,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
 
   const resetNewForm = () => {
     setNewType('earnest_money_receipt');
-    setNewRecipientId('');
+    setSelectedContact(null);
     setNewNotes('');
   };
 
@@ -503,12 +503,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
   const closedRequests = requests.filter(r =>
     ['completed', 'cancelled', 'accepted', 'rejected'].includes(r.status)
   );
-  const recipientOptions = participants.filter(p => p.contactEmail || p.contactName);
-
   const handleOpenNewModal = () => {
     resetNewForm();
-    const suggested = suggestRecipient(participants, 'earnest_money_receipt');
-    setNewRecipientId(suggested?.id || '');
     setShowNewModal(true);
   };
 
@@ -603,7 +599,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                       newType === t.type ? 'border-primary bg-primary/5' : 'border-base-300 hover:border-primary/40'
                     }`}>
                       <input type="radio" className="radio radio-primary radio-sm mt-0.5 flex-none" checked={newType === t.type}
-                        onChange={() => { setNewType(t.type); const s = suggestRecipient(participants, t.type); setNewRecipientId(s?.id || ''); }} />
+                        onChange={() => setNewType(t.type)} />
                       <div>
                         <p className="text-sm font-semibold">{t.label}</p>
                         <p className="text-xs text-base-content/50">{t.description}</p>
@@ -612,18 +608,23 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
                   ))}
                 </div>
               </div>
+              {/* Send To */}
               <div>
-                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">Send To</label>
-                {recipientOptions.length === 0 ? (
-                  <p className="text-sm text-base-content/40 italic">No contacts with email found on this deal</p>
-                ) : (
-                  <select className="select select-bordered select-sm w-full" value={newRecipientId} onChange={e => setNewRecipientId(e.target.value)}>
-                    <option value="">— Select recipient —</option>
-                    {recipientOptions.map(p => (
-                      <option key={p.id} value={p.id}>{p.contactName}{p.contactEmail ? ` (${p.contactEmail})` : ''} — {p.dealRole}</option>
-                    ))}
-                  </select>
-                )}
+                <label className="text-xs font-semibold text-gray-500 mb-2 block">Send To</label>
+                <DealContactPicker
+                  dealId={deal.id}
+                  selectedContactIds={selectedContact ? [selectedContact.contactId] : []}
+                  onToggle={(c) => {
+                    if (selectedContact?.contactId === c.contactId) {
+                      setSelectedContact(null);
+                      setDraftTo('');
+                    } else {
+                      setSelectedContact(c);
+                      setDraftTo(c.email || '');
+                    }
+                  }}
+                  mode="email"
+                />
               </div>
               <div className="border border-base-300 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 bg-base-200/60 border-b border-base-300">

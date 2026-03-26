@@ -32,6 +32,7 @@ import {
   createScheduledEmail,
   getAgentTeamEmailsForCC,
 } from '../utils/supabaseDb';
+import { DealContactPicker } from './DealContactPicker';
 
 // ── Merge-tag helpers (from WorkspaceEmailTemplate) ─────────────────────────
 
@@ -750,42 +751,23 @@ export default function WorkspaceEmailCompose({
 
       {/* ── Right Panel: Compose + History ──────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
-        {/* ── Contact quick-pick chips ──────────────────────────────── */}
-        {(() => {
-          const pickable = (deal.contacts || []).filter((c) => c.email);
-          if (pickable.length === 0) return null;
-          return (
-            <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              <span className="text-xs text-gray-400 font-medium shrink-0">Quick add:</span>
-              {pickable.map((c) => {
-                const active = toAddresses.includes(c.email!);
-                const label = c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email!;
-                const role = c.role ? ` · ${c.role.charAt(0).toUpperCase() + c.role.slice(1)}` : '';
-                return (
-                  <button
-                    key={c.id || c.email}
-                    type="button"
-                    title={c.email}
-                    onClick={() => {
-                      if (active) {
-                        setToAddresses(toAddresses.filter((e) => e !== c.email));
-                      } else {
-                        setToAddresses([...toAddresses, c.email!]);
-                      }
-                    }}
-                    className={`badge badge-sm cursor-pointer transition-all border ${
-                      active
-                        ? 'bg-primary text-white border-primary'
-                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
-                    }`}
-                  >
-                    {label}{role}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {/* Quick add from deal contacts */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs text-gray-400 font-medium flex-none">Quick add:</span>
+          <DealContactPicker
+            dealId={deal.id}
+            selectedEmails={toAddresses}
+            onToggle={(c) => {
+              if (!c.email) return;
+              if (toAddresses.includes(c.email)) {
+                setToAddresses(toAddresses.filter((e) => e !== c.email));
+              } else {
+                setToAddresses([...toAddresses, c.email]);
+              }
+            }}
+            mode="email"
+          />
+        </div>
 
         {/* Recipients */}
         <div className="space-y-2 mb-4">

@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { NudgeTaskStatus, NudgeTemplate, NudgeLogEntry } from './nudge-types';
+import { DealContactPicker, DealContact } from './DealContactPicker';
 
 interface WorkspaceNudgeProps {
   deal: Deal;
@@ -107,6 +108,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
   const [selectedTask, setSelectedTask] = useState<NudgeTaskStatus | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [recipientId, setRecipientId] = useState<string>('');
+  const [recipientContact, setRecipientContact] = useState<DealContact | null>(null);
   const [channel, setChannel] = useState<'email' | 'sms'>('email');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -223,7 +225,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
       setToast('Please select a task first.');
       return;
     }
-    if (!recipientId) {
+    if (!recipientContact) {
       setToast('Please select a recipient.');
       return;
     }
@@ -237,11 +239,8 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
     }
 
     // Look up recipient's contact info
-    const participant = deal.participants?.find((p) => p.contactId === recipientId);
-    const contact = (deal as any).contacts?.find((c: any) => c.id === recipientId);
-
-    const recipientEmail = participant?.contactEmail || contact?.email;
-    const recipientPhone = participant?.contactPhone || contact?.phone;
+    const recipientEmail = recipientContact?.email || undefined;
+    const recipientPhone = recipientContact?.phone || undefined;
 
     if (channel === 'email' && !recipientEmail) {
       setToast('Selected recipient has no email address.');
@@ -259,7 +258,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
         task_id: selectedTask.task_id,
         deal_id: deal.id,
         template_id: selectedTemplateId || null,
-        recipient_id: recipientId,
+        recipient_id: recipientContact?.contactId || null,
         sent_by: profile?.id,
         channel,
         subject: channel === 'email' ? subject : null,
@@ -372,6 +371,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
         // Reset compose form
         setSelectedTemplateId('');
         setRecipientId('');
+        setRecipientContact(null);
         setSubject('');
         setBody('');
         fetchData();
@@ -539,18 +539,19 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                   <label className="label py-1">
                     <span className="label-text text-xs">Recipient</span>
                   </label>
-                  <select
-                    className="select select-bordered select-sm w-full"
-                    value={recipientId}
-                    onChange={(e) => setRecipientId(e.target.value)}
-                  >
-                    <option value="">— Select recipient —</option>
-                    {deal.participants?.map((p) => (
-                      <option key={p.contactId} value={p.contactId}>
-                        {p.contactName} — {p.dealRole} ({p.side})
-                      </option>
-                    ))}
-                  </select>
+                  <DealContactPicker
+                    dealId={deal.id}
+                    selectedContactIds={recipientContact ? [recipientContact.contactId] : []}
+                    onToggle={(c) => {
+                      if (recipientContact?.contactId === c.contactId) {
+                        setRecipientContact(null);
+                        setRecipientId('');
+                      } else {
+                        setRecipientContact(c);
+                        setRecipientId(c.contactId);
+                      }
+                    }}
+                  />
                 </div>
 
                 {/* Channel toggle */}
