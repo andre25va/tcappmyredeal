@@ -583,7 +583,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       .then(({ data }) => {
         if (data) setParticipants(data.map((p: any) => ({
           ...p,
-          side: p.side === 'vendor' ? 'both' : p.side === 'listing' ? 'seller' : p.side,
+          side: p.side === 'listing' ? 'seller' : p.side,
         })));
       });
   }, [deal.id]);
@@ -897,7 +897,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
             const renderCard = (p: any) => {
               const c = p.contacts;
               if (!c) return null;
-              const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+              // company-type contacts (e.g. title company) have no first/last name — use company field
+              const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || 'Unknown';
               const agentContact = { name: fullName, phone: c.phone || '', email: c.email || '', isOurClient: false };
               return (
                 <div
@@ -934,7 +935,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
             };
 
             const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both' || p.side === 'vendor');
-            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both' || p.side === 'vendor');
+            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both');
 
             return (
               <div className="flex flex-col gap-3">
