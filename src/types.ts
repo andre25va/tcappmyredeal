@@ -189,6 +189,7 @@ export interface DealParticipant {
   dealRole: DealParticipantRole;
   isPrimary: boolean;
   isClientSide: boolean;
+  isExtracted?: boolean;
   notes?: string;
   createdAt: string;
   updatedAt: string;

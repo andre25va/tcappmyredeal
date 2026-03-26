@@ -59,7 +59,7 @@ async function loadDealParticipants(dealIds: string[]): Promise<Record<string, D
     .from('deal_participants')
     .select(`
       id, deal_id, contact_id, organization_id, client_account_id,
-      side, deal_role, is_primary, is_client_side, notes,
+      side, deal_role, is_primary, is_client_side, is_extracted, notes,
       created_at, updated_at,
       contacts:contact_id ( first_name, last_name, full_name, email, phone ),
       organizations:organization_id ( name )
@@ -82,6 +82,7 @@ async function loadDealParticipants(dealIds: string[]): Promise<Record<string, D
       dealRole: row.deal_role,
       isPrimary: row.is_primary,
       isClientSide: row.is_client_side,
+      isExtracted: row.is_extracted ?? false,
       notes: row.notes ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -132,8 +133,8 @@ function mapDealRoleToContactRole(role: string): Contact['role'] {
 function mapSideToLegacy(side: string): 'buy' | 'sell' | 'both' {
   if (side === 'buyer') return 'buy';
   if (side === 'listing' || side === 'seller') return 'sell';
-  if (side === 'vendor') return 'both';
-  return 'both';
+  if (side === 'vendor') return 'buy'; // defaults to buy side; toggle overrides to 'both' when implemented
+  return 'buy';
 }
 
 function findAgentFromParticipants(
@@ -437,6 +438,7 @@ export async function saveDealParticipant(participant: Omit<DealParticipant, 'id
       deal_role: participant.dealRole,
       is_primary: participant.isPrimary,
       is_client_side: participant.isClientSide,
+      is_extracted: participant.isExtracted ?? false,
       notes: participant.notes ?? null,
     })
     .select('id')

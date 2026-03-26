@@ -1167,7 +1167,11 @@ const RoleSlotColumn: React.FC<{
     );
   };
 
-  const allSlots = [...roles, ...sharedRoles];
+  const allSlots = [...roles, ...sharedRoles].sort((a, b) => {
+    const aFilled = !!getParticipant(a.deal_role);
+    const bFilled = !!getParticipant(b.deal_role);
+    return Number(bFilled) - Number(aFilled); // filled contacts float to top
+  });
 
   return (
     <div className={`${bgColor} ${borderColor} border rounded-xl p-4`}>
