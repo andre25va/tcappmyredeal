@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { roleAvatarBg, roleBadge, roleLabel, getInitials } from '../utils/helpers';
+import type { ContactRole } from '../types';
 
 export interface DealContact {
   participantId: string;
@@ -22,6 +23,32 @@ interface Props {
   /** 'email' = only show contacts with email, 'sms' = only phone, 'any' = all */
   mode?: 'email' | 'sms' | 'any';
   className?: string;
+}
+
+/**
+ * Maps deal_role values (from deal_participants or FK fallback) to ContactRole
+ * so roleLabel / roleBadge / roleAvatarBg helpers render correctly.
+ */
+function normalizeRole(raw: string): ContactRole {
+  const map: Record<string, ContactRole> = {
+    buyers_agent:  'agent',
+    listing_agent: 'agent',
+    lead_agent:    'agent',
+    title_officer: 'title',
+    buyer:         'buyer',
+    seller:        'seller',
+    lender:        'lender',
+    inspector:     'inspector',
+    appraiser:     'appraiser',
+    attorney:      'attorney',
+    tc:            'tc',
+    other:         'other',
+    // passthrough for values already in ContactRole form
+    agent:         'agent',
+    title:         'title',
+    client:        'client',
+  };
+  return (map[raw] ?? 'other') as ContactRole;
 }
 
 function applyModeFilter(contacts: DealContact[], mode: 'email' | 'sms' | 'any'): DealContact[] {
@@ -75,7 +102,7 @@ export function DealContactPicker({
               participantId: dp.id,
               contactId: dp.contact_id,
               name,
-              role: dp.deal_role || 'other',
+              role: normalizeRole(dp.deal_role || 'other'),
               side: dp.side || 'both',
               email: c.email || null,
               phone: c.phone || null,
@@ -97,13 +124,13 @@ export function DealContactPicker({
         .single();
 
       if (dealRow) {
-        const fkEntries: { id: string; role: string; side: string }[] = [];
+        const fkEntries: { id: string; role: ContactRole; side: string }[] = [];
         if (dealRow.buyers_agent_id)
-          fkEntries.push({ id: dealRow.buyers_agent_id, role: 'buyers_agent', side: 'buyer' });
+          fkEntries.push({ id: dealRow.buyers_agent_id, role: 'agent', side: 'buyer' });
         if (dealRow.listing_agent_id)
-          fkEntries.push({ id: dealRow.listing_agent_id, role: 'listing_agent', side: 'seller' });
+          fkEntries.push({ id: dealRow.listing_agent_id, role: 'agent', side: 'seller' });
         if (dealRow.title_company_id)
-          fkEntries.push({ id: dealRow.title_company_id, role: 'title_officer', side: 'both' });
+          fkEntries.push({ id: dealRow.title_company_id, role: 'title', side: 'both' });
 
         if (fkEntries.length > 0) {
           const { data: contactRows } = await supabase
@@ -186,14 +213,14 @@ export function DealContactPicker({
           >
             <div
               className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${roleAvatarBg(
-                c.role as any
+                c.role as ContactRole
               )}`}
             >
               {getInitials(c.name)}
             </div>
             <span className="text-xs font-medium text-black">{c.name}</span>
-            <span className={`badge badge-xs ${roleBadge(c.role as any)}`}>
-              {roleLabel(c.role as any)}
+            <span className={`badge badge-xs ${roleBadge(c.role as ContactRole)}`}>
+              {roleLabel(c.role as ContactRole)}
             </span>
           </button>
         );
