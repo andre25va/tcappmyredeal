@@ -131,7 +131,8 @@ function mapDealRoleToContactRole(role: string): Contact['role'] {
 
 function mapSideToLegacy(side: string): 'buy' | 'sell' | 'both' {
   if (side === 'buyer') return 'buy';
-  if (side === 'listing' || side === 'seller' || side === 'vendor') return 'sell';
+  if (side === 'listing' || side === 'seller') return 'sell';
+  if (side === 'vendor') return 'both';
   return 'both';
 }
 

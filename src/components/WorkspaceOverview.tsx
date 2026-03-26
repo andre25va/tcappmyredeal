@@ -826,7 +826,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               </div>
             ))}
             {(() => {
-              const titleContact = deal.contacts.find(c => c.role === 'title' || (c.role as string) === 'title_officer');
+              const titleContact = deal.participants?.find(p => p.dealRole === 'title_officer')
+                ?? deal.contacts.find(c => c.role === 'title');
               if (!titleContact) return (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
                   <div className="flex-none w-5 flex items-center justify-center"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /></div>
@@ -928,8 +929,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               );
             };
 
-            const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both');
-            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'both');
+            const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both' || p.side === 'vendor');
+            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both' || p.side === 'vendor');
 
             return (
               <div className="flex flex-col gap-3">
