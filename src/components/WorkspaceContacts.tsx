@@ -59,26 +59,29 @@ interface RoleSlot {
   deal_role: string;
   label: string;
   contact_type: string;
+  allowMultiple?: boolean;
 }
 
 // ── Role slot definitions ────────────────────────────────────────────────────
 
 const BUY_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'lead_agent',   label: 'Buyer Agent',   contact_type: 'agent'     },
-  { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer'     },
-  { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender'    },
-  { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector' },
-  { deal_role: 'appraiser',    label: 'Appraiser',     contact_type: 'appraiser' },
+  { deal_role: 'lead_agent',   label: 'Buyer Agent',   contact_type: 'agent',     allowMultiple: true },
+  { deal_role: 'co_agent',     label: 'Co-Agent',      contact_type: 'agent',     allowMultiple: true },
+  { deal_role: 'buyer',        label: 'Buyer',         contact_type: 'buyer',     allowMultiple: true },
+  { deal_role: 'lender',       label: 'Lender',        contact_type: 'lender',    allowMultiple: true },
+  { deal_role: 'inspector',    label: 'Inspector',     contact_type: 'inspector', allowMultiple: true },
+  { deal_role: 'appraiser',    label: 'Appraiser',     contact_type: 'appraiser', allowMultiple: true },
 ];
 
 const SELL_SIDE_ROLES: RoleSlot[] = [
-  { deal_role: 'lead_agent',    label: 'Seller Agent', contact_type: 'agent'    },
-  { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller'   },
-  { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney' },
+  { deal_role: 'lead_agent',    label: 'Seller Agent', contact_type: 'agent',    allowMultiple: true },
+  { deal_role: 'co_agent',      label: 'Co-Agent',     contact_type: 'agent',    allowMultiple: true },
+  { deal_role: 'seller',        label: 'Seller',       contact_type: 'seller',   allowMultiple: true },
+  { deal_role: 'attorney',      label: 'Attorney',     contact_type: 'attorney', allowMultiple: true },
 ];
 
 const BOTH_SIDES_ROLES: RoleSlot[] = [
-  { deal_role: 'title_officer', label: 'Title Company', contact_type: 'title' },
+  { deal_role: 'title_officer', label: 'Title Company', contact_type: 'title', allowMultiple: true },
 ];
 
 // Which side a role defaults to (used for legacy deal.contacts fallback)
@@ -1159,17 +1162,17 @@ const RoleSlotColumn: React.FC<{
   onOpenSearch: (slot: RoleSlot, side: 'buyer' | 'seller') => void;
   onCallStarted?: (data: CallStartedData) => void;
 }> = ({ title, dotColor, bgColor, borderColor, roles, sharedRoles, participants, columnSide, dealId, onOpenContact, onOpenSearch, onCallStarted }) => {
-  // Find participant for a given slot
-  const getParticipant = (deal_role: string): DealParticipantRow | undefined => {
-    return participants.find(p =>
+  // Find all participants for a given slot
+  const getParticipants = (deal_role: string): DealParticipantRow[] => {
+    return participants.filter(p =>
       p.deal_role === deal_role &&
       (p.side === columnSide || p.side === 'both')
     );
   };
 
   const allSlots = [...roles, ...sharedRoles].sort((a, b) => {
-    const aFilled = !!getParticipant(a.deal_role);
-    const bFilled = !!getParticipant(b.deal_role);
+    const aFilled = getParticipants(a.deal_role).length > 0;
+    const bFilled = getParticipants(b.deal_role).length > 0;
     return Number(bFilled) - Number(aFilled); // filled contacts float to top
   });
 
@@ -1183,18 +1186,50 @@ const RoleSlotColumn: React.FC<{
         </span>
       </div>
       <div className="space-y-2">
-        {allSlots.map(slot => (
-          <RoleSlotRow
-            key={slot.deal_role}
-            slot={slot}
-            participant={getParticipant(slot.deal_role)}
-            columnSide={columnSide}
-            dealId={dealId}
-            onOpenContact={onOpenContact}
-            onOpenSearch={onOpenSearch}
-            onCallStarted={onCallStarted}
-          />
-        ))}
+        {allSlots.map(slot => {
+          const slotParticipants = getParticipants(slot.deal_role);
+          return (
+            <div key={slot.deal_role} className="space-y-1.5">
+              {slotParticipants.length === 0 ? (
+                <RoleSlotRow
+                  slot={slot}
+                  participant={undefined}
+                  columnSide={columnSide}
+                  dealId={dealId}
+                  onOpenContact={onOpenContact}
+                  onOpenSearch={onOpenSearch}
+                  onCallStarted={onCallStarted}
+                />
+              ) : (
+                <>
+                  {slotParticipants.map(p => (
+                    <RoleSlotRow
+                      key={p.dp_id}
+                      slot={slot}
+                      participant={p}
+                      columnSide={columnSide}
+                      dealId={dealId}
+                      onOpenContact={onOpenContact}
+                      onOpenSearch={onOpenSearch}
+                      onCallStarted={onCallStarted}
+                    />
+                  ))}
+                  {slot.allowMultiple && (
+                    <button
+                      onClick={() => onOpenSearch(slot, columnSide)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-none">
+                        <Plus size={10} className="text-primary" />
+                      </div>
+                      <span className="text-xs font-medium text-primary/70 group-hover:text-primary">Add another {slot.label}</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1349,7 +1384,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         name: contactName,
         email: '',
         phone: '',
-        role: (deal_role === 'lead_agent' ? 'agent' : deal_role) as ContactRole,
+        role: (['lead_agent', 'co_agent'].includes(deal_role) ? 'agent' : deal_role) as ContactRole,
         inNotificationList: true,
         side: side === 'buyer' ? 'buy' : side === 'seller' ? 'sell' : 'both',
       };
@@ -1510,7 +1545,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       return 'other';
     }
     const map: Record<string, DealParticipantRole> = {
-      agent: 'lead_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
+      agent: 'lead_agent', co_agent: 'co_agent', lender: 'lender', title: 'title_officer', attorney: 'other',
       inspector: 'inspector', appraiser: 'appraiser', buyer: 'buyer', seller: 'seller', tc: 'tc', other: 'other',
     };
     return map[ct] || 'other';
