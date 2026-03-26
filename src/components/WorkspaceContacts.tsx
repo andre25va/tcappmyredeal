@@ -1253,7 +1253,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         return {
           dp_id: dp.id,
           deal_role: dp.deal_role,
-          side: dp.side as 'buyer' | 'seller' | 'both',
+          side: (dp.side === 'vendor' ? 'both' : dp.side === 'listing' ? 'seller' : dp.side) as 'buyer' | 'seller' | 'both',
           is_primary: dp.is_primary ?? false,
           is_client_side: dp.is_client_side ?? false,
           is_extracted: dp.is_extracted ?? false,
@@ -1316,11 +1316,11 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         .insert({
           deal_id: deal.id,
           contact_id: contactId,
-          side,
+          side: side === 'both' ? 'vendor' : side,
           deal_role,
           is_primary: false,
           is_client_side: false,
-          org_id: orgId,
+          organization_id: orgId,
         })
         .select('id')
         .single();
@@ -1432,7 +1432,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   // Update side for a deal_participant
   const updateParticipantSide = async (dpId: string, side: 'buyer' | 'seller' | 'both') => {
     try {
-      await supabase.from('deal_participants').update({ side }).eq('id', dpId);
+      await supabase.from('deal_participants').update({ side: side === 'both' ? 'vendor' : side }).eq('id', dpId);
       await loadParticipants();
     } catch (err) {
       console.error('Failed to update participant side:', err);
