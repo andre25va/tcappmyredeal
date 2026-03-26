@@ -959,7 +959,6 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         uploaded_by: userName,
         is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
         is_source_of_truth: docType === 'purchase_contract',
-        is_source_of_truth: docType === 'purchase_contract',
       };
 
       const { data: inserted, error: dbErr } = await supabase
