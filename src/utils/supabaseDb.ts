@@ -409,6 +409,16 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
     { onConflict: 'id' },
   );
   if (error) throw error;
+
+  // Background sync: ensure buyer/seller/lender names land in deal_participants
+  // so the Contacts panel picks them up without requiring a separate Edit Deal save.
+  upsertBuyerSellerParticipants({
+    dealId: deal.id,
+    buyerName: deal.buyerName,
+    sellerName: deal.sellerName,
+    loanOfficerName: deal.loanOfficerName,
+    orgId: deal.orgId,
+  }).catch((e) => console.warn('[saveSingleDeal] participant sync error:', e));
 }
 
 function dealToJsonBackup(deal: Deal): Record<string, unknown> {
