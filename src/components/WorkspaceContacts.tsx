@@ -1271,15 +1271,16 @@ const RoleSlotColumn: React.FC<{
                     />
                   ))}
                   {slot.allowMultiple && (
-                    <button
-                      onClick={() => onOpenSearch(slot, columnSide)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-none">
-                        <Plus size={10} className="text-primary" />
-                      </div>
-                      <span className="text-xs font-medium text-primary/70 group-hover:text-primary">Add another {slot.label}</span>
-                    </button>
+                    <div className="flex justify-end pr-1 pt-0.5">
+                      <button
+                        onClick={() => onOpenSearch(slot, columnSide)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs text-gray-400 hover:text-primary hover:bg-primary/5 transition-all"
+                        title={`Add another ${slot.label}`}
+                      >
+                        <Plus size={11} />
+                        <span>Add</span>
+                      </button>
+                    </div>
                   )}
                 </>
               )}
