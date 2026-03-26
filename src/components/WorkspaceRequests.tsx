@@ -416,15 +416,14 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
     setSendingId(requestId);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       const bodyHtml = body.split('\n').map(line =>
         line.trim() ? `<p style="margin:0 0 8px 0;">${line}</p>` : '<br/>'
       ).join('');
 
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({
           to: [to], cc: [], bcc: [], subject, bodyHtml,
           dealId: deal.id, emailType: 'deal',
