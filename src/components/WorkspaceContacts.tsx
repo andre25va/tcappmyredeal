@@ -1196,13 +1196,14 @@ const RoleSlotColumn: React.FC<{
   };
 
   const allSlots = [...roles, ...sharedRoles].sort((a, b) => {
-    const aPri = ROLE_PRIORITY[a.deal_role] ?? 99;
-    const bPri = ROLE_PRIORITY[b.deal_role] ?? 99;
-    if (aPri !== bPri) return aPri - bPri;
-    // Within same priority, filled ones float up
+    // 1. Filled slots always before empty slots
     const aFilled = getParticipants(a.deal_role).length > 0;
     const bFilled = getParticipants(b.deal_role).length > 0;
-    return Number(bFilled) - Number(aFilled);
+    if (aFilled !== bFilled) return Number(bFilled) - Number(aFilled);
+    // 2. Within same fill status, agents first → buyers/sellers → others
+    const aPri = ROLE_PRIORITY[a.deal_role] ?? 99;
+    const bPri = ROLE_PRIORITY[b.deal_role] ?? 99;
+    return aPri - bPri;
   });
 
   const handleDragOver = (e: React.DragEvent) => {
