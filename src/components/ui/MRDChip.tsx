@@ -10,11 +10,14 @@
  *
  * Visual states:
  *   default   → white pill, gray border, solid-color avatar + role badge
- *   selected  → full solid role color, frosted avatar + badge, white text
+ *   isNotifier → full solid role color (contact IS on notification list)
+ *   selected  → full solid role color (user is actively selecting in picker)
  *   onRemove  → × button appended (To: field recipients)
  *
- * NOTE: isNotifier prop is kept for API compatibility.
- *       All chips now start white; solid color fires on selected=true.
+ * isNotifier and selected are visually identical — both render solid.
+ * The distinction is semantic:
+ *   isNotifier = permanently active (already on the list)
+ *   selected   = toggled by user click in a picker
  * ─────────────────────────────────────────────────────────────────
  */
 
@@ -27,7 +30,7 @@ export interface MRDChipProps {
   name: string;
   /** Role value — drives all color decisions. Accepts raw DB values (buyers_agent, title_officer, etc.) */
   role: string;
-  /** Kept for API compatibility — no longer changes visual appearance */
+  /** Contact is on the Notification List — renders solid role color (same as selected) */
   isNotifier?: boolean;
   /** Selected state — fills chip with solid role color */
   selected?: boolean;
@@ -58,9 +61,9 @@ export function MRDChip({
   onClick,
   className = '',
 }: MRDChipProps) {
-  void isNotifier; // kept for API compat
   const r = normalizeRole(role);
   const initials = getInitials(name);
+  const isSolid = isNotifier || selected;
 
   const handleClick = onClick ? onClick : undefined;
   const Tag = handleClick ? 'button' : 'div';
@@ -68,8 +71,8 @@ export function MRDChip({
     ? { type: 'button' as const, onClick: handleClick }
     : {};
 
-  /* ── SELECTED — full solid role color ──────────────────────────── */
-  if (selected) {
+  /* ── SOLID — notifier or selected: full solid role color ────────── */
+  if (isSolid) {
     return (
       <Tag
         {...tagProps}
