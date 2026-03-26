@@ -811,7 +811,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       buyerName: form.buyerNames || undefined,
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
-      titleCompanySide: form.titleCompanySide || (form.transactionType === 'buyer' ? 'buy' : 'sell') || undefined,
+      titleCompanySide: (form.titleCompanySide === 'both' ? 'internal' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'internal',
       loanOfficerName: form.loanOfficer || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
