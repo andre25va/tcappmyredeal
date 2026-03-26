@@ -861,6 +861,67 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             isClientSide: false,
           });
         }
+
+        // Save extracted buyer contacts from deal wizard form
+        if (form.buyerNames) {
+          const buyerNameList = form.buyerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
+          for (const fullName of buyerNameList) {
+            const parts = fullName.split(' ');
+            try {
+              const { data: newContact } = await supabase.from('contacts').insert({
+                first_name: parts[0],
+                last_name: parts.slice(1).join(' ') || null,
+                full_name: fullName,
+                contact_type: 'client',
+                org_id: deal.orgId ?? null,
+              }).select('id').single();
+              if (newContact) {
+                await saveDealParticipant({
+                  dealId: deal.id,
+                  contactId: newContact.id,
+                  side: 'buyer',
+                  dealRole: 'buyer',
+                  isPrimary: false,
+                  isClientSide: form.transactionType === 'buyer',
+                  isExtracted: true,
+                });
+              }
+            } catch (err) {
+              console.error('[GuidedDealWizard] Failed to save buyer contact:', fullName, err);
+            }
+          }
+        }
+
+        // Save extracted seller contacts from deal wizard form
+        if (form.sellerNames) {
+          const sellerNameList = form.sellerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
+          for (const fullName of sellerNameList) {
+            const parts = fullName.split(' ');
+            try {
+              const { data: newContact } = await supabase.from('contacts').insert({
+                first_name: parts[0],
+                last_name: parts.slice(1).join(' ') || null,
+                full_name: fullName,
+                contact_type: 'client',
+                org_id: deal.orgId ?? null,
+              }).select('id').single();
+              if (newContact) {
+                await saveDealParticipant({
+                  dealId: deal.id,
+                  contactId: newContact.id,
+                  side: 'seller',
+                  dealRole: 'seller',
+                  isPrimary: false,
+                  isClientSide: form.transactionType === 'listing',
+                  isExtracted: true,
+                });
+              }
+            } catch (err) {
+              console.error('[GuidedDealWizard] Failed to save seller contact:', fullName, err);
+            }
+          }
+        }
+
         // Upload extracted contract file to deal-documents
         if (contractFile) {
           try {
