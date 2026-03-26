@@ -580,7 +580,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       .from('deal_participants')
       .select(`id, deal_role, side, is_primary, is_client_side, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
       .eq('deal_id', deal.id)
-      .then(({ data }) => { if (data) setParticipants(data); });
+      .then(({ data }) => {
+        if (data) setParticipants(data.map((p: any) => ({
+          ...p,
+          side: p.side === 'vendor' ? 'both' : p.side === 'listing' ? 'seller' : p.side,
+        })));
+      });
   }, [deal.id]);
 
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
