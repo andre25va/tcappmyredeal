@@ -107,8 +107,8 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
   // --- Compose state ---
   const [selectedTask, setSelectedTask] = useState<NudgeTaskStatus | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [recipientId, setRecipientId] = useState<string>('');
-  const [recipientContact, setRecipientContact] = useState<DealContact | null>(null);
+  // Multi-select recipients
+  const [recipientContacts, setRecipientContacts] = useState<DealContact[]>([]);
   const [channel, setChannel] = useState<'email' | 'sms'>('email');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -219,14 +219,22 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTask]);
 
-  // --- Send nudge ---
+  // --- Toggle recipient ---
+  function handleToggleRecipient(c: DealContact) {
+    setRecipientContacts((prev) => {
+      const exists = prev.some((r) => r.contactId === c.contactId);
+      return exists ? prev.filter((r) => r.contactId !== c.contactId) : [...prev, c];
+    });
+  }
+
+  // --- Send nudge to all selected recipients ---
   async function handleSend() {
     if (!selectedTask) {
       setToast('Please select a task first.');
       return;
     }
-    if (!recipientContact) {
-      setToast('Please select a recipient.');
+    if (recipientContacts.length === 0) {
+      setToast('Please select at least one recipient.');
       return;
     }
     if (!body.trim()) {
@@ -238,148 +246,132 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
       return;
     }
 
-    // Look up recipient's contact info
-    const recipientEmail = recipientContact?.email || undefined;
-    const recipientPhone = recipientContact?.phone || undefined;
-
-    if (channel === 'email' && !recipientEmail) {
-      setToast('Selected recipient has no email address.');
-      return;
-    }
-    if (channel === 'sms' && !recipientPhone) {
-      setToast('Selected recipient has no phone number.');
-      return;
+    // Validate all recipients have required contact info
+    for (const rc of recipientContacts) {
+      if (channel === 'email' && !rc.email) {
+        setToast(`${rc.name} has no email address.`);
+        return;
+      }
+      if (channel === 'sms' && !rc.phone) {
+        setToast(`${rc.name} has no phone number.`);
+        return;
+      }
     }
 
     setSending(true);
+    let successCount = 0;
+    let failCount = 0;
+
     try {
-      // 1. Insert nudge_log with 'pending' status
-      const { data: logData, error: logErr } = await supabase.from('nudge_log').insert({
-        task_id: selectedTask.task_id,
-        deal_id: deal.id,
-        template_id: selectedTemplateId || null,
-        recipient_id: recipientContact?.contactId || null,
-        sent_by: profile?.id,
-        channel,
-        subject: channel === 'email' ? subject : null,
-        body,
-        delivery_status: 'pending',
-      }).select('id').single();
-
-      if (logErr) {
-        console.error('Error logging nudge:', logErr);
-        setToast('Failed to log nudge. Please try again.');
-        return;
-      }
-
-      const nudgeLogId = logData.id;
-
-      // 2. Attempt actual delivery
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      let deliveryStatus: 'delivered' | 'failed' = 'failed';
-      let errorMsg = '';
 
-      if (channel === 'email') {
-        // Build branded HTML email
-        const escapedBody = body
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/\n/g, '<br/>');
+      for (const rc of recipientContacts) {
+        // 1. Log nudge with 'pending' status
+        const { data: logData, error: logErr } = await supabase
+          .from('nudge_log')
+          .insert({
+            task_id: selectedTask.task_id,
+            deal_id: deal.id,
+            template_id: selectedTemplateId || null,
+            recipient_id: rc.contactId,
+            sent_by: profile?.id,
+            channel,
+            subject: channel === 'email' ? subject : null,
+            body,
+            delivery_status: 'pending',
+          })
+          .select('id')
+          .single();
 
-        const bodyHtml = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
+        if (logErr) {
+          console.error('Error logging nudge:', logErr);
+          failCount++;
+          continue;
+        }
+
+        const nudgeLogId = logData.id;
+        let deliveryStatus: 'delivered' | 'failed' = 'failed';
+
+        // 2. Deliver
+        if (channel === 'email') {
+          const escapedBody = body
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br/>');
+
+          const bodyHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f4f4f4;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
     <div style="background:#2563eb;padding:16px 24px;">
       <img src="https://myredeal.com/logo-white.png" alt="MyReDeal.com" style="height:28px;" />
     </div>
-    <div style="padding:24px;font-size:14px;line-height:1.6;color:#333;">
-      ${escapedBody}
-    </div>
+    <div style="padding:24px;font-size:14px;line-height:1.6;color:#333;">${escapedBody}</div>
     <div style="border-top:1px solid #eee;padding:16px 24px;text-align:center;font-size:11px;color:#999;">
-      Sent via <a href="https://myredeal.com" style="color:#2563eb;text-decoration:none;">MyReDeal.com</a> — Transaction Coordination Platform
+      Sent via <a href="https://myredeal.com" style="color:#2563eb;text-decoration:none;">MyReDeal.com</a>
     </div>
   </div>
-</body>
-</html>`;
+</body></html>`;
 
-        try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-              to: [recipientEmail],
-              subject,
-              bodyHtml,
-              dealId: deal.id,
-              emailType: 'nudge',
-              sentBy: profile?.name || 'TC',
-            }),
-          });
-
-          if (res.ok) {
-            deliveryStatus = 'delivered';
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            errorMsg = (errData as any).error || `Send failed (${res.status})`;
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+              body: JSON.stringify({
+                to: [rc.email],
+                subject,
+                bodyHtml,
+                dealId: deal.id,
+                emailType: 'nudge',
+                sentBy: profile?.name || 'TC',
+              }),
+            });
+            if (res.ok) deliveryStatus = 'delivered';
+          } catch (_) {
+            // delivery failed
           }
-        } catch (err: any) {
-          errorMsg = err.message || 'Network error';
-        }
-      } else {
-        // SMS channel
-        try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-              to: recipientPhone,
-              body: body,
-              dealId: deal.id,
-              nudgeLogId,
-              sentBy: profile?.name || 'TC',
-            }),
-          });
-
-          if (res.ok) {
-            deliveryStatus = 'delivered';
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            errorMsg = (errData as any).error || `SMS send failed (${res.status})`;
+        } else {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+              body: JSON.stringify({
+                to: rc.phone,
+                body,
+                dealId: deal.id,
+                nudgeLogId,
+                sentBy: profile?.name || 'TC',
+              }),
+            });
+            if (res.ok) deliveryStatus = 'delivered';
+          } catch (_) {
+            // delivery failed
           }
-        } catch (err: any) {
-          errorMsg = err.message || 'Network error';
         }
+
+        // 3. Update log status
+        await supabase.from('nudge_log').update({ delivery_status: deliveryStatus }).eq('id', nudgeLogId);
+        if (deliveryStatus === 'delivered') successCount++;
+        else failCount++;
       }
 
-      // 3. Update nudge_log with actual delivery status
-      await supabase.from('nudge_log').update({
-        delivery_status: deliveryStatus,
-      }).eq('id', nudgeLogId);
-
-      if (deliveryStatus === 'delivered') {
-        setToast(`Nudge ${channel === 'email' ? 'emailed' : 'texted'} successfully!`);
-        // Reset compose form
-        setSelectedTemplateId('');
-        setRecipientId('');
-        setRecipientContact(null);
-        setSubject('');
-        setBody('');
-        fetchData();
-        fetchLog();
+      if (failCount === 0) {
+        setToast(`Nudge sent to ${successCount} recipient${successCount !== 1 ? 's' : ''}!`);
+      } else if (successCount > 0) {
+        setToast(`Sent to ${successCount}, failed for ${failCount} recipient${failCount !== 1 ? 's' : ''}.`);
       } else {
-        setToast(`Nudge logged but delivery failed: ${errorMsg}`);
-        fetchLog();
+        setToast('Delivery failed for all recipients. Nudge was logged.');
       }
+
+      // Reset compose
+      setSelectedTemplateId('');
+      setRecipientContacts([]);
+      setSubject('');
+      setBody('');
+      fetchData();
+      fetchLog();
     } catch (err) {
       console.error('Unexpected error sending nudge:', err);
       setToast('An unexpected error occurred.');
@@ -534,23 +526,22 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                   </select>
                 </div>
 
-                {/* Recipient picker */}
+                {/* Recipient picker — multi-select */}
                 <div className="form-control">
                   <label className="label py-1">
-                    <span className="label-text text-xs">Recipient</span>
+                    <span className="label-text text-xs">
+                      Recipients
+                      {recipientContacts.length > 0 && (
+                        <span className="ml-1.5 badge badge-xs badge-primary">
+                          {recipientContacts.length} selected
+                        </span>
+                      )}
+                    </span>
                   </label>
                   <DealContactPicker
                     dealId={deal.id}
-                    selectedContactIds={recipientContact ? [recipientContact.contactId] : []}
-                    onToggle={(c) => {
-                      if (recipientContact?.contactId === c.contactId) {
-                        setRecipientContact(null);
-                        setRecipientId('');
-                      } else {
-                        setRecipientContact(c);
-                        setRecipientId(c.contactId);
-                      }
-                    }}
+                    selectedContactIds={recipientContacts.map((r) => r.contactId)}
+                    onToggle={handleToggleRecipient}
                   />
                 </div>
 
@@ -624,7 +615,11 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                   ) : (
                     <Send size={14} />
                   )}
-                  {sending ? 'Sending...' : 'Send Nudge'}
+                  {sending
+                    ? 'Sending...'
+                    : recipientContacts.length > 1
+                    ? `Send to ${recipientContacts.length} Recipients`
+                    : 'Send Nudge'}
                 </button>
               </div>
             )}
