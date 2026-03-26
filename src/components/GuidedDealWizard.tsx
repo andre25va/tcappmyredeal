@@ -256,7 +256,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
-    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '',
+    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
     legalDescription: '',
   });
   const [error, setError] = useState('');
@@ -811,6 +811,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       buyerName: form.buyerNames || undefined,
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
+      titleCompanySide: form.titleCompanySide || (form.transactionType === 'buyer' ? 'buy' : 'sell') || undefined,
       loanOfficerName: form.loanOfficer || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
@@ -1845,6 +1846,25 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
                     <input className="input input-bordered w-full no-spinner" value={form.titleCompany} onChange={f('titleCompany')} placeholder="ABC Title Co." />
+                    {form.titleCompany && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-xs text-base-content/50">Side:</span>
+                        <div className="join">
+                          {(['buy', 'sell', 'both'] as const).map(s => {
+                            const effective = form.titleCompanySide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
+                            return (
+                              <button
+                                key={s}
+                                type="button"
+                                className={`join-item btn btn-xs ${effective === s ? 'btn-primary' : 'btn-outline'}`}
+                                onClick={() => setForm(p => ({ ...p, titleCompanySide: s }))}
+                              >{s === 'buy' ? 'Buy' : s === 'sell' ? 'Sell' : 'Both'}</button>
+                            );
+                          })}
+                        </div>
+                        {!form.titleCompanySide && <span className="text-xs text-base-content/40 italic">auto</span>}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>

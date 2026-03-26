@@ -375,6 +375,7 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       buyer_name: deal.buyerName || null,
       seller_name: deal.sellerName || null,
       title_company_name: deal.titleCompanyName || null,
+      title_company_side: (deal as any).titleCompanySide || null,
       loan_officer_name: deal.loanOfficerName || null,
       property_type: deal.propertyType || null,
       list_price: deal.listPrice ?? null,
@@ -418,6 +419,7 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
     sellerName: deal.sellerName,
     loanOfficerName: deal.loanOfficerName,
     titleCompanyName: deal.titleCompanyName,
+    titleCompanySide: (deal as any).titleCompanySide,
     orgId: deal.orgId,
   }).catch((e) => console.warn('[saveSingleDeal] participant sync error:', e));
 }
@@ -476,9 +478,10 @@ export async function upsertBuyerSellerParticipants(params: {
   sellerName?: string;
   loanOfficerName?: string;
   titleCompanyName?: string;
+  titleCompanySide?: string;
   orgId?: string;
 }): Promise<void> {
-  const { dealId, buyerName, sellerName, loanOfficerName, titleCompanyName, orgId } = params;
+  const { dealId, buyerName, sellerName, loanOfficerName, titleCompanyName, titleCompanySide, orgId } = params;
 
   // Skip if nothing to sync
   if (!buyerName && !sellerName && !loanOfficerName && !titleCompanyName) return;
@@ -599,7 +602,8 @@ export async function upsertBuyerSellerParticipants(params: {
   }
   if (titleCompanyName && !existingRoles.has('title_officer')) {
     // Title company = vendor side, stored as company-type contact
-    await createCompanyParticipant(titleCompanyName, 'vendor', 'title_officer');
+    const compSide = titleCompanySide === 'sell' ? 'seller' : 'vendor';
+    await createCompanyParticipant(titleCompanyName, compSide, 'title_officer');
   }
 }
 
