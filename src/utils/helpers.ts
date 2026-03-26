@@ -29,7 +29,7 @@ export const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
 export const formatDate = (s: string) => {
-  if (!s) return '—';
+  if (!s) return '\u2014';
   const d = new Date(s + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
@@ -112,35 +112,39 @@ export const roleBadge = (r: ContactRole): string => ({
   'other': 'badge-ghost',
 }[r] ?? 'badge-ghost');
 
+/**
+ * Solid avatar background color for MRDChip.
+ * Returns true solid bg + white text — no opacity wash.
+ */
 export const roleAvatarBg = (r: ContactRole): string => ({
-  'agent': 'bg-primary/20 text-primary',
-  'client': 'bg-teal-100 text-teal-700',
-  'agent-client': 'bg-accent/20 text-accent',
-  'buyer': 'bg-info/20 text-info',
-  'seller': 'bg-secondary/20 text-secondary',
-  'lender': 'bg-warning/20 text-warning',
-  'title': 'bg-success/20 text-success',
-  'attorney': 'bg-error/20 text-error',
-  'inspector': 'bg-base-content/10 text-base-content',
-  'appraiser': 'bg-base-content/10 text-base-content',
-  'tc': 'bg-primary/20 text-primary',
-  'other': 'bg-base-content/10 text-base-content',
-}[r] ?? 'bg-base-content/10 text-base-content');
+  'agent':       'bg-blue-600 text-white',
+  'client':      'bg-teal-500 text-white',
+  'agent-client':'bg-teal-500 text-white',
+  'buyer':       'bg-cyan-600 text-white',
+  'seller':      'bg-purple-600 text-white',
+  'lender':      'bg-pink-600 text-white',
+  'title':       'bg-green-600 text-white',
+  'attorney':    'bg-gray-600 text-white',
+  'inspector':   'bg-yellow-500 text-white',
+  'appraiser':   'bg-gray-500 text-white',
+  'tc':          'bg-blue-600 text-white',
+  'other':       'bg-gray-500 text-white',
+}[r] ?? 'bg-gray-500 text-white');
 
-/** Solid filled chip color for contacts who are active notifiers */
+/** Solid filled chip color for selected state in MRDChip */
 export const roleChipSolid = (r: ContactRole): string => ({
-  'agent': 'bg-primary border-primary text-primary-content',
-  'client': 'bg-teal-500 border-teal-500 text-white',
-  'agent-client': 'bg-accent border-accent text-accent-content',
-  'buyer': 'bg-info border-info text-info-content',
-  'seller': 'bg-secondary border-secondary text-secondary-content',
-  'lender': 'bg-warning border-warning text-warning-content',
-  'title': 'bg-success border-success text-success-content',
-  'attorney': 'bg-error border-error text-error-content',
-  'inspector': 'bg-gray-500 border-gray-500 text-white',
-  'appraiser': 'bg-gray-400 border-gray-400 text-white',
-  'tc': 'bg-primary border-primary text-primary-content',
-  'other': 'bg-gray-400 border-gray-400 text-white',
+  'agent':       'bg-primary border-primary text-primary-content',
+  'client':      'bg-teal-500 border-teal-500 text-white',
+  'agent-client':'bg-accent border-accent text-accent-content',
+  'buyer':       'bg-info border-info text-info-content',
+  'seller':      'bg-secondary border-secondary text-secondary-content',
+  'lender':      'bg-warning border-warning text-warning-content',
+  'title':       'bg-success border-success text-success-content',
+  'attorney':    'bg-error border-error text-error-content',
+  'inspector':   'bg-gray-500 border-gray-500 text-white',
+  'appraiser':   'bg-gray-400 border-gray-400 text-white',
+  'tc':          'bg-primary border-primary text-primary-content',
+  'other':       'bg-gray-400 border-gray-400 text-white',
 }[r] ?? 'bg-gray-400 border-gray-400 text-white');
 
 export const docTypeConfig: Record<DocRequestType, { label: string; description: string; urgency: 'high' | 'medium' | 'low' }> = {
@@ -150,7 +154,7 @@ export const docTypeConfig: Record<DocRequestType, { label: string; description:
   inspection_addendum: { label: 'Inspection Addendum', description: 'Addendum addressing inspection findings and agreed repairs.', urgency: 'medium' },
   repair_addendum: { label: 'Repair Addendum', description: 'Addendum documenting agreed-upon repairs and credits.', urgency: 'medium' },
   hoa_addendum: { label: 'HOA Addendum', description: 'HOA documents and addendum required for this property.', urgency: 'medium' },
-  lead_paint_addendum: { label: 'Lead Paint Addendum', description: 'Required for all pre-1978 homes — federal law.', urgency: 'high' },
+  lead_paint_addendum: { label: 'Lead Paint Addendum', description: 'Required for all pre-1978 homes \u2014 federal law.', urgency: 'high' },
   custom: { label: 'Custom Document', description: 'Custom document request.', urgency: 'medium' },
 };
 
