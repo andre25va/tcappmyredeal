@@ -26,6 +26,7 @@ interface DealDocument {
   extracted_at?: string;
   uploaded_by?: string;
   is_protected?: boolean;
+  is_source_of_truth?: boolean;
 }
 
 interface DocLink {
@@ -756,8 +757,8 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.file_name}</p>
           {isOriginal && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">
-              <Lock size={9} /> Original Contract
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
+              ⭐ Source of Truth
             </span>
           )}
           {!isOriginal && doc.category && doc.category !== 'purchase_contract' && (
@@ -938,6 +939,15 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       const { path, file_name, file_size } = await uploadRes.json();
       setUploadProgress('Saving record…');
 
+      // If uploading a new purchase contract, demote previous source-of-truth
+      if (docType === 'purchase_contract') {
+        await supabase
+          .from('deal_documents')
+          .update({ is_source_of_truth: false })
+          .eq('deal_id', deal.id)
+          .eq('category', 'purchase_contract');
+      }
+
       const rec = {
         deal_id: deal.id,
         file_name: file_name || file.name,
@@ -948,6 +958,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         created_at: new Date().toISOString(),
         uploaded_by: userName,
         is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
+        is_source_of_truth: docType === 'purchase_contract',
+        is_source_of_truth: docType === 'purchase_contract',
       };
 
       const { data: inserted, error: dbErr } = await supabase
@@ -978,6 +990,15 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const ext = file.name.split('.').pop() ?? 'bin';
     const path = `${deal.id}/${generateId()}.${ext}`;
 
+    // Demote previous source-of-truth if uploading a new purchase contract
+    if (docType === 'purchase_contract') {
+      await supabase
+        .from('deal_documents')
+        .update({ is_source_of_truth: false })
+        .eq('deal_id', deal.id)
+        .eq('category', 'purchase_contract');
+    }
+
     const { error: upErr } = await supabase.storage
       .from('deal-documents')
       .upload(path, file, { contentType: file.type, upsert: false });
@@ -993,6 +1014,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       created_at: new Date().toISOString(),
       uploaded_by: userName,
       is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
+      is_source_of_truth: docType === 'purchase_contract',
     };
 
     const { data: inserted, error: dbErr } = await supabase
@@ -1073,9 +1095,10 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const amendmentDocs = docs.filter(d => d.category === 'amendment' || d.category === 'addendum');
   const otherDocs = docs.filter(d => d.category === 'other' || !d.category);
 
-  // Original contract = oldest purchase_contract (last in newest-first list)
+  // Source of truth = flagged doc; fallback to oldest purchase_contract
   const originalContractId = contractDocs.length > 0
-    ? [...contractDocs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].id
+    ? (contractDocs.find(d => d.is_source_of_truth)?.id
+        ?? [...contractDocs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].id)
     : null;
 
   // Build a map: doc_id → linked checklist item titles
