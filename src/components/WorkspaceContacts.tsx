@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight, Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2, ExternalLink, FileText, Send, PhoneCall, PhoneOff } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
-import { formatPhone, roleLabel, roleBadge, roleAvatarBg, roleChipSolid, getInitials, generateId } from '../utils/helpers';
+import { formatPhone, roleLabel, roleBadge, roleAvatarBg, getInitials, generateId } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
+import { MRDChip } from './ui/MRDChip';
 
 interface CallStartedData {
   contactName: string;
@@ -1129,15 +1130,13 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           <div className="px-4 pb-3 flex flex-wrap gap-2 border-t border-primary/10 pt-3">
             {notifList.length === 0 && <p className="text-xs text-gray-400">No contacts on notification list.</p>}
             {notifList.map(c => (
-              <button
+              <MRDChip
                 key={c.id}
+                name={c.name}
+                role={c.role}
+                isNotifier
                 onClick={() => setPopupContactId(c.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border shadow-sm hover:shadow-md transition-all ${roleChipSolid(c.role)}`}
-              >
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold bg-white/25">{getInitials(c.name)}</div>
-                <span className="text-xs font-medium">{c.name}</span>
-                <span className="badge badge-xs bg-white/20 border-0 text-inherit">{roleLabel(c.role)}</span>
-              </button>
+              />
             ))}
           </div>
         )}
