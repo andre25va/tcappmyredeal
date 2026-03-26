@@ -1195,14 +1195,16 @@ const RoleSlotColumn: React.FC<{
     );
   };
 
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
   const allSlots = [...roles, ...sharedRoles].sort((a, b) => {
-    const aPri = ROLE_PRIORITY[a.deal_role] ?? 99;
-    const bPri = ROLE_PRIORITY[b.deal_role] ?? 99;
-    if (aPri !== bPri) return aPri - bPri;
-    // Within same priority, filled ones float up
+    // 1. Filled slots always before empty slots
     const aFilled = getParticipants(a.deal_role).length > 0;
     const bFilled = getParticipants(b.deal_role).length > 0;
-    return Number(bFilled) - Number(aFilled);
+    if (aFilled !== bFilled) return Number(bFilled) - Number(aFilled);
+    // 2. Within same fill status, agents first → buyers/sellers → others
+    const aPri = ROLE_PRIORITY[a.deal_role] ?? 99;
+    const bPri = ROLE_PRIORITY[b.deal_role] ?? 99;
+    return aPri - bPri;
   });
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -1232,12 +1234,33 @@ const RoleSlotColumn: React.FC<{
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 relative">
         <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
         <h3 className="font-bold text-base text-black">{title}</h3>
         <span className="text-xs text-gray-400 font-medium">
           ({participants.filter(p => p.side === columnSide || p.side === 'both').length})
         </span>
+        <button
+          onClick={() => setRolePickerOpen(v => !v)}
+          className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all"
+        >
+          <Plus size={11} />
+          Add
+        </button>
+        {rolePickerOpen && (
+          <div className="absolute top-8 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[180px]">
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Select Role</div>
+            {[...roles, ...sharedRoles].map(slot => (
+              <button
+                key={slot.deal_role}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-primary/5 hover:text-primary transition-all"
+                onClick={() => { setRolePickerOpen(false); onOpenSearch(slot, columnSide); }}
+              >
+                {slot.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="space-y-2">
         {allSlots.map(slot => {
@@ -1269,17 +1292,7 @@ const RoleSlotColumn: React.FC<{
                       onMoveSide={onMoveSide}
                     />
                   ))}
-                  {slot.allowMultiple && (
-                    <button
-                      onClick={() => onOpenSearch(slot, columnSide)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-none">
-                        <Plus size={10} className="text-primary" />
-                      </div>
-                      <span className="text-xs font-medium text-primary/70 group-hover:text-primary">Add another {slot.label}</span>
-                    </button>
-                  )}
+
                 </>
               )}
             </div>
