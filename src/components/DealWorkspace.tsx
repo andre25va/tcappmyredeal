@@ -1,18 +1,15 @@
-import React, { useCallback,  useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList, Bell, StickyNote, CalendarClock,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
-import { DealCommTimeline } from './DealCommTimeline';
-import WorkspaceTimeline from './WorkspaceTimeline';
-import WorkspaceNotes from './WorkspaceNotes';
+import WorkspaceVoice from './WorkspaceVoice';
+import { DealTimeline } from './DealTimeline';
 import { dealToRecord } from '../ai/dealConverter';
-import { DealTask } from '../ai/types';
 import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { pendingDocCount } from '../utils/helpers';
 import { useDealEmails } from '../hooks/useDealEmails';
 
@@ -58,9 +55,8 @@ import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
-import { WorkspaceNudge } from './WorkspaceNudge';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'nudge' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'notes' | 'linked-emails' | 'amendments' | 'access';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
 
 interface Props {
   deal: Deal;
@@ -126,32 +122,6 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
 
 export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
   const { profile, isMasterAdmin } = useAuth();
-
-  // ── Email Command Center handlers ─────────────────────────────────────────
-  const handleLinkThread = useCallback(async (dealId: string, threadId: string) => {
-    await supabase
-      .from('email_review_queue')
-      .update({
-        top_deal_id: dealId,
-        status: 'linked',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: profile?.name || 'TC',
-      })
-      .eq('gmail_thread_id', threadId);
-  }, [profile]);
-
-  const handleCreateTasks = useCallback(async (_dealId: string, tasks: DealTask[]) => {
-    if (!tasks.length) return;
-    const rows = tasks.map((t, idx) => ({
-      deal_id: _dealId,
-      title: t.title,
-      description: t.description ?? null,
-      priority: (t.priority as string) ?? 'normal',
-      status: 'pending',
-      sort_order: idx,
-    }));
-    await supabase.from('tasks').insert(rows);
-  }, []);
   const isViewer = profile?.role === 'viewer';
   const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
     (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
@@ -196,14 +166,12 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'overview',   label: 'Overview',   icon: <LayoutDashboard size={13} /> },
     { id: 'checklists', label: 'Checklists', icon: <CheckSquare size={13} /> },
     { id: 'tasks',      label: 'Tasks',      icon: <ListChecks size={13} />, badge: overdueTasks > 0 ? overdueTasks : undefined },
-    { id: 'nudge',      label: 'Nudges',     icon: <Bell size={13} /> },
     { id: 'contacts',   label: 'Contacts',   icon: <Users size={13} /> },
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
     { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} /> },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
-    { id: 'timeline',   label: 'Timeline',   icon: <CalendarClock size={13} /> },
-    { id: 'notes',      label: 'Notes',      icon: <StickyNote size={13} /> },
+    { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
@@ -396,20 +364,18 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       </div>
 
       {/* Tab Content */}
-      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' || tab === 'checklists' || tab === 'nudge' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className={`flex-1 ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
 
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
-        {tab === 'nudge'      && <div className="p-4 h-full"><WorkspaceNudge deal={deal} /></div>}
         {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailCompose deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} currentUser={profile?.name} />}
-        {tab === 'timeline'   && <div className="p-4 h-full overflow-y-auto"><WorkspaceTimeline deal={deal} /></div>}
-        {tab === 'notes'      && <div className="p-4 h-full overflow-y-auto"><WorkspaceNotes deal={deal} /></div>}
+        {tab === 'timeline'   && <DealTimeline deal={deal} />}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}
-        {tab === 'comms'      && <DealCommTimeline deal={deal} onUpdate={onUpdate} />}
+        {tab === 'comms'      && <WorkspaceVoice deal={deal} onUpdate={onUpdate} onCallStarted={onCallStarted} />}
         {tab === 'ai-emails' && (
           <div className="p-4">
             {emailsLoading && dealEmails.length === 0 ? (
@@ -418,7 +384,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                 <span className="ml-3 text-sm text-base-content/60">Searching & classifying emails…</span>
               </div>
             ) : (
-              <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} onLinkThread={handleLinkThread} onCreateTasks={handleCreateTasks} />
+              <EmailCommandCenter deal={dealToRecord(deal)} emails={dealEmails} />
             )}
           </div>
         )}
