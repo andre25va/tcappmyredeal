@@ -21,6 +21,7 @@ import { LicenseLinksTab }         from './settings/LicenseLinksTab';
 import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 import { MilestonesTab }           from './settings/MilestonesTab';
 import { OrgManagementTab }        from './settings/OrgManagementTab';
+import { ClientPortalTab }         from './settings/ClientPortalTab';
 
 // -- Props
 
@@ -40,7 +41,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'org-management';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'org-management' | 'client-portal';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -275,6 +276,7 @@ export const SettingsView: React.FC<Props> = ({
           { id: 'dd-checklist' as SettingsTab,          label: 'Due Diligence',        icon: <ClipboardList size={14}/> },
           { id: 'compliance-checklist' as SettingsTab,  label: 'Compliance Checklist', icon: <Shield size={14}/> },
           { id: 'reports' as SettingsTab,               label: 'CSV Reports',          icon: <FileDown size={14}/> },
+          { id: 'client-portal' as SettingsTab,         label: 'Client Portal',        icon: <Globe size={14}/> },
         ].map(t => (
           <button
             key={t.id}
@@ -305,6 +307,7 @@ export const SettingsView: React.FC<Props> = ({
         )}
         {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'milestones' && <MilestonesTab contactRecords={contactRecords} />}
+        {tab === 'client-portal' && <ClientPortalTab />}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
             <div className="bg-base-200 rounded-xl p-4 flex items-start gap-3">
