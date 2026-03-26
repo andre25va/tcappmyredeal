@@ -127,6 +127,22 @@ export const roleAvatarBg = (r: ContactRole): string => ({
   'other': 'bg-base-content/10 text-base-content',
 }[r] ?? 'bg-base-content/10 text-base-content');
 
+/** Solid filled chip color for contacts who are active notifiers */
+export const roleChipSolid = (r: ContactRole): string => ({
+  'agent': 'bg-primary border-primary text-primary-content',
+  'client': 'bg-teal-500 border-teal-500 text-white',
+  'agent-client': 'bg-accent border-accent text-accent-content',
+  'buyer': 'bg-info border-info text-info-content',
+  'seller': 'bg-secondary border-secondary text-secondary-content',
+  'lender': 'bg-warning border-warning text-warning-content',
+  'title': 'bg-success border-success text-success-content',
+  'attorney': 'bg-error border-error text-error-content',
+  'inspector': 'bg-gray-500 border-gray-500 text-white',
+  'appraiser': 'bg-gray-400 border-gray-400 text-white',
+  'tc': 'bg-primary border-primary text-primary-content',
+  'other': 'bg-gray-400 border-gray-400 text-white',
+}[r] ?? 'bg-gray-400 border-gray-400 text-white');
+
 export const docTypeConfig: Record<DocRequestType, { label: string; description: string; urgency: 'high' | 'medium' | 'low' }> = {
   price_amendment: { label: 'Price Amendment', description: 'Price change requires a signed price amendment addendum.', urgency: 'high' },
   mf_addendum: { label: 'Multi-Family Addendum', description: 'Required addendum for all multi-family property transactions.', urgency: 'high' },
