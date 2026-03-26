@@ -831,11 +831,9 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                   ?? deal.contacts.find(c => c.role === 'title');
                 if (!raw) return null;
                 if ('dealRole' in raw) {
-                  const dp = raw as DealParticipant;
-                  return { name: dp.contactName ?? '', phone: dp.contactPhone ?? '', email: dp.contactEmail ?? '', directoryId: undefined as string | undefined, company: undefined as string | undefined };
+                  return { name: (raw as any).contactName ?? '', phone: (raw as any).contactPhone ?? '', email: (raw as any).contactEmail ?? '', directoryId: undefined as string | undefined, company: undefined as string | undefined };
                 }
-                const c = raw as Contact;
-                return { name: c.name, phone: c.phone, email: c.email, directoryId: c.directoryId, company: c.company };
+                return { name: (raw as any).name, phone: (raw as any).phone, email: (raw as any).email, directoryId: (raw as any).directoryId, company: (raw as any).company };
               })();
               if (!titleContact) return (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
