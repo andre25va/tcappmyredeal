@@ -436,7 +436,7 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                           )}
                           {isExpanded && hasChanges && (
                             <div className="mt-1.5 space-y-0.5">
-                              {(entry.meta.changes as ChangeDiff[]).map((c, i) => (
+                              {(entry.meta?.changes as ChangeDiff[]).map((c, i) => (
                                 <div key={i} className="text-[11px] text-base-content/60">
                                   <span className="font-medium">{c.field}:</span>{' '}
                                   <span className="line-through opacity-50">{c.old_value || '(empty)'}</span>
