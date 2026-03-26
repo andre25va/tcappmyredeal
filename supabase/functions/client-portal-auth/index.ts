@@ -1,5 +1,5 @@
-// client-portal-auth Edge Function — v2
-// Fixes: phone normalization, any-role deal lookup, portal settings support
+// client-portal-auth Edge Function — v3
+// Adds: extended deal data, participants, task counts, milestones
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
@@ -27,9 +27,61 @@ function formatStatus(status: string): string {
   return map[status?.toLowerCase()] ?? status ?? 'Active';
 }
 
+// ── Role label map ────────────────────────────────────────────────────────────
+function formatRole(role: string): string {
+  const map: Record<string, string> = {
+    lead_agent: 'Lead Agent',
+    buyers_agent: "Buyer's Agent",
+    listing_agent: 'Listing Agent',
+    buyer: 'Buyer',
+    seller: 'Seller',
+    title_officer: 'Title Officer',
+    lender: 'Lender',
+    inspector: 'Inspector',
+    attorney: 'Attorney',
+  };
+  return map[role] ?? role ?? '';
+}
+
 // ── Phone normalizer: extract last 10 digits ─────────────────────────────────
 function normPhone(p: string): string {
   return (p ?? '').replace(/\D/g, '').slice(-10);
+}
+
+// ── Build milestones from deal data ──────────────────────────────────────────
+function buildMilestones(
+  deal: any,
+): Array<{ label: string; done: boolean; date: string | null }> {
+  const today = new Date();
+  const isPast = (d: string | null) => !!d && new Date(d) < today;
+  const isCTC = ['clear_to_close', 'ctc', 'closed'].includes(
+    (deal.status ?? '').toLowerCase(),
+  );
+
+  return [
+    { label: 'Contract Signed', done: !!deal.contract_date, date: deal.contract_date ?? null },
+    {
+      label: 'Option Period',
+      done: isPast(deal.option_period_end),
+      date: deal.option_period_end ?? null,
+    },
+    {
+      label: 'Inspection',
+      done: isPast(deal.inspection_date),
+      date: deal.inspection_date ?? null,
+    },
+    {
+      label: 'Finance Deadline',
+      done: isPast(deal.finance_deadline),
+      date: deal.finance_deadline ?? null,
+    },
+    { label: 'Clear to Close', done: isCTC, date: null },
+    {
+      label: 'Closing',
+      done: (deal.status ?? '').toLowerCase() === 'closed',
+      date: deal.closing_date ?? null,
+    },
+  ];
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -93,8 +145,6 @@ serve(async (req: Request) => {
       typeof cfg.portal_welcome_message === 'string' ? cfg.portal_welcome_message : '';
 
     // ── Lookup contact by PIN, then filter by normalized phone ────────────────
-    // We fetch all contacts with matching PIN (typically very few) then check phone.
-    // This avoids DB-side function calls for normalization.
     const { data: contacts, error: contactErr } = await supabase
       .from('contacts')
       .select('id, first_name, last_name, phone')
@@ -147,12 +197,17 @@ serve(async (req: Request) => {
 
     const dealIds = [...new Set(participations.map((p) => p.deal_id))];
 
-    // ── Fetch active deals ────────────────────────────────────────────────────
+    // ── Fetch active deals (extended fields) ──────────────────────────────────
     const { data: deals, error: dealsErr } = await supabase
       .from('deals')
-      .select('id, property_address, city, state, status, closing_date, deal_ref')
+      .select(`
+        id, property_address, city, state, status, closing_date, deal_ref,
+        purchase_price, earnest_money, loan_type, loan_amount, down_payment_pct, seller_concessions,
+        property_type, mls_number,
+        contract_date, option_period_end, inspection_date, finance_deadline, possession_date
+      `)
       .in('id', dealIds)
-      .not('status', 'in', '("closed","terminated","cancelled","withdrawn")');
+      .not('status', 'in', '(closed,terminated,cancelled,withdrawn)');
 
     if (dealsErr) {
       console.error('Deals lookup error:', dealsErr);
@@ -168,15 +223,37 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Fetch next pending task per deal (batch) ──────────────────────────────
+    const activeDealIds = deals.map((d) => d.id);
+
+    // ── Fetch participants per deal (denormalized) ────────────────────────────
+    const { data: allParticipants } = await supabase
+      .from('deal_participants')
+      .select('deal_id, deal_role, contact_name, contact_phone, contact_email')
+      .in('deal_id', activeDealIds);
+
+    // ── Fetch task counts per deal ────────────────────────────────────────────
+    const { data: allTasks } = await supabase
+      .from('tasks')
+      .select('deal_id, status')
+      .in('deal_id', activeDealIds);
+
+    const taskCountsMap: Record<string, { completed: number; total: number }> = {};
+    for (const task of allTasks ?? []) {
+      if (!taskCountsMap[task.deal_id])
+        taskCountsMap[task.deal_id] = { completed: 0, total: 0 };
+      taskCountsMap[task.deal_id].total++;
+      if (task.status === 'completed') taskCountsMap[task.deal_id].completed++;
+    }
+
+    // ── Fetch next pending task per deal ──────────────────────────────────────
     const tasksMap: Record<string, { title: string; dueDate: string | null }> = {};
 
     if (showNextItem) {
       const { data: tasks } = await supabase
         .from('tasks')
         .select('deal_id, title, due_date')
-        .in('deal_id', deals.map((d) => d.id))
-        .not('status', 'in', '("completed","cancelled")')
+        .in('deal_id', activeDealIds)
+        .not('status', 'in', '(completed,cancelled)')
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
 
@@ -190,15 +267,48 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── Build response ────────────────────────────────────────────────────────
-    const clientDeals = deals.map((d) => ({
-      id: d.id,
-      address: [d.property_address, d.city, d.state].filter(Boolean).join(', '),
-      closingDate: d.closing_date ?? null,
-      status: formatStatus(d.status),
-      dealRef: d.deal_ref ?? null,
-      nextItem: showNextItem ? (tasksMap[d.id] ?? null) : null,
-    }));
+    // ── Build extended response ───────────────────────────────────────────────
+    const clientDeals = deals.map((d) => {
+      const participantsForDeal = (allParticipants ?? [])
+        .filter((p) => p.deal_id === d.id)
+        .map((p) => ({
+          name: p.contact_name ?? '',
+          role: formatRole(p.deal_role ?? ''),
+          phone: p.contact_phone ?? null,
+          email: p.contact_email ?? null,
+        }));
+
+      const taskCounts = taskCountsMap[d.id] ?? { completed: 0, total: 0 };
+
+      return {
+        id: d.id,
+        address: [d.property_address, d.city, d.state].filter(Boolean).join(', '),
+        city: d.city ?? '',
+        state: d.state ?? '',
+        closingDate: d.closing_date ?? null,
+        status: formatStatus(d.status),
+        dealRef: d.deal_ref ?? null,
+        nextItem: showNextItem ? (tasksMap[d.id] ?? null) : null,
+        // Extended fields
+        purchasePrice: d.purchase_price ?? null,
+        earnestMoney: d.earnest_money ?? null,
+        loanType: d.loan_type ?? null,
+        loanAmount: d.loan_amount ?? null,
+        downPaymentPct: d.down_payment_pct ?? null,
+        sellerConcessions: d.seller_concessions ?? null,
+        propertyType: d.property_type ?? null,
+        mlsNumber: d.mls_number ?? null,
+        contractDate: d.contract_date ?? null,
+        optionPeriodEnd: d.option_period_end ?? null,
+        inspectionDate: d.inspection_date ?? null,
+        financeDeadline: d.finance_deadline ?? null,
+        possessionDate: d.possession_date ?? null,
+        participants: participantsForDeal,
+        milestones: buildMilestones(d),
+        tasksCompleted: taskCounts.completed,
+        tasksTotal: taskCounts.total,
+      };
+    });
 
     return jsonResponse({
       contactName,
