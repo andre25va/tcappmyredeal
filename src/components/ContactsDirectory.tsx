@@ -135,6 +135,7 @@ interface EditForm {
   timezone: string;
   notes: string;
   defaultInstructions: string;
+  pin: string;
   isClient: boolean;
   originalIsClient: boolean;
   clientAccountId?: string;
@@ -176,6 +177,7 @@ function blankForm(role: ContactRole = 'agent'): EditForm {
     timezone: '',
     notes: '',
     defaultInstructions: '',
+    pin: '',
     isClient: false,
     originalIsClient: false,
     clientAccountId: undefined,
@@ -199,6 +201,7 @@ function contactToForm(c: ContactRecord): EditForm {
     timezone: c.timezone,
     notes: c.notes,
     defaultInstructions: c.defaultInstructions ?? '',
+    pin: c.pin ?? '',
     isClient: c.isClient,
     originalIsClient: c.isClient,
     clientAccountId: c.clientAccountId,
@@ -731,6 +734,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         timezone: form.timezone || undefined,
         notes: form.notes.trim() || undefined,
         defaultInstructions: form.isClient ? (form.defaultInstructions.trim() || undefined) : undefined,
+        pin: form.pin.trim() || undefined,
         preferredLanguage: form.preferredLanguage,
         teamName: form.teamName.trim() || undefined,
         orgId: form.orgId || undefined,
@@ -1088,6 +1092,23 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <div className="mt-2">
                   <label className="label py-0"><span className="label-text text-xs">Notes</span></label>
                   <textarea className="textarea textarea-bordered textarea-sm w-full" autoComplete="off" rows={2} value={form.notes} onChange={e => updateField('notes', e.target.value)} />
+                </div>
+                <div className="mt-2">
+                  <label className="label py-0">
+                    <span className="label-text text-xs">Client Portal PIN</span>
+                    <span className="label-text-alt text-xs text-base-content/40">4–6 digits — used for portal access</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    pattern="[0-9]*"
+                    placeholder="e.g. 1234"
+                    className="input input-bordered input-sm w-32"
+                    autoComplete="off"
+                    value={form.pin}
+                    onChange={e => updateField('pin', e.target.value.replace(/\D/g, ''))}
+                  />
                 </div>
               </div>
 
