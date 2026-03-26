@@ -268,6 +268,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [showExtractedTable, setShowExtractedTable] = useState(false);
   const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [contractFile, setContractFile] = useState<File | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
@@ -588,6 +589,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleFileExtract = async (file: File) => {
     if (extracting) return;
+    setContractFile(file); // preserve file for post-create upload
     setExtracting(true);
     setExtractionBanner(null);
     setError('');
@@ -858,6 +860,32 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             isPrimary: false,
             isClientSide: false,
           });
+        }
+        // Upload extracted contract file to deal-documents
+        if (contractFile) {
+          try {
+            const safeName = contractFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `deals/${deal.id}/purchase-contract/${safeName}`;
+            const { error: upErr } = await supabase.storage
+              .from('deal-documents')
+              .upload(path, contractFile, { contentType: contractFile.type, upsert: false });
+            if (!upErr) {
+              await supabase.from('deal_documents').insert({
+                deal_id: deal.id,
+                file_name: contractFile.name,
+                storage_path: path,
+                file_size_bytes: contractFile.size,
+                category: 'purchase_contract',
+                source: 'upload',
+                is_source_of_truth: true,
+                is_protected: true,
+                uploaded_by: profile?.name || 'TC Staff',
+                created_at: new Date().toISOString(),
+              });
+            }
+          } catch (docErr) {
+            console.error('[GuidedDealWizard] Failed to save contract file:', docErr);
+          }
         }
       } catch (err) {
         console.error('[GuidedDealWizard] Failed to save deal participants:', err);
