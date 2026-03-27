@@ -79,6 +79,12 @@ export const PAGE_IDS = {
   // Modals
   MILESTONE_ADVANCE:         'milestone-advance-modal',
   PROFILE_SETUP:             'profile-setup-modal',
+
+  // Popup Modals / Overlays
+  FOCUS_VIEW_MODAL:          'modal-focus-view',
+  PROPERTY_EMAIL_MODAL:      'modal-property-emails',
+  ACTIVE_CALL_OVERLAY:       'overlay-active-call',
+  CONFIRM_MODAL:             'modal-confirm',
 } as const;
 
 export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];

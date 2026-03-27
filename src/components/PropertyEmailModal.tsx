@@ -4,6 +4,8 @@ import {
   Download, FileText, Image, Film, File, Loader2,
   AlertCircle, Inbox, Search, Cpu, Shield, MessageSquare,
 } from 'lucide-react';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Attachment {
@@ -623,6 +625,9 @@ export const PropertyEmailModal: React.FC<PropertyEmailModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Page ID Badge */}
+      <PageIdBadge pageId={PAGE_IDS.PROPERTY_EMAIL_MODAL} context={label} />
     </div>
   );
 };
