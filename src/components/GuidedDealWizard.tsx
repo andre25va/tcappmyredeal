@@ -278,6 +278,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [splitDone, setSplitDone] = useState(false);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
+  const [mlsDetectedPropertyType, setMlsDetectedPropertyType] = useState<string | null>(null);
 
   // Title & Escrow step state
   const [titleSearch, setTitleSearch] = useState('');
@@ -302,6 +303,32 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
+
+  // Auto-calculate down payment when contract price or loan amount changes
+  const calculateDownPayment = (newForm: typeof form) => {
+    const contractPrice = parseFloat(newForm.contractPrice) || 0;
+    const loanAmount = parseFloat(newForm.loanAmount) || 0;
+    const earnestMoney = newForm.isHeartlandMls ? (parseFloat(newForm.earnestMoney) || 0) : 0;
+    
+    if (contractPrice > 0 && loanAmount > 0) {
+      const downPaymentAmount = contractPrice - loanAmount;
+      const totalWithEM = downPaymentAmount + earnestMoney;
+      const downPaymentPercent = contractPrice > 0 ? ((totalWithEM / contractPrice) * 100).toFixed(1) : '';
+      return { downPaymentAmount: downPaymentAmount.toString(), downPaymentPercent };
+    }
+    return null;
+  };
+
+  // Enhanced handler for fields that should trigger down payment recalculation
+  const fWithRecalc = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const newForm = { ...form, [field]: e.target.value };
+    const recalc = calculateDownPayment(newForm);
+    if (recalc) {
+      setForm(p => ({ ...p, ...newForm, ...recalc }));
+    } else {
+      setForm(p => ({ ...p, [field]: e.target.value }));
+    }
+  };
 
   const handlePropertyTypeChange = (type: PropertyType) => {
     setForm(p => ({
@@ -498,6 +525,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const data = await res.json();
       if (data.found && data.mlsNumber) {
         setForm(p => ({ ...p, mlsNumber: data.mlsNumber }));
+        // Store detected property type in separate state for display, don't auto-fill form
+        if (data.propertyType) {
+          setMlsDetectedPropertyType(data.propertyType);
+        }
         setMlsFetchStatus('found');
       } else {
         setMlsFetchStatus('not_found');
@@ -1485,6 +1516,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
+                {mlsDetectedPropertyType && (
+                  <div className="alert alert-info bg-info/10 border border-info/30 p-3 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-info flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-sm font-medium text-base-content">System found: <span className="font-bold text-info capitalize">{mlsDetectedPropertyType}</span></span>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-3">
                   {PROP_TYPES.map(pt => (
                     <button
@@ -1618,7 +1659,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={fWithRecalc('contractPrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
                 <div>
@@ -1640,7 +1681,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
-                      <input className="input input-bordered w-full no-spinner" value={form.loanAmount} onChange={f('loanAmount')} placeholder="0" type="number" />
+                      <input className="input input-bordered w-full no-spinner" value={form.loanAmount} onChange={fWithRecalc('loanAmount')} placeholder="0" type="number" />
                     </div>
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">
