@@ -523,7 +523,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       });
       const data = await res.json();
       if (data.found && data.mlsNumber) {
-        setForm(p => ({ ...p, mlsNumber: data.mlsNumber }));
+        // Update with MLS number and auto-detect property type if available
+        const updates: any = { mlsNumber: data.mlsNumber };
+        if (data.propertyType) {
+          updates.propertyType = data.propertyType;
+        }
+        setForm(p => ({ ...p, ...updates }));
         setMlsFetchStatus('found');
       } else {
         setMlsFetchStatus('not_found');
