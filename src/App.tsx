@@ -38,6 +38,24 @@ import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 import { RequestCenterView } from './components/RequestCenterView';
+import { PageIdBadge } from './components/PageIdBadge';
+import { PAGE_IDS } from './utils/pageTracking';
+
+// View → Page ID mapping for the floating badge
+const VIEW_PAGE_IDS: Record<string, string> = {
+  dashboard:       PAGE_IDS.HOME_DASHBOARD,
+  contacts:        PAGE_IDS.CONTACTS,
+  mls:             PAGE_IDS.MLS_DIRECTORY,
+  compliance:      PAGE_IDS.COMPLIANCE,
+  inbox:           PAGE_IDS.INBOX,
+  'email-review':  PAGE_IDS.EMAIL_REVIEW,
+  tasks:           PAGE_IDS.COMM_TASKS,
+  voice:           PAGE_IDS.VOICE,
+  reports:         PAGE_IDS.AI_REPORTS,
+  requests:        PAGE_IDS.REQUESTS,
+  settings:        PAGE_IDS.SETTINGS,
+  transactions:    PAGE_IDS.TRANSACTIONS_LIST,
+};
 
 // One-time localStorage wipe so old cached data never overrides Supabase
 const LS_CLEARED_KEY = 'tc-supabase-v2-cleared';
@@ -831,6 +849,12 @@ function AppInner() {
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
         onSetView={(v) => setView(v as any)}
       />
+
+      {/* Page ID Badge — floating pill showing current view for quick troubleshooting */}
+      {!(view === 'transactions' && selected) && (
+        <PageIdBadge pageId={VIEW_PAGE_IDS[view] || view} />
+      )}
+
     </div>
   );
 }

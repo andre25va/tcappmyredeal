@@ -18,6 +18,16 @@ export const PAGE_IDS = {
   MLS_DIRECTORY:         'mls-directory',
   WORKFLOWS:             'workflows-page',
 
+  // Sidebar Views
+  COMPLIANCE:            'compliance-page',
+  INBOX:                 'inbox-page',
+  EMAIL_REVIEW:          'email-review-page',
+  COMM_TASKS:            'comm-tasks-page',
+  VOICE:                 'voice-page',
+  AI_REPORTS:            'ai-reports-page',
+  REQUESTS:              'requests-page',
+  TRANSACTIONS_LIST:     'transactions-list',
+
   // Workspace Tabs
   WS_EMAILS:             'ws-emails',
   WS_DOCUMENTS:          'ws-documents',
@@ -26,6 +36,14 @@ export const PAGE_IDS = {
   WS_CHECKLISTS:         'ws-checklists',
   WS_TIMELINE:           'ws-timeline',
   WS_REQUESTS:           'ws-requests',
+  WS_ACTIVITY:           'ws-activity',
+  WS_EMAIL_COMPOSE:      'ws-email-compose',
+  WS_AI_CHAT:            'ws-ai-chat',
+  WS_COMMS:              'ws-comms',
+  WS_AI_EMAILS:          'ws-ai-emails',
+  WS_LINKED_EMAILS:      'ws-linked-emails',
+  WS_AMENDMENTS:         'ws-amendments',
+  WS_ACCESS:             'ws-access',
 
   // Wizard Steps
   WIZARD_STEP_1:         'wizard-step-1',
