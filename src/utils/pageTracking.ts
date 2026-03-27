@@ -92,14 +92,49 @@ export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];
 // ── Page init ─────────────────────────────────────────────────────────────
 
 /**
- * Call this in useEffect on mount for each major page/screen.
- * Logs the page ID to console and stores it on window for error handlers.
+ * Log a page visit to the database for analytics.
+ * Requires supabase client and authenticated user.
  */
-export const initPageTracking = (pageId: string, extra?: Record<string, unknown>) => {
-  const payload = { pageId, ...extra };
-  console.log(`📍 [Page] ${pageId}`, extra ?? '');
+export const logPageVisit = async (
+  supabase: any,
+  pageId: string,
+  extra?: { dealId?: string; sessionId?: string }
+) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return; // not logged in, skip
+
+    await supabase.from('page_visits').insert({
+      page_id:    pageId,
+      deal_id:    extra?.dealId   ?? null,
+      user_id:    user.id,
+      session_id: extra?.sessionId ?? (window as any).__sessionId ?? null,
+    });
+  } catch (e) {
+    // silently fail — analytics should never break the UI
+    console.warn('📍 [PageTracking] Failed to log visit:', e);
+  }
+};
+
+/**
+ * Call this in useEffect on mount for each major page/screen.
+ * Logs the page ID to console, stores it on window for error handlers,
+ * and optionally persists to the page_visits table for analytics.
+ */
+export const initPageTracking = (
+  pageId: string,
+  extra?: Record<string, unknown> & { supabase?: any; dealId?: string; sessionId?: string }
+) => {
+  const { supabase, dealId, sessionId, ...rest } = extra ?? {};
+  const payload = { pageId, ...rest };
+  console.log(`📍 [Page] ${pageId}`, rest);
   (window as any).__currentPageId = pageId;
   (window as any).__currentPageMeta = payload;
+
+  // Persist to DB if supabase client is provided
+  if (supabase) {
+    logPageVisit(supabase, pageId, { dealId, sessionId });
+  }
 };
 
 /** Returns the currently active page ID. */
