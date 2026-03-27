@@ -222,7 +222,6 @@ export default function App() {
     console.log(`📍 [Portal Page] ${pageId}`, {
       screen,
       dealId: activeDeal?.id ?? null,
-      dealId: activeDeal?.id ?? null,
     });
     document.documentElement.setAttribute('data-portal-page', pageId);
   }, [screen, activeDeal]);
