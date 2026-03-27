@@ -65,7 +65,7 @@ export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'clos
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'duplex' | 'condo' | 'townhouse' | 'land' | 'commercial';
-export type ContactRole = 'agent' | 'client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other';
+export type ContactRole = 'agent' | 'client' | 'buyer' | 'seller' | 'lender' | 'title' | 'attorney' | 'inspector' | 'appraiser' | 'tc' | 'other' | 'staff';
 
 // ── New relational type aliases ──────────────────────────────────────────────
 export type ContactType = ContactRole; // alias for clarity during migration
