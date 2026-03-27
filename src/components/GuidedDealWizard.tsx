@@ -1088,7 +1088,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <p className="text-xs text-base-content/50">Step {step} of {TOTAL_STEPS} — {stepTitles[step]}</p>
               </div>
             </div>
-            <button onClick={onClose} className="btn btn-ghost btn-sm btn-square"><X size={16} /></button>
+            <div className="flex items-center gap-2">
+              {contractFile && contractObjectUrl && (
+                <button
+                  onClick={() => setShowPdfPanel(v => !v)}
+                  className="text-xs text-green-700 font-semibold border border-green-300 bg-white hover:bg-green-100 rounded px-2 py-1 transition-colors"
+                >
+                  {showPdfPanel ? 'Hide PDF' : 'View PDF'}
+                </button>
+              )}
+              <button onClick={onClose} className="btn btn-ghost btn-sm btn-square"><X size={16} /></button>
+            </div>
           </div>
 
           <div className="px-5 pt-4 pb-2 flex-none">
