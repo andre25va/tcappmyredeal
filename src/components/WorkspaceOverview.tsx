@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
+import { initPageTracking, PAGE_IDS } from '../utils/pageTracking';
 import { DealHealthCard } from './DealHealthCard';
 import { EmailSummaryCard } from './EmailSummaryCard';
 import { CompliancePreCheck } from './CompliancePreCheck';
@@ -513,6 +514,10 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+
+  useEffect(() => {
+    initPageTracking(PAGE_IDS.DEAL_OVERVIEW);
+  }, []);
 
   useEffect(() => {
     if (editTrigger && editTrigger > 0) openModal();
