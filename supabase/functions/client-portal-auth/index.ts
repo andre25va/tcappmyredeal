@@ -202,7 +202,7 @@ serve(async (req: Request) => {
       .from('deals')
       .select(`
         id, property_address, city, state, status, closing_date, deal_ref,
-        purchase_price, earnest_money, loan_type, loan_amount, down_payment_pct, seller_concessions,
+        purchase_price, earnest_money, loan_type, loan_amount, down_payment, seller_concessions,
         property_type, mls_number,
         contract_date, option_period_end, inspection_date, finance_deadline, possession_date
       `)
@@ -228,7 +228,7 @@ serve(async (req: Request) => {
     // ── Fetch participants per deal (denormalized) ────────────────────────────
     const { data: allParticipants } = await supabase
       .from('deal_participants')
-      .select('deal_id, deal_role, contact_name, contact_phone, contact_email')
+      .select('deal_id, deal_role, contacts(first_name, last_name, phone, email)')
       .in('deal_id', activeDealIds);
 
     // ── Fetch task counts per deal ────────────────────────────────────────────
@@ -271,12 +271,16 @@ serve(async (req: Request) => {
     const clientDeals = deals.map((d) => {
       const participantsForDeal = (allParticipants ?? [])
         .filter((p) => p.deal_id === d.id)
-        .map((p) => ({
-          name: p.contact_name ?? '',
-          role: formatRole(p.deal_role ?? ''),
-          phone: p.contact_phone ?? null,
-          email: p.contact_email ?? null,
-        }));
+        .map((p) => {
+          const c = (p as any).contacts ?? {};
+          const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+          return {
+            name,
+            role: formatRole(p.deal_role ?? ''),
+            phone: c.phone ?? null,
+            email: c.email ?? null,
+          };
+        });
 
       const taskCounts = taskCountsMap[d.id] ?? { completed: 0, total: 0 };
 
@@ -294,7 +298,7 @@ serve(async (req: Request) => {
         earnestMoney: d.earnest_money ?? null,
         loanType: d.loan_type ?? null,
         loanAmount: d.loan_amount ?? null,
-        downPaymentPct: d.down_payment_pct ?? null,
+        downPaymentPct: d.down_payment ?? null,
         sellerConcessions: d.seller_concessions ?? null,
         propertyType: d.property_type ?? null,
         mlsNumber: d.mls_number ?? null,
