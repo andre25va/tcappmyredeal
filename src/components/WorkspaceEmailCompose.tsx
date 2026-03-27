@@ -33,6 +33,7 @@ import {
   getAgentTeamEmailsForCC,
 } from '../utils/supabaseDb';
 import { DealContactPicker } from './DealContactPicker';
+import { generateEmailId } from '../utils/pageTracking';
 
 // ── Merge-tag helpers (from WorkspaceEmailTemplate) ─────────────────────────
 
@@ -357,6 +358,9 @@ export default function WorkspaceEmailCompose({
   const [bodyText, setBodyText] = useState('');
   const [confirmations, setConfirmations] = useState<Record<string, boolean>>({});
 
+  // Unique email ID for traceability (regenerated each time body is built)
+  const emailIdRef = useRef<string>(generateEmailId());
+
   // Sending state
   const [sending, setSending] = useState(false);
   const [justSent, setJustSent] = useState(false);
@@ -445,6 +449,10 @@ export default function WorkspaceEmailCompose({
   );
 
   const buildBodyHtml = (overrideBody?: string): string => {
+    // Regenerate a fresh email ID each time we build the body (new send)
+    emailIdRef.current = generateEmailId();
+    const emailId = emailIdRef.current;
+
     const escapedBody = (overrideBody ?? bodyText)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -465,6 +473,8 @@ export default function WorkspaceEmailCompose({
     </div>
     <div style="border-top:1px solid #eee;padding:16px 24px;text-align:center;font-size:11px;color:#999;">
       Sent via <a href="https://myredeal.com" style="color:#2563eb;text-decoration:none;">MyReDeal.com</a> — Transaction Coordination Platform
+      <br/>
+      <span style="font-family:monospace;font-size:10px;color:#bbb;letter-spacing:0.5px;">${emailId}</span>
     </div>
   </div>
 </body>
@@ -583,9 +593,11 @@ export default function WorkspaceEmailCompose({
         gmailThreadId: data.threadId,
         emailType: 'deal',
         sentBy: currentUser,
-      }).catch((err) => console.warn('Email log (non-critical):', err));
+        // Custom tracing ID embedded in the email footer
+        emailTraceId: emailIdRef.current,
+      } as any).catch((err) => console.warn('Email log (non-critical):', err));
 
-      showToast('success', 'Email sent successfully!');
+      showToast('success', `Email sent! ID: ${emailIdRef.current}`);
       setJustSent(true);
       setTimeout(() => setJustSent(false), 3000);
       setSubject(''); setBodyText(''); setSelectedTemplateId(''); setConfirmations({});

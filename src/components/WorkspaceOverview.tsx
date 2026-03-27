@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
+import { initPageTracking, PAGE_IDS } from '../utils/pageTracking';
+import { PageIdBadge } from './PageIdBadge';
 import { DealHealthCard } from './DealHealthCard';
 import { EmailSummaryCard } from './EmailSummaryCard';
 import { CompliancePreCheck } from './CompliancePreCheck';
@@ -515,6 +517,10 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [copiedId, setCopiedId] = useState(false);
 
   useEffect(() => {
+    initPageTracking(PAGE_IDS.DEAL_OVERVIEW);
+  }, []);
+
+  useEffect(() => {
     if (editTrigger && editTrigger > 0) openModal();
   }, [editTrigger]);
 
@@ -717,6 +723,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   return (
     <div className="p-5 space-y-5 max-w-4xl">
+      <PageIdBadge pageId={PAGE_IDS.DEAL_OVERVIEW} context={deal.id?.slice(0, 8)} />
 
       {/* ─── Deal Health ─── */}
       <DealHealthCard dealRecord={dealToRecord(deal)} />
