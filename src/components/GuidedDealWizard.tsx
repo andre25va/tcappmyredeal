@@ -874,100 +874,112 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       }
     }
 
+    // Persist participants BEFORE opening workspace — prevents race condition duplicates
+    try {
+      // Helper: find existing contact by name OR create new one (prevents duplicate contacts)
+      const findOrCreateContact = async (fullName: string, orgId: string | null) => {
+        const parts = fullName.trim().split(' ');
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(' ') || null;
+        // Check if contact already exists with this name
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('first_name', firstName)
+          .ilike('last_name', lastName ?? '')
+          .maybeSingle();
+        if (existing) return existing.id;
+        // Create new contact
+        const { data: created } = await supabase.from('contacts').insert({
+          first_name: firstName,
+          last_name: lastName,
+          full_name: fullName.trim(),
+          contact_type: 'client',
+          org_id: orgId ?? null,
+        }).select('id').single();
+        return created?.id ?? null;
+      };
+
+      // Helper: insert deal_participant only if not already present (prevents duplicate rows)
+      const safeAddParticipant = async (params: Parameters<typeof saveDealParticipant>[0]) => {
+        const { data: existing } = await supabase
+          .from('deal_participants')
+          .select('id')
+          .eq('deal_id', params.dealId)
+          .eq('contact_id', params.contactId)
+          .eq('deal_role', params.dealRole)
+          .maybeSingle();
+        if (existing) return; // already exists — skip
+        await saveDealParticipant(params);
+      };
+
+      // Save agent (lead_agent)
+      if (agentClient) {
+        await safeAddParticipant({
+          dealId: deal.id,
+          contactId: agentClient.id,
+          side: form.transactionType === 'buyer' ? 'buyer' : 'listing',
+          dealRole: 'lead_agent',
+          isPrimary: true,
+          isClientSide: true,
+        });
+      }
+
+      // Save title contact
+      if (form.titleContactId) {
+        await safeAddParticipant({
+          dealId: deal.id,
+          contactId: form.titleContactId,
+          side: form.titleSide === 'buy' ? 'buyer' : form.titleSide === 'sell' ? 'listing' : (form.transactionType === 'buyer' ? 'buyer' : 'listing'),
+          dealRole: 'title_officer',
+          isPrimary: false,
+          isClientSide: false,
+        });
+      }
+
+      // Save buyer contacts (find-or-create to prevent duplicate contact records)
+      if (form.buyerNames) {
+        const buyerNameList = form.buyerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
+        for (const fullName of buyerNameList) {
+          const contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
+          if (contactId) {
+            await safeAddParticipant({
+              dealId: deal.id,
+              contactId,
+              side: 'buyer',
+              dealRole: 'buyer',
+              isPrimary: false,
+              isClientSide: form.transactionType === 'buyer',
+              isExtracted: true,
+            });
+          }
+        }
+      }
+
+      // Save seller contacts (find-or-create to prevent duplicate contact records)
+      if (form.sellerNames) {
+        const sellerNameList = form.sellerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
+        for (const fullName of sellerNameList) {
+          const contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
+          if (contactId) {
+            await safeAddParticipant({
+              dealId: deal.id,
+              contactId,
+              side: 'seller',
+              dealRole: 'seller',
+              isPrimary: false,
+              isClientSide: form.transactionType === 'listing',
+              isExtracted: true,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[GuidedDealWizard] Failed to save deal participants:', err);
+    }
+
     onAdd(deal);
     setIsCreating(false);
-
-    // Persist participants to deal_participants table (async, non-blocking)
-    (async () => {
-      try {
-        // Save agent client as participant
-        if (agentClient) {
-          await saveDealParticipant({
-            dealId: deal.id,
-            contactId: agentClient.id,
-            side: form.transactionType === 'buyer' ? 'buyer' : 'listing',
-            dealRole: 'lead_agent',
-            isPrimary: true,
-            isClientSide: true,
-          });
-        }
-        // Save title contact as participant
-        if (form.titleContactId) {
-          await saveDealParticipant({
-            dealId: deal.id,
-            contactId: form.titleContactId,
-            side: form.titleSide === 'buy' ? 'buyer' : form.titleSide === 'sell' ? 'listing' : (form.transactionType === 'buyer' ? 'buyer' : 'listing'),
-            dealRole: 'title_officer',
-            isPrimary: false,
-            isClientSide: false,
-          });
-        }
-
-        // Save extracted buyer contacts from deal wizard form
-        if (form.buyerNames) {
-          const buyerNameList = form.buyerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
-          for (const fullName of buyerNameList) {
-            const parts = fullName.split(' ');
-            try {
-              const { data: newContact } = await supabase.from('contacts').insert({
-                first_name: parts[0],
-                last_name: parts.slice(1).join(' ') || null,
-                full_name: fullName,
-                contact_type: 'client',
-                org_id: deal.orgId ?? null,
-              }).select('id').single();
-              if (newContact) {
-                await saveDealParticipant({
-                  dealId: deal.id,
-                  contactId: newContact.id,
-                  side: 'buyer',
-                  dealRole: 'buyer',
-                  isPrimary: false,
-                  isClientSide: form.transactionType === 'buyer',
-                  isExtracted: true,
-                });
-              }
-            } catch (err) {
-              console.error('[GuidedDealWizard] Failed to save buyer contact:', fullName, err);
-            }
-          }
-        }
-
-        // Save extracted seller contacts from deal wizard form
-        if (form.sellerNames) {
-          const sellerNameList = form.sellerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
-          for (const fullName of sellerNameList) {
-            const parts = fullName.split(' ');
-            try {
-              const { data: newContact } = await supabase.from('contacts').insert({
-                first_name: parts[0],
-                last_name: parts.slice(1).join(' ') || null,
-                full_name: fullName,
-                contact_type: 'client',
-                org_id: deal.orgId ?? null,
-              }).select('id').single();
-              if (newContact) {
-                await saveDealParticipant({
-                  dealId: deal.id,
-                  contactId: newContact.id,
-                  side: 'seller',
-                  dealRole: 'seller',
-                  isPrimary: false,
-                  isClientSide: form.transactionType === 'listing',
-                  isExtracted: true,
-                });
-              }
-            } catch (err) {
-              console.error('[GuidedDealWizard] Failed to save seller contact:', fullName, err);
-            }
-          }
-        }
-
-        // Contract file uploaded above (before onAdd) — no duplicate needed here
-      } catch (err) {
-        console.error('[GuidedDealWizard] Failed to save deal participants:', err);
-      }
-    })();
   };
 
   const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
