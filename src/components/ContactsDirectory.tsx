@@ -372,8 +372,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
   const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [dupError, setDupError] = useState<ContactRecord | null>(null);
-  const [dupWarning, setDupWarning] = useState<ContactRecord | null>(null);
+  const [dupError, setDupError] = useState<{ contact: ContactRecord; dealRefs: string[] } | null>(null);
+  const [dupWarning, setDupWarning] = useState<{ contact: ContactRecord; dealRefs: string[] } | null>(null);
   const [timezoneError, setTimezoneError] = useState(false);
   const [emailDup, setEmailDup] = useState<ContactRecord | null>(null);
   const [phoneDup, setPhoneDup] = useState<ContactRecord | null>(null);
@@ -728,6 +728,18 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       return;
     }
 
+    // ── Helper: fetch deal refs for a contact id ──────────────────────────────
+    const fetchDealRefs = async (contactId: string): Promise<string[]> => {
+      const { data } = await supabase
+        .from('deal_participants')
+        .select('deals!inner(deal_ref)')
+        .eq('contact_id', contactId)
+        .limit(5);
+      if (!data) return [];
+      const refs = (data as any[]).map((row) => row.deals?.deal_ref).filter(Boolean) as string[];
+      return [...new Set(refs)];
+    };
+
     // ── Duplicate detection (new contacts only) ──────────────────────────────
     if (!isEditing) {
       const newFullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim().toLowerCase();
@@ -743,7 +755,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       });
 
       if (exactMatch) {
-        setDupError(exactMatch);
+        const refs = await fetchDealRefs(exactMatch.id);
+        setDupError({ contact: exactMatch, dealRefs: refs });
         return;
       }
 
@@ -751,10 +764,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         c.fullName.toLowerCase() === newFullName && c.id !== form.id
       );
       if (nearMatch) {
-        setDupWarning(nearMatch);
         // Don't block — just warn. Fall through to save if they already dismissed.
-        if (dupWarning?.id !== nearMatch.id) {
-          setDupWarning(nearMatch);
+        if (dupWarning?.contact.id !== nearMatch.id) {
+          const refs = await fetchDealRefs(nearMatch.id);
+          setDupWarning({ contact: nearMatch, dealRefs: refs });
           return; // First time: show warning and stop. Second click: save anyway.
         }
       }
@@ -1521,12 +1534,15 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <span className="font-semibold">Contact already exists:</span>{' '}
                   <button
                     className="underline underline-offset-2 font-medium hover:opacity-80"
-                    onClick={() => { setDupError(null); openEdit(dupError); }}
+                    onClick={() => { setDupError(null); openEdit(dupError.contact); }}
                   >
-                    {dupError.fullName}
+                    {dupError.contact.fullName}
                   </button>
-                  {dupError.email && <span className="text-error/70"> · {dupError.email}</span>}
-                  {dupError.phone && <span className="text-error/70"> · {dupError.phone}</span>}
+                  {dupError.contact.email && <span className="text-error/70"> · {dupError.contact.email}</span>}
+                  {dupError.contact.phone && <span className="text-error/70"> · {dupError.contact.phone}</span>}
+                  {dupError.dealRefs.length > 0 && (
+                    <span className="text-error/70"> · {dupError.dealRefs.join(', ')}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -1537,12 +1553,15 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                   <span className="font-semibold text-warning">May be a duplicate:</span>{' '}
                   <button
                     className="underline underline-offset-2 font-medium hover:opacity-80"
-                    onClick={() => { setDupWarning(null); openEdit(dupWarning); }}
+                    onClick={() => { setDupWarning(null); openEdit(dupWarning.contact); }}
                   >
-                    {dupWarning.fullName}
+                    {dupWarning.contact.fullName}
                   </button>
-                  {dupWarning.email && <span className="opacity-70"> · {dupWarning.email}</span>}
-                  {dupWarning.phone && <span className="opacity-70"> · {dupWarning.phone}</span>}
+                  {dupWarning.contact.email && <span className="opacity-70"> · {dupWarning.contact.email}</span>}
+                  {dupWarning.contact.phone && <span className="opacity-70"> · {dupWarning.contact.phone}</span>}
+                  {dupWarning.dealRefs.length > 0 && (
+                    <span className="opacity-70"> · {dupWarning.dealRefs.join(', ')}</span>
+                  )}
                   <div className="mt-1 text-xs opacity-60">Click Save again to add anyway, or open existing contact to update it.</div>
                 </div>
               </div>
