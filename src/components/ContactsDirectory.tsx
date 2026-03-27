@@ -372,6 +372,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const [deletedLicenseIds, setDeletedLicenseIds] = useState<string[]>([]);
   const [deletedMlsIds, setDeletedMlsIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dupError, setDupError] = useState<ContactRecord | null>(null);
+  const [dupWarning, setDupWarning] = useState<ContactRecord | null>(null);
   const [timezoneError, setTimezoneError] = useState(false);
   const [emailDup, setEmailDup] = useState<ContactRecord | null>(null);
   const [phoneDup, setPhoneDup] = useState<ContactRecord | null>(null);
@@ -593,6 +595,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setDeletedLicenseIds([]);
     setDeletedMlsIds([]);
     setTimezoneError(false);
+    setDupError(null);
+    setDupWarning(null);
     setModalOpen(true);
   };
 
@@ -602,6 +606,8 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     setDeletedLicenseIds([]);
     setDeletedMlsIds([]);
     setTimezoneError(false);
+    setDupError(null);
+    setDupWarning(null);
     setModalOpen(true);
   };
 
@@ -615,6 +621,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const updateField = <K extends keyof EditForm>(key: K, val: EditForm[K]) => {
     setForm(prev => ({ ...prev, [key]: val }));
     if (key === 'timezone') setTimezoneError(false);
+    if (key === 'firstName' || key === 'lastName' || key === 'email' || key === 'phone') {
+      setDupError(null);
+      setDupWarning(null);
+    }
   };
 
   const addLicense = () => {
@@ -717,6 +727,39 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       setTimezoneError(true);
       return;
     }
+
+    // ── Duplicate detection (new contacts only) ──────────────────────────────
+    if (!isEditing) {
+      const newFullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim().toLowerCase();
+      const newEmail = form.email.trim().toLowerCase();
+      const newPhone = form.phone.trim().replace(/\D/g, '');
+
+      const exactMatch = contacts.find(c => {
+        const sameName = c.fullName.toLowerCase() === newFullName;
+        if (!sameName) return false;
+        const emailMatch = newEmail && c.email.toLowerCase() === newEmail;
+        const phoneMatch = newPhone.length >= 10 && c.phone.replace(/\D/g, '').endsWith(newPhone.slice(-10));
+        return emailMatch || phoneMatch;
+      });
+
+      if (exactMatch) {
+        setDupError(exactMatch);
+        return;
+      }
+
+      const nearMatch = contacts.find(c =>
+        c.fullName.toLowerCase() === newFullName && c.id !== form.id
+      );
+      if (nearMatch) {
+        setDupWarning(nearMatch);
+        // Don't block — just warn. Fall through to save if they already dismissed.
+        if (dupWarning?.id !== nearMatch.id) {
+          setDupWarning(nearMatch);
+          return; // First time: show warning and stop. Second click: save anyway.
+        }
+      }
+    }
+
     setSaving(true);
     const isNewClient = form.contactType === 'agent' && form.isClient && !form.originalIsClient;
     const savedFormId = form.id;
@@ -1470,12 +1513,47 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
               })()}
             </div>
 
+            {/* Duplicate warnings */}
+            {dupError && (
+              <div className="mx-5 mb-2 flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
+                <span className="mt-0.5 shrink-0">⚠️</span>
+                <div>
+                  <span className="font-semibold">Contact already exists:</span>{' '}
+                  <button
+                    className="underline underline-offset-2 font-medium hover:opacity-80"
+                    onClick={() => { setDupError(null); openEdit(dupError); }}
+                  >
+                    {dupError.fullName}
+                  </button>
+                  {dupError.email && <span className="text-error/70"> · {dupError.email}</span>}
+                  {dupError.phone && <span className="text-error/70"> · {dupError.phone}</span>}
+                </div>
+              </div>
+            )}
+            {dupWarning && !dupError && (
+              <div className="mx-5 mb-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-content">
+                <span className="mt-0.5 shrink-0">🔍</span>
+                <div className="flex-1">
+                  <span className="font-semibold text-warning">May be a duplicate:</span>{' '}
+                  <button
+                    className="underline underline-offset-2 font-medium hover:opacity-80"
+                    onClick={() => { setDupWarning(null); openEdit(dupWarning); }}
+                  >
+                    {dupWarning.fullName}
+                  </button>
+                  {dupWarning.email && <span className="opacity-70"> · {dupWarning.email}</span>}
+                  {dupWarning.phone && <span className="opacity-70"> · {dupWarning.phone}</span>}
+                  <div className="mt-1 text-xs opacity-60">Click Save again to add anyway, or open existing contact to update it.</div>
+                </div>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
               <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
               <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim() || !form.timezone}>
                 {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
-                {isEditing ? 'Save Changes' : 'Add Contact'}
+                {isEditing ? 'Save Changes' : dupWarning ? 'Save Anyway' : 'Add Contact'}
               </button>
             </div>
           </div>
