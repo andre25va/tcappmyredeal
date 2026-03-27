@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Pencil, Trash2, X, Check, Shield, UserCheck, AlertCircle, Copy, CheckCheck, Ban } from 'lucide-react';
 import { ConfirmModal } from '../ConfirmModal';
+import { supabase } from '../../lib/supabase';
 
 interface AllowedUser {
   id: string;
@@ -185,6 +186,25 @@ export function AccessUsersTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
+
+      // Auto-create staff contact for new users
+      if (!isEdit) {
+        const parts = formData.name.trim().split(' ');
+        const firstName = parts[0] || '';
+        const lastName = parts.slice(1).join(' ') || null;
+        await supabase.from('contacts').insert({
+          id: crypto.randomUUID(),
+          first_name: firstName,
+          last_name: lastName,
+          full_name: formData.name.trim(),
+          email: formData.email || null,
+          phone: formData.phone || null,
+          contact_type: 'staff',
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
       await loadUsers(); setShowForm(false); setEditUser(undefined);
     } catch (e: any) { setActionError(e.message); }
     finally { setSaving(false); }

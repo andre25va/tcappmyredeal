@@ -554,6 +554,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
       inspector: 0, buyer_seller: 0, tc: 0, other: 0,
     };
     for (const c of contacts) {
+      if (c.contactType === 'staff') continue; // Staff managed in Settings
       const cat = CATEGORIES.find(cat => cat.roles.includes(c.contactType));
       if (cat) counts[cat.key]++;
       else counts.other++;
@@ -563,7 +564,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
   // ── Filtered contacts (search + category) ──────────────────────────────────
   const filtered = useMemo(() => {
-    let list = contacts;
+    let list = contacts.filter(c => c.contactType !== 'staff'); // Staff managed in Settings
     // Org scoping
     if (!isMasterAdmin) {
       if (primaryOrgId) {
@@ -732,15 +733,15 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     const fetchDealRefs = async (contactId: string): Promise<string[]> => {
       const { data } = await supabase
         .from('deal_participants')
-        .select('deals!inner(deal_number)')
+        .select('deals!inner(deal_ref)')
         .eq('contact_id', contactId)
         .limit(5);
       if (!data) return [];
-      const nums = (data as any[])
-        .map((row) => row.deals?.deal_number)
-        .filter((n: any) => n != null)
-        .map((n: number) => 'Deal #' + String(n).padStart(3, '0')) as string[];
-      return [...new Set(nums)];
+      const refs = (data as any[])
+        .map((row) => row.deals?.deal_ref)
+        .filter((r: any) => r != null)
+        .map((r: string) => 'Deal #' + String(r).replace('MRD-', '')) as string[];
+      return [...new Set(refs)];
     };
 
     // ── Duplicate detection (new contacts only) ──────────────────────────────

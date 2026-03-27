@@ -49,7 +49,7 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 }
 
 function AppInner() {
-  const { profile, loading: authLoading, isFirstLogin, logout } = useAuth();
+  const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
@@ -99,7 +99,7 @@ function AppInner() {
     if (!profile) return;
     const init = async () => {
       try {
-        const data = await loadDeals();
+        const data = await loadDeals(primaryOrgId() ?? undefined);
         setDeals(data);
         const isMobile = window.innerWidth < 768;
         if (!isMobile && data.length > 0) setSelectedId(data[0].id);

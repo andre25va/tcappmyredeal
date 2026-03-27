@@ -155,8 +155,8 @@ function findAgentFromParticipants(
 
 // ─── DEALS ───────────────────────────────────────────────────────────────────
 
-export async function loadDeals(): Promise<Deal[]> {
-  const { data, error } = await supabase
+export async function loadDeals(orgId?: string): Promise<Deal[]> {
+  let query = supabase
     .from('deals')
     .select(`
       id, property_address, city, state, zip, mls_number,
@@ -164,7 +164,7 @@ export async function loadDeals(): Promise<Deal[]> {
       contract_date, closing_date, purchase_price, notes, legal_description,
       primary_client_account_id, transaction_type, risk_level,
       assigned_tc_user_id, assigned_compliance_user_id,
-      deal_data, created_at, updated_at, deal_number,
+      deal_data, created_at, updated_at,
       buyer_name, seller_name, title_company_name, loan_officer_name,
       property_type, list_price,
       loan_type, loan_amount, down_payment, earnest_money, earnest_money_due_date,
@@ -175,6 +175,9 @@ export async function loadDeals(): Promise<Deal[]> {
     `)
     .order('created_at', { ascending: false });
 
+  if (orgId) query = query.eq('org_id', orgId);
+
+  const { data, error } = await query;
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
@@ -196,7 +199,6 @@ export async function loadDeals(): Promise<Deal[]> {
 
     const deal: Deal = {
       id: row.id,
-      dealNumber: row.deal_number ?? undefined,
       propertyAddress: row.property_address || (dd.address as string) || '',
       city: row.city || (dd.city as string) || '',
       state: row.state || (dd.state as string) || '',
