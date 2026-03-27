@@ -732,12 +732,15 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     const fetchDealRefs = async (contactId: string): Promise<string[]> => {
       const { data } = await supabase
         .from('deal_participants')
-        .select('deals!inner(deal_ref)')
+        .select('deals!inner(deal_number)')
         .eq('contact_id', contactId)
         .limit(5);
       if (!data) return [];
-      const refs = (data as any[]).map((row) => row.deals?.deal_ref).filter(Boolean) as string[];
-      return [...new Set(refs)];
+      const nums = (data as any[])
+        .map((row) => row.deals?.deal_number)
+        .filter((n: any) => n != null)
+        .map((n: number) => 'Deal #' + String(n).padStart(3, '0')) as string[];
+      return [...new Set(nums)];
     };
 
     // ── Duplicate detection (new contacts only) ──────────────────────────────
