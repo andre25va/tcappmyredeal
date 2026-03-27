@@ -403,14 +403,21 @@ function AppInner() {
     logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
-  const handleAdd = (deal: Deal) => {
+  const handleAdd = async (deal: Deal) => {
     setDeals(prev => [deal, ...prev]);
-    saveSingleDeal(deal, profile?.id).catch(console.error);
-    setSelectedId(deal.id);
-    setTxPanel('workspace');
-    setShowAdd(false);
-    setView('transactions');
-    logAction('create', 'deal', deal.id, deal.propertyAddress);
+    try {
+      await saveSingleDeal(deal, profile?.id);
+      setSelectedId(deal.id);
+      setTxPanel('workspace');
+      setShowAdd(false);
+      setView('transactions');
+      logAction('create', 'deal', deal.id, deal.propertyAddress);
+    } catch (err: any) {
+      // Remove from UI if save failed
+      setDeals(prev => prev.filter(d => d.id !== deal.id));
+      alert('❌ Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
+      console.error('[App.tsx] saveSingleDeal error:', err);
+    }
   };
 
   const handleSelectDeal = (id: string) => {
