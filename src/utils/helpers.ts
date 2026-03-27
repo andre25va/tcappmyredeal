@@ -95,6 +95,7 @@ export const roleLabel = (r: ContactRole): string => ({
   'appraiser': 'Appraiser',
   'tc': 'TC',
   'other': 'Other',
+  'staff': 'Staff',
 }[r] ?? r);
 
 export const roleBadge = (r: ContactRole): string => ({
@@ -110,6 +111,7 @@ export const roleBadge = (r: ContactRole): string => ({
   'appraiser': 'badge-ghost',
   'tc': 'badge-primary',
   'other': 'badge-ghost',
+  'staff': 'badge-neutral',
 }[r] ?? 'badge-ghost');
 
 /**
@@ -129,6 +131,7 @@ export const roleAvatarBg = (r: ContactRole): string => ({
   'appraiser':   'bg-gray-500 text-white',
   'tc':          'bg-blue-600 text-white',
   'other':       'bg-gray-500 text-white',
+  'staff':       'bg-slate-600 text-white',
 }[r] ?? 'bg-gray-500 text-white');
 
 /** Solid filled chip color for selected state in MRDChip */
@@ -145,6 +148,7 @@ export const roleChipSolid = (r: ContactRole): string => ({
   'appraiser':   'bg-gray-400 border-gray-400 text-white',
   'tc':          'bg-primary border-primary text-primary-content',
   'other':       'bg-gray-400 border-gray-400 text-white',
+  'staff':       'bg-slate-600 border-slate-600 text-white',
 }[r] ?? 'bg-gray-400 border-gray-400 text-white');
 
 export const docTypeConfig: Record<DocRequestType, { label: string; description: string; urgency: 'high' | 'medium' | 'low' }> = {
