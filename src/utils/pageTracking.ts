@@ -1,69 +1,102 @@
 /**
- * Page tracking utility for easier debugging and troubleshooting
- * Logs page IDs to console and provides error context
+ * Page tracking utility for easier debugging and troubleshooting.
+ * Logs page IDs to console, provides error context, and generates
+ * unique IDs for emails and PDFs.
  */
+
+// ── Page IDs ──────────────────────────────────────────────────────────────
 
 export const PAGE_IDS = {
   // Main Pages
-  WORKSPACE_OVERVIEW: 'workspace-overview',
-  DEAL_OVERVIEW: 'deal-overview',
-  CONTACTS: 'contacts-page',
-  CONTACTS_EDIT: 'contacts-edit-modal',
-  SETTINGS: 'settings-page',
-  AI_CHAT: 'ai-chat-page',
-  
+  HOME_DASHBOARD:        'home-dashboard',
+  WORKSPACE_OVERVIEW:    'workspace-overview',
+  DEAL_OVERVIEW:         'deal-overview',
+  CONTACTS:              'contacts-page',
+  CONTACTS_EDIT:         'contacts-edit-modal',
+  SETTINGS:              'settings-page',
+  AI_CHAT:               'ai-chat-page',
+  MLS_DIRECTORY:         'mls-directory',
+  WORKFLOWS:             'workflows-page',
+
+  // Workspace Tabs
+  WS_EMAILS:             'ws-emails',
+  WS_DOCUMENTS:          'ws-documents',
+  WS_TASKS:              'ws-tasks',
+  WS_CONTACTS:           'ws-contacts',
+  WS_CHECKLISTS:         'ws-checklists',
+  WS_TIMELINE:           'ws-timeline',
+  WS_REQUESTS:           'ws-requests',
+
   // Wizard Steps
-  WIZARD_STEP_1: 'wizard-step-1',
-  WIZARD_STEP_2: 'wizard-step-2',
-  WIZARD_STEP_3: 'wizard-step-3',
-  WIZARD_STEP_4: 'wizard-step-4',
-  WIZARD_STEP_5: 'wizard-step-5',
-  WIZARD_STEP_6: 'wizard-step-6',
-  WIZARD_STEP_7: 'wizard-step-7',
-  WIZARD_STEP_8: 'wizard-step-8',
-  
+  WIZARD_STEP_1:         'wizard-step-1',
+  WIZARD_STEP_2:         'wizard-step-2',
+  WIZARD_STEP_3:         'wizard-step-3',
+  WIZARD_STEP_4:         'wizard-step-4',
+  WIZARD_STEP_5:         'wizard-step-5',
+  WIZARD_STEP_6:         'wizard-step-6',
+  WIZARD_STEP_7:         'wizard-step-7',
+  WIZARD_STEP_8:         'wizard-step-8',
+
   // Client Portal
-  CLIENT_PORTAL_DASHBOARD: 'client-portal-dashboard',
-  CLIENT_PORTAL_DEALS: 'client-portal-deals',
-  CLIENT_PORTAL_DOCUMENTS: 'client-portal-documents',
-  CLIENT_PORTAL_MESSAGES: 'client-portal-messages',
-  
-  // Admin Pages
-  ADMIN_SETTINGS: 'admin-settings',
-  ADMIN_USERS: 'admin-users',
-  ADMIN_ORGANIZATIONS: 'admin-organizations',
-};
+  PORTAL_LOGIN:          'portal-login',
+  PORTAL_DASHBOARD:      'portal-dashboard',
+  PORTAL_DEAL_KPI:       'portal-deal-kpi',
+  PORTAL_DEAL_SHEET:     'portal-deal-sheet',
+  PORTAL_REQUEST:        'portal-request',
+  PORTAL_REQUEST_DONE:   'portal-request-submitted',
+
+  // Modals / Overlays
+  TRANSACTION_SHEET:     'transaction-sheet',
+  ADMIN_USERS:           'admin-users',
+} as const;
+
+export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];
+
+// ── Page init ─────────────────────────────────────────────────────────────
 
 /**
- * Initialize page tracking - call this in useEffect on mount
- * @param pageId - The page ID from PAGE_IDS constant
+ * Call this in useEffect on mount for each major page/screen.
+ * Logs the page ID to console and stores it on window for error handlers.
  */
-export const initPageTracking = (pageId: string) => {
-  console.log(`📍 [Page] ${pageId}`);
-  // Set page ID in window for error handlers to access
+export const initPageTracking = (pageId: string, extra?: Record<string, unknown>) => {
+  const payload = { pageId, ...extra };
+  console.log(`📍 [Page] ${pageId}`, extra ?? '');
   (window as any).__currentPageId = pageId;
+  (window as any).__currentPageMeta = payload;
 };
 
-/**
- * Get the current page ID (useful in error handlers)
- */
-export const getCurrentPageId = (): string => {
-  return (window as any).__currentPageId || 'unknown';
-};
+/** Returns the currently active page ID. */
+export const getCurrentPageId = (): string =>
+  (window as any).__currentPageId || 'unknown';
 
-/**
- * Create an error message with page context
- */
-export const createErrorWithPageContext = (error: any, action: string): string => {
+/** Build an error message with page context. */
+export const createErrorWithPageContext = (error: unknown, action: string): string => {
   const pageId = getCurrentPageId();
-  return `[${pageId}] ${action}: ${error?.message || String(error)}`;
+  const msg = error instanceof Error ? error.message : String(error);
+  return `[${pageId}] ${action}: ${msg}`;
 };
 
-/**
- * Log an error with page context
- */
-export const logErrorWithPage = (error: any, action: string) => {
+/** Log an error to console with page context and return the message string. */
+export const logErrorWithPage = (error: unknown, action: string): string => {
   const message = createErrorWithPageContext(error, action);
-  console.error(message);
+  console.error(message, error);
   return message;
 };
+
+// ── Unique ID generators ──────────────────────────────────────────────────
+
+/** Generates a short alphanumeric ID (8 chars, uppercase). */
+const shortRandom = (): string =>
+  Math.random().toString(36).slice(2, 10).toUpperCase();
+
+/**
+ * Generates a unique Email ID for tracing sent emails.
+ * Format: MRD-EM-XXXXXXXX
+ */
+export const generateEmailId = (): string => `MRD-EM-${shortRandom()}`;
+
+/**
+ * Generates a unique PDF ID for tracing printed/downloaded sheets.
+ * Format: MRD-PDF-XXXXXXXX
+ */
+export const generatePdfId = (): string => `MRD-PDF-${shortRandom()}`;

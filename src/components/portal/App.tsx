@@ -16,6 +16,9 @@ import {
   User,
   Mail,
   PhoneCall,
+  Copy,
+  Check,
+  Tag,
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://alxrmusieuzgssynktxg.supabase.co';
@@ -148,6 +151,42 @@ function Logo() {
       <span className="text-[#F4B942]">RE</span>
       <span className="text-[#1B2C5E]">deal</span>
     </span>
+  );
+}
+
+// ── Page ID Badge ─────────────────────────────────────────────────────────────
+function PortalPageBadge({ pageId, context }: { pageId: string; context?: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const label = context ? `${pageId} · ${context}` : pageId;
+  const handleCopy = async () => {
+    try { await navigator.clipboard.writeText(label); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = label; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div
+      style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999, fontSize: 10 }}
+      className="flex items-center gap-1.5 bg-gray-900/85 backdrop-blur-sm text-white font-mono rounded-full shadow-xl px-3 py-1.5 select-none group"
+    >
+      <Tag size={9} className="text-gray-400 shrink-0" />
+      <span className="text-gray-300 tracking-wide">{label}</span>
+      <button
+        onClick={handleCopy}
+        title={copied ? 'Copied!' : 'Copy page ID'}
+        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors focus:outline-none"
+      >
+        {copied
+          ? <Check size={10} className="text-green-400" />
+          : <Copy size={10} className="text-gray-400 group-hover:text-white transition-colors" />
+        }
+      </button>
+    </div>
   );
 }
 
@@ -302,6 +341,7 @@ export default function App() {
   if (screen === 'login') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-[#1B2C5E] to-[#2a3a7a] p-4 flex flex-col" data-page-id="portal-login">
+        <PortalPageBadge pageId="portal-login" />
         <div className="max-w-lg mx-auto w-full flex-1">
           <div className="bg-white rounded-t-2xl shadow-xl px-8 pt-8 pb-6">
             <div className="flex items-center justify-center mb-5">
@@ -395,6 +435,7 @@ export default function App() {
     const firstName = contactName.split(' ')[0] || contactName;
     return (
       <div className="min-h-screen bg-gray-50" data-page-id="portal-dashboard">
+        <PortalPageBadge pageId="portal-dashboard" />
         {/* Header */}
         <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -518,6 +559,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-gray-50" data-page-id="portal-deal-kpi">
+        <PortalPageBadge pageId="portal-deal-kpi" context={activeDeal?.dealRef || undefined} />
         {/* Header */}
         <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -761,6 +803,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-gray-50" data-page-id="portal-deal-sheet">
+        <PortalPageBadge pageId="portal-deal-sheet" context={activeDeal?.dealRef || undefined} />
         {/* Header */}
         <header className="bg-white border-b border-gray-200 px-4 py-4 shadow-sm print:hidden">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -930,6 +973,7 @@ export default function App() {
     if (submitted) {
       return (
         <div className="min-h-screen bg-gradient-to-b from-[#1B2C5E] to-[#2a3a7a] flex items-center justify-center p-4" data-page-id="portal-request-submitted">
+          <PortalPageBadge pageId="portal-request-submitted" />
           <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
               <CheckCircle2 className="w-9 h-9 text-green-600" />
@@ -960,6 +1004,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-gray-50" data-page-id="portal-request">
+        <PortalPageBadge pageId="portal-request" context={activeDeal?.dealRef || undefined} />
         {/* Header */}
         <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
           <div className="max-w-2xl mx-auto flex items-center justify-between">

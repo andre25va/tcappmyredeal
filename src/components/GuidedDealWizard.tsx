@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { initPageTracking, PAGE_IDS, logErrorWithPage } from '../utils/pageTracking';
+import { PageIdBadge } from './PageIdBadge';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
@@ -1053,6 +1054,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         input[type=number].no-spinner::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number].no-spinner { -moz-appearance: textfield; }
       `}</style>
+
+      {/* Page ID Badge — shows current wizard step for debugging */}
+      <PageIdBadge
+        pageId={PAGE_IDS[`WIZARD_STEP_${step}` as keyof typeof PAGE_IDS] || `wizard-step-${step}`}
+        context={`step ${step} of 8`}
+      />
+
       {disambigClientCandidates && (
         <DisambigModal
           candidates={disambigClientCandidates}
