@@ -1730,16 +1730,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       { key: 'asIsSale', label: 'As-Is Sale' },
                       { key: 'inspectionWaived', label: 'Inspection Waived' },
                     ] as const).map(({ key, label }) => (
-                      <label key={key} className="flex items-center justify-between cursor-pointer py-1">
-                        <span className="text-sm">{label}</span>
+                      <label key={key} className="flex items-center gap-3 cursor-pointer py-1">
                         <input type="checkbox" className="toggle toggle-primary toggle-sm"
                           checked={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
+                        <span className="text-sm">{label}</span>
                       </label>
                     ))}
-                    <label className="flex items-center justify-between cursor-pointer py-1">
-                      <span className="text-sm">Home Warranty</span>
+                    <label className="flex items-center gap-3 cursor-pointer py-1">
                       <input type="checkbox" className="toggle toggle-primary toggle-sm"
                         checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
+                      <span className="text-sm">Home Warranty</span>
                     </label>
                     {form.homeWarranty && (
                       <input className="input input-bordered w-full input-sm mt-1" value={form.homeWarrantyCompany}
