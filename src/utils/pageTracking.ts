@@ -66,6 +66,19 @@ export const PAGE_IDS = {
   // Modals / Overlays
   TRANSACTION_SHEET:     'transaction-sheet',
   ADMIN_USERS:           'admin-users',
+
+  // Client Onboarding Wizard steps
+  ONBOARDING_WELCOME:        'onboarding-wizard-welcome',
+  ONBOARDING_COMMUNICATION:  'onboarding-wizard-comm',
+  ONBOARDING_ACCESS:         'onboarding-wizard-access',
+  ONBOARDING_BRIEFING:       'onboarding-wizard-briefing',
+  ONBOARDING_DRIVE:          'onboarding-wizard-drive',
+  ONBOARDING_INSTRUCTIONS:   'onboarding-wizard-instructions',
+  ONBOARDING_DONE:           'onboarding-wizard-done',
+
+  // Modals
+  MILESTONE_ADVANCE:         'milestone-advance-modal',
+  PROFILE_SETUP:             'profile-setup-modal',
 } as const;
 
 export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];
