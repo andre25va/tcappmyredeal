@@ -723,7 +723,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   return (
     <div className="p-5 space-y-5 max-w-4xl">
-      <PageIdBadge pageId={PAGE_IDS.DEAL_OVERVIEW} context={deal.dealRef || deal.id?.slice(0, 8)} />
+      <PageIdBadge pageId={PAGE_IDS.DEAL_OVERVIEW} context={deal.id?.slice(0, 8)} />
 
       {/* ─── Deal Health ─── */}
       <DealHealthCard dealRecord={dealToRecord(deal)} />
