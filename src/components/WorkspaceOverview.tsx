@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight } from 'lucide-react';
+import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
 import { DealHealthCard } from './DealHealthCard';
 import { EmailSummaryCard } from './EmailSummaryCard';
 import { CompliancePreCheck } from './CompliancePreCheck';
@@ -512,6 +512,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   useEffect(() => {
     if (editTrigger && editTrigger > 0) openModal();
@@ -771,7 +772,23 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
 
       {/* ─── Deal Details (read-only) ─── */}
       <div className="bg-base-200 rounded-xl border border-base-300 p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-        {deal.dealNumber != null && <div><span className="text-base-content/50 text-xs">Deal #</span><p className="font-medium text-base-content font-mono">#{String(deal.dealNumber).padStart(3, '0')}</p></div>}
+        <div>
+          <span className="text-base-content/50 text-xs">Deal ID</span>
+          <div className="flex items-center gap-1.5 mt-1">
+            <p className="font-medium text-base-content font-mono text-xs truncate" title={deal.id}>{deal.id}</p>
+            <button
+              className="btn btn-ghost btn-xs btn-square p-0 min-h-0 h-5 w-5"
+              onClick={() => {
+                navigator.clipboard.writeText(deal.id);
+                setCopiedId(true);
+                setTimeout(() => setCopiedId(false), 2000);
+              }}
+              title="Copy ID"
+            >
+              <Copy size={11} className={copiedId ? 'text-green-500' : 'text-base-content/40'} />
+            </button>
+          </div>
+        </div>
         <div><span className="text-base-content/50 text-xs">Status</span><p className="font-medium text-base-content">{statusLabel(deal.status)}</p></div>
         <div><span className="text-base-content/50 text-xs">Property Type</span><p className="font-medium text-base-content">{propertyTypeLabel(deal.propertyType)}</p></div>
         <div><span className="text-base-content/50 text-xs">MLS #</span><p className="font-medium text-base-content">{deal.mlsNumber || '—'}</p></div>
