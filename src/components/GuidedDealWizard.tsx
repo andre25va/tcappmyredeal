@@ -846,15 +846,24 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       orgId: primaryOrgId() ?? undefined,
     };
     // ── Upload purchase contract BEFORE opening workspace so it appears immediately ──
+    let contractUploadSuccess = true;
     if (contractFile) {
       try {
         const safeName = contractFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const path = `deals/${deal.id}/purchase-contract/${safeName}`;
+        console.log('[GuidedDealWizard] Starting contract upload to:', path);
+        
         const { error: upErr } = await supabase.storage
           .from('deal-documents')
           .upload(path, contractFile, { contentType: contractFile.type, upsert: false });
-        if (!upErr) {
-          await supabase.from('deal_documents').insert({
+        
+        if (upErr) {
+          console.error('[GuidedDealWizard] Storage upload error:', upErr);
+          contractUploadSuccess = false;
+          setError(`Failed to upload contract to storage: ${upErr.message}`);
+        } else {
+          console.log('[GuidedDealWizard] File uploaded successfully, now inserting document record...');
+          const { error: dbErr } = await supabase.from('deal_documents').insert({
             deal_id: deal.id,
             file_name: contractFile.name,
             storage_path: path,
@@ -866,11 +875,24 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             uploaded_by: profile?.name || 'TC Staff',
             created_at: new Date().toISOString(),
           });
-        } else {
-          console.error('[GuidedDealWizard] Storage upload error:', upErr);
+          
+          if (dbErr) {
+            console.error('[GuidedDealWizard] Failed to insert document record:', dbErr);
+            contractUploadSuccess = false;
+            setError(`Contract uploaded but failed to save reference to database: ${dbErr.message}`);
+          } else {
+            console.log('[GuidedDealWizard] Contract file saved successfully as source of truth');
+          }
         }
-      } catch (docErr) {
+      } catch (docErr: any) {
         console.error('[GuidedDealWizard] Failed to upload contract file:', docErr);
+        contractUploadSuccess = false;
+        setError(`Error uploading contract: ${docErr.message}`);
+      }
+      
+      if (!contractUploadSuccess) {
+        setIsCreating(false);
+        return;
       }
     }
 
