@@ -303,6 +303,32 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
 
+  // Auto-calculate down payment when contract price or loan amount changes
+  const calculateDownPayment = (newForm: typeof form) => {
+    const contractPrice = parseFloat(newForm.contractPrice) || 0;
+    const loanAmount = parseFloat(newForm.loanAmount) || 0;
+    const earnestMoney = newForm.isHeartlandMls ? (parseFloat(newForm.earnestMoney) || 0) : 0;
+    
+    if (contractPrice > 0 && loanAmount > 0) {
+      const downPaymentAmount = contractPrice - loanAmount;
+      const totalWithEM = downPaymentAmount + earnestMoney;
+      const downPaymentPercent = contractPrice > 0 ? ((totalWithEM / contractPrice) * 100).toFixed(1) : '';
+      return { downPaymentAmount: downPaymentAmount.toString(), downPaymentPercent };
+    }
+    return null;
+  };
+
+  // Enhanced handler for fields that should trigger down payment recalculation
+  const fWithRecalc = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const newForm = { ...form, [field]: e.target.value };
+    const recalc = calculateDownPayment(newForm);
+    if (recalc) {
+      setForm(p => ({ ...p, ...newForm, ...recalc }));
+    } else {
+      setForm(p => ({ ...p, [field]: e.target.value }));
+    }
+  };
+
   const handlePropertyTypeChange = (type: PropertyType) => {
     setForm(p => ({
       ...p,
@@ -1618,7 +1644,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={f('contractPrice')} placeholder="540000" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={fWithRecalc('contractPrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
                 <div>
@@ -1640,7 +1666,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
-                      <input className="input input-bordered w-full no-spinner" value={form.loanAmount} onChange={f('loanAmount')} placeholder="0" type="number" />
+                      <input className="input input-bordered w-full no-spinner" value={form.loanAmount} onChange={fWithRecalc('loanAmount')} placeholder="0" type="number" />
                     </div>
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">
