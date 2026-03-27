@@ -269,6 +269,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [contractFile, setContractFile] = useState<File | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [contractObjectUrl, setContractObjectUrl] = useState<string | null>(null);
   const [showPdfPanel, setShowPdfPanel] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -697,7 +698,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    setIsCreating(true);
     const isMF = form.propertyType === 'multi-family';
 
     const autoDocRequests: DocumentRequest[] = isMF ? [{
@@ -843,7 +845,37 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       updatedAt: new Date().toISOString(),
       orgId: primaryOrgId() ?? undefined,
     };
+    // ── Upload purchase contract BEFORE opening workspace so it appears immediately ──
+    if (contractFile) {
+      try {
+        const safeName = contractFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `deals/${deal.id}/purchase-contract/${safeName}`;
+        const { error: upErr } = await supabase.storage
+          .from('deal-documents')
+          .upload(path, contractFile, { contentType: contractFile.type, upsert: false });
+        if (!upErr) {
+          await supabase.from('deal_documents').insert({
+            deal_id: deal.id,
+            file_name: contractFile.name,
+            storage_path: path,
+            file_size_bytes: contractFile.size,
+            category: 'purchase_contract',
+            source: 'upload',
+            is_source_of_truth: true,
+            is_protected: true,
+            uploaded_by: profile?.name || 'TC Staff',
+            created_at: new Date().toISOString(),
+          });
+        } else {
+          console.error('[GuidedDealWizard] Storage upload error:', upErr);
+        }
+      } catch (docErr) {
+        console.error('[GuidedDealWizard] Failed to upload contract file:', docErr);
+      }
+    }
+
     onAdd(deal);
+    setIsCreating(false);
 
     // Persist participants to deal_participants table (async, non-blocking)
     (async () => {
@@ -931,32 +963,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           }
         }
 
-        // Upload extracted contract file to deal-documents
-        if (contractFile) {
-          try {
-            const safeName = contractFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const path = `deals/${deal.id}/purchase-contract/${safeName}`;
-            const { error: upErr } = await supabase.storage
-              .from('deal-documents')
-              .upload(path, contractFile, { contentType: contractFile.type, upsert: false });
-            if (!upErr) {
-              await supabase.from('deal_documents').insert({
-                deal_id: deal.id,
-                file_name: contractFile.name,
-                storage_path: path,
-                file_size_bytes: contractFile.size,
-                category: 'purchase_contract',
-                source: 'upload',
-                is_source_of_truth: true,
-                is_protected: true,
-                uploaded_by: profile?.name || 'TC Staff',
-                created_at: new Date().toISOString(),
-              });
-            }
-          } catch (docErr) {
-            console.error('[GuidedDealWizard] Failed to save contract file:', docErr);
-          }
-        }
+        // Contract file uploaded above (before onAdd) — no duplicate needed here
       } catch (err) {
         console.error('[GuidedDealWizard] Failed to save deal participants:', err);
       }
@@ -2250,8 +2257,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </button>
               )}
               {step === TOTAL_STEPS && (
-                <button onClick={handleCreate} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading}>
-                  <Building2 size={13} /> Create Deal
+                <button onClick={handleCreate} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading || isCreating}>
+                  {isCreating ? <><span className="loading loading-spinner loading-xs"/>{contractFile ? 'Uploading contract…' : 'Creating…'}</> : <><Building2 size={13} /> Create Deal</>}
                 </button>
               )}
             </div>
