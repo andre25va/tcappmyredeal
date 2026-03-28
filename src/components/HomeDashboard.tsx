@@ -87,6 +87,50 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
   const [liveActivity, setLiveActivity] = useState<LiveActivityItem[]>([]);
   const [liveLoaded, setLiveLoaded] = useState(false);
 
+  // Agent contract name match: 'match' = extracted name matches agentName, 'mismatch' = doesn't match
+  const [agentContractMatchMap, setAgentContractMatchMap] = useState<Record<string, 'match' | 'mismatch'>>({});
+
+  // Fetch contract extraction_data to verify agent name vs. what's on uploaded contract
+  useEffect(() => {
+    const activeDeals = deals.filter(d =>
+      d.status !== 'closed' && d.status !== 'terminated' && d.milestone !== 'archived'
+    );
+    const activeDealIds = activeDeals.map(d => d.id);
+    if (activeDealIds.length === 0) return;
+
+    supabase
+      .from('deal_documents')
+      .select('deal_id, extraction_data')
+      .in('deal_id', activeDealIds)
+      .ilike('document_type', '%contract%')
+      .not('extraction_data', 'is', null)
+      .then(({ data }) => {
+        if (!data || data.length === 0) return;
+        const matchMap: Record<string, 'match' | 'mismatch'> = {};
+        data.forEach((doc: any) => {
+          const deal = activeDeals.find(d => d.id === doc.deal_id);
+          if (!deal || !deal.agentName) return;
+          // Try common extraction field names for agent name
+          const extractedName = (
+            doc.extraction_data?.agent_name ||
+            doc.extraction_data?.listing_agent_name ||
+            doc.extraction_data?.agentName ||
+            doc.extraction_data?.listing_agent ||
+            ''
+          ) as string;
+          if (!extractedName) return;
+          const isMatch = deal.agentName.toLowerCase().trim() === extractedName.toLowerCase().trim();
+          // Once 'mismatch', keep it as mismatch across multiple deals for same agent
+          if (matchMap[deal.agentName] !== 'mismatch') {
+            matchMap[deal.agentName] = isMatch ? 'match' : 'mismatch';
+          }
+        });
+        setAgentContractMatchMap(matchMap);
+      })
+      .catch(() => {/* silent — circles just don't show */});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deals]);
+
   // Build a deal address lookup from props so we can enrich DB rows client-side
   const dealAddressMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -729,7 +773,21 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                         <span className="text-[9px] font-bold text-secondary">{i + 1}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{agent}</p>
+                        <div className="flex items-center gap-1.5">
+                          {agentContractMatchMap[agent] === 'match' && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-success shrink-0"
+                              title="Agent name matches uploaded contract"
+                            />
+                          )}
+                          {agentContractMatchMap[agent] === 'mismatch' && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-warning shrink-0"
+                              title="Agent name does not match uploaded contract"
+                            />
+                          )}
+                          <p className="text-xs font-medium truncate">{agent}</p>
+                        </div>
                         <p className="text-[10px] text-base-content/40">{formatCurrency(volume)}</p>
                       </div>
                       <span className="badge badge-secondary badge-sm">{count}</span>
