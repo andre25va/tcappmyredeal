@@ -752,7 +752,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           updated.downPaymentAmount = updated.isHeartlandMls
             ? Math.max(0, totalGap - em).toString()
             : totalGap.toString();
-          updated.downPaymentPercent = cp > 0 ? ((totalGap / cp) * 100).toFixed(1) : '';
+          // For Heartland: use extracted % from line 330 (what agent wrote); normalize decimal (.03→3)
+          // For non-Heartland (or if not extracted): derive from price/loan math
+          if (updated.isHeartlandMls && d.downPaymentPercent) {
+            let rawPct = parseFloat(d.downPaymentPercent as string);
+            if (rawPct > 0 && rawPct < 1) rawPct = rawPct * 100; // .03 → 3
+            updated.downPaymentPercent = rawPct.toFixed(1);
+          } else {
+            updated.downPaymentPercent = cp > 0 ? ((totalGap / cp) * 100).toFixed(1) : '';
+          }
         }
         return updated;
       });
@@ -2065,18 +2073,22 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
               {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
-                  const price   = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                  const loan    = parseFloat(form.loanAmount) || 0;
-                  const em      = parseFloat(form.earnestMoney) || 0;
-                  const dp      = parseFloat(form.downPaymentAmount) || 0;
-                  const pct     = parseFloat(form.downPaymentPercent) || 0;
-                  const comm    = parseFloat(form.clientAgentCommission) || 0;
-                  const conc    = parseFloat(form.sellerConcessions) || 0;
-                  const totalDown   = price > 0 && pct ? price * (pct / 100) : (dp + em);
+                  const price      = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const loan       = parseFloat(form.loanAmount) || 0;
+                  const em         = parseFloat(form.earnestMoney) || 0;
+                  const dp         = parseFloat(form.downPaymentAmount) || 0;
+                  const enteredPct = parseFloat(form.downPaymentPercent) || 0; // what agent wrote on line 330
+                  const comm       = parseFloat(form.clientAgentCommission) || 0;
+                  const conc       = parseFloat(form.sellerConcessions) || 0;
+                  // Right panel always derives % from price/loan math — this is the truth
+                  const derivedPct  = price > 0 && loan > 0 ? ((price - loan) / price) * 100 : 0;
+                  const totalDown   = price > 0 && derivedPct ? price * (derivedPct / 100) : (dp + em);
                   const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
                   const cashClose   = totalDown > em ? totalDown - em : dp;
                   const totalSeller = comm + conc;
+                  const showPctWarning = price > 0 && loan > 0 && enteredPct > 0 && Math.abs(enteredPct - derivedPct) > 0.1;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+                  const fmtPct = (n: number) => n.toFixed(2).replace(/\.?0+$/, '') + '%';
                   return (
                     <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
                       <p className="text-amber-700 font-semibold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference</p>
@@ -2106,14 +2118,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             <span className="text-amber-800 font-bold">{certFunds > 0 ? fmt(certFunds) : '—'}</span>
                           </div>
                         </div>
+                        <p className="text-base-content/40 mt-1 text-[10px]">Verify line 200 on physical contract matches ↑</p>
                       </div>
 
-                      {/* Section 2: Down Payment */}
+                      {/* Section 2: Down Payment — derived % is always the truth */}
                       <div>
                         <p className="text-amber-700 font-semibold mb-1.5">② Down Payment</p>
                         <div className="space-y-0.5 font-mono">
                           <div className="flex justify-between gap-4">
-                            <span className="text-base-content/55">Purchase Price × {pct > 0 ? pct + '%' : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
+                            <span className="text-base-content/55">Purchase Price × {derivedPct > 0 ? fmtPct(derivedPct) : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
                             <span className="font-medium">{totalDown > 0 ? fmt(totalDown) : '—'}</span>
                           </div>
                           <div className="flex justify-between gap-4">
@@ -2121,10 +2134,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             <span className="font-medium">{em > 0 ? '− ' + fmt(em) : '—'}</span>
                           </div>
                           <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
-                            <span className="text-amber-700 font-semibold">= Cash at Close <span className="text-amber-500/70">(ln 200)</span></span>
+                            <span className="text-amber-700 font-semibold">= Cash at Close</span>
                             <span className="text-amber-800 font-bold">{cashClose > 0 ? fmt(cashClose) : '—'}</span>
                           </div>
                         </div>
+                        {showPctWarning && (
+                          <p className="text-orange-600 mt-1 text-[10px]">⚠ Agent entered {fmtPct(enteredPct)} (ln 330) but Price/Loan math = {fmtPct(derivedPct)} — confirm PDF contract also reflects incorrect %</p>
+                        )}
                       </div>
 
                       {/* Section 3: Seller Expenses */}
@@ -2144,6 +2160,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
                           </div>
                         </div>
+                        <p className="text-base-content/40 mt-1 text-[10px]">Verify line 218 on physical contract matches ↑</p>
                       </div>
                     </div>
                   );

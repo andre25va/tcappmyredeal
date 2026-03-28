@@ -403,6 +403,7 @@ const extractDealSchema = {
     loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
     loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    downPaymentPercent: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -423,7 +424,7 @@ const extractDealSchema = {
   required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'contractPrice', 'mlsNumber',
     'contractDate', 'closingDate', 'inspectionDeadline', 'loanCommitmentDate', 'possessionDate',
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
+    'downPaymentAmount', 'downPaymentPercent', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
     'homeWarrantyCompany', 'legalDescription', 'buyerAgentName', 'sellerAgentName', 'mlsBoardName', 'confidence', 'extractedFields'],
 };
@@ -1024,6 +1025,7 @@ For transactionType: if this is a buyer's purchase offer/agreement, return "buye
 For buyerAgentName: extract the full name of the buyer's agent (also called buyer's representative, buyer's broker, or selling agent) from the contract. Return null if not found.
 For sellerAgentName: extract the full name of the seller's agent (also called listing agent, seller's broker, or seller's representative) from the contract. Return null if not found.
 For mlsBoardName: extract the MLS board or association name mentioned in the contract (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if not found.
+For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330 "Principal Amount or LTV ___ ___". Return as a numeric percentage string (e.g., "3" for 3%). If written as a decimal less than 1 (e.g., ".03"), convert to percentage form (multiply by 100, return "3"). Return null if not found.
 For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount using the purchase price. If both $ and % are present, prefer the $ amount.
 For commission: extract the buyer's agent (client agent) commission amount — this is what will be paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount from the purchase price. If both $ and % are present, prefer the $ amount.
 For propertyType: infer from property description. Default to "single-family".
