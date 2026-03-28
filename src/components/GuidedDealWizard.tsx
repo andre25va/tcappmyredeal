@@ -663,46 +663,61 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       });
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
-      setForm(p => ({
-        ...p,
-        address: d.address || p.address,
-        city: d.city || p.city,
-        state: d.state || p.state,
-        zipCode: d.zipCode || p.zipCode,
-        listPrice: d.listPrice || p.listPrice,
-        contractPrice: d.contractPrice || p.contractPrice,
-        mlsNumber: d.mlsNumber || p.mlsNumber,
-        contractDate: d.contractDate || p.contractDate,
-        closingDate: d.closingDate || p.closingDate,
-        inspectionDeadline: d.inspectionDeadline || p.inspectionDeadline,
-        loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
-        possessionDate: d.possessionDate || p.possessionDate,
-        earnestMoney: d.earnestMoney || p.earnestMoney,
-        earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
-        sellerConcessions: d.sellerConcessions || p.sellerConcessions,
-        loanType: d.loanType || p.loanType,
-        loanAmount: d.loanAmount || p.loanAmount,
-        downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
-        buyerNames: d.buyerNames || p.buyerNames,
-        sellerNames: d.sellerNames || p.sellerNames,
-        titleCompany: d.titleCompany || p.titleCompany,
-        loanOfficer: d.loanOfficer || p.loanOfficer,
-        clientAgentCommission: d.commission || p.clientAgentCommission,
-        clientAgentCommissionPct: (() => {
-          const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
-          const commAmt = stripFmt(d.commission || p.clientAgentCommission || '0');
-          const price = stripFmt(d.contractPrice || p.contractPrice || '0');
-          if (commAmt && price) return ((commAmt / price) * 100).toFixed(2);
-          return p.clientAgentCommissionPct;
-        })(),
-        transactionType: (d.transactionType as any) || p.transactionType,
-        propertyType: (d.propertyType as any) || p.propertyType,
-        asIsSale: d.asIsSale ?? p.asIsSale,
-        inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
-        homeWarranty: d.homeWarranty ?? p.homeWarranty,
-        homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
-        legalDescription: d.legalDescription || p.legalDescription,
-      }));
+      setForm(p => {
+        const updated = {
+          ...p,
+          address: d.address || p.address,
+          city: d.city || p.city,
+          state: d.state || p.state,
+          zipCode: d.zipCode || p.zipCode,
+          listPrice: d.listPrice || p.listPrice,
+          contractPrice: d.contractPrice || p.contractPrice,
+          mlsNumber: d.mlsNumber || p.mlsNumber,
+          contractDate: d.contractDate || p.contractDate,
+          closingDate: d.closingDate || p.closingDate,
+          inspectionDeadline: d.inspectionDeadline || p.inspectionDeadline,
+          loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
+          possessionDate: d.possessionDate || p.possessionDate,
+          earnestMoney: d.earnestMoney || p.earnestMoney,
+          earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
+          sellerConcessions: d.sellerConcessions || p.sellerConcessions,
+          loanType: d.loanType || p.loanType,
+          loanAmount: d.loanAmount || p.loanAmount,
+          downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
+          buyerNames: d.buyerNames || p.buyerNames,
+          sellerNames: d.sellerNames || p.sellerNames,
+          titleCompany: d.titleCompany || p.titleCompany,
+          loanOfficer: d.loanOfficer || p.loanOfficer,
+          clientAgentCommission: d.commission || p.clientAgentCommission,
+          clientAgentCommissionPct: (() => {
+            const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
+            const commAmt = stripFmt(d.commission || p.clientAgentCommission || '0');
+            const price = stripFmt(d.contractPrice || p.contractPrice || '0');
+            if (commAmt && price) return ((commAmt / price) * 100).toFixed(2);
+            return p.clientAgentCommissionPct;
+          })(),
+          transactionType: (d.transactionType as any) || p.transactionType,
+          propertyType: (d.propertyType as any) || p.propertyType,
+          asIsSale: d.asIsSale ?? p.asIsSale,
+          inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
+          homeWarranty: d.homeWarranty ?? p.homeWarranty,
+          homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
+          legalDescription: d.legalDescription || p.legalDescription,
+        };
+        // Auto-calculate down payment from extracted contract price + loan amount.
+        // The recalc handlers (fWithRecalc) only fire on manual field changes, so we
+        // must compute this here too — otherwise extracted data leaves down payment at 0.
+        const cp = parseFloat(updated.contractPrice) || 0;
+        const la = parseFloat(updated.loanAmount) || 0;
+        if (cp > 0 && la > 0) {
+          const dp = cp - la;
+          const em = updated.isHeartlandMls ? (parseFloat(updated.earnestMoney) || 0) : 0;
+          const totalWithEM = dp + em;
+          updated.downPaymentAmount = dp.toString();
+          updated.downPaymentPercent = cp > 0 ? ((totalWithEM / cp) * 100).toFixed(1) : '';
+        }
+        return updated;
+      });
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
       setExtractedRawData(d);
       setShowExtractedTable(false);
