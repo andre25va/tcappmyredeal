@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Users, AlertTriangle,
-  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList,
+  Clock, FileText, ArrowLeft, ListChecks, MapPin, Copy, Check, Pencil, Scan, Sparkles, MessageCircle, Phone, GitBranch, Shield, Inbox, MoreVertical, Archive, RotateCcw, ClipboardList, Database, X as XIcon,
 } from 'lucide-react';
 import { EmailCommandCenter } from './EmailCommandCenter';
 import { DealChatPanel } from './DealChatPanel';
@@ -55,28 +55,9 @@ import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
-import { PageIdBadge } from './PageIdBadge';
-import { PAGE_IDS } from '../utils/pageTracking';
+import { supabase } from '../lib/supabase';
 
 type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
-
-const TAB_PAGE_IDS: Record<Tab, string> = {
-  overview:         PAGE_IDS.DEAL_OVERVIEW,      // handled by WorkspaceOverview
-  checklists:       PAGE_IDS.WS_CHECKLISTS,
-  tasks:            PAGE_IDS.WS_TASKS,
-  contacts:         PAGE_IDS.WS_CONTACTS,
-  documents:        PAGE_IDS.WS_DOCUMENTS,
-  requests:         PAGE_IDS.WS_REQUESTS,
-  activity:         PAGE_IDS.WS_ACTIVITY,
-  email:            PAGE_IDS.WS_EMAIL_COMPOSE,
-  timeline:         PAGE_IDS.WS_TIMELINE,
-  'ai-chat':        PAGE_IDS.WS_AI_CHAT,
-  comms:            PAGE_IDS.WS_COMMS,
-  'ai-emails':      PAGE_IDS.WS_AI_EMAILS,
-  'linked-emails':  PAGE_IDS.WS_LINKED_EMAILS,
-  amendments:       PAGE_IDS.WS_AMENDMENTS,
-  access:           PAGE_IDS.WS_ACCESS,
-};
 
 interface Props {
   deal: Deal;
@@ -97,65 +78,46 @@ interface Props {
 
 /**
  * Derive representation from deal_participants (is_client_side flag).
- * Falls back to deal.transactionType when participants table is empty.
+ * Uses participants array directly — more reliable than deprecated buyerAgent/sellerAgent fields.
  */
 function getRepresentation(deal: Deal): { label: string; style: string; tooltip: string } | null {
   const participants = deal.participants ?? [];
 
-  // ── Primary path: use deal_participants when populated ──────────────────
-  if (participants.length > 0) {
-    const buyerClients = participants.filter(
-      p => p.side === 'buyer' && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
-    );
-    const sellerClients = participants.filter(
-      p => (p.side === 'listing' || p.side === 'seller') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
-    );
+  // Find client-side agents by side
+  const buyerClients = participants.filter(
+    p => (p.side === 'buyer') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+  );
+  const sellerClients = participants.filter(
+    p => (p.side === 'listing' || p.side === 'seller') && p.isClientSide && (p.dealRole === 'lead_agent' || p.dealRole === 'co_agent')
+  );
 
-    const hasBuyer  = buyerClients.length > 0;
-    const hasSeller = sellerClients.length > 0;
-    const buyerNames  = buyerClients.map(p => p.contactName).filter(Boolean).join(', ');
-    const sellerNames = sellerClients.map(p => p.contactName).filter(Boolean).join(', ');
+  const hasBuyer = buyerClients.length > 0;
+  const hasSeller = sellerClients.length > 0;
 
-    if (hasBuyer && hasSeller) {
-      return {
-        label: 'Representing Both Sides',
-        style: 'bg-violet-100 text-violet-700 border-violet-300',
-        tooltip: `Buy side: ${buyerNames || 'Client Agent'} · Sell side: ${sellerNames || 'Client Agent'}`,
-      };
-    }
-    if (hasBuyer) {
-      return {
-        label: 'Representing Buyer',
-        style: 'bg-blue-50 text-blue-700 border-blue-300',
-        tooltip: `Our client: ${buyerNames || 'Buyer Agent'}`,
-      };
-    }
-    if (hasSeller) {
-      return {
-        label: 'Representing Seller',
-        style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-        tooltip: `Our client: ${sellerNames || 'Seller Agent'}`,
-      };
-    }
+  const buyerNames = buyerClients.map(p => p.contactName).filter(Boolean).join(', ');
+  const sellerNames = sellerClients.map(p => p.contactName).filter(Boolean).join(', ');
+
+  if (hasBuyer && hasSeller) {
+    return {
+      label: 'Representing Both Sides',
+      style: 'bg-violet-100 text-violet-700 border-violet-300',
+      tooltip: `Buy side: ${buyerNames || 'Client Agent'} · Sell side: ${sellerNames || 'Client Agent'}`,
+    };
   }
-
-  // ── Fallback: use transactionType when deal_participants is empty ─────────
-  const txType = deal.transactionType;
-  if (txType === 'buyer') {
+  if (hasBuyer) {
     return {
       label: 'Representing Buyer',
       style: 'bg-blue-50 text-blue-700 border-blue-300',
-      tooltip: 'Buyer-side transaction',
+      tooltip: `Our client: ${buyerNames || 'Buyer Agent'}`,
     };
   }
-  if (txType === 'seller') {
+  if (hasSeller) {
     return {
       label: 'Representing Seller',
       style: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-      tooltip: 'Seller-side transaction',
+      tooltip: `Our client: ${sellerNames || 'Seller Agent'}`,
     };
   }
-
   return null;
 }
 
@@ -187,6 +149,16 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   const [editTrigger, setEditTrigger] = useState(0);
   const [showSheet, setShowSheet] = useState(false);
   const [showFocusView, setShowFocusView] = useState(false);
+  const [showMlsData, setShowMlsData] = useState(false);
+  const [mlsData, setMlsData] = useState<any | null>(null);
+  const [mlsDataFetchedAt, setMlsDataFetchedAt] = useState<string | null>(null);
+  const [mlsDataFetchedBy, setMlsDataFetchedBy] = useState<string | null>(null);
+  const [mlsDataLoading, setMlsDataLoading] = useState(false);
+  const [mlsDataError, setMlsDataError] = useState<string | null>(null);
+  // Re-run confirmation state
+  const [showMlsRerunConfirm, setShowMlsRerunConfirm] = useState(false);
+  const [mlsRerunFirstName, setMlsRerunFirstName] = useState('');
+  const [mlsRerunning, setMlsRerunning] = useState(false);
 
   // Fetch deal emails
   const { emails: dealEmails, loading: emailsLoading, stats: emailStats } = useDealEmails(deal);
@@ -196,6 +168,75 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
   // Reset to initialTab (or overview) whenever the active deal changes
   useEffect(() => { setTab(initialTab ?? 'overview'); }, [deal.id, initialTab]);
+
+  // Load MLS data from DB when panel opens
+  useEffect(() => {
+    if (!showMlsData) return;
+    const loadMlsData = async () => {
+      setMlsDataLoading(true);
+      setMlsDataError(null);
+      try {
+        const { data, error } = await supabase
+          .from('deals')
+          .select('mls_data, mls_data_fetched_at, mls_data_fetched_by')
+          .eq('id', deal.id)
+          .single();
+        if (error) throw error;
+        setMlsData(data?.mls_data || null);
+        setMlsDataFetchedAt(data?.mls_data_fetched_at || null);
+        setMlsDataFetchedBy(data?.mls_data_fetched_by || null);
+      } catch (err: any) {
+        setMlsDataError('Failed to load MLS data');
+      } finally {
+        setMlsDataLoading(false);
+      }
+    };
+    loadMlsData();
+  }, [showMlsData, deal.id]);
+
+  const runMlsSearch = async () => {
+    setMlsRerunning(true);
+    setMlsDataError(null);
+    try {
+      const address = deal.propertyAddress || '';
+      const city = deal.city || '';
+      const state = deal.state || '';
+      const zipCode = deal.zipCode || '';
+      const secondaryAddress = (deal as any).secondaryAddress || (deal as any).secondary_address || '';
+
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-mls-number`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ address, city, state, zipCode, ...(secondaryAddress ? { secondaryAddress } : {}) }),
+      });
+      const result = await res.json();
+
+      if (result.found && result.data) {
+        const now = new Date().toISOString();
+        const fetchedBy = profile?.name || 'TC Staff';
+        // Save to DB
+        await supabase.from('deals').update({
+          mls_data: result.data,
+          mls_data_fetched_at: now,
+          mls_data_fetched_by: fetchedBy,
+        }).eq('id', deal.id);
+        setMlsData(result.data);
+        setMlsDataFetchedAt(now);
+        setMlsDataFetchedBy(fetchedBy);
+      } else {
+        setMlsDataError('No active listing found for this property.');
+      }
+    } catch (err: any) {
+      setMlsDataError('Search failed. Please try again.');
+    } finally {
+      setMlsRerunning(false);
+      setShowMlsRerunConfirm(false);
+      setMlsRerunFirstName('');
+    }
+  };
   const pendingDocs = pendingDocCount(deal.documentRequests);
   const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate < new Date().toISOString().slice(0, 10)).length;
 
@@ -215,6 +256,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'comms',      label: 'Comms',      icon: <Phone size={13} /> },
     { id: 'ai-emails',  label: 'AI Emails',  icon: <Sparkles size={13} />, badge: emailStats.total > 0 ? emailStats.total : undefined },
     { id: 'linked-emails', label: 'Emails', icon: <Inbox size={13} />, badge: linkedEmailUnread > 0 ? linkedEmailUnread : undefined },
+    // Amendments & Addenda are handled inside the Documents tab
     ...(canManageAccess ? [{ id: 'access' as Tab, label: 'Access', icon: <Shield size={14} /> }] : []),
   ];
 
@@ -312,6 +354,14 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <FileText size={13} />
               <span className="hidden sm:inline">Sheet</span>
             </button>
+            <button
+              onClick={() => setShowMlsData(true)}
+              title="MLS Property Data"
+              className="btn btn-sm btn-ghost gap-1.5 border border-gray-300 text-black hover:bg-gray-100"
+            >
+              <Database size={13} />
+              <span className="hidden sm:inline text-xs">MLS Data</span>
+            </button>
             {!isViewer && (
               <button
                 onClick={() => { setTab('overview'); setEditTrigger(n => n + 1); }}
@@ -377,8 +427,158 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       {/* Focus View Modal */}
       {showFocusView && <FocusViewModal deal={deal} onClose={() => setShowFocusView(false)} />}
 
+      {/* MLS Data Panel */}
+      {showMlsData && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
+          <div className="bg-base-100 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[90vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-base-300 flex-none">
+              <div className="flex items-center gap-2">
+                <Database size={16} className="text-primary" />
+                <span className="font-bold text-base-content">MLS Property Data</span>
+              </div>
+              <button onClick={() => { setShowMlsData(false); setShowMlsRerunConfirm(false); setMlsRerunFirstName(''); }} className="btn btn-ghost btn-xs btn-circle">
+                <XIcon size={14} />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+              {/* Disclaimer */}
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                <span className="mt-0.5 flex-none">⚠️</span>
+                <span>This information is sourced from public MLS listings and may not be accurate or up to date. Always verify with official sources before use.</span>
+              </div>
+
+              {/* Loading */}
+              {mlsDataLoading && (
+                <div className="flex items-center justify-center py-8 gap-2 text-base-content/40">
+                  <span className="loading loading-spinner loading-sm" />
+                  <span className="text-sm">Loading MLS data...</span>
+                </div>
+              )}
+
+              {/* Error */}
+              {!mlsDataLoading && mlsDataError && (
+                <div className="px-4 py-3 rounded-lg bg-error/10 border border-error/20 text-sm text-error">
+                  {mlsDataError}
+                </div>
+              )}
+
+              {/* Data Card */}
+              {!mlsDataLoading && !mlsDataError && mlsData && (
+                <div className="rounded-xl border border-info/30 bg-info/5 p-4 space-y-3">
+                  {/* Status + Type */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {mlsData.listingStatus && (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        mlsData.listingStatus === 'Active' ? 'bg-green-100 text-green-700' :
+                        mlsData.listingStatus === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>{mlsData.listingStatus}</span>
+                    )}
+                    {mlsData.propertyType && <span className="text-sm font-semibold text-base-content">{mlsData.propertyType}</span>}
+                    {mlsData.daysOnMarket != null && <span className="text-xs text-base-content/50 ml-auto">DOM: {mlsData.daysOnMarket} days</span>}
+                  </div>
+                  {mlsData.mlsNumber && (
+                    <div className="text-xs text-base-content/50">MLS #: <span className="font-mono font-semibold text-base-content">{mlsData.mlsNumber}</span></div>
+                  )}
+                  {mlsData.listPrice != null && (
+                    <div className="text-xl font-bold text-base-content">${mlsData.listPrice.toLocaleString()}</div>
+                  )}
+                  <div className="flex flex-wrap gap-3 text-sm text-base-content/70">
+                    {mlsData.bedrooms != null && <span><span className="font-semibold text-base-content">{mlsData.bedrooms}</span> bed</span>}
+                    {mlsData.bathrooms != null && <span><span className="font-semibold text-base-content">{mlsData.bathrooms}</span> bath</span>}
+                    {mlsData.sqftLiving != null && <span><span className="font-semibold text-base-content">{mlsData.sqftLiving.toLocaleString()}</span> sqft</span>}
+                    {mlsData.yearBuilt != null && <span>Built <span className="font-semibold text-base-content">{mlsData.yearBuilt}</span></span>}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
+                    {mlsData.subdivision && <span>📍 {mlsData.subdivision}</span>}
+                    {mlsData.hoaFee != null && <span>HOA: ${mlsData.hoaFee}/mo</span>}
+                    {mlsData.garage && <span>🚗 {mlsData.garage}</span>}
+                    {mlsData.pool === true && <span>🏊 Pool</span>}
+                  </div>
+                  {(mlsData.listingAgentName || mlsData.listingOfficeName) && (
+                    <div className="pt-2 border-t border-info/20 text-xs text-base-content/50">
+                      {mlsData.listingAgentName && <span>Agent: <span className="text-base-content/70 font-medium">{mlsData.listingAgentName}</span></span>}
+                      {mlsData.listingAgentName && mlsData.listingOfficeName && <span className="mx-2">·</span>}
+                      {mlsData.listingOfficeName && <span>Office: <span className="text-base-content/70 font-medium">{mlsData.listingOfficeName}</span></span>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!mlsDataLoading && !mlsDataError && !mlsData && (
+                <div className="text-center py-6 text-sm text-base-content/40 italic">
+                  No MLS data fetched yet for this deal.
+                </div>
+              )}
+
+              {/* Fetched at / by */}
+              {mlsDataFetchedAt && (
+                <div className="text-xs text-base-content/40 text-center">
+                  Last fetched {new Date(mlsDataFetchedAt).toLocaleString()}{mlsDataFetchedBy ? ` by ${mlsDataFetchedBy}` : ''}
+                </div>
+              )}
+
+              {/* Re-run Confirmation */}
+              {showMlsRerunConfirm ? (
+                <div className="rounded-xl border border-warning/40 bg-warning/5 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-base-content">Confirm Re-run MLS Search</p>
+                  <p className="text-xs text-base-content/60">This will overwrite existing MLS data for this deal.</p>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-base-content/50">Staff:</span>
+                    <span className="font-medium text-base-content">{profile?.name || 'Unknown'}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-base-content/50">Type your first name to confirm</label>
+                    <input
+                      type="text"
+                      value={mlsRerunFirstName}
+                      onChange={e => setMlsRerunFirstName(e.target.value)}
+                      placeholder="First name"
+                      className="input input-bordered input-sm w-full"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowMlsRerunConfirm(false); setMlsRerunFirstName(''); }}
+                      className="btn btn-sm btn-ghost flex-1"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={runMlsSearch}
+                      disabled={
+                        mlsRerunning ||
+                        mlsRerunFirstName.trim().toLowerCase() !== (profile?.name || '').split(' ')[0].toLowerCase()
+                      }
+                      className="btn btn-sm btn-warning flex-1"
+                    >
+                      {mlsRerunning ? <span className="loading loading-spinner loading-xs" /> : <RotateCcw size={13} />}
+                      {mlsRerunning ? 'Searching...' : 'Confirm Re-run'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowMlsRerunConfirm(true)}
+                  className="btn btn-sm btn-ghost gap-1.5 w-full border border-base-300"
+                >
+                  <RotateCcw size={13} />
+                  {mlsData ? 'Re-run MLS Search' : 'Run MLS Search'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab Bar */}
       <div className="flex-none border-b border-base-300 bg-base-200 flex items-center overflow-x-auto scrollbar-none">
+        {/* Tabs */}
         <div className="flex items-center gap-0 flex-none md:flex-1 overflow-x-auto scrollbar-none px-1 md:px-4">
           {tabs.map(t => (
             <button
@@ -435,11 +635,6 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
           />
         )}
       </div>
-      {/* Page ID Badge — show for all tabs except overview (WorkspaceOverview handles that) */}
-      {tab !== 'overview' && (
-        <PageIdBadge pageId={TAB_PAGE_IDS[tab] ?? tab} context={deal.id.slice(0, 8)} />
-      )}
-
     {/* Workspace archive confirmation modal */}
       {wsArchiveOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => setWsArchiveOpen(false)}>
