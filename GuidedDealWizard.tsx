@@ -2067,14 +2067,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
                         {/* Match / Mismatch indicator */}
                         {bothCalcsReady && (
-                          <div className={`flex items-center gap-2 rounded px-2 py-1.5 font-sans font-semibold mt-1 ${calcsMatch ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                            <span className="text-sm">{calcsMatch ? '✓' : '⚠'}</span>
-                            <span>
-                              {calcsMatch
-                                ? 'Numbers check out — contract lines and down payment % agree.'
-                                : `Discrepancy of ${fmt(discrepancy)} — contract lines and down payment % do not agree. Verify with realtor.`}
-                            </span>
-                          </div>
+                          calcsMatch ? (
+                            <div className="flex items-center gap-2 rounded px-2 py-1.5 font-sans font-semibold mt-1 bg-green-50 text-green-700 border border-green-200">
+                              <span className="text-sm">✓</span>
+                              <span>Numbers check out — contract lines and down payment % agree.</span>
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border-2 border-amber-400 bg-amber-50 mt-2 overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 bg-amber-400">
+                                <span className="text-white text-base">⚠</span>
+                                <span className="text-white font-bold text-xs uppercase tracking-wide">Action Required — Fix Before Proceeding</span>
+                              </div>
+                              <div className="px-3 py-2">
+                                <p className="text-amber-900 font-bold text-sm">Discrepancy of {fmt(discrepancy)}</p>
+                                <p className="text-amber-800 text-xs mt-0.5">Contract lines (a−b−c−d) and down payment % produce different certified fund amounts. Contact the realtor to correct the contract before closing.</p>
+                              </div>
+                            </div>
+                          )
                         )}
 
                         <div className="border-t border-amber-100 my-1" />
