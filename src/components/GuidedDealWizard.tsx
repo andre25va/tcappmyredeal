@@ -1992,8 +1992,82 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
-                <div>
-                </div>
+                {/* Heartland Contract Reference Panel */}
+                {form.isHeartlandMls && (() => {
+                  const price   = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const loan    = parseFloat(form.loanAmount) || 0;
+                  const em      = parseFloat(form.earnestMoney) || 0;
+                  const dp      = parseFloat(form.downPaymentAmount) || 0;
+                  const pct     = parseFloat(form.downPaymentPercent) || 0;
+                  const comm    = parseFloat(form.clientAgentCommission) || 0;
+                  const conc    = parseFloat(form.sellerConcessions) || 0;
+                  const totalDown = price > 0 && pct ? price * (pct / 100) : dp + em;
+                  const derivedLoan = price > 0 ? price - em : 0;
+                  const totalSeller = comm + conc;
+                  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+                  return (
+                    <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
+                      <p className="text-amber-700 font-semibold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference</p>
+
+                      {/* Section 1: Loan Amount */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">① Loan Amount — verify line 196</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">Purchase Price <span className="text-base-content/35">(ln 164)</span></span>
+                            <span className="font-medium">{price > 0 ? fmt(price) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">− Earnest Money <span className="text-base-content/35">(ln 176)</span></span>
+                            <span className="font-medium">{em > 0 ? '− ' + fmt(em) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">− Add'l Earnest Money <span className="text-base-content/35">(ln 186)</span></span>
+                            <span className="text-base-content/35">—</span>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
+                            <span className="text-amber-700 font-semibold">= Total Financed by Buyer <span className="text-amber-500/70">(ln 196)</span></span>
+                            <span className="text-amber-800 font-bold">{derivedLoan > 0 ? fmt(derivedLoan) : loan > 0 ? fmt(loan) : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 2: Down Payment */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">② Down Payment</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">Purchase Price × {pct > 0 ? pct + '%' : '%'}</span>
+                            <span className="font-medium">{totalDown > 0 ? fmt(totalDown) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">Certified Funds <span className="text-base-content/35">(ln 200)</span> − Total Financed <span className="text-base-content/35">(ln 196)</span></span>
+                            <span className="font-medium">{dp > 0 ? fmt(dp) : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Seller Expenses */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">③ Total Additional Seller Expenses</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">Seller comp to Buyer's Broker <span className="text-base-content/35">(ln 207)</span></span>
+                            <span className="font-medium">{comm > 0 ? fmt(comm) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/55">+ Add'l Seller paid costs <span className="text-base-content/35">(ln 211)</span></span>
+                            <span className="font-medium">{conc > 0 ? '+ ' + fmt(conc) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
+                            <span className="text-amber-700 font-semibold">= Total Additional Seller Expenses</span>
+                            <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Client Agent Commission */}
                 <div className="border-t border-base-300 pt-4">
