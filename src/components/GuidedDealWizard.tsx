@@ -280,8 +280,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [splitDone, setSplitDone] = useState(false);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
+  // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
+  const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | null>(null);
   const [mlsPropertyData, setMlsPropertyData] = useState<{
     mlsNumber?: string;
+    mlsBoardName?: string;
     propertyType?: string;
     listPrice?: number;
     bedrooms?: number;
@@ -544,6 +547,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       if (data.found && data.data) {
         const d = data.data;
         if (d.mlsNumber) setForm(p => ({ ...p, mlsNumber: d.mlsNumber }));
+        // Auto-select/confirm MLS board from MLS fetch result
+        if (d.mlsBoardName) {
+          const fetchedBoard = (d.mlsBoardName as string).toLowerCase().trim();
+          const stateKey = form.state.toUpperCase();
+          const boardsForState = MLS_BY_STATE[stateKey] || [];
+          const allBoards = boardsForState.length > 0 ? boardsForState : Object.values(MLS_BY_STATE).flat();
+          const matched = allBoards.find(b => {
+            const bl = b.toLowerCase();
+            return bl.includes(fetchedBoard) || fetchedBoard.includes(bl.split(' ')[0]);
+          });
+          if (matched) {
+            setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched) }));
+            setMlsBoardDetectedSource('mls');
+          }
+        }
         setMlsPropertyData(d);
         setMlsFetchStatus('found');
       } else {
@@ -718,6 +736,22 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         }
         return updated;
       });
+      // Auto-detect MLS board from extracted mlsBoardName + state
+      if (d.mlsBoardName) {
+        const extractedBoard = (d.mlsBoardName as string).toLowerCase().trim();
+        const stateKey = (d.state || '').toUpperCase();
+        const boardsForState = MLS_BY_STATE[stateKey] || [];
+        // Find best match: prefer boards in the form's state, fallback to all states
+        const allBoards = boardsForState.length > 0 ? boardsForState : Object.values(MLS_BY_STATE).flat();
+        const matched = allBoards.find(b => {
+          const bl = b.toLowerCase();
+          return bl.includes(extractedBoard) || extractedBoard.includes(bl.split(' ')[0]);
+        }) || boardsForState.find(b => b.toLowerCase().includes('heartland') && extractedBoard.includes('heartland'));
+        if (matched) {
+          setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched) }));
+          setMlsBoardDetectedSource('pdf');
+        }
+      }
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
       setExtractedRawData(d);
       setShowExtractedTable(false);
@@ -1533,6 +1567,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         onChange={e => {
                           const val = e.target.value;
                           setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val) }));
+                          setMlsBoardDetectedSource(null); // TC overrode manually
                           if (form.agentClientId) checkMlsMismatch(form.agentClientId, val);
                         }}
                       >
@@ -1593,6 +1628,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     )}
                   </div>
                 </div>
+                {mlsBoardDetectedSource && form.mlsBoard && (
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${mlsBoardDetectedSource === 'mls' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                    {mlsBoardDetectedSource === 'mls' ? (
+                      <><span>✓</span><span>MLS board confirmed from listing data</span></>
+                    ) : (
+                      <><span>✦</span><span>Auto-detected from contract — verify if needed</span></>
+                    )}
+                  </div>
+                )}
                 {form.isHeartlandMls && (
                   <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
                     <span className="text-xs text-amber-700 font-medium">Heartland MLS detected — earnest money rule will apply in Financials</span>

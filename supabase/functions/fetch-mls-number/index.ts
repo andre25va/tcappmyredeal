@@ -45,7 +45,8 @@ serve(async (req: Request) => {
 
     const searchQuery = `Search Zillow, Realtor.com, Redfin, or MLS listing sites for the property: "${fullAddress}".
 IMPORTANT: Only include results where the listing status is Active, Pending, Under Contract, or Contingent. Do NOT include sold or closed listings.
-Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
+Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
+mlsBoardName: the name of the MLS board or association this listing belongs to (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if unknown.
 propertyType must be one of: Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other.
 listingStatus must be one of: Active, Pending, Under Contract, Contingent.
 pool must be a boolean (true or false).
