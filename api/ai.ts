@@ -414,7 +414,8 @@ const extractDealSchema = {
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    agentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
@@ -423,7 +424,7 @@ const extractDealSchema = {
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
     'downPaymentAmount', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'agentName', 'confidence', 'extractedFields'],
+    'homeWarrantyCompany', 'legalDescription', 'buyerAgentName', 'sellerAgentName', 'confidence', 'extractedFields'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1019,6 +1020,8 @@ async function handleExtractDeal(apiKey: string, body: any) {
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
+For buyerAgentName: extract the full name of the buyer's agent (also called buyer's representative, buyer's broker, or selling agent) from the contract. Return null if not found.
+For sellerAgentName: extract the full name of the seller's agent (also called listing agent, seller's broker, or seller's representative) from the contract. Return null if not found.
 For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount using the purchase price. If both $ and % are present, prefer the $ amount.
 For commission: extract the buyer's agent (client agent) commission amount — this is what will be paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount from the purchase price. If both $ and % are present, prefer the $ amount.
 For propertyType: infer from property description. Default to "single-family".
