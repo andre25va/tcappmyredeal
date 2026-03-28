@@ -1894,6 +1894,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
                   </div>
                 )}
+                <div className={form.isHeartlandMls ? 'grid grid-cols-2 gap-6 items-start' : ''}>
+                <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
@@ -2004,6 +2006,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
+                </div>{/* end left column */}
                 {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
                   const price          = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
@@ -2114,6 +2117,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
+                </div>{/* end two-col grid */}
 
                 {/* Client Agent Commission */}
                 <div className="border-t border-base-300 pt-4">
