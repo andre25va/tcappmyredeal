@@ -1333,6 +1333,31 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   )}
                 </div>
 
+                {/* ── Extracted agent name reference fields ── */}
+                {extractedRawData && (extractedRawData.buyerAgentName || extractedRawData.sellerAgentName) && (
+                  <div className="mt-2 rounded-lg border border-base-300 bg-base-200/50 px-3 py-2 space-y-1">
+                    <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1">From Contract</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-base-content/50 w-28 flex-none">Buyer Agent:</span>
+                      <span className="text-xs font-medium text-base-content">
+                        {(extractedRawData.buyerAgentName as string) || <span className="text-base-content/30 italic">Not found</span>}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-base-content/50 w-28 flex-none">Seller Agent:</span>
+                      <span className="text-xs font-medium text-base-content">
+                        {(extractedRawData.sellerAgentName as string) || <span className="text-base-content/30 italic">Not found</span>}
+                      </span>
+                    </div>
+                    {mlsPropertyData.listingAgentName && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-base-300 mt-1">
+                        <span className="text-xs text-base-content/50 w-28 flex-none">MLS Listing Agent:</span>
+                        <span className="text-xs font-medium text-base-content">{mlsPropertyData.listingAgentName}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
