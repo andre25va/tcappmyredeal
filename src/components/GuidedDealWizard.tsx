@@ -1207,14 +1207,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </label>
                   {form.agentClientId ? (() => {
                     const ac = agentClients?.find(c => c.id === form.agentClientId);
-                    return ac ? (
+                    if (!ac) return null;
+                    // Compare selected agent name against contract-extracted agent name
+                    const contractAgent = extractedRawData?.agentName as string | null | undefined;
+                    const nameMatch = contractAgent
+                      ? ac.fullName.trim().toLowerCase() === contractAgent.trim().toLowerCase()
+                      : null; // null = no contract data yet
+                    return (
                       <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
                         <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
                           {ac.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-base-content truncate">{ac.fullName}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-base-content truncate">{ac.fullName}</p>
+                            {nameMatch === true && (
+                              <span title={`Name matches contract: "${contractAgent}"`}
+                                className="flex-none w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                                  <path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </span>
+                            )}
+                            {nameMatch === false && (
+                              <span title={`Contract says: "${contractAgent}"`}
+                                className="flex-none w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center text-white font-bold" style={{ fontSize: 9, lineHeight: 1 }}>
+                                !
+                              </span>
+                            )}
+                          </div>
                           {ac.company && <p className="text-xs text-base-content/50 truncate">{ac.company}</p>}
+                          {nameMatch === false && contractAgent && (
+                            <p className="text-xs text-amber-600 mt-0.5">Contract: <span className="font-medium">{contractAgent}</span></p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1222,7 +1247,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           className="btn btn-ghost btn-xs btn-square"
                         ><X size={12} /></button>
                       </div>
-                    ) : null;
+                    );
                   })() : (
                     <div className="relative" ref={clientSearchRef}>
                       <input
