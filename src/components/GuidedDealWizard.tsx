@@ -1349,7 +1349,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         {(extractedRawData.sellerAgentName as string) || <span className="text-base-content/30 italic">Not found</span>}
                       </span>
                     </div>
-                    {mlsPropertyData.listingAgentName && (
+                    {mlsPropertyData?.listingAgentName && (
                       <div className="flex items-center gap-2 pt-1 border-t border-base-300 mt-1">
                         <span className="text-xs text-base-content/50 w-28 flex-none">MLS Listing Agent:</span>
                         <span className="text-xs font-medium text-base-content">{mlsPropertyData.listingAgentName}</span>
