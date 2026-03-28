@@ -2080,9 +2080,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const enteredPct = parseFloat(form.downPaymentPercent) || 0; // what agent wrote on line 330
                   const comm       = parseFloat(form.clientAgentCommission) || 0;
                   const conc       = parseFloat(form.sellerConcessions) || 0;
-                  // Right panel always derives % from price/loan math — this is the truth
+                  // derivedPct: what line 196 (loan amount) implies — used only for warning comparison
                   const derivedPct  = price > 0 && loan > 0 ? ((price - loan) / price) * 100 : 0;
-                  const totalDown   = price > 0 && derivedPct ? price * (derivedPct / 100) : (dp + em);
+                  // Line 330 % is the agent's intent (the truth); fall back to derivedPct only if not extracted
+                  const pctForCalc  = enteredPct > 0 ? enteredPct : derivedPct;
+                  const totalDown   = price > 0 && pctForCalc ? price * (pctForCalc / 100) : (dp + em);
                   const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
                   const cashClose   = totalDown > em ? totalDown - em : dp;
                   const totalSeller = comm + conc;
@@ -2121,12 +2123,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         <p className="text-base-content/40 mt-1 text-[10px]">Verify line 200 on physical contract matches ↑</p>
                       </div>
 
-                      {/* Section 2: Down Payment — derived % is always the truth */}
+                      {/* Section 2: Down Payment — line 330 % is the truth; warning fires if ln 196 conflicts */}
                       <div>
                         <p className="text-amber-700 font-semibold mb-1.5">② Down Payment</p>
                         <div className="space-y-0.5 font-mono">
                           <div className="flex justify-between gap-4">
-                            <span className="text-base-content/55">Purchase Price × {derivedPct > 0 ? fmtPct(derivedPct) : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
+                            <span className="text-base-content/55">Purchase Price × {pctForCalc > 0 ? fmtPct(pctForCalc) : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
                             <span className="font-medium">{totalDown > 0 ? fmt(totalDown) : '—'}</span>
                           </div>
                           <div className="flex justify-between gap-4">
@@ -2139,7 +2141,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           </div>
                         </div>
                         {showPctWarning && (
-                          <p className="text-orange-600 mt-1 text-[10px]">⚠ Agent entered {fmtPct(enteredPct)} (ln 330) but Price/Loan math = {fmtPct(derivedPct)} — confirm PDF contract also reflects incorrect %</p>
+                          <p className="text-orange-600 mt-1 text-[10px]">⚠ Ln 196 loan amount implies {fmtPct(derivedPct)} down — agent's ln 330 says {fmtPct(enteredPct)} — verify line 196 is correct</p>
                         )}
                       </div>
 
