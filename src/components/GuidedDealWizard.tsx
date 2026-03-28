@@ -280,7 +280,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [splitDone, setSplitDone] = useState(false);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
-  const [mlsDetectedPropertyType, setMlsDetectedPropertyType] = useState<string | null>(null);
+  const [mlsPropertyData, setMlsPropertyData] = useState<{
+    mlsNumber?: string;
+    propertyType?: string;
+    listPrice?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    sqftLiving?: number;
+    yearBuilt?: number;
+    listingStatus?: string;
+    daysOnMarket?: number;
+    listingAgentName?: string;
+    listingOfficeName?: string;
+    subdivision?: string;
+    hoaFee?: number;
+    garage?: string;
+    pool?: boolean;
+  } | null>(null);
 
   // Title & Escrow step state
   const [titleSearch, setTitleSearch] = useState('');
@@ -525,12 +541,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         }),
       });
       const data = await res.json();
-      if (data.found && data.mlsNumber) {
-        setForm(p => ({ ...p, mlsNumber: data.mlsNumber }));
-        // Store detected property type in separate state for display, don't auto-fill form
-        if (data.propertyType) {
-          setMlsDetectedPropertyType(data.propertyType);
-        }
+      if (data.found && data.data) {
+        const d = data.data;
+        if (d.mlsNumber) setForm(p => ({ ...p, mlsNumber: d.mlsNumber }));
+        setMlsPropertyData(d);
         setMlsFetchStatus('found');
       } else {
         setMlsFetchStatus('not_found');
@@ -1550,11 +1564,81 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
-                <div className="flex flex-col gap-1">
+                {/* MLS Property Data Card */}
+                <div className="flex flex-col gap-2">
                   <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">System Found</label>
-                  <div className={`px-4 py-2.5 rounded-lg border text-sm font-medium ${mlsDetectedPropertyType ? 'bg-info/10 border-info/30 text-info capitalize' : 'bg-base-200 border-base-300 text-base-content/40 italic'}`}>
-                    {mlsDetectedPropertyType ? mlsDetectedPropertyType : 'Type not found'}
+                  
+                  {/* Disclaimer */}
+                  <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                    <AlertTriangle size={13} className="mt-0.5 flex-none" />
+                    <span>This information is sourced from public MLS listings and may not be accurate or up to date. Always verify with official sources before use.</span>
                   </div>
+
+                  {mlsPropertyData ? (
+                    <div className="rounded-xl border border-info/30 bg-info/5 p-4 space-y-3">
+                      {/* Status + Type row */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {mlsPropertyData.listingStatus && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            mlsPropertyData.listingStatus === 'Active' ? 'bg-green-100 text-green-700' :
+                            mlsPropertyData.listingStatus === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>{mlsPropertyData.listingStatus}</span>
+                        )}
+                        {mlsPropertyData.propertyType && (
+                          <span className="text-sm font-semibold text-base-content">{mlsPropertyData.propertyType}</span>
+                        )}
+                        {mlsPropertyData.daysOnMarket != null && (
+                          <span className="text-xs text-base-content/50 ml-auto">DOM: {mlsPropertyData.daysOnMarket} days</span>
+                        )}
+                      </div>
+
+                      {/* MLS Number */}
+                      {mlsPropertyData.mlsNumber && (
+                        <div className="text-xs text-base-content/50">MLS #: <span className="font-mono font-semibold text-base-content">{mlsPropertyData.mlsNumber}</span></div>
+                      )}
+
+                      {/* Price */}
+                      {mlsPropertyData.listPrice != null && (
+                        <div className="text-xl font-bold text-base-content">
+                          ${mlsPropertyData.listPrice.toLocaleString()}
+                        </div>
+                      )}
+
+                      {/* Beds / Baths / Sqft / Year */}
+                      <div className="flex flex-wrap gap-3 text-sm text-base-content/70">
+                        {mlsPropertyData.bedrooms != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.bedrooms}</span> bed</span>}
+                        {mlsPropertyData.bathrooms != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.bathrooms}</span> bath</span>}
+                        {mlsPropertyData.sqftLiving != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.sqftLiving.toLocaleString()}</span> sqft</span>}
+                        {mlsPropertyData.yearBuilt != null && <span>Built <span className="font-semibold text-base-content">{mlsPropertyData.yearBuilt}</span></span>}
+                      </div>
+
+                      {/* Subdivision / HOA / Garage / Pool */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
+                        {mlsPropertyData.subdivision && <span>📍 {mlsPropertyData.subdivision}</span>}
+                        {mlsPropertyData.hoaFee != null && <span>HOA: ${mlsPropertyData.hoaFee}/mo</span>}
+                        {mlsPropertyData.garage && <span>🚗 {mlsPropertyData.garage}</span>}
+                        {mlsPropertyData.pool === true && <span>🏊 Pool</span>}
+                      </div>
+
+                      {/* Listing Agent / Office */}
+                      {(mlsPropertyData.listingAgentName || mlsPropertyData.listingOfficeName) && (
+                        <div className="pt-2 border-t border-info/20 text-xs text-base-content/50">
+                          {mlsPropertyData.listingAgentName && <span>Agent: <span className="text-base-content/70 font-medium">{mlsPropertyData.listingAgentName}</span></span>}
+                          {mlsPropertyData.listingAgentName && mlsPropertyData.listingOfficeName && <span className="mx-2">·</span>}
+                          {mlsPropertyData.listingOfficeName && <span>Office: <span className="text-base-content/70 font-medium">{mlsPropertyData.listingOfficeName}</span></span>}
+                        </div>
+                      )}
+                    </div>
+                  ) : mlsFetchStatus === 'not_found' ? (
+                    <div className="px-4 py-2.5 rounded-lg border bg-base-200 border-base-300 text-sm text-base-content/40 italic">
+                      No active listing found
+                    </div>
+                  ) : (
+                    <div className="px-4 py-2.5 rounded-lg border bg-base-200 border-base-300 text-sm text-base-content/40 italic">
+                      Run MLS lookup on Step 1 to populate
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-4 gap-3">
                   {PROP_TYPES.map(pt => (
