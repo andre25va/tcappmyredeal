@@ -1894,6 +1894,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
                   </div>
                 )}
+                <div className={form.isHeartlandMls ? 'grid grid-cols-2 gap-6 items-start' : ''}>
+                <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
@@ -2004,6 +2006,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
+                </div>{/* end left column */}
                 {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
                   const price          = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
@@ -2016,6 +2019,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const costsNotPayable = parseFloat(form.costsNotPayableByBuyer) || 0;
                   // Derive % from Price and Loan — always mathematically true regardless of what agent entered
                   const derivedPct  = price > 0 && loan > 0 ? ((price - loan) / price * 100) : 0;
+                  const agentPct    = parseFloat(form.downPaymentPercent) || 0;
+                  const pctMismatch = agentPct > 0 && derivedPct > 0 && Math.abs(derivedPct - agentPct) > 0.05;
                   const totalDown   = price > 0 && derivedPct > 0 ? price * (derivedPct / 100) : (dp + em);
                   const certFunds   = price > 0 && loan > 0 ? price - em - addEM - loan : 0;
                   const cashClose   = totalDown > em ? totalDown - em : dp;
@@ -2060,6 +2065,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           <span className="text-amber-800 font-bold">{certFunds > 0 ? fmt(certFunds) : '—'}</span>
                         </div>
                         <div className="pl-3 text-[10px] text-base-content/40 font-sans">(a) − (b) − (c) − (d)</div>
+                        <div className="pl-3 text-[10px] text-blue-600/70 font-sans">📋 Verify line 200 on physical contract matches ↑</div>
 
                         <div className="border-t border-amber-100 my-1" />
 
@@ -2076,8 +2082,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           <span className="text-amber-700 font-semibold">= Cash at Close (should match e) <span className="text-amber-400/80 font-normal">ln 200</span></span>
                           <span className="text-amber-800 font-bold">{cashClose > 0 ? fmt(cashClose) : '—'}</span>
                         </div>
-
-
+                        {pctMismatch && (
+                          <div className="pl-3 mt-1 bg-yellow-50 border border-yellow-300 rounded px-2 py-1 text-[10px] text-yellow-800 font-sans">
+                            ⚠ Agent entered {agentPct.toFixed(1)}% but Price/Loan math = {derivedPct.toFixed(1)}% — confirm PDF contract also reflects incorrect %
+                          </div>
+                        )}
 
                         <div className="border-t border-amber-100 my-1" />
 
@@ -2102,11 +2111,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           <span className="text-amber-700 font-semibold">TOTAL ADDITIONAL SELLER EXPENSES <span className="text-amber-400/80 font-normal">ln 218</span></span>
                           <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
                         </div>
+                        <div className="pl-3 text-[10px] text-blue-600/70 font-sans">📋 Verify line 218 on physical contract matches ↑</div>
 
                       </div>
                     </div>
                   );
                 })()}
+                </div>{/* end two-col grid */}
 
                 {/* Client Agent Commission */}
                 <div className="border-t border-base-300 pt-4">
