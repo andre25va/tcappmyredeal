@@ -252,7 +252,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     specialNotes: '',
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '',
-    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
+    earnestMoney: '', additionalEarnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', costsNotPayableByBuyer: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
@@ -715,8 +715,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
           possessionDate: d.possessionDate || p.possessionDate,
           earnestMoney: d.earnestMoney || p.earnestMoney,
+          additionalEarnestMoney: d.additionalEarnestMoney || p.additionalEarnestMoney,
           earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
           sellerConcessions: d.sellerConcessions || p.sellerConcessions,
+          costsNotPayableByBuyer: d.costsNotPayableByBuyer || p.costsNotPayableByBuyer,
           loanType: d.loanType || p.loanType,
           loanAmount: d.loanAmount || p.loanAmount,
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
@@ -918,6 +920,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       earnestMoney: parseFloat(form.earnestMoney) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
+      additionalEarnestMoney: parseFloat(form.additionalEarnestMoney) || undefined,
+      costsNotPayableByBuyer: parseFloat(form.costsNotPayableByBuyer) || undefined,
       clientAgentCommission: parseFloat(form.clientAgentCommission) || undefined,
       clientAgentCommissionPct: parseFloat(form.clientAgentCommissionPct) || undefined,
       asIsSale: form.asIsSale,
@@ -963,21 +967,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           });
         }
         // Heartland contract math discrepancy task
+        // Source of truth: Price × % → derived loan. If PDF loan differs, flag it.
         if (form.isHeartlandMls) {
-          const _price = parseFloat(form.contractPrice) || 0;
-          const _loan  = parseFloat(form.loanAmount) || 0;
-          const _em    = parseFloat(form.earnestMoney) || 0;
-          const _pct   = parseFloat(form.downPaymentPercent) || 0;
-          const _certFunds = _price > 0 && _loan > 0 ? _price - _em - _loan : 0;
-          const _totalDown = _price > 0 && _pct > 0 ? _price * (_pct / 100) : 0;
-          const _cashClose = _totalDown > _em ? _totalDown - _em : (parseFloat(form.downPaymentAmount) || 0);
-          const _bothReady = _certFunds > 0 && _cashClose > 0;
-          const _discrepancy = _bothReady ? Math.abs(_certFunds - _cashClose) : 0;
-          if (_bothReady && _discrepancy >= 0.02) {
+          const _price       = parseFloat(form.contractPrice) || 0;
+          const _pct         = parseFloat(form.downPaymentPercent) || 0;
+          const _loanFromPdf = parseFloat(form.loanAmount) || 0;
+          const _totalDown   = _price > 0 && _pct > 0 ? _price * (_pct / 100) : 0;
+          const _derivedLoan = _price > 0 && _pct > 0 ? _price - _totalDown : 0;
+          const _loanReady   = _derivedLoan > 0 && _loanFromPdf > 0;
+          const _discrepancy = _loanReady ? Math.abs(_derivedLoan - _loanFromPdf) : 0;
+          if (_loanReady && _discrepancy >= 0.02) {
             const _fmtAmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(_discrepancy);
             autoTasks.push({
               id: generateId(),
-              title: `⚠ Verify contract math with realtor — certified funds discrepancy of ${_fmtAmt} (Para. 4 lines 164–200)`,
+              title: `⚠ Verify loan amount with realtor — PDF shows ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(_loanFromPdf)}, calculated ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(_derivedLoan)} (discrepancy ${_fmtAmt}, Para. 4 ln 196)`,
               dueDate: '',
               priority: 'high' as const,
               category: 'Financial',
@@ -1474,7 +1477,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     contractDate: 'Contract Date', closingDate: 'Closing Date',
                     inspectionDeadline: 'Inspection Deadline', loanCommitmentDate: 'Loan Commitment Date',
                     titleDate: 'Title / Clear to Close', possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
-                    earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
+                    earnestMoneyDueDate: 'EM Due Date', earnestMoney: 'Earnest Money', additionalEarnestMoney: 'Add\'l Earnest Money', sellerConcessions: 'Seller Concessions', costsNotPayableByBuyer: 'Costs Not Payable by Buyer',
                     loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
                     buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
                     titleCompany: 'EM Held With', loanOfficer: 'Loan Officer', commission: 'Commission $',
@@ -2025,123 +2028,99 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 })()}
                 {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
-                  const price   = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                  const loan    = parseFloat(form.loanAmount) || 0;
-                  const em      = parseFloat(form.earnestMoney) || 0;
-                  const dp      = parseFloat(form.downPaymentAmount) || 0;
-                  const pct     = parseFloat(form.downPaymentPercent) || 0;
-                  const comm    = parseFloat(form.clientAgentCommission) || 0;
-                  const conc    = parseFloat(form.sellerConcessions) || 0;
-                  const totalDown   = price > 0 && pct ? price * (pct / 100) : (dp + em);
-                  const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
-                  const cashClose   = totalDown > em ? totalDown - em : dp;
-                  const totalSeller = comm + conc;
-                  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-                  const bothCalcsReady = certFunds > 0 && cashClose > 0;
-                  const calcsMatch    = bothCalcsReady && Math.abs(certFunds - cashClose) < 0.02;
-                  const discrepancy   = bothCalcsReady ? Math.abs(certFunds - cashClose) : 0;
+                  const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const pct   = parseFloat(form.downPaymentPercent) || 0;
+                  const em    = parseFloat(form.earnestMoney) || 0;
+                  const addEM = parseFloat(form.additionalEarnestMoney) || 0;
+                  const loan  = parseFloat(form.loanAmount) || 0;
+                  const comm  = parseFloat(form.clientAgentCommission) || 0;
+                  const conc  = parseFloat(form.sellerConcessions) || 0;
+                  const costsNotPayable = parseFloat(form.costsNotPayableByBuyer) || 0;
+                  const fmt   = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+
+                  // ① Certified Funds: extracted values — (a) − (b) − (c) − (d) = (e)
+                  const certFunds = price > 0 ? price - em - addEM - loan : 0;
+
+                  // ② Down Payment breakdown
+                  const totalDown   = price > 0 && pct ? price * (pct / 100) : 0;
+                  const cashAtClose = totalDown > 0 ? totalDown - em : 0;
+
+                  // ③ Seller Expenses
+                  const totalSeller = comm + conc + costsNotPayable;
+
                   return (
                     <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
                       <p className="text-amber-700 font-bold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference — Para. 4</p>
 
-                      {/* Contract layout: mirrors the actual contract order a → b → c → d → e → f */}
-                      <div className="space-y-0.5 font-mono">
-
-                        {/* (a) Purchase Price */}
-                        <div className="flex justify-between gap-4">
-                          <span className="font-semibold text-base-content/80">4. PURCHASE PRICE <span className="text-base-content/35 font-normal">ln 164 (a)</span></span>
-                          <span className="font-bold">{price > 0 ? fmt(price) : '—'}</span>
+                      {/* ① Verify Certified Funds */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">① Verify Certified Funds — line 200</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="font-semibold text-base-content/80">Purchase Price <span className="text-base-content/35 font-normal">ln 164 (a)</span></span>
+                            <span className="font-bold">{price > 0 ? fmt(price) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 pl-3">
+                            <span className="text-base-content/60">− Earnest Money <span className="text-base-content/35">ln 176 (b)</span></span>
+                            <span>{em > 0 ? '− ' + fmt(em) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 pl-3">
+                            <span className="text-base-content/60">− Add'l Earnest Money <span className="text-base-content/35">ln 186 (c)</span></span>
+                            <span>{addEM > 0 ? '− ' + fmt(addEM) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 pl-3">
+                            <span className="text-base-content/60">− Total Financed by Buyer <span className="text-base-content/35">ln 196 (d)</span></span>
+                            <span>{loan > 0 ? '− ' + fmt(loan) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1 mt-1">
+                            <span className="text-amber-700 font-semibold">= Certified Funds <span className="text-amber-400/80 font-normal">ln 200 (e)</span></span>
+                            <span className="text-amber-800 font-bold">{certFunds > 0 ? fmt(certFunds) : '—'}</span>
+                          </div>
                         </div>
-
-                        <div className="border-t border-amber-100 my-1" />
-
-                        {/* (b) Earnest Money */}
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">b. Earnest Money <span className="text-base-content/35">ln 176</span></span>
-                          <span>{em > 0 ? fmt(em) : '—'}</span>
-                        </div>
-
-                        {/* (c) Additional Earnest Money */}
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">c. Additional Earnest Money <span className="text-base-content/35">ln 186</span></span>
-                          <span className="text-base-content/35">—</span>
-                        </div>
-
-                        {/* (d) Total Amount Financed */}
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">d. Total Amount Financed by BUYER <span className="text-base-content/35">ln 196</span></span>
-                          <span>{loan > 0 ? fmt(loan) : '—'}</span>
-                        </div>
-
-                        {/* (e) Certified Funds — derived */}
-                        <div className="flex justify-between gap-4 pl-3 border-t border-amber-200 pt-1">
-                          <span className="text-amber-700 font-semibold">e. Balance in CERTIFIED FUNDS <span className="text-amber-400/80 font-normal">ln 200</span></span>
-                          <span className="text-amber-800 font-bold">{certFunds > 0 ? fmt(certFunds) : '—'}</span>
-                        </div>
-                        <div className="pl-3 text-[10px] text-base-content/40 font-sans">(a) − (b) − (c) − (d)</div>
-
-                        <div className="border-t border-amber-100 my-1" />
-
-                        {/* Down Payment % verification */}
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">Down Payment: {fmt(price)} × {pct > 0 ? pct + '%' : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
-                          <span>{totalDown > 0 ? fmt(totalDown) : '—'}</span>
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">− Earnest Money (b) <span className="text-base-content/35">ln 176</span></span>
-                          <span>{em > 0 ? '− ' + fmt(em) : '—'}</span>
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3 border-t border-amber-200 pt-1">
-                          <span className="text-amber-700 font-semibold">= Cash at Close (should match e) <span className="text-amber-400/80 font-normal">ln 200</span></span>
-                          <span className="text-amber-800 font-bold">{cashClose > 0 ? fmt(cashClose) : '—'}</span>
-                        </div>
-
-                        {/* Match / Mismatch indicator */}
-                        {bothCalcsReady && (
-                          calcsMatch ? (
-                            <div className="flex items-center gap-2 rounded px-2 py-1.5 font-sans font-semibold mt-1 bg-green-50 text-green-700 border border-green-200">
-                              <span className="text-sm">✓</span>
-                              <span>Numbers check out — contract lines and down payment % agree.</span>
-                            </div>
-                          ) : (
-                            <div className="rounded-lg border-2 border-amber-400 bg-amber-50 mt-2 overflow-hidden">
-                              <div className="flex items-center gap-2 px-3 py-2 bg-amber-400">
-                                <span className="text-white text-base">⚠</span>
-                                <span className="text-white font-bold text-xs uppercase tracking-wide">Action Required — Fix Before Proceeding</span>
-                              </div>
-                              <div className="px-3 py-2">
-                                <p className="text-amber-900 font-bold text-sm">Discrepancy of {fmt(discrepancy)}</p>
-                                <p className="text-amber-800 text-xs mt-0.5">Contract lines (a−b−c−d) and down payment % produce different certified fund amounts. Contact the realtor to correct the contract before closing.</p>
-                              </div>
-                            </div>
-                          )
-                        )}
-
-                        <div className="border-t border-amber-100 my-1" />
-
-                        {/* (f) Total Additional Seller Expenses */}
-                        <div className="flex justify-between gap-4">
-                          <span className="font-semibold text-base-content/80">f. Total Additional Seller Expenses <span className="text-base-content/35 font-normal">ln 204</span></span>
-                          <span />
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">f.1 SELLER Comp to Broker assisting BUYER <span className="text-base-content/35">ln 207</span></span>
-                          <span>{comm > 0 ? fmt(comm) : '—'}</span>
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">f.2 Additional SELLER paid costs <span className="text-base-content/35">ln 211</span></span>
-                          <span>{conc > 0 ? fmt(conc) : '—'}</span>
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3">
-                          <span className="text-base-content/60">f.3 Costs Not Payable by BUYER <span className="text-base-content/35">ln 216</span></span>
-                          <span className="text-base-content/35">—</span>
-                        </div>
-                        <div className="flex justify-between gap-4 pl-3 border-t border-amber-200 pt-1">
-                          <span className="text-amber-700 font-semibold">TOTAL ADDITIONAL SELLER EXPENSES <span className="text-amber-400/80 font-normal">ln 218</span></span>
-                          <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
-                        </div>
-
                       </div>
+
+                      {/* ② Down Payment */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">② Down Payment</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/60">Purchase Price × {pct > 0 ? pct + '%' : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
+                            <span>{totalDown > 0 ? fmt(totalDown) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 pl-3">
+                            <span className="text-base-content/60">− Earnest Money <span className="text-base-content/35">ln 176</span></span>
+                            <span>{em > 0 ? '− ' + fmt(em) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1 mt-1">
+                            <span className="text-amber-700 font-semibold">= Cash at Close <span className="text-amber-400/80 font-normal">ln 200</span></span>
+                            <span className="text-amber-800 font-bold">{cashAtClose > 0 ? fmt(cashAtClose) : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ③ Total Additional Seller Expenses */}
+                      <div>
+                        <p className="text-amber-700 font-semibold mb-1.5">③ Total Additional Seller Expenses</p>
+                        <div className="space-y-0.5 font-mono">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/60">Seller comp to Buyer's Broker <span className="text-base-content/35">ln 207 (f.1)</span></span>
+                            <span>{comm > 0 ? fmt(comm) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/60">+ Add'l Seller paid costs <span className="text-base-content/35">ln 211 (f.2)</span></span>
+                            <span>{conc > 0 ? fmt(conc) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-base-content/60">+ Costs Not Payable by BUYER <span className="text-base-content/35">ln 216 (f.3)</span></span>
+                            <span>{costsNotPayable > 0 ? fmt(costsNotPayable) : '—'}</span>
+                          </div>
+                          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1 mt-1">
+                            <span className="text-amber-700 font-semibold">= Total Additional Seller Expenses <span className="text-amber-400/80 font-normal">ln 218</span></span>
+                            <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   );
                 })()}
