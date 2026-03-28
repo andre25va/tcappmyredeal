@@ -1894,8 +1894,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
                   </div>
                 )}
-                <div className={form.isHeartlandMls ? 'grid grid-cols-2 gap-6 items-start' : ''}>
-                <div className="space-y-5">
+                <div className={form.isHeartlandMls ? 'flex flex-row gap-6 items-start' : ''}>
+                <div className={form.isHeartlandMls ? 'flex-1 min-w-0 space-y-5' : 'space-y-5'}>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
@@ -2027,7 +2027,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const totalSeller = comm + conc + costsNotPayable;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
                   return (
-                    <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
+                    <div className="flex-1 min-w-0 border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
                       <p className="text-amber-700 font-bold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference — Para. 4</p>
 
                       {/* Contract layout: mirrors the actual contract order a → b → c → d → e → f */}
