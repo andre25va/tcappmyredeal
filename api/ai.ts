@@ -414,6 +414,7 @@ const extractDealSchema = {
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    agentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
@@ -422,7 +423,7 @@ const extractDealSchema = {
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
     'downPaymentAmount', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'confidence', 'extractedFields'],
+    'homeWarrantyCompany', 'legalDescription', 'agentName', 'confidence', 'extractedFields'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
