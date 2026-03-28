@@ -266,6 +266,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [extracting, setExtracting] = useState(false);
+  const extractAbortRef = React.useRef<AbortController | null>(null);
   const [extractionBanner, setExtractionBanner] = useState<{ count: number; fileName: string } | null>(null);
   const [showExtractedTable, setShowExtractedTable] = useState(false);
   const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
@@ -546,6 +547,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (!form.address.trim() || !form.city.trim()) return;
     setMlsFetching(true);
     setMlsFetchStatus('');
+    const mlsAbort = new AbortController();
+    const mlsTimeout = setTimeout(() => mlsAbort.abort(), 15000); // 15s timeout
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-mls-number`, {
         method: 'POST',
@@ -553,6 +556,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
+        signal: mlsAbort.signal,
         body: JSON.stringify({
           address: form.address.trim(),
           city: form.city.trim(),
@@ -588,6 +592,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     } catch {
       setMlsFetchStatus('not_found');
     } finally {
+      clearTimeout(mlsTimeout);
       setMlsFetching(false);
     }
   };
@@ -679,7 +684,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   };
 
   const handleFileExtract = async (file: File) => {
-    if (extracting) return;
+    // Cancel any in-flight extraction (e.g. user replaced wrong PDF with correct one)
+    if (extractAbortRef.current) {
+      extractAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    extractAbortRef.current = controller;
+
     setContractFile(file); // preserve file for post-create upload
     setContractObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setExtracting(true);
@@ -696,6 +707,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
@@ -778,9 +790,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setExtractedRawData(d);
       setShowExtractedTable(false);
     } catch (err: any) {
-      setError('Could not extract from document — please fill in manually.');
+      // Ignore abort errors — user replaced the file intentionally
+      if (err?.name !== 'AbortError') {
+        setError('Could not extract from document — please fill in manually.');
+      }
     } finally {
-      setExtracting(false);
+      // Only clear spinner if this is still the active extraction
+      if (extractAbortRef.current === controller) {
+        setExtracting(false);
+        extractAbortRef.current = null;
+      }
     }
   };
 
