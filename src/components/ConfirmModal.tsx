@@ -1,5 +1,7 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 interface Props {
   isOpen: boolean;
@@ -36,6 +38,7 @@ export const ConfirmModal: React.FC<Props> = ({
             {confirmLabel}
           </button>
         </div>
+        <PageIdBadge pageId={PAGE_IDS.CONFIRM_MODAL} />
       </div>
     </div>
   );

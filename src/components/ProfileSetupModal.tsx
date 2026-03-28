@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { User, Clock, Palette } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 const TIMEZONES = [
   { value: 'America/Chicago', label: 'Central Time (CT)' },
@@ -125,6 +127,9 @@ export function ProfileSetupModal() {
           </button>
         </form>
       </div>
+
+      {/* Page ID Badge */}
+      <PageIdBadge pageId={PAGE_IDS.PROFILE_SETUP} />
     </div>
   );
 }

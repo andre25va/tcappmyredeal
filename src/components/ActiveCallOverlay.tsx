@@ -5,6 +5,8 @@ import {
   Clock, Loader2, ChevronRight, CalendarDays, Building2, Edit3, ChevronDown, X,
 } from 'lucide-react';
 import { Deal } from '../types';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 interface CallData {
   contactName: string;
@@ -433,6 +435,9 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
             className="textarea textarea-bordered w-full text-sm resize-none"
           />
         </div>
+
+        {/* Page ID Badge */}
+        <PageIdBadge pageId={PAGE_IDS.ACTIVE_CALL_OVERLAY} context={callData.contactName} />
 
         {/* Call Controls */}
         <div className="border-t border-base-200 px-4 py-3 flex items-center justify-between bg-base-200/50">

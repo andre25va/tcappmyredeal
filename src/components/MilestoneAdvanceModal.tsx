@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { Deal, DealMilestone, ContactRecord, MilestoneNotificationSetting } from '../types';
 import { MILESTONE_LABELS, generateTasksForMilestone } from '../utils/taskTemplates';
 import { generateId } from '../utils/helpers';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -571,6 +573,9 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {/* Page ID Badge */}
+      <PageIdBadge pageId={PAGE_IDS.MILESTONE_ADVANCE} context={deal.id.slice(0, 8)} />
     </div>
   );
 };

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Copy, Check, MapPin, Hash, Users, ShoppingCart, Tag, Phone, Mail, Building2 } from 'lucide-react';
 import { Deal, Contact } from '../types';
 import { CallButton } from './CallButton';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 interface CallStartedData {
   contactName: string;
@@ -249,6 +251,9 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose, onCallStarted }
         <div className="px-4 py-2.5 border-t border-base-300 bg-base-200 flex-none">
           <button onClick={onClose} className="btn btn-sm btn-ghost w-full">Close</button>
         </div>
+
+        {/* Page ID Badge */}
+        <PageIdBadge pageId={PAGE_IDS.FOCUS_VIEW_MODAL} context={deal.id.slice(0, 8)} />
       </div>
     </div>
   );

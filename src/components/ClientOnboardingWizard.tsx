@@ -14,6 +14,8 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,16 @@ const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
   drive: <FolderOpen size={14} />,
   instructions: <ClipboardList size={14} />,
   done: <CheckCircle2 size={14} />,
+};
+
+const ONBOARDING_STEP_PAGE_IDS: Record<WizardStep, string> = {
+  welcome:       PAGE_IDS.ONBOARDING_WELCOME,
+  communication: PAGE_IDS.ONBOARDING_COMMUNICATION,
+  access:        PAGE_IDS.ONBOARDING_ACCESS,
+  briefing:      PAGE_IDS.ONBOARDING_BRIEFING,
+  drive:         PAGE_IDS.ONBOARDING_DRIVE,
+  instructions:  PAGE_IDS.ONBOARDING_INSTRUCTIONS,
+  done:          PAGE_IDS.ONBOARDING_DONE,
 };
 
 // ── Summary state ─────────────────────────────────────────────────────────────
@@ -995,6 +1007,9 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
           </div>
         )}
       </div>
+      {/* Page ID Badge */}
+      <PageIdBadge pageId={ONBOARDING_STEP_PAGE_IDS[step]} context={contact.firstName} />
+
       {step !== 'done' && <div className="modal-backdrop" onClick={onSkip} />}
     </div>
   );

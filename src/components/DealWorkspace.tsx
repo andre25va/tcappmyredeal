@@ -55,8 +55,28 @@ import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
+
+const TAB_PAGE_IDS: Record<Tab, string> = {
+  overview:         PAGE_IDS.DEAL_OVERVIEW,      // handled by WorkspaceOverview
+  checklists:       PAGE_IDS.WS_CHECKLISTS,
+  tasks:            PAGE_IDS.WS_TASKS,
+  contacts:         PAGE_IDS.WS_CONTACTS,
+  documents:        PAGE_IDS.WS_DOCUMENTS,
+  requests:         PAGE_IDS.WS_REQUESTS,
+  activity:         PAGE_IDS.WS_ACTIVITY,
+  email:            PAGE_IDS.WS_EMAIL_COMPOSE,
+  timeline:         PAGE_IDS.WS_TIMELINE,
+  'ai-chat':        PAGE_IDS.WS_AI_CHAT,
+  comms:            PAGE_IDS.WS_COMMS,
+  'ai-emails':      PAGE_IDS.WS_AI_EMAILS,
+  'linked-emails':  PAGE_IDS.WS_LINKED_EMAILS,
+  amendments:       PAGE_IDS.WS_AMENDMENTS,
+  access:           PAGE_IDS.WS_ACCESS,
+};
 
 interface Props {
   deal: Deal;
@@ -415,6 +435,11 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
           />
         )}
       </div>
+      {/* Page ID Badge — show for all tabs except overview (WorkspaceOverview handles that) */}
+      {tab !== 'overview' && (
+        <PageIdBadge pageId={TAB_PAGE_IDS[tab] ?? tab} context={deal.id.slice(0, 8)} />
+      )}
+
     {/* Workspace archive confirmation modal */}
       {wsArchiveOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => setWsArchiveOpen(false)}>

@@ -18,6 +18,16 @@ export const PAGE_IDS = {
   MLS_DIRECTORY:         'mls-directory',
   WORKFLOWS:             'workflows-page',
 
+  // Sidebar Views
+  COMPLIANCE:            'compliance-page',
+  INBOX:                 'inbox-page',
+  EMAIL_REVIEW:          'email-review-page',
+  COMM_TASKS:            'comm-tasks-page',
+  VOICE:                 'voice-page',
+  AI_REPORTS:            'ai-reports-page',
+  REQUESTS:              'requests-page',
+  TRANSACTIONS_LIST:     'transactions-list',
+
   // Workspace Tabs
   WS_EMAILS:             'ws-emails',
   WS_DOCUMENTS:          'ws-documents',
@@ -26,6 +36,14 @@ export const PAGE_IDS = {
   WS_CHECKLISTS:         'ws-checklists',
   WS_TIMELINE:           'ws-timeline',
   WS_REQUESTS:           'ws-requests',
+  WS_ACTIVITY:           'ws-activity',
+  WS_EMAIL_COMPOSE:      'ws-email-compose',
+  WS_AI_CHAT:            'ws-ai-chat',
+  WS_COMMS:              'ws-comms',
+  WS_AI_EMAILS:          'ws-ai-emails',
+  WS_LINKED_EMAILS:      'ws-linked-emails',
+  WS_AMENDMENTS:         'ws-amendments',
+  WS_ACCESS:             'ws-access',
 
   // Wizard Steps
   WIZARD_STEP_1:         'wizard-step-1',
@@ -48,6 +66,25 @@ export const PAGE_IDS = {
   // Modals / Overlays
   TRANSACTION_SHEET:     'transaction-sheet',
   ADMIN_USERS:           'admin-users',
+
+  // Client Onboarding Wizard steps
+  ONBOARDING_WELCOME:        'onboarding-wizard-welcome',
+  ONBOARDING_COMMUNICATION:  'onboarding-wizard-comm',
+  ONBOARDING_ACCESS:         'onboarding-wizard-access',
+  ONBOARDING_BRIEFING:       'onboarding-wizard-briefing',
+  ONBOARDING_DRIVE:          'onboarding-wizard-drive',
+  ONBOARDING_INSTRUCTIONS:   'onboarding-wizard-instructions',
+  ONBOARDING_DONE:           'onboarding-wizard-done',
+
+  // Modals
+  MILESTONE_ADVANCE:         'milestone-advance-modal',
+  PROFILE_SETUP:             'profile-setup-modal',
+
+  // Popup Modals / Overlays
+  FOCUS_VIEW_MODAL:          'modal-focus-view',
+  PROPERTY_EMAIL_MODAL:      'modal-property-emails',
+  ACTIVE_CALL_OVERLAY:       'overlay-active-call',
+  CONFIRM_MODAL:             'modal-confirm',
 } as const;
 
 export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];
@@ -55,14 +92,49 @@ export type PageId = typeof PAGE_IDS[keyof typeof PAGE_IDS];
 // ── Page init ─────────────────────────────────────────────────────────────
 
 /**
- * Call this in useEffect on mount for each major page/screen.
- * Logs the page ID to console and stores it on window for error handlers.
+ * Log a page visit to the database for analytics.
+ * Requires supabase client and authenticated user.
  */
-export const initPageTracking = (pageId: string, extra?: Record<string, unknown>) => {
-  const payload = { pageId, ...extra };
-  console.log(`📍 [Page] ${pageId}`, extra ?? '');
+export const logPageVisit = async (
+  supabase: any,
+  pageId: string,
+  extra?: { dealId?: string; sessionId?: string }
+) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return; // not logged in, skip
+
+    await supabase.from('page_visits').insert({
+      page_id:    pageId,
+      deal_id:    extra?.dealId   ?? null,
+      user_id:    user.id,
+      session_id: extra?.sessionId ?? (window as any).__sessionId ?? null,
+    });
+  } catch (e) {
+    // silently fail — analytics should never break the UI
+    console.warn('📍 [PageTracking] Failed to log visit:', e);
+  }
+};
+
+/**
+ * Call this in useEffect on mount for each major page/screen.
+ * Logs the page ID to console, stores it on window for error handlers,
+ * and optionally persists to the page_visits table for analytics.
+ */
+export const initPageTracking = (
+  pageId: string,
+  extra?: Record<string, unknown> & { supabase?: any; dealId?: string; sessionId?: string }
+) => {
+  const { supabase, dealId, sessionId, ...rest } = extra ?? {};
+  const payload = { pageId, ...rest };
+  console.log(`📍 [Page] ${pageId}`, rest);
   (window as any).__currentPageId = pageId;
   (window as any).__currentPageMeta = payload;
+
+  // Persist to DB if supabase client is provided
+  if (supabase) {
+    logPageVisit(supabase, pageId, { dealId, sessionId });
+  }
 };
 
 /** Returns the currently active page ID. */
