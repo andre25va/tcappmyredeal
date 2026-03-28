@@ -266,7 +266,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [extracting, setExtracting] = useState(false);
-  const extractAbortRef = React.useRef<AbortController | null>(null);
   const [extractionBanner, setExtractionBanner] = useState<{ count: number; fileName: string } | null>(null);
   const [showExtractedTable, setShowExtractedTable] = useState(false);
   const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
@@ -547,8 +546,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (!form.address.trim() || !form.city.trim()) return;
     setMlsFetching(true);
     setMlsFetchStatus('');
-    const mlsAbort = new AbortController();
-    const mlsTimeout = setTimeout(() => mlsAbort.abort(), 15000); // 15s timeout
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-mls-number`, {
         method: 'POST',
@@ -556,7 +553,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
-        signal: mlsAbort.signal,
         body: JSON.stringify({
           address: form.address.trim(),
           city: form.city.trim(),
@@ -592,7 +588,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     } catch {
       setMlsFetchStatus('not_found');
     } finally {
-      clearTimeout(mlsTimeout);
       setMlsFetching(false);
     }
   };
@@ -684,13 +679,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   };
 
   const handleFileExtract = async (file: File) => {
-    // Cancel any in-flight extraction (e.g. user replaced wrong PDF with correct one)
-    if (extractAbortRef.current) {
-      extractAbortRef.current.abort();
-    }
-    const controller = new AbortController();
-    extractAbortRef.current = controller;
-
+    if (extracting) return;
     setContractFile(file); // preserve file for post-create upload
     setContractObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setExtracting(true);
@@ -707,7 +696,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
-        signal: controller.signal,
       });
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
@@ -790,16 +778,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setExtractedRawData(d);
       setShowExtractedTable(false);
     } catch (err: any) {
-      // Ignore abort errors — user replaced the file intentionally
-      if (err?.name !== 'AbortError') {
-        setError('Could not extract from document — please fill in manually.');
-      }
+      setError('Could not extract from document — please fill in manually.');
     } finally {
-      // Only clear spinner if this is still the active extraction
-      if (extractAbortRef.current === controller) {
-        setExtracting(false);
-        extractAbortRef.current = null;
-      }
+      setExtracting(false);
     }
   };
 
@@ -1913,8 +1894,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
                   </div>
                 )}
-                <div className={form.isHeartlandMls ? 'flex flex-row gap-6 items-start' : ''}>
-                <div className={form.isHeartlandMls ? 'flex-1 min-w-0 space-y-5' : 'space-y-5'}>
+                <div style={form.isHeartlandMls ? {display:'flex',flexDirection:'row',gap:'24px',alignItems:'flex-start'} : {}}>
+                <div className="space-y-5" style={form.isHeartlandMls ? {flex:'1',minWidth:'0'} : {}}>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
@@ -2046,7 +2027,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const totalSeller = comm + conc + costsNotPayable;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
                   return (
-                    <div className="flex-1 min-w-0 border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
+                    <div style={{flex:'1',minWidth:'0'}} className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
                       <p className="text-amber-700 font-bold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference — Para. 4</p>
 
                       {/* Contract layout: mirrors the actual contract order a → b → c → d → e → f */}
