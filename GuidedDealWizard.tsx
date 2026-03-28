@@ -2006,6 +2006,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const cashClose   = totalDown > em ? totalDown - em : dp;
                   const totalSeller = comm + conc;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+                  const bothCalcsReady = certFunds > 0 && cashClose > 0;
+                  const calcsMatch    = bothCalcsReady && Math.abs(certFunds - cashClose) < 0.02;
+                  const discrepancy   = bothCalcsReady ? Math.abs(certFunds - cashClose) : 0;
                   return (
                     <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
                       <p className="text-amber-700 font-semibold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference</p>
@@ -2036,6 +2039,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           </div>
                         </div>
                       </div>
+
+                      {/* Match / Mismatch indicator */}
+                      {bothCalcsReady && (
+                        <div className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs font-semibold ${calcsMatch ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                          <span>{calcsMatch ? '✓' : '⚠'}</span>
+                          <span>
+                            {calcsMatch
+                              ? 'Contract lines and down payment % are consistent — numbers check out.'
+                              : `Discrepancy of ${fmt(discrepancy)} — contract lines (ln 164−196) and down payment % do not agree. Verify with realtor.`}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Section 2: Down Payment */}
                       <div>
