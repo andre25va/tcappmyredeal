@@ -252,7 +252,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     specialNotes: '',
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '',
-    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
+    earnestMoney: '', additionalEarnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', costsNotPayableByBuyer: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
@@ -715,8 +715,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
           possessionDate: d.possessionDate || p.possessionDate,
           earnestMoney: d.earnestMoney || p.earnestMoney,
+          additionalEarnestMoney: d.additionalEarnestMoney || p.additionalEarnestMoney,
           earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
           sellerConcessions: d.sellerConcessions || p.sellerConcessions,
+          costsNotPayableByBuyer: d.costsNotPayableByBuyer || p.costsNotPayableByBuyer,
           loanType: d.loanType || p.loanType,
           loanAmount: d.loanAmount || p.loanAmount,
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
@@ -916,8 +918,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       loanAmount: parseFloat(form.loanAmount) || undefined,
       downPayment: parseFloat(form.downPaymentAmount) || undefined,
       earnestMoney: parseFloat(form.earnestMoney) || undefined,
+      additionalEarnestMoney: parseFloat(form.additionalEarnestMoney) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
+      costsNotPayableByBuyer: parseFloat(form.costsNotPayableByBuyer) || undefined,
       clientAgentCommission: parseFloat(form.clientAgentCommission) || undefined,
       clientAgentCommissionPct: parseFloat(form.clientAgentCommissionPct) || undefined,
       asIsSale: form.asIsSale,
@@ -1451,7 +1455,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     contractDate: 'Contract Date', closingDate: 'Closing Date',
                     inspectionDeadline: 'Inspection Deadline', loanCommitmentDate: 'Loan Commitment Date',
                     titleDate: 'Title / Clear to Close', possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
-                    earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
+                    earnestMoneyDueDate: 'EM Due Date', additionalEarnestMoney: 'Add\'l Earnest Money', sellerConcessions: 'Seller Concessions', costsNotPayableByBuyer: 'Costs Not Payable by Buyer',
                     loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
                     buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
                     titleCompany: 'EM Held With', loanOfficer: 'Loan Officer', commission: 'Commission $',
@@ -2002,19 +2006,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 })()}
                 {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
-                  const price   = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                  const loan    = parseFloat(form.loanAmount) || 0;
-                  const em      = parseFloat(form.earnestMoney) || 0;
-                  const dp      = parseFloat(form.downPaymentAmount) || 0;
-                  const pct     = parseFloat(form.downPaymentPercent) || 0;
-                  const comm    = parseFloat(form.clientAgentCommission) || 0;
-                  const conc    = parseFloat(form.sellerConcessions) || 0;
+                  const price          = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const loan           = parseFloat(form.loanAmount) || 0;
+                  const em             = parseFloat(form.earnestMoney) || 0;
+                  const addEM          = parseFloat(form.additionalEarnestMoney) || 0;
+                  const dp             = parseFloat(form.downPaymentAmount) || 0;
+                  const comm           = parseFloat(form.clientAgentCommission) || 0;
+                  const conc           = parseFloat(form.sellerConcessions) || 0;
+                  const costsNotPayable = parseFloat(form.costsNotPayableByBuyer) || 0;
                   // Derive % from Price and Loan — always mathematically true regardless of what agent entered
                   const derivedPct  = price > 0 && loan > 0 ? ((price - loan) / price * 100) : 0;
                   const totalDown   = price > 0 && derivedPct > 0 ? price * (derivedPct / 100) : (dp + em);
-                  const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
+                  const certFunds   = price > 0 && loan > 0 ? price - em - addEM - loan : 0;
                   const cashClose   = totalDown > em ? totalDown - em : dp;
-                  const totalSeller = comm + conc;
+                  const totalSeller = comm + conc + costsNotPayable;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
                   return (
                     <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
@@ -2040,7 +2045,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         {/* (c) Additional Earnest Money */}
                         <div className="flex justify-between gap-4 pl-3">
                           <span className="text-base-content/60">c. Additional Earnest Money <span className="text-base-content/35">ln 186</span></span>
-                          <span className="text-base-content/35">—</span>
+                          <span>{addEM > 0 ? fmt(addEM) : '—'}</span>
                         </div>
 
                         {/* (d) Total Amount Financed */}
@@ -2091,7 +2096,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                         <div className="flex justify-between gap-4 pl-3">
                           <span className="text-base-content/60">f.3 Costs Not Payable by BUYER <span className="text-base-content/35">ln 216</span></span>
-                          <span className="text-base-content/35">—</span>
+                          <span>{costsNotPayable > 0 ? fmt(costsNotPayable) : '—'}</span>
                         </div>
                         <div className="flex justify-between gap-4 pl-3 border-t border-amber-200 pt-1">
                           <span className="text-amber-700 font-semibold">TOTAL ADDITIONAL SELLER EXPENSES <span className="text-amber-400/80 font-normal">ln 218</span></span>
