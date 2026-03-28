@@ -851,7 +851,8 @@ function AppInner() {
       />
 
       {/* Page ID Badge — floating pill showing current view for quick troubleshooting */}
-      {!(view === 'transactions' && selected) && (
+      {/* Suppressed when any wizard/modal with its own badge is open to avoid duplicate badges */}
+      {!(view === 'transactions' && selected) && !showAdd && !activeCall && (
         <PageIdBadge pageId={VIEW_PAGE_IDS[view] || view} />
       )}
 
