@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, RefreshCw, Shield, User, FileText, MessageSquare, Briefcase, Settings, Clock } from 'lucide-react';
-
+import { Search, RefreshCw, Shield, User, FileText, MessageSquare, Briefcase, Settings, Clock, Copy, Check, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import { PageIdBadge } from './PageIdBadge';
+import { PAGE_IDS } from '../utils/pageTracking';
 
 interface AuditEntry {
   id: string;
@@ -58,6 +59,36 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+function CopyButton({ value, label }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <button
+      onClick={copy}
+      className="btn btn-ghost btn-xs gap-1 font-mono text-xs text-base-content/50 hover:text-primary"
+      title={`Copy ${label || 'ID'}`}
+    >
+      {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
+
+const TIPS = [
+  { title: 'Searching', tip: 'Use the search bar to filter by user name, action type, entity name, or IP address.' },
+  { title: 'Filters', tip: 'Combine the Action and Type dropdowns to narrow down exactly what happened — e.g. "delete" + "document" shows all deleted documents.' },
+  { title: 'Row Details', tip: 'Click any row to expand it and see the Before/After data snapshot and full metadata for that event.' },
+  { title: 'Entry IDs', tip: 'Every audit entry has a unique ID. Use the copy button in the expanded row to grab it for troubleshooting or support tickets.' },
+  { title: 'Pagination', tip: 'Results load 50 at a time. Use Prev/Next at the bottom to page through older entries.' },
+  { title: 'Navigate actions', tip: '"navigate" entries are logged automatically each time a page or tab changes — useful for retracing steps before an issue occurred.' },
+];
+
 export function AuditLogView() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +97,7 @@ export function AuditLogView() {
   const [entityFilter, setEntityFilter] = useState('all');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [showTips, setShowTips] = useState(false);
   const PER_PAGE = 50;
 
   const load = async () => {
@@ -103,6 +135,8 @@ export function AuditLogView() {
 
   return (
     <div className="flex flex-col h-full">
+      <PageIdBadge pageId={PAGE_IDS.SIDEBAR.AUDIT_LOG} />
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-100 flex-none">
         <div className="flex items-center gap-2">
@@ -110,14 +144,63 @@ export function AuditLogView() {
           <h2 className="font-semibold text-base-content">Audit Log</h2>
           <span className="badge badge-ghost badge-sm">{filtered.length} entries</span>
         </div>
-        <button onClick={load} className="btn btn-ghost btn-xs gap-1">
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTips(v => !v)}
+            className={`btn btn-ghost btn-xs gap-1 ${showTips ? 'text-warning' : ''}`}
+            title="Tips & Tricks"
+          >
+            <Lightbulb size={13} />
+            Tips
+            {showTips ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </button>
+          <button onClick={load} className="btn btn-ghost btn-xs gap-1">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
+      {/* Tips & Tricks Panel */}
+      {showTips && (
+        <div className="px-4 py-3 bg-warning/5 border-b border-warning/20 flex-none">
+          <div className="flex items-center gap-2 mb-2">
+            <Lightbulb size={14} className="text-warning" />
+            <span className="text-sm font-semibold text-base-content">Tips &amp; Tricks — Audit Log</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {TIPS.map(({ title, tip }) => (
+              <div key={title} className="bg-base-100 rounded-lg px-3 py-2 border border-base-200">
+                <div className="text-xs font-semibold text-primary mb-0.5">{title}</div>
+                <div className="text-xs text-base-content/60">{tip}</div>
+              </div>
+            ))}
+          </div>
+          {/* Component ID reference */}
+          <div className="mt-3 pt-2 border-t border-warning/10">
+            <div className="text-xs font-semibold text-base-content/40 mb-1.5">Component IDs — copy to reference this view</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: 'audit-log-view', desc: 'This page' },
+                { label: 'audit-log-table', desc: 'Log entries table' },
+                { label: 'audit-log-filters', desc: 'Filter bar' },
+                { label: 'audit-log-search', desc: 'Search input' },
+                { label: 'audit-log-pagination', desc: 'Pagination controls' },
+              ].map(({ label, desc }) => (
+                <div key={label} className="flex items-center gap-1 bg-base-100 border border-base-200 rounded px-2 py-1">
+                  <span className="font-mono text-xs text-base-content/70">{label}</span>
+                  <span className="text-xs text-base-content/30">·</span>
+                  <span className="text-xs text-base-content/40">{desc}</span>
+                  <CopyButton value={label} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 px-4 py-3 border-b border-base-300 bg-base-50 flex-none">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex flex-wrap gap-2 px-4 py-3 border-b border-base-300 bg-base-50 flex-none" data-component-id="audit-log-filters">
+        <div className="relative flex-1 min-w-48" data-component-id="audit-log-search">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/40" />
           <input
             type="text"
@@ -150,7 +233,7 @@ export function AuditLogView() {
       </div>
 
       {/* Log entries */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" data-component-id="audit-log-table">
         {loading ? (
           <div className="flex justify-center py-12">
             <span className="loading loading-spinner loading-md text-primary" />
@@ -235,8 +318,23 @@ export function AuditLogView() {
                               </pre>
                             </div>
                           )}
-                          <div className="md:col-span-2 font-sans text-base-content/40">
-                            ID: {entry.id} · {new Date(entry.created_at).toLocaleString()}
+                          {/* Entry ID with copy button */}
+                          <div className="md:col-span-2 font-sans flex flex-wrap items-center gap-3 pt-1 border-t border-base-300">
+                            <div className="flex items-center gap-1">
+                              <span className="text-base-content/40 text-xs">Entry ID:</span>
+                              <span className="font-mono text-xs text-base-content/60">{entry.id}</span>
+                              <CopyButton value={entry.id} label="Copy ID" />
+                            </div>
+                            {entry.entity_id && entry.entity_id !== entry.id && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-base-content/40 text-xs">Entity ID:</span>
+                                <span className="font-mono text-xs text-base-content/60">{entry.entity_id}</span>
+                                <CopyButton value={entry.entity_id} label="Copy" />
+                              </div>
+                            )}
+                            <span className="text-base-content/30 text-xs ml-auto">
+                              {new Date(entry.created_at).toLocaleString()}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -250,7 +348,7 @@ export function AuditLogView() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-base-300 flex-none bg-base-100">
+      <div className="flex items-center justify-between px-4 py-2 border-t border-base-300 flex-none bg-base-100" data-component-id="audit-log-pagination">
         <button
           className="btn btn-xs btn-ghost"
           disabled={page === 0}
