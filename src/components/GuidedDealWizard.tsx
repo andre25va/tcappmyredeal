@@ -1873,6 +1873,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {step === 4 && (
+              <div style={form.isHeartlandMls ? {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',alignItems:'start'} : {}}>
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
                 {(form.mlsBoard || form.mlsNumber) && (
@@ -1992,7 +1993,77 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
-                {/* Heartland Contract Reference Panel */}
+
+
+                {/* Client Agent Commission */}
+                <div className="border-t border-base-300 pt-4">
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Client Agent Commission</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
+                      <div className="join w-full">
+                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">$</span>
+                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommission}
+                          onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const pct = price > 0 && raw ? ((parseFloat(raw) / price) * 100).toFixed(1) : '';
+                            setForm(p => ({ ...p, clientAgentCommission: raw, clientAgentCommissionPct: pct }));
+                          }}
+                          onBlur={e => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommission: val.toFixed(2) }));
+                          }}
+                          placeholder="0.00" type="text" inputMode="decimal" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/40 mb-1 block">Commission % of Purchase Price</label>
+                      <div className="join w-full">
+                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommissionPct}
+                          onChange={e => {
+                            const raw = e.target.value.replace(/[^0-9.]/g, '');
+                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const amt = price > 0 && raw ? ((parseFloat(raw) / 100) * price).toFixed(2) : '';
+                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, clientAgentCommission: amt }));
+                          }}
+                          onBlur={e => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommissionPct: val.toFixed(1) }));
+                          }}
+                          placeholder="0.0" type="text" inputMode="decimal" />
+                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-base-300 pt-4">
+                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
+                  <div className="space-y-2">
+                    {([
+                      { key: 'asIsSale', label: 'As-Is Sale' },
+                      { key: 'inspectionWaived', label: 'Inspection Waived' },
+                    ] as const).map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-3 cursor-pointer py-1">
+                        <input type="checkbox" className="toggle toggle-primary toggle-sm"
+                          checked={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
+                        <span className="text-sm">{label}</span>
+                      </label>
+                    ))}
+                    <label className="flex items-center gap-3 cursor-pointer py-1">
+                      <input type="checkbox" className="toggle toggle-primary toggle-sm"
+                        checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
+                      <span className="text-sm">Home Warranty</span>
+                    </label>
+                    {form.homeWarranty && (
+                      <input className="input input-bordered w-full input-sm mt-1" value={form.homeWarrantyCompany}
+                        onChange={f('homeWarrantyCompany')} placeholder="Warranty company name" />
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (() => {
                   const price   = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
                   const loan    = parseFloat(form.loanAmount) || 0;
@@ -2077,74 +2148,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   );
                 })()}
-
-                {/* Client Agent Commission */}
-                <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Client Agent Commission</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
-                      <div className="join w-full">
-                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">$</span>
-                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommission}
-                          onChange={e => {
-                            const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                            const pct = price > 0 && raw ? ((parseFloat(raw) / price) * 100).toFixed(1) : '';
-                            setForm(p => ({ ...p, clientAgentCommission: raw, clientAgentCommissionPct: pct }));
-                          }}
-                          onBlur={e => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommission: val.toFixed(2) }));
-                          }}
-                          placeholder="0.00" type="text" inputMode="decimal" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-base-content/40 mb-1 block">Commission % of Purchase Price</label>
-                      <div className="join w-full">
-                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommissionPct}
-                          onChange={e => {
-                            const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                            const amt = price > 0 && raw ? ((parseFloat(raw) / 100) * price).toFixed(2) : '';
-                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, clientAgentCommission: amt }));
-                          }}
-                          onBlur={e => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommissionPct: val.toFixed(1) }));
-                          }}
-                          placeholder="0.0" type="text" inputMode="decimal" />
-                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
-                  <div className="space-y-2">
-                    {([
-                      { key: 'asIsSale', label: 'As-Is Sale' },
-                      { key: 'inspectionWaived', label: 'Inspection Waived' },
-                    ] as const).map(({ key, label }) => (
-                      <label key={key} className="flex items-center gap-3 cursor-pointer py-1">
-                        <input type="checkbox" className="toggle toggle-primary toggle-sm"
-                          checked={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
-                        <span className="text-sm">{label}</span>
-                      </label>
-                    ))}
-                    <label className="flex items-center gap-3 cursor-pointer py-1">
-                      <input type="checkbox" className="toggle toggle-primary toggle-sm"
-                        checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
-                      <span className="text-sm">Home Warranty</span>
-                    </label>
-                    {form.homeWarranty && (
-                      <input className="input input-bordered w-full input-sm mt-1" value={form.homeWarrantyCompany}
-                        onChange={f('homeWarrantyCompany')} placeholder="Warranty company name" />
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 
