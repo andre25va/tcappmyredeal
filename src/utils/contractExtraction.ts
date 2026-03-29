@@ -38,7 +38,7 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
 // Maps extraction field keys → deal field paths for comparison
 
 export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal) => string }[] = [
-  { key: 'contractPrice',         label: 'Purchase Price',        getDealVal: d => d.contractPrice    ? `$${Number(d.contractPrice).toLocaleString()}`    : '' },
+  { key: 'purchasePrice',         label: 'Purchase Price',        getDealVal: d => (d as any).purchasePrice    ? `$${Number((d as any).purchasePrice).toLocaleString()}`    : '' },
   { key: 'listPrice',             label: 'List Price',            getDealVal: d => d.listPrice        ? `$${Number(d.listPrice).toLocaleString()}`        : '' },
   { key: 'contractDate',          label: 'Contract Date',         getDealVal: d => d.contractDate     || '' },
   { key: 'closingDate',           label: 'Closing Date',          getDealVal: d => d.closingDate      || '' },
@@ -47,8 +47,8 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'loanType',              label: 'Loan Type',             getDealVal: d => (d as any).loanType || '' },
   { key: 'loanAmount',            label: 'Loan Amount',           getDealVal: d => (d as any).loanAmount ? `$${Number((d as any).loanAmount).toLocaleString()}` : '' },
   { key: 'downPaymentAmount',     label: 'Down Payment',          getDealVal: d => (d as any).downPayment ? `$${Number((d as any).downPayment).toLocaleString()}` : '' },
-  { key: 'inspectionDeadline',    label: 'Inspection Deadline',   getDealVal: d => (d as any).inspectionDeadline || '' },
-  { key: 'loanCommitmentDate',    label: 'Loan Commitment',       getDealVal: d => (d as any).loanCommitmentDate || '' },
+  { key: 'inspectionDate',        label: 'Inspection Date',       getDealVal: d => (d as any).inspectionDate || '' },
+  { key: 'financeDeadline',       label: 'Finance Deadline',      getDealVal: d => (d as any).financeDeadline || '' },
   { key: 'possessionDate',        label: 'Possession Date',       getDealVal: d => (d as any).possessionDate || '' },
   { key: 'buyerNames',            label: 'Buyer Name(s)',         getDealVal: d => (d as any).buyerName || '' },
   { key: 'sellerNames',           label: 'Seller Name(s)',        getDealVal: d => (d as any).sellerName || '' },
@@ -57,14 +57,14 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'asIsSale',              label: 'As-Is Sale',            getDealVal: d => (d as any).asIsSale !== undefined ? String((d as any).asIsSale) : '' },
   { key: 'inspectionWaived',      label: 'Inspection Waived',     getDealVal: d => (d as any).inspectionWaived !== undefined ? String((d as any).inspectionWaived) : '' },
   { key: 'homeWarranty',          label: 'Home Warranty',         getDealVal: d => (d as any).homeWarranty !== undefined ? String((d as any).homeWarranty) : '' },
-  { key: 'clientAgentCommission', label: 'Commission',            getDealVal: d => (d as any).clientAgentCommission ? `$${Number((d as any).clientAgentCommission).toLocaleString()}` : '' },
+  { key: 'commissionAmount',      label: 'Commission Amount',     getDealVal: d => (d as any).commissionAmount ? `$${Number((d as any).commissionAmount).toLocaleString()}` : '' },
 ];
 
 // ─── Value Formatting ──────────────────────────────────────────────────────────
 
 /** Format a raw extracted value for display */
 export function fmtExtracted(key: string, val: string): string {
-  const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'clientAgentCommission'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount'];
   if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     if (!isNaN(n)) return `$${n.toLocaleString()}`;
@@ -75,7 +75,7 @@ export function fmtExtracted(key: string, val: string): string {
 /** Normalize values for equality comparison */
 export function normalizeVal(key: string, val: string): string {
   if (!val) return '';
-  const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'clientAgentCommission'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount'];
   if (moneyKeys.includes(key)) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
@@ -89,7 +89,7 @@ export function normalizeVal(key: string, val: string): string {
 export function buildDealUpdates(checked: Record<string, boolean>, result: ExtractionResult): Partial<Deal> {
   const updates: any = {};
   const boolKeys = ['asIsSale', 'inspectionWaived', 'homeWarranty'];
-  const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'clientAgentCommission'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'commissionAmount'];
   result.fields.forEach(f => {
     if (!checked[f.key]) return;
     const val = f.value;
