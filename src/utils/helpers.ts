@@ -197,3 +197,33 @@ export const calcCommissionPct = (price: number, commAmount: number): number => 
   if (!price || !commAmount) return 0;
   return (commAmount / price) * 100;
 };
+
+/**
+ * Calculates down payment details from deal financials.
+ * @param purchasePrice - Total purchase price
+ * @param loanAmount - Loan amount from contract line 196
+ * @param earnestMoney - Earnest money deposit
+ * @param downPaymentPct - Down payment % from contract line 330 (e.g. 3 for 3%)
+ * @returns object with downPaymentAmount, cashAtClose, derivedPct, hasConflict, conflictMessage
+ */
+export const calculateDownPayment = (
+  purchasePrice: number,
+  loanAmount: number,
+  earnestMoney: number,
+  downPaymentPct: number
+): {
+  downPaymentAmount: number;
+  cashAtClose: number;
+  derivedPct: number;
+  hasConflict: boolean;
+  conflictMessage: string;
+} => {
+  const downPaymentAmount = (downPaymentPct / 100) * purchasePrice;
+  const cashAtClose = downPaymentAmount - earnestMoney;
+  const derivedPct = purchasePrice > 0 ? ((purchasePrice - loanAmount) / purchasePrice) * 100 : 0;
+  const hasConflict = Math.abs(derivedPct - downPaymentPct) > 0.1;
+  const conflictMessage = hasConflict
+    ? `⚠ Ln 196 loan amount implies ${derivedPct.toFixed(1)}% — agent's ln 330 says ${downPaymentPct.toFixed(1)}% — verify line 196 is correct`
+    : '';
+  return { downPaymentAmount, cashAtClose, derivedPct, hasConflict, conflictMessage };
+};

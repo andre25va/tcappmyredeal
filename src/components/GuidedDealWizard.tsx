@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct} from '../utils/helpers';
+import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 
 interface Props {
@@ -325,8 +325,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const f = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [field]: e.target.value }));
 
-  // Auto-calculate down payment when contract price or loan amount changes
-  const calculateDownPayment = (newForm: typeof form) => {
+  // Auto-calculate down payment fields when contract price or loan amount changes (form-level helper)
+  const calcFormDownPayment = (newForm: typeof form) => {
     const contractPrice = parseFloat(newForm.contractPrice) || 0;
     const loanAmount = parseFloat(newForm.loanAmount) || 0;
     const percent = parseFloat(newForm.downPaymentPercent) || 0;
@@ -361,7 +361,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   // Enhanced handler for fields that should trigger down payment recalculation
   const fWithRecalc = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const newForm = { ...form, [field]: e.target.value };
-    const recalc = calculateDownPayment(newForm);
+    const recalc = calcFormDownPayment(newForm);
     if (recalc) {
       setForm(p => ({ ...p, ...newForm, ...recalc }));
     } else {
@@ -2090,15 +2090,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const enteredPct = parseFloat(form.downPaymentPercent) || 0; // what agent wrote on line 330
                   const comm       = parseFloat(form.clientAgentCommission) || 0;
                   const conc       = parseFloat(form.sellerConcessions) || 0;
-                  // derivedPct: what line 196 (loan amount) implies — used only for warning comparison
-                  const derivedPct  = price > 0 && loan > 0 ? ((price - loan) / price) * 100 : 0;
+                  // derivedPct + conflict check via shared helper (guards loan > 0 to preserve original behaviour)
+                  const { derivedPct: _rawDerivedPct, hasConflict } = calculateDownPayment(price, loan, em, enteredPct);
+                  const derivedPct  = price > 0 && loan > 0 ? _rawDerivedPct : 0;
                   // Line 330 % is the agent's intent (the truth); fall back to derivedPct only if not extracted
                   const pctForCalc  = enteredPct > 0 ? enteredPct : derivedPct;
                   const totalDown   = price > 0 && pctForCalc ? price * (pctForCalc / 100) : (dp + em);
                   const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
                   const cashClose   = totalDown > em ? totalDown - em : dp;
                   const totalSeller = comm + conc;
-                  const showPctWarning = price > 0 && loan > 0 && enteredPct > 0 && Math.abs(enteredPct - derivedPct) > 0.1;
+                  const showPctWarning = price > 0 && loan > 0 && enteredPct > 0 && hasConflict;
                   const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
                   const fmtPct = (n: number) => n.toFixed(2).replace(/\.?0+$/, '') + '%';
                   return (
