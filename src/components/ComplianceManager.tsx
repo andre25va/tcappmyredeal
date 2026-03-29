@@ -23,6 +23,7 @@ const US_STATES: { abbr: string; name: string }[] = [
 import { ComplianceTemplate, ComplianceTemplateItem, ContactRecord } from '../types';
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   templates: ComplianceTemplate[];
@@ -55,8 +56,8 @@ const RenameInput: React.FC<{
         placeholder={placeholder}
         className="input input-bordered input-xs flex-1 min-w-0"
       />
-      <button onClick={() => onCommit(v.trim())} className="btn btn-ghost btn-xs btn-square text-success"><Check size={12} /></button>
-      <button onClick={onCancel} className="btn btn-ghost btn-xs btn-square text-error"><X size={12} /></button>
+      <Button variant="ghost" size="xs" square className="text-success" onClick={() => onCommit(v.trim())}><Check size={12} /></Button>
+      <Button variant="ghost" size="xs" square className="text-error" onClick={onCancel}><X size={12} /></Button>
     </div>
   );
 };
@@ -611,7 +612,7 @@ const NewTemplateModal: React.FC<{
           className="input input-bordered w-full mb-4"
         />
         <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
           <button
             onClick={() => name.trim() && onConfirm(name.trim())}
             disabled={!name.trim()}

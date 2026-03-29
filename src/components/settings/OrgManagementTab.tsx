@@ -10,6 +10,7 @@ import {
 } from '../../utils/supabaseDb';
 import { ConfirmModal } from '../ConfirmModal';
 import { EmptyState } from '../ui/EmptyState';
+import { Button } from '@/components/ui/Button';
 
 const ROLE_INFO: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   team_admin: { label: 'Team Admin', color: 'badge-error',   icon: <Shield size={11} /> },
@@ -108,7 +109,7 @@ function AddMemberModal({ orgId, token, existingUserIds, onAdded, onClose }: Add
       <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-base">Add Member</h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+          <Button variant="ghost" className="btn-circle" onClick={onClose}><X size={16} /></Button>
         </div>
 
         <div className="flex gap-2">
@@ -164,7 +165,7 @@ function AddMemberModal({ orgId, token, existingUserIds, onAdded, onClose }: Add
         )}
 
         <div className="flex gap-2 justify-end">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {foundProfile && (
             <button
               className="btn btn-primary btn-sm"

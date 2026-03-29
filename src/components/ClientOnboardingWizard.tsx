@@ -16,6 +16,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
+import { Button } from '@/components/ui/Button';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -452,7 +453,7 @@ export function ClientOnboardingWizard({ contact, onComplete, onSkip }: ClientOn
           </div>
         </div>
         <div className="flex gap-3 pt-2">
-          <button className="btn btn-ghost btn-sm flex-1" onClick={onSkip}>Skip Setup</button>
+          <Button variant="ghost" className="flex-1" onClick={onSkip}>Skip Setup</Button>
           <button className="btn btn-primary btn-sm flex-1 gap-1" onClick={() => setStep('communication')}>
             Let's Go <ChevronRight size={15} />
           </button>

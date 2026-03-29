@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from '@/components/ui/Button';
 
 type Step = 'phone' | 'otp' | 'success';
 
@@ -267,7 +268,7 @@ export function LoginPage() {
               <p className="font-semibold text-sm">You were signed out</p>
               <p className="text-xs opacity-80">A new session was started on another computer. Sign in again to continue.</p>
             </div>
-            <button className="btn btn-ghost btn-xs" onClick={clearKickReason}>✕</button>
+            <Button variant="ghost" size="xs" onClick={clearKickReason}>✕</Button>
           </div>
         )}
 

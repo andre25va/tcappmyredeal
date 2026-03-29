@@ -4,6 +4,7 @@ import { Deal, ChecklistItem } from '../types';
 import { generateId } from '../utils/helpers';
 import { StatusBadge } from './ui/StatusBadge';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   deal: Deal;
@@ -190,7 +191,7 @@ export const SmartChecklistSuggestions: React.FC<Props> = ({ deal, onUpdate }) =
         <div className="px-4 pb-3">
           <div className="alert alert-error text-xs py-2">
             {error}
-            <button className="btn btn-ghost btn-xs" onClick={handleSuggest}>Retry</button>
+            <Button variant="ghost" size="xs" onClick={handleSuggest}>Retry</Button>
           </div>
         </div>
       )}
@@ -206,7 +207,7 @@ export const SmartChecklistSuggestions: React.FC<Props> = ({ deal, onUpdate }) =
             <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
               <CheckCircle2 size={14} className="text-green-500" />
               <span className="text-xs text-green-700 font-medium">Items added to checklists!</span>
-              <button onClick={handleSuggest} className="btn btn-ghost btn-xs ml-auto text-purple-500">Get More</button>
+              <Button variant="ghost" size="xs" className="ml-auto text-purple-500" onClick={handleSuggest}>Get More</Button>
             </div>
           )}
 

@@ -1308,7 +1308,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             <Mail size={15} className="text-green-600" />
           </div>
           <span className="font-bold flex-1">New Email</span>
-          <button onClick={() => setShowEmailCompose(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+          <Button variant="ghost" size="xs" square onClick={() => setShowEmailCompose(false)}><X size={14} /></Button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div>
@@ -1339,7 +1339,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             <NeedReplyCheckbox checked={composeNeedReply} onChange={setComposeNeedReply} />
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setShowEmailCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            <Button variant="ghost" onClick={() => setShowEmailCompose(false)}>Cancel</Button>
             <button
               onClick={handleComposeEmail}
               disabled={!emailTo.trim() || !emailSubject.trim() || !emailBody.trim() || emailComposeSending}
@@ -1365,7 +1365,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
             <MessageSquare size={15} className="text-primary" />
           </div>
           <span className="font-bold flex-1">New Message</span>
-          <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+          <Button variant="ghost" size="xs" square onClick={() => setShowCompose(false)}><X size={14} /></Button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div>
@@ -1529,7 +1529,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         </div>
         <div className="px-5 py-4 border-t border-base-300 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowCompose(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            <Button variant="ghost" onClick={() => setShowCompose(false)}>Cancel</Button>
             <NeedReplyCheckbox checked={smsNeedReply} onChange={setSmsNeedReply} />
           </div>
           <button

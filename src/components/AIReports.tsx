@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, Users, Shield, Calendar, AlertTriangle, CheckCir
 import { portfolioReportAI, PortfolioReportResponse, evaluateRulesAI, RulesEvaluationResponse } from '../ai/apiClient';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   deals: Deal[];
@@ -439,8 +440,8 @@ export const AIReports: React.FC<Props> = ({ deals }) => {
               </select>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowAddRule(false)} className="btn btn-xs btn-ghost">Cancel</button>
-              <button onClick={addRule} className="btn btn-xs btn-primary">Add Rule</button>
+              <Button variant="ghost" size="xs" onClick={() => setShowAddRule(false)}>Cancel</Button>
+              <Button variant="primary" size="xs" onClick={addRule}>Add Rule</Button>
             </div>
           </div>
         )}

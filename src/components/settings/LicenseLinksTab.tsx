@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Check, Trash2, ExternalLink, AlertCircle, Search, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ function StateLicensePopup({ state, onClose, onSave, saving }: StateLicensePopup
 
           {/* Save + Cancel row */}
           <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm flex-1" onClick={onClose}>Cancel</button>
+            <Button variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
             <button
               className="btn btn-neutral btn-sm flex-1 gap-1"
               onClick={handleSave}
@@ -193,7 +194,7 @@ export function LicenseLinksTab() {
     return (
       <div className="max-w-xl mx-auto mt-8 bg-error/10 border border-error/20 rounded-xl p-4 text-sm text-error flex items-center gap-2">
         <AlertCircle size={16} className="flex-none" /> {fetchError}
-        <button className="btn btn-xs btn-ghost ml-auto" onClick={load}>Retry</button>
+        <Button variant="ghost" size="xs" className="ml-auto" onClick={load}>Retry</Button>
       </div>
     );
   }

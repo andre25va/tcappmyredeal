@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 import { Modal } from './ui/Modal';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   isOpen: boolean;
@@ -33,7 +34,7 @@ export const ConfirmModal: React.FC<Props> = ({
       </div>
       <PageIdBadge pageId={PAGE_IDS.CONFIRM_MODAL} />
       <Modal.Footer>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <button onClick={onConfirm} className={`btn btn-sm ${confirmClass} gap-1`}>
           {confirmLabel}
         </button>

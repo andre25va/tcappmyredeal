@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { DealContactPicker, DealContact } from './DealContactPicker';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from '@/components/ui/Button';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -669,7 +670,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
               </div>
             </div>
             <div className="p-4 border-t border-base-200 flex gap-2 justify-end">
-              <button className="btn btn-sm btn-ghost" onClick={() => setShowNewModal(false)}>Cancel</button>
+              <Button variant="ghost" onClick={() => setShowNewModal(false)}>Cancel</Button>
               <button className="btn btn-sm btn-outline gap-1.5" onClick={handleCreateDraft} disabled={creating}>
                 {creating ? <span className="loading loading-spinner loading-xs" /> : <FileText size={13} />} Save Draft
               </button>

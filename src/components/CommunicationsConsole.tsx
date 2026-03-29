@@ -285,8 +285,8 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
                   })}
                 />
               )}
-              <button onClick={() => updateVoiceReview(v.id, 'reviewed')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Mark Reviewed</button>
-              <button onClick={() => updateVoiceReview(v.id, 'dismissed')} className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/50">🗑️ Dismiss</button>
+              <Button variant="success" size="xs" className="rounded-xl" onClick={() => updateVoiceReview(v.id, 'reviewed')}>✅ Mark Reviewed</Button>
+              <Button variant="ghost" size="xs" className="rounded-xl text-base-content/50" onClick={() => updateVoiceReview(v.id, 'dismissed')}>🗑️ Dismiss</Button>
             </div>
           </div>
         ))}
@@ -335,8 +335,8 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
                   })}
                 />
               )}
-              <button onClick={() => updateCallbackStatus(cb.id, 'completed')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Complete</button>
-              <button onClick={() => updateCallbackStatus(cb.id, 'dismissed')} className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/50">🗑️ Dismiss</button>
+              <Button variant="success" size="xs" className="rounded-xl" onClick={() => updateCallbackStatus(cb.id, 'completed')}>✅ Complete</Button>
+              <Button variant="ghost" size="xs" className="rounded-xl text-base-content/50" onClick={() => updateCallbackStatus(cb.id, 'dismissed')}>🗑️ Dismiss</Button>
             </div>
           </div>
         ))}
@@ -373,9 +373,9 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
               </div>
             </div>
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-base-200">
-              <button onClick={() => updateChangeRequest(cr.id, 'approved')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Approve</button>
-              <button onClick={() => updateChangeRequest(cr.id, 'rejected')} className="btn btn-error btn-xs rounded-xl gap-1">❌ Reject</button>
-              <button onClick={() => updateChangeRequest(cr.id, 'needs_clarification')} className="btn btn-ghost btn-xs rounded-xl gap-1">💬 Clarification</button>
+              <Button variant="success" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'approved')}>✅ Approve</Button>
+              <Button variant="error" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'rejected')}>❌ Reject</Button>
+              <Button variant="ghost" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'needs_clarification')}>💬 Clarification</Button>
             </div>
           </div>
         ))}
@@ -407,7 +407,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
               <div className="mt-3 bg-base-200 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold">Link to Contact</span>
-                  <button onClick={() => { setLinkingCallId(null); setContactSearch(''); }} className="btn btn-ghost btn-xs btn-square"><X size={12} /></button>
+                  <Button variant="ghost" size="xs" square onClick={() => { setLinkingCallId(null); setContactSearch(''); }}><X size={12} /></Button>
                 </div>
                 <input
                   type="text"
@@ -432,8 +432,8 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
               </div>
             ) : (
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-base-200">
-                <button onClick={() => { setLinkingCallId(call.id); loadContacts(); }} className="btn btn-primary btn-xs rounded-xl gap-1"><Link2 size={11} /> Link to Contact</button>
-                <button onClick={() => dismissCall(call.id)} className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/50">🗑️ Dismiss</button>
+                <Button variant="primary" size="xs" className="rounded-xl" onClick={() => { setLinkingCallId(call.id); loadContacts(); }}><Link2 size={11} /> Link to Contact</Button>
+                <Button variant="ghost" size="xs" className="rounded-xl text-base-content/50" onClick={() => dismissCall(call.id)}>🗑️ Dismiss</Button>
               </div>
             )}
           </div>

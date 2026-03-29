@@ -57,6 +57,7 @@ import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
 import { supabase } from '../lib/supabase';
+import { Button } from '@/components/ui/Button';
 
 type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
 
@@ -660,8 +661,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               ))}
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <button className="btn btn-sm btn-ghost" onClick={() => setWsArchiveOpen(false)}>Cancel</button>
-              <button className="btn btn-sm btn-error" onClick={() => { onArchiveDeal?.(deal.id, wsArchiveReason); setWsArchiveOpen(false); }}>Archive</button>
+              <Button variant="ghost" onClick={() => setWsArchiveOpen(false)}>Cancel</Button>
+              <Button variant="error" onClick={() => { onArchiveDeal?.(deal.id, wsArchiveReason); setWsArchiveOpen(false); }}>Archive</Button>
             </div>
           </div>
         </div>

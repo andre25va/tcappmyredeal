@@ -248,7 +248,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose, onCallStarted }
 
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-base-300 bg-base-200 flex-none">
-          <button onClick={onClose} className="btn btn-sm btn-ghost w-full">Close</button>
+          <Button variant="ghost" className="w-full" onClick={onClose}>Close</Button>
         </div>
 
         {/* Page ID Badge */}

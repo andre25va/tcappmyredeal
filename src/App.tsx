@@ -496,7 +496,7 @@ function AppInner() {
         <span className="text-5xl">⚠️</span>
         <h2 className="text-xl font-bold text-base-content">Database Connection Error</h2>
         <p className="text-sm text-base-content/60 text-center max-w-sm">{loadError}</p>
-        <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button>
+        <Button variant="primary" size="md" onClick={() => window.location.reload()}>Retry</Button>
       </div>
     );
   }

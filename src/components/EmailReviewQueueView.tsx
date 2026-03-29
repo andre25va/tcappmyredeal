@@ -7,6 +7,7 @@ import {
 import { useEmailReviewQueue, ReviewQueueItem } from '../hooks/useEmailReviewQueue';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   deals: Deal[];
@@ -305,7 +306,7 @@ const UnmatchedCard: React.FC<{
           >
             <PlusCircle size={11} /> New Deal
           </button>
-          <button className="btn btn-ghost btn-xs text-error text-xs" onClick={() => onDismiss(item)}>Junk</button>
+          <Button variant="ghost" size="xs" className="text-error text-xs" onClick={() => onDismiss(item)}>Junk</Button>
           <a
             href={gmailLink(item.gmail_thread_id)}
             target="_blank"

@@ -7,6 +7,7 @@ import {
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
 import { StatusDotLabel } from './ui/StatusBadge';
+import { Button } from '@/components/ui/Button';
 
 const ARCHIVE_REASONS = [
   { value: 'deal-closed',  label: 'Deal Closed'  },
@@ -465,8 +466,8 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
               ))}
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <button className="btn btn-sm btn-ghost" onClick={() => setArchiveTarget(null)}>Cancel</button>
-              <button className="btn btn-sm btn-error" onClick={confirmArchive}>Archive</button>
+              <Button variant="ghost" onClick={() => setArchiveTarget(null)}>Cancel</Button>
+              <Button variant="error" onClick={confirmArchive}>Archive</Button>
             </div>
           </div>
         </div>

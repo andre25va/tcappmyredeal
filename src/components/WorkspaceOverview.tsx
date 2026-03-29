@@ -140,7 +140,7 @@ const AgentContactPopup: React.FC<AgentPopupProps> = ({ label, agent, dealId, on
 
       {/* Footer */}
       <div className="px-5 pb-4">
-        <button onClick={onClose} className="btn btn-sm btn-ghost w-full text-gray-400">Close</button>
+        <Button variant="ghost" className="w-full text-gray-400" onClick={onClose}>Close</Button>
       </div>
     </div>
   </div>
@@ -424,7 +424,7 @@ const MilestoneStepper: React.FC<{
               </select>
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowArchiveConfirm(false)} className="btn btn-sm btn-ghost">Cancel</button>
+              <Button variant="ghost" onClick={() => setShowArchiveConfirm(false)}>Cancel</Button>
               <button
                 onClick={() => {
                   const updated = {
@@ -476,7 +476,7 @@ const MilestoneStepper: React.FC<{
               ))}
             </select>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowUnarchive(false)} className="btn btn-sm btn-ghost">Cancel</button>
+              <Button variant="ghost" onClick={() => setShowUnarchive(false)}>Cancel</Button>
               <button
                 onClick={() => {
                   const logEntry = {
@@ -1037,8 +1037,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               value={newReminderDate}
               onChange={e => setNewReminderDate(e.target.value)}
             />
-            <button className="btn btn-xs btn-primary" onClick={saveReminder}>Add</button>
-            <button className="btn btn-xs btn-ghost" onClick={() => setShowAddReminder(false)}>Cancel</button>
+            <Button variant="primary" size="xs" onClick={saveReminder}>Add</Button>
+            <Button variant="ghost" size="xs" onClick={() => setShowAddReminder(false)}>Cancel</Button>
           </div>
         ) : (
           <button

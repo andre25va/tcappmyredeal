@@ -7,6 +7,7 @@ import {
 import { Deal, DealStatus } from '../types';
 import { statusLabel, daysUntil, formatDate } from '../utils/helpers';
 import { StatusDotLabel } from './ui/StatusBadge';
+import { Button } from '@/components/ui/Button';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
 type AgentTypeFilter = 'all' | 'buyer' | 'seller';
@@ -604,8 +605,8 @@ export const AgentCardView: React.FC<Props> = ({
               ))}
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <button className="btn btn-sm btn-ghost" onClick={() => setArchiveTarget(null)}>Cancel</button>
-              <button className="btn btn-sm btn-error" onClick={confirmArchive}>Archive</button>
+              <Button variant="ghost" onClick={() => setArchiveTarget(null)}>Cancel</Button>
+              <Button variant="error" onClick={confirmArchive}>Archive</Button>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Shield } fr
 import { ComplianceMasterItem } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
+import { Button } from '@/components/ui/Button';
 
 interface ComplianceChecklistTabProps {
   items: ComplianceMasterItem[];
@@ -66,15 +67,15 @@ export function ComplianceChecklistTab({ items, onSave }: ComplianceChecklistTab
                   {editingId === item.id ? (
                     <div className="flex gap-1">
                       <input autoFocus className="input input-bordered input-xs flex-1" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { renameItem(item.id, editVal); setEditingId(null); } if (e.key === 'Escape') setEditingId(null); }} />
-                      <button className="btn btn-success btn-xs btn-square" onClick={() => { renameItem(item.id, editVal); setEditingId(null); }}><Check size={11} /></button>
-                      <button className="btn btn-ghost btn-xs btn-square" onClick={() => setEditingId(null)}><X size={11} /></button>
+                      <Button variant="success" size="xs" square onClick={() => { renameItem(item.id, editVal); setEditingId(null); }}><Check size={11} /></Button>
+                      <Button variant="ghost" size="xs" square onClick={() => setEditingId(null)}><X size={11} /></Button>
                     </div>
                   ) : <span className="text-xs font-medium">{item.title}</span>}
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-0.5">
                     <div className="relative inline-block">
-                      <button className="btn btn-ghost btn-xs btn-square" onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}><MoreVertical size={13} /></button>
+                      <Button variant="ghost" size="xs" square onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}><MoreVertical size={13} /></Button>
                       {openMenuId === item.id && (
                         <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[200] min-w-36 py-1 text-sm" onMouseDown={e => e.stopPropagation()}>
                           <button className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2" onClick={() => { setEditingId(item.id); setEditVal(item.title); setOpenMenuId(null); }}><Pencil size={12} /> Edit Title</button>
@@ -92,7 +93,7 @@ export function ComplianceChecklistTab({ items, onSave }: ComplianceChecklistTab
       </div>
       <div className="flex gap-2">
         <input className="input input-bordered flex-1 text-sm" placeholder="Type a compliance checklist item and press Enter…" value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem()} />
-        <button onClick={addItem} className="btn btn-primary btn-sm gap-1.5"><Plus size={14} /> Add</button>
+        <Button variant="primary" className="gap-1.5" onClick={addItem}><Plus size={14} /> Add</Button>
       </div>
       <ConfirmModal isOpen={deleteItemId !== null} title="Remove this item?" message="Remove this item from the master compliance checklist?" confirmLabel="Remove" onConfirm={() => { if (deleteItemId) { deleteItem(deleteItemId); setDeleteItemId(null); } }} onCancel={() => setDeleteItemId(null)} />
     </div>
