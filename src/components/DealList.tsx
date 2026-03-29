@@ -3,9 +3,10 @@ import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, Mor
 import { Deal, DealStatus, ContactRecord } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
-  statusLabel, statusDot, closingCountdown, formatCurrency,
+  closingCountdown, formatCurrency,
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
+import { StatusDotLabel } from './ui/StatusBadge';
 
 const ARCHIVE_REASONS = [
   { value: 'deal-closed',  label: 'Deal Closed'  },
@@ -135,8 +136,7 @@ const renderDealCard = (
 
       {/* Status + Agent */}
       <div className="flex items-center gap-1.5 mb-2">
-        <span className={`w-1.5 h-1.5 rounded-full flex-none ${statusDot(deal.status)}`} />
-        <span className="text-xs text-base-content/60">{statusLabel(deal.status)}</span>
+        <StatusDotLabel status={deal.status} />
         <span className="text-base-content/20 text-xs">·</span>
         <span className="text-xs text-base-content/60 truncate">{deal.agentName}</span>
       </div>

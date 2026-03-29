@@ -5,7 +5,8 @@ import {
   Archive, RotateCcw, UserX, Home, Calendar,
 } from 'lucide-react';
 import { Deal, DealStatus } from '../types';
-import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
+import { statusLabel, daysUntil } from '../utils/helpers';
+import { StatusDotLabel } from './ui/StatusBadge';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
 type AgentTypeFilter = 'all' | 'buyer' | 'seller';
@@ -507,8 +508,7 @@ export const AgentCardView: React.FC<Props> = ({
                               <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                 <CellTooltip text={statusLabel(deal.status)}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(deal.status)}`} />
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px', fontSize: '13px' }}>{statusLabel(deal.status)}</span>
+                                    <StatusDotLabel status={deal.status} />
                                   </div>
                                 </CellTooltip>
                               </td>

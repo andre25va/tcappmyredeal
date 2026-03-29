@@ -10,6 +10,7 @@ import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem 
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import {
+import { StatusBadge } from './ui/StatusBadge';
   ExtractionResult,
   DOC_TYPE_LABELS,
   FIELD_DEAL_MAP,
@@ -1427,11 +1428,6 @@ function LegacyDocRequests({ deal, onUpdate }: { deal: Deal; onUpdate: (d: Deal)
     else updateRequests([...requests, r]);
   };
 
-  const statusColor: Record<DocRequestStatus, string> = {
-    pending: 'text-warning',
-    in_progress: 'text-success',
-    confirmed: 'text-info',
-  };
   const StatusIcon = ({ s }: { s: DocRequestStatus }) => {
     if (s === 'pending') return <Clock size={14} className="text-warning" />;
     if (s === 'in_progress') return <CheckCircle2 size={14} className="text-success" />;
@@ -1461,7 +1457,7 @@ function LegacyDocRequests({ deal, onUpdate }: { deal: Deal; onUpdate: (d: Deal)
                     {r.urgency === 'high' && (
                       <span className="text-xs px-1.5 py-0.5 rounded-full bg-error/10 text-error font-medium">Urgent</span>
                     )}
-                    <span className={`text-xs capitalize font-medium ${statusColor[r.status]}`}>{r.status}</span>
+                    <StatusBadge status={r.status} />
                   </div>
                   {r.description && <p className="text-xs text-base-content/50 mt-0.5">{r.description}</p>}
                   <p className="text-xs text-base-content/30 mt-0.5">Requested {formatDateTime(r.requestedAt)} by {r.requestedBy}</p>
