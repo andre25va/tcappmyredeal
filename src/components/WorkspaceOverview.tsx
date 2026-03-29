@@ -10,6 +10,7 @@ import { SmartSuggestions } from './SmartSuggestions';
 import { dealToRecord } from '../ai/dealConverter';
 import { formatPhoneLive, formatPhone, calcCommissionAmount, calcCommissionPct} from '../utils/helpers';
 import { supabase } from '../lib/supabase';
+import { getDealParticipants } from '../utils/supabaseDb';
 import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder, DealTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -583,16 +584,12 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [participants, setParticipants] = useState<any[]>([]);
   useEffect(() => {
     if (!deal.id) return;
-    supabase
-      .from('deal_participants')
-      .select(`id, deal_role, side, is_extracted, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
-      .eq('deal_id', deal.id)
-      .then(({ data }) => {
-        if (data) setParticipants(data.map((p: any) => ({
-          ...p,
-          side: p.side === 'listing' ? 'seller' : p.side,
-        })));
-      });
+    getDealParticipants(deal.id).then((data) => {
+      setParticipants(data.map((p: any) => ({
+        ...p,
+        side: p.side === 'listing' ? 'seller' : p.side,
+      })));
+    });
   }, [deal.id]);
 
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
