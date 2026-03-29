@@ -12,6 +12,7 @@ import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from 
 import { useAuth } from '../contexts/AuthContext';
 import { pendingDocCount } from '../utils/helpers';
 import { useDealEmails } from '../hooks/useDealEmails';
+import { PageIdBadge } from './PageIdBadge';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -665,6 +666,9 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
           </div>
         </div>
       )}
+
+      {/* Page ID badge — bottom-right, for quick reference & bug reporting */}
+      <PageIdBadge pageId="deal-workspace" context={deal.id} />
     </div>
   );
 };
