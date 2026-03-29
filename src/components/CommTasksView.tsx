@@ -8,6 +8,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
 import { EmptyState } from './ui/EmptyState';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -672,12 +673,7 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3 text-gray-400">
-          <Loader2 size={28} className="animate-spin" />
-          <span className="text-sm">Loading tasks...</span>
-        </div>
-      </div>
+      <LoadingSpinner label="Loading tasks..." />
     );
   }
 

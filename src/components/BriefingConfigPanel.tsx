@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 import {
   Sun,
   Clock,
@@ -152,10 +153,7 @@ export default function BriefingConfigPanel({ emailTemplates, onSave }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-8 justify-center text-gray-400">
-        <Loader2 size={16} className="animate-spin" />
-        Loading briefing config…
-      </div>
+      <LoadingSpinner label="Loading briefing config…" />
     );
   }
 

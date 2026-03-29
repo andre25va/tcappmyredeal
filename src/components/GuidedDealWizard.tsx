@@ -14,6 +14,7 @@ import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -2376,10 +2377,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <h3 className="text-lg font-bold text-base-content">AI Review</h3>
                 </div>
                 {aiLoading && (
-                  <div className="flex flex-col items-center justify-center py-10 gap-3">
-                    <Loader2 size={28} className="animate-spin text-primary" />
-                    <p className="text-sm text-base-content/60">AI is reviewing your deal data...</p>
-                  </div>
+                  <LoadingSpinner label="AI is reviewing your deal data..." />
                 )}
                 {aiError && (
                   <div className="alert alert-error text-sm py-2 mb-3">

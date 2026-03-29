@@ -8,6 +8,7 @@ import {
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { generateId, formatDateTime } from '../utils/helpers';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Amendment {
@@ -374,9 +375,7 @@ export function WorkspaceAmendments({ deal, onUpdate }: Props) {
 
       {/* Timeline */}
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-base-content/30">
-          <Loader2 size={20} className="animate-spin" />
-        </div>
+        <LoadingSpinner />
       ) : amendments.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-base-300 p-8 text-center space-y-2">
           <FileText size={28} className="mx-auto text-base-content/20" />

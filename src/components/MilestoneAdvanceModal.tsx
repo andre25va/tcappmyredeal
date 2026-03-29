@@ -7,6 +7,7 @@ import { generateId } from '../utils/helpers';
 import { PageIdBadge } from './PageIdBadge';
 import { StatusBadge } from './ui/StatusBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -367,9 +368,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
 
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
           {loadingSettings ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={24} className="animate-spin text-primary" />
-            </div>
+            <LoadingSpinner />
           ) : (
             <>
               {/* Tasks section */}

@@ -5,6 +5,7 @@ import {
   Loader2, Plus, X, Save, ToggleLeft, ToggleRight, Info,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface WorkflowRule {
@@ -320,9 +321,7 @@ export function WorkflowsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 size={24} className="animate-spin text-violet-500" />
-      </div>
+      <LoadingSpinner />
     );
   }
 

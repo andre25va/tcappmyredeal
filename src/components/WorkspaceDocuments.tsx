@@ -18,6 +18,7 @@ import {
   normalizeVal,
   buildDealUpdates,
 } from '../utils/contractExtraction';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {
@@ -114,9 +115,7 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
           {err ? (
             <div className="flex items-center justify-center h-full text-error text-sm">{err}</div>
           ) : !url ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 size={24} className="animate-spin text-primary/50" />
-            </div>
+            <LoadingSpinner />
           ) : (
             <iframe src={url} className="w-full h-full" title="Document Preview" />
           )}
@@ -140,7 +139,7 @@ function PdfPreview({ filePath }: { filePath: string }) {
   }, [filePath]);
 
   if (err) return <div className="flex items-center justify-center h-full text-sm text-error p-4">{err}</div>;
-  if (!url) return <div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-primary/50" /></div>;
+  if (!url) return <LoadingSpinner />;
 
   return <iframe src={url} className="w-full h-full" title="PDF Preview" />;
 }
@@ -274,11 +273,7 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
 
             <div className="flex-1 overflow-y-auto">
               {loading && (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-base-content/40">
-                  <Loader2 size={28} className="animate-spin text-primary" />
-                  <p className="text-sm">Extracting contract data…</p>
-                  <p className="text-xs">~10–15 seconds</p>
-                </div>
+                <LoadingSpinner label="Extracting contract data…" />
               )}
 
               {error && !loading && (
@@ -488,11 +483,7 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               {loading && (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-base-content/40">
-                  <Loader2 size={28} className="animate-spin text-primary" />
-                  <p className="text-sm">Extracting with AI…</p>
-                  <p className="text-xs">~10–15 seconds</p>
-                </div>
+                <LoadingSpinner label="Extracting with AI…" />
               )}
               {error && !loading && (
                 <div className="rounded-xl bg-error/10 border border-error/20 p-4 space-y-3">
@@ -1149,9 +1140,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       />
 
       {loading ? (
-        <div className="flex items-center justify-center py-8 text-base-content/30">
-          <Loader2 size={18} className="animate-spin" />
-        </div>
+        <LoadingSpinner />
       ) : (
         <>
           {/* ── Purchase Contracts (pinned at top, bordered card) ─────── */}

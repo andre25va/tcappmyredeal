@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Sparkles, Loader2, CheckCircle2, AlertCircle, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertCircle, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Deal, ChecklistItem } from '../types';
 import { generateId } from '../utils/helpers';
 import { StatusBadge } from './ui/StatusBadge';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 interface Props {
   deal: Deal;
@@ -181,10 +182,7 @@ export const SmartChecklistSuggestions: React.FC<Props> = ({ deal, onUpdate }) =
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-6 gap-2">
-          <Loader2 size={18} className="animate-spin text-purple-500" />
-          <span className="text-sm text-purple-600">Analyzing deal for suggestions...</span>
-        </div>
+        <LoadingSpinner />
       )}
 
       {/* Error */}
