@@ -227,3 +227,5 @@ export const calculateDownPayment = (
     : '';
   return { downPaymentAmount, cashAtClose, derivedPct, hasConflict, conflictMessage };
 };
+/** Parses a string with currency/number formatting into a float. Returns 0 if invalid. */
+export const pf = (v: string): number => parseFloat(v.replace(/[^0-9.]/g, '')) || 0;
