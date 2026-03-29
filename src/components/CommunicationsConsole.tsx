@@ -4,6 +4,7 @@ import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 
 import { StatusBadge } from './ui/StatusBadge';
 import { EmptyState } from './ui/EmptyState';
 import { CallButton } from './CallButton';
+import { Button } from "./ui/Button";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 

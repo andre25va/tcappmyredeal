@@ -5,6 +5,7 @@ import { CallButton } from './CallButton';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 import { Modal } from './ui/Modal';
+import { Button } from "./ui/Button";
 
 interface CallStartedData {
   contactName: string;

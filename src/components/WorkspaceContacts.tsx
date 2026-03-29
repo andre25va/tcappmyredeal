@@ -13,6 +13,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 import { MRDChip } from './ui/MRDChip';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from "./ui/Button";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

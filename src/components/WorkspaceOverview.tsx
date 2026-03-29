@@ -19,6 +19,7 @@ import {
   closingCountdown, generateId
 } from '../utils/helpers';
 import { MilestoneAdvanceModal } from './MilestoneAdvanceModal';
+import { Button } from "./ui/Button";
 
 interface CallStartedData {
   contactName: string;

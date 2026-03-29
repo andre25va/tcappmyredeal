@@ -8,6 +8,7 @@ import { CallButton } from './CallButton';
 import { Deal } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from "./ui/Button";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 

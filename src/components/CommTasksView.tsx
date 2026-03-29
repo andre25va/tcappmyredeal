@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
 import { EmptyState } from './ui/EmptyState';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from "./ui/Button";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

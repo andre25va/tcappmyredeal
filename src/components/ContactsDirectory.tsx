@@ -21,6 +21,7 @@ import { ClientOnboardingWizard } from './ClientOnboardingWizard';
 import { CallButton } from './CallButton';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from "./ui/Button";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

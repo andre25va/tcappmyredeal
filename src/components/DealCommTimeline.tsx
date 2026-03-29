@@ -4,6 +4,7 @@ import { RefreshCw, ChevronDown, ChevronUp, Phone } from 'lucide-react';
 import { CallButton } from './CallButton';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from "./ui/Button";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
