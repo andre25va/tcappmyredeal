@@ -9,6 +9,7 @@ import {
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
+import { MLS_BY_STATE } from '../utils/mlsData';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
@@ -21,59 +22,6 @@ interface Props {
   ddMasterItems?: DDMasterItem[];
 }
 
-const MLS_BY_STATE: Record<string, string[]> = {
-  AL: ['Alabama MLS','Greater Alabama MLS','Valley MLS'],
-  AK: ['Alaska MLS'],
-  AZ: ['Arizona Regional MLS (ARMLS)','Western Arizona Realtor Data Exchange (WARDEX)','Flagstaff MLS'],
-  AR: ['Cooperative Arkansas REALTORS MLS (CARMLS)','Fort Smith Association MLS'],
-  CA: ['California Regional MLS (CRMLS)','MetroList MLS','San Francisco MLS','MLSListings','Bay East MLS','San Diego MLS (SDMLS)'],
-  CO: ['REcolorado','Pikes Peak MLS','Grand Junction MLS'],
-  CT: ['SmartMLS'],
-  DC: ['Bright MLS'],
-  DE: ['Bright MLS'],
-  FL: ['Stellar MLS (My Florida Regional MLS)','Miami MLS (MIAMI)','Northwest Florida MLS','Emerald Coast MLS','Northeast Florida MLS (NEFMLS)'],
-  GA: ['Georgia MLS (GAMLS)','First Multiple Listing Service (FMLS)','Golden Isles MLS'],
-  HI: ['Hawaii Information Service (HIS)'],
-  ID: ['Intermountain MLS (IMLS)','Snake River Regional MLS'],
-  IL: ['Midwest Real Estate Data (MRED)','Heartland MLS','Southern Illinois MLS'],
-  IN: ['MIBOR Realtor Association MLS','Indiana Regional MLS (IRMLS)'],
-  IA: ['Iowa Association MLS','Des Moines MLS (DMAAR)'],
-  KS: ['Heartland MLS','South Central Kansas MLS (SCKLS)','Manhattan Association of Realtors MLS','Northeast Kansas MLS'],
-  KY: ['Greater Louisville Association MLS (GLARMLS)','Lexington Bluegrass MLS','Western Kentucky MLS'],
-  LA: ['Gulf South Real Estate Information Network (GSREIN)','Greater Baton Rouge MLS','Shreveport-Bossier MLS'],
-  ME: ['Maine Real Estate Information System (MREIS)'],
-  MD: ['Bright MLS','Maryland Eastern Shore MLS'],
-  MA: ['MLS PIN','Cape Cod & Islands MLS'],
-  MI: ['Michigan Regional Information Center (MICHRIC)','Greater Lansing MLS','Upper Peninsula MLS'],
-  MN: ['NorthstarMLS','Lake Superior MLS'],
-  MS: ['Central Mississippi MLS (CMLS)','Gulf Coast MLS'],
-  MO: ['Heartland MLS','MARIS (St. Louis)','Southern Missouri Regional MLS','Columbia Board of Realtors MLS','Greater Springfield MLS'],
-  MT: ['Montana Regional MLS'],
-  NE: ['Great Plains Regional MLS','Heartland MLS'],
-  NV: ['Las Vegas Realtors (LVR)','Northern Nevada Regional MLS (NNRMLS)'],
-  NH: ['New Hampshire MLS (NHMLS)'],
-  NJ: ['Garden State MLS (GSMLS)','Ocean County MLS','New Jersey MLS'],
-  NM: ['Southwest MLS (SWMLS)','New Mexico MLS (NMMLS)'],
-  NY: ['OneKey MLS','Buffalo Niagara MLS','New York State MLS','Westchester MLS'],
-  NC: ['Triangle MLS','Canopy MLS','Triad MLS','Cape Fear Realtors MLS'],
-  ND: ['Lake Country Board of Realtors MLS'],
-  OH: ['MLS Now','Columbus Realtors MLS','Dayton REALTORS MLS','Cincinnati MLS'],
-  OK: ['Metropolitan MLS (MLSOK)','Green Country MLS'],
-  OR: ['Regional Multiple Listing Service (RMLS)','Oregon Datashare MLS'],
-  PA: ['Bright MLS','West Penn Multi-List (WPML)'],
-  RI: ['State-Wide MLS (RI-SWMLS)'],
-  SC: ['Consolidated MLS (CMLS)','Charleston Trident MLS (CTARMLS)','Spartanburg MLS'],
-  SD: ['South Dakota Association MLS'],
-  TN: ['Memphis Area Association MLS','RealTracs MLS','Knoxville Area Association MLS','Chattanooga MLS'],
-  TX: ['North Texas Real Estate Information Systems (NTREIS)','Houston Association MLS (HAR)','San Antonio Board of Realtors MLS','Austin Board of Realtors MLS (ABOR)','Central Texas MLS (CTXMLS)'],
-  UT: ['Utah Real Estate (WFRMLS)','Southern Utah MLS','Park City MLS'],
-  VT: ['New England Real Estate Network (NEREN MLS)'],
-  VA: ['Bright MLS','Virginia MLS (CVRMLS)','Hampton Roads Realtors MLS (REIN)'],
-  WA: ['Northwest MLS (NWMLS)','Spokane MLS'],
-  WV: ['Bright MLS','West Virginia MLS'],
-  WI: ['South Central Wisconsin MLS','Metro MLS'],
-  WY: ['Wyoming MLS'],
-};
 
 const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[] = [
   { type: 'single-family', label: 'Single Family', icon: <Home size={22} /> },
