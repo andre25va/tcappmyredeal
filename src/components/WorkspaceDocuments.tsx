@@ -9,8 +9,8 @@ import {
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
-import {
 import { StatusBadge } from './ui/StatusBadge';
+import {
   ExtractionResult,
   DOC_TYPE_LABELS,
   FIELD_DEAL_MAP,
