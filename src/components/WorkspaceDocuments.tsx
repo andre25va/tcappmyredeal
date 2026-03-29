@@ -9,7 +9,14 @@ import {
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
-import { getDocumentSignedUrl } from '../utils/supabaseDb';
+import {
+  ExtractionResult,
+  DOC_TYPE_LABELS,
+  FIELD_DEAL_MAP,
+  fmtExtracted,
+  normalizeVal,
+  buildDealUpdates,
+} from '../utils/contractExtraction';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {
@@ -46,19 +53,6 @@ interface LinkedEmailDoc {
   link_method: string;
 }
 
-interface ExtractedField {
-  key: string;
-  label: string;
-  value: string;
-  confidence?: 'high' | 'medium' | 'low';
-  original?: string;
-}
-
-interface ExtractionResult {
-  fields: ExtractedField[];
-  raw_text_preview?: string;
-}
-
 interface Props {
   deal: Deal;
   onUpdate: (d: Deal) => void;
@@ -72,90 +66,6 @@ const formatFileSize = (bytes?: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  purchase_contract: 'Purchase Contract',
-  amendment: 'Amendment',
-  addendum: 'Addendum',
-  other: 'Other',
-};
-
-// Map extraction field keys → deal field paths for comparison
-const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal) => string }[] = [
-  { key: 'contractPrice',    label: 'Purchase Price',        getDealVal: d => d.contractPrice    ? `$${Number(d.contractPrice).toLocaleString()}`    : '' },
-  { key: 'listPrice',        label: 'List Price',            getDealVal: d => d.listPrice        ? `$${Number(d.listPrice).toLocaleString()}`        : '' },
-  { key: 'contractDate',     label: 'Contract Date',         getDealVal: d => d.contractDate     || '' },
-  { key: 'closingDate',      label: 'Closing Date',          getDealVal: d => d.closingDate      || '' },
-  { key: 'earnestMoney',     label: 'Earnest Money',         getDealVal: d => (d as any).earnestMoney ? `$${Number((d as any).earnestMoney).toLocaleString()}` : '' },
-  { key: 'earnestMoneyDueDate', label: 'EM Due Date',        getDealVal: d => (d as any).earnestMoneyDueDate || '' },
-  { key: 'loanType',         label: 'Loan Type',             getDealVal: d => (d as any).loanType || '' },
-  { key: 'loanAmount',       label: 'Loan Amount',           getDealVal: d => (d as any).loanAmount ? `$${Number((d as any).loanAmount).toLocaleString()}` : '' },
-  { key: 'downPaymentAmount',label: 'Down Payment',          getDealVal: d => (d as any).downPayment ? `$${Number((d as any).downPayment).toLocaleString()}` : '' },
-  { key: 'inspectionDeadline',label:'Inspection Deadline',   getDealVal: d => (d as any).inspectionDeadline || '' },
-  { key: 'loanCommitmentDate',label:'Loan Commitment',       getDealVal: d => (d as any).loanCommitmentDate || '' },
-  { key: 'possessionDate',   label: 'Possession Date',       getDealVal: d => (d as any).possessionDate || '' },
-  { key: 'buyerNames',       label: 'Buyer Name(s)',         getDealVal: d => (d as any).buyerName || '' },
-  { key: 'sellerNames',      label: 'Seller Name(s)',        getDealVal: d => (d as any).sellerName || '' },
-  { key: 'titleCompany',     label: 'Title Company',         getDealVal: d => (d as any).titleCompanyName || '' },
-  { key: 'loanOfficer',      label: 'Lender / Loan Officer', getDealVal: d => (d as any).loanOfficerName || '' },
-  { key: 'asIsSale',         label: 'As-Is Sale',            getDealVal: d => (d as any).asIsSale !== undefined ? String((d as any).asIsSale) : '' },
-  { key: 'inspectionWaived', label: 'Inspection Waived',     getDealVal: d => (d as any).inspectionWaived !== undefined ? String((d as any).inspectionWaived) : '' },
-  { key: 'homeWarranty',     label: 'Home Warranty',         getDealVal: d => (d as any).homeWarranty !== undefined ? String((d as any).homeWarranty) : '' },
-  { key: 'clientAgentCommission', label: 'Commission',       getDealVal: d => (d as any).clientAgentCommission ? `$${Number((d as any).clientAgentCommission).toLocaleString()}` : '' },
-];
-
-// Format a raw extracted value for display
-function fmtExtracted(key: string, val: string): string {
-  const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount','clientAgentCommission'];
-  if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
-    const n = parseFloat(val.replace(/[$,]/g, ''));
-    if (!isNaN(n)) return `$${n.toLocaleString()}`;
-  }
-  return val;
-}
-
-// Normalize values for equality comparison
-function normalizeVal(key: string, val: string): string {
-  if (!val) return '';
-  const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount','clientAgentCommission'];
-  if (moneyKeys.includes(key)) {
-    const n = parseFloat(val.replace(/[$,]/g, ''));
-    return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
-  }
-  return val.toLowerCase().trim();
-}
-
-// Build deal updates from checked fields
-function buildDealUpdates(checked: Record<string, boolean>, result: ExtractionResult): Partial<Deal> {
-  const updates: any = {};
-  result.fields.forEach(f => {
-    if (!checked[f.key]) return;
-    const val = f.value;
-    if (!val) return;
-    const boolKeys = ['asIsSale','inspectionWaived','homeWarranty'];
-    const moneyKeys = ['contractPrice','listPrice','earnestMoney','loanAmount','downPaymentAmount'];
-    if (boolKeys.includes(f.key)) {
-      updates[f.key] = val === 'true' || val === 'yes' || val === '1';
-    } else if (moneyKeys.includes(f.key)) {
-      updates[f.key] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
-    } else if (f.key === 'downPaymentAmount') {
-      updates['downPayment'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
-    } else if (f.key === 'buyerNames') {
-      updates['buyerName'] = val;
-    } else if (f.key === 'sellerNames') {
-      updates['sellerName'] = val;
-    } else if (f.key === 'titleCompany') {
-      updates['titleCompanyName'] = val;
-    } else if (f.key === 'loanOfficer') {
-      updates['loanOfficerName'] = val;
-    } else if (f.key === 'clientAgentCommission') {
-      updates['clientAgentCommission'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
-    } else {
-      updates[f.key] = val;
-    }
-  });
-  return updates as Partial<Deal>;
-}
-
 // ─── Standalone PDF Preview Modal ────────────────────────────────────────────
 function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => void }) {
   const [url, setUrl] = useState('');
@@ -163,9 +73,11 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
 
   useEffect(() => {
     (async () => {
-      const url = await getDocumentSignedUrl(doc.storage_path, 3600);
-      if (!url) setErr('Could not generate URL');
-      else setUrl(url);
+      const { data, error } = await supabase.storage
+        .from('deal-documents')
+        .createSignedUrl(doc.storage_path, 3600);
+      if (error) setErr(error.message);
+      else setUrl(data.signedUrl);
     })();
   }, [doc.storage_path]);
 
@@ -187,8 +99,8 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
           <div className="flex items-center gap-2">
             <button
               onClick={async () => {
-                const url = await getDocumentSignedUrl(doc.storage_path, 300);
-                if (url) window.open(url, '_blank');
+                const { data } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
+                if (data) window.open(data.signedUrl, '_blank');
               }}
               className="btn btn-ghost btn-xs gap-1"
             >
@@ -220,9 +132,9 @@ function PdfPreview({ filePath }: { filePath: string }) {
 
   useEffect(() => {
     (async () => {
-      const url = await getDocumentSignedUrl(filePath, 3600);
-      if (!url) setErr('Could not generate URL');
-      else setUrl(url);
+      const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(filePath, 3600);
+      if (error) setErr(error.message);
+      else setUrl(data.signedUrl);
     })();
   }, [filePath]);
 
@@ -252,14 +164,16 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
     setLoading(true);
     setError('');
     try {
-      const signed = await getDocumentSignedUrl(doc.storage_path, 300);
-      if (!signed) throw new Error('Could not sign URL');
+      const { data: signed, error: urlErr } = await supabase.storage
+        .from('deal-documents')
+        .createSignedUrl(doc.storage_path, 300);
+      if (urlErr) throw new Error('Could not sign URL: ' + urlErr.message);
 
       const res = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file_url: signed,
+          file_url: signed.signedUrl,
           file_name: doc.file_name,
           deal_id: deal.id,
           deal_address: deal.propertyAddress,
@@ -500,14 +414,16 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
     setLoading(true);
     setError('');
     try {
-      const signedUrl = await getDocumentSignedUrl(doc.storage_path, 300);
-      if (!signedUrl) throw new Error('Could not generate file URL');
+      const { data: signedUrl, error: urlErr } = await supabase.storage
+        .from('deal-documents')
+        .createSignedUrl(doc.storage_path, 300);
+      if (urlErr) throw new Error('Could not generate file URL: ' + urlErr.message);
 
       const res = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file_url: signedUrl,
+          file_url: signedUrl.signedUrl,
           file_name: doc.file_name,
           deal_id: deal.id,
           deal_address: deal.propertyAddress,
@@ -1035,9 +951,9 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   const handleDownload = async (doc: DealDocument) => {
-    const url = await getDocumentSignedUrl(doc.storage_path, 300);
-    if (!url) { alert('Could not generate download link'); return; }
-    window.open(url, '_blank');
+    const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
+    if (error) { alert('Could not generate download link'); return; }
+    window.open(data.signedUrl, '_blank');
   };
 
   const handleDelete = async (doc: DealDocument) => {
