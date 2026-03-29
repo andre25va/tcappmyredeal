@@ -196,7 +196,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
-    mlsNumber: '000000', mlsBoard: '', isHeartlandMls: false, listPrice: '', contractPrice: '',
+    mlsNumber: '000000', mlsBoard: '', isHeartlandMls: false, listPrice: '', purchasePrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
@@ -205,9 +205,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
-    inspectionDeadline: '', loanCommitmentDate: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
+    inspectionDate: '', financeDeadline: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
-    clientAgentCommission: '', clientAgentCommissionPct: '', tcFee: '',
+    commissionAmount: '', clientAgentCommissionPct: '', tcFee: '',
     titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
     legalDescription: '',
   });
@@ -277,7 +277,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   // Auto-calculate down payment fields when contract price or loan amount changes (form-level helper)
   const calcFormDownPayment = (newForm: typeof form) => {
-    const contractPrice = parseFloat(newForm.contractPrice) || 0;
+    const contractPrice = parseFloat(newForm.purchasePrice) || 0;
     const loanAmount = parseFloat(newForm.loanAmount) || 0;
     const percent = parseFloat(newForm.downPaymentPercent) || 0;
     const earnestMoney = newForm.isHeartlandMls ? (parseFloat(newForm.earnestMoney) || 0) : 0;
@@ -299,7 +299,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const totalDown = derivedPrice * (percent / 100);
       const downPaymentAmount = Math.max(0, totalDown - earnestMoney);
       return {
-        contractPrice: derivedPrice.toFixed(2),
+        purchasePrice: derivedPrice.toFixed(2),
         downPaymentAmount: downPaymentAmount.toFixed(0),
         downPaymentPercent: percent.toFixed(1),
       };
@@ -657,12 +657,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           state: d.state || p.state,
           zipCode: d.zipCode || p.zipCode,
           listPrice: d.listPrice || p.listPrice,
-          contractPrice: d.contractPrice || p.contractPrice,
+          purchasePrice: d.purchasePrice || p.purchasePrice,
           mlsNumber: d.mlsNumber || p.mlsNumber,
           contractDate: d.contractDate || p.contractDate,
           closingDate: d.closingDate || p.closingDate,
-          inspectionDeadline: d.inspectionDeadline || p.inspectionDeadline,
-          loanCommitmentDate: d.loanCommitmentDate || p.loanCommitmentDate,
+          inspectionDate: d.inspectionDate || p.inspectionDate,
+          financeDeadline: d.financeDeadline || p.financeDeadline,
           possessionDate: d.possessionDate || p.possessionDate,
           earnestMoney: d.earnestMoney || p.earnestMoney,
           earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
@@ -674,11 +674,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           sellerNames: d.sellerNames || p.sellerNames,
           titleCompany: d.titleCompany || p.titleCompany,
           loanOfficer: d.loanOfficer || p.loanOfficer,
-          clientAgentCommission: d.commission || p.clientAgentCommission,
+          commissionAmount: d.commissionAmount || p.commissionAmount,
           clientAgentCommissionPct: (() => {
             const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
-            const commAmt = stripFmt(d.commission || p.clientAgentCommission || '0');
-            const price = stripFmt(d.contractPrice || p.contractPrice || '0');
+            const commAmt = stripFmt(d.commissionAmount || p.commissionAmount || '0');
+            const price = stripFmt(d.purchasePrice || p.purchasePrice || '0');
             if (commAmt && price) return (calcCommissionPct(price, commAmt)).toFixed(2);
             return p.clientAgentCommissionPct;
           })(),
@@ -693,7 +693,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         // Auto-calculate down payment from extracted contract price + loan amount.
         // The recalc handlers (fWithRecalc) only fire on manual field changes, so we
         // must compute this here too — otherwise extracted data leaves down payment at 0.
-        const cp = parseFloat(updated.contractPrice) || 0;
+        const cp = parseFloat(updated.purchasePrice) || 0;
         const la = parseFloat(updated.loanAmount) || 0;
         if (cp > 0 && la > 0) {
           const totalGap = cp - la;  // full spread (includes EM for Heartland deals)
@@ -810,7 +810,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       mlsNumber: form.mlsNumber.trim() || '000000',
       isHeartlandMls: form.isHeartlandMls,
       listPrice: parseFloat(form.listPrice) || 0,
-      contractPrice: parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0,
+      contractPrice: parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType,
       status: 'contract' as DealStatus,
       transactionType: form.transactionType as TransactionType,
@@ -876,7 +876,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       earnestMoney: parseFloat(form.earnestMoney) || undefined,
       earnestMoneyDueDate: form.earnestMoneyDueDate || undefined,
       sellerConcessions: parseFloat(form.sellerConcessions) || undefined,
-      clientAgentCommission: parseFloat(form.clientAgentCommission) || undefined,
+      clientAgentCommission: parseFloat(form.commissionAmount) || undefined,
       clientAgentCommissionPct: parseFloat(form.clientAgentCommissionPct) || undefined,
       asIsSale: form.asIsSale,
       inspectionWaived: form.inspectionWaived,
@@ -1399,14 +1399,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 {extractionBanner && (() => {
                   const FIELD_LABELS: Record<string, string> = {
                     address: 'Street Address', city: 'City', state: 'State', zipCode: 'ZIP',
-                    listPrice: 'List Price', contractPrice: 'Contract Price', mlsNumber: 'MLS #',
+                    listPrice: 'List Price', purchasePrice: 'Purchase Price', mlsNumber: 'MLS #',
                     contractDate: 'Contract Date', closingDate: 'Closing Date',
-                    inspectionDeadline: 'Inspection Deadline', loanCommitmentDate: 'Loan Commitment Date',
+                    inspectionDate: 'Inspection Date', financeDeadline: 'Finance Deadline',
                     titleDate: 'Title / Clear to Close', possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
                     earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
                     loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
                     buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
-                    titleCompany: 'EM Held With', loanOfficer: 'Loan Officer', commission: 'Commission $',
+                    titleCompany: 'EM Held With', loanOfficer: 'Loan Officer', commissionAmount: 'Commission Amount',
                     transactionType: 'Transaction Type', propertyType: 'Property Type',
                     asIsSale: 'As-Is Sale', inspectionWaived: 'Inspection Waived',
                     homeWarranty: 'Home Warranty', homeWarrantyCompany: 'Warranty Company',
@@ -1850,7 +1850,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.contractPrice} onChange={fWithRecalc('contractPrice')} placeholder="540000" type="number" />
+                    <input className="input input-bordered w-full no-spinner" value={form.purchasePrice} onChange={fWithRecalc('purchasePrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
                 <div>
@@ -1881,7 +1881,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <input className="input input-bordered w-full no-spinner" value={form.downPaymentAmount}
                         onChange={e => {
                           const amt = e.target.value;
-                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                           const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
                           const total = (parseFloat(amt) || 0) + em;
                           const pct = price > 0 && amt ? ((total / price) * 100).toFixed(1) : '';
@@ -1896,7 +1896,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <input className="input input-bordered w-full no-spinner" value={form.downPaymentPercent}
                         onChange={e => {
                           const pct = e.target.value;
-                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                           const loan = parseFloat(form.loanAmount) || 0;
                           const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
                           if (price > 0 && pct) {
@@ -1909,7 +1909,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             const derivedPrice = loan / (1 - parseFloat(pct) / 100);
                             const totalDown = derivedPrice * (parseFloat(pct) / 100);
                             const amt = Math.max(0, totalDown - em).toFixed(0);
-                            setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt, contractPrice: derivedPrice.toFixed(2) }));
+                            setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt, purchasePrice: derivedPrice.toFixed(2) }));
                           } else {
                             setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: '' }));
                           }
@@ -1925,7 +1925,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       onChange={e => {
                         const em = e.target.value;
                         if (form.isHeartlandMls) {
-                          const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                          const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                           const dp = parseFloat(form.downPaymentAmount) || 0;
                           const total = dp + (parseFloat(em) || 0);
                           const pct = price > 0 && (dp || parseFloat(em)) ? ((total / price) * 100).toFixed(1) : form.downPaymentPercent;
@@ -1942,7 +1942,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   const dp = parseFloat(form.downPaymentAmount) || 0;
                   const em = parseFloat(form.earnestMoney) || 0;
                   const total = dp + em;
-                  const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                  const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                   const pct = price > 0 ? ((total / price) * 100).toFixed(1) : null;
                   return (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm flex items-center gap-3 flex-wrap">
@@ -1963,16 +1963,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
                       <div className="join w-full">
                         <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">$</span>
-                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommission}
+                        <input className="input input-bordered join-item w-full no-spinner" value={form.commissionAmount}
                           onChange={e => {
                             const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                             const pct = price > 0 && raw ? (calcCommissionPct(price, parseFloat(raw))).toFixed(1) : '';
-                            setForm(p => ({ ...p, clientAgentCommission: raw, clientAgentCommissionPct: pct }));
+                            setForm(p => ({ ...p, commissionAmount: raw, clientAgentCommissionPct: pct }));
                           }}
                           onBlur={e => {
                             const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommission: val.toFixed(2) }));
+                            if (!isNaN(val)) setForm(p => ({ ...p, commissionAmount: val.toFixed(2) }));
                           }}
                           placeholder="0.00" type="text" inputMode="decimal" />
                       </div>
@@ -1983,9 +1983,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommissionPct}
                           onChange={e => {
                             const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
+                            const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
                             const amt = price > 0 && raw ? calcCommissionAmount(price, parseFloat(raw)).toFixed(2) : '';
-                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, clientAgentCommission: amt }));
+                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, commissionAmount: amt }));
                           }}
                           onBlur={e => {
                             const val = parseFloat(e.target.value);
@@ -2026,13 +2026,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               {/* Heartland Contract Reference Panel */}
                 {form.isHeartlandMls && (
                   <ContractReferencePanel
-                    contractPrice={form.contractPrice}
+                    contractPrice={form.purchasePrice}
                     listPrice={form.listPrice}
                     loanAmount={form.loanAmount}
                     earnestMoney={form.earnestMoney}
                     downPaymentAmount={form.downPaymentAmount}
                     downPaymentPercent={form.downPaymentPercent}
-                    clientAgentCommission={form.clientAgentCommission}
+                    clientAgentCommission={form.commissionAmount}
                     sellerConcessions={form.sellerConcessions}
                   />
                 )}
@@ -2102,12 +2102,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   ])}
 
                   {/* Inspection */}
-                  {dateRow('inspectionDeadline', 'Inspection Deadline', [
+                  {dateRow('inspectionDate', 'Inspection Date', [
                     { label: '7d', days: 7 }, { label: '10d', days: 10 }, { label: '14d', days: 14 },
                   ])}
 
                   {/* Loan Commitment */}
-                  {form.loanType && form.loanType !== 'cash' && dateRow('loanCommitmentDate', 'Loan Commitment Date', [
+                  {form.loanType && form.loanType !== 'cash' && dateRow('financeDeadline', 'Finance Deadline', [
                     { label: '21d', days: 21 }, { label: '30d', days: 30 },
                   ])}
 
@@ -2494,7 +2494,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <span className="font-medium capitalize">{form.transactionType}</span>
                     {form.mlsNumber && <><span className="text-base-content/50">MLS#:</span><span className="font-medium">{form.mlsNumber}</span></>}
                     {form.listPrice && <><span className="text-base-content/50">List Price:</span><span className="font-medium">${Number(form.listPrice).toLocaleString()}</span></>}
-                    {form.contractPrice && <><span className="text-base-content/50">Contract Price:</span><span className="font-medium">${Number(form.contractPrice).toLocaleString()}</span></>}
+                    {form.purchasePrice && <><span className="text-base-content/50">Contract Price:</span><span className="font-medium">${Number(form.purchasePrice).toLocaleString()}</span></>}
                     <span className="text-base-content/50">Contract Date:</span>
                     <span className="font-medium">{formatDisplayDate(form.contractDate)}</span>
                     <span className="text-base-content/50">Closing Date:</span>
@@ -2511,8 +2511,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       return <><span className="text-base-content/50 text-amber-600 font-semibold">Total Down (incl. EM):</span><span className="font-bold text-amber-700">${total.toLocaleString()}</span></>;
                     })()}
                     {form.earnestMoneyDueDate && <><span className="text-base-content/50">EM Due:</span><span className="font-medium">{formatDisplayDate(form.earnestMoneyDueDate)}</span></>}
-                    {form.inspectionDeadline && <><span className="text-base-content/50">Inspection:</span><span className="font-medium">{formatDisplayDate(form.inspectionDeadline)}</span></>}
-                    {form.loanCommitmentDate && <><span className="text-base-content/50">Loan Commit:</span><span className="font-medium">{formatDisplayDate(form.loanCommitmentDate)}</span></>}
+                    {form.inspectionDate && <><span className="text-base-content/50">Inspection:</span><span className="font-medium">{formatDisplayDate(form.inspectionDate)}</span></>}
+                    {form.financeDeadline && <><span className="text-base-content/50">Loan Commit:</span><span className="font-medium">{formatDisplayDate(form.financeDeadline)}</span></>}
                     {form.titleDate && <><span className="text-base-content/50">Title / CTC:</span><span className="font-medium">{formatDisplayDate(form.titleDate)}</span></>}
                     {(form.possessionDate || form.possessionAtClosing) && <><span className="text-base-content/50">Possession:</span><span className="font-medium">{form.possessionAtClosing ? 'At Closing' : formatDisplayDate(form.possessionDate)}</span></>}
                     {(form.asIsSale || form.inspectionWaived || form.homeWarranty) && (
