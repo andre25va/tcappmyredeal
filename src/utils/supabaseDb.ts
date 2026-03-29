@@ -2251,3 +2251,21 @@ export async function loadDealAccessGrants(dealId: string): Promise<{ id: string
     grantedAt: row.granted_at as string,
   }));
 }
+
+
+/**
+ * Generates a signed URL for a document stored in Supabase storage.
+ * @param storagePath - The file path within the storage bucket
+ * @param expiresIn - Expiry in seconds (default: 3600 = 1 hour)
+ * @returns The signed URL string, or null on error
+ */
+export const getDocumentSignedUrl = async (
+  storagePath: string,
+  expiresIn: number = 3600
+): Promise<string | null> => {
+  const { data, error } = await supabase.storage
+    .from('deal-documents')
+    .createSignedUrl(storagePath, expiresIn);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+};

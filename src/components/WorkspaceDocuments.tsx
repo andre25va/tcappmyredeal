@@ -9,6 +9,7 @@ import {
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
+import { getDocumentSignedUrl } from '../utils/supabaseDb';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {
@@ -162,11 +163,9 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.storage
-        .from('deal-documents')
-        .createSignedUrl(doc.storage_path, 3600);
-      if (error) setErr(error.message);
-      else setUrl(data.signedUrl);
+      const url = await getDocumentSignedUrl(doc.storage_path, 3600);
+      if (!url) setErr('Could not generate URL');
+      else setUrl(url);
     })();
   }, [doc.storage_path]);
 
@@ -188,8 +187,8 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
           <div className="flex items-center gap-2">
             <button
               onClick={async () => {
-                const { data } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
-                if (data) window.open(data.signedUrl, '_blank');
+                const url = await getDocumentSignedUrl(doc.storage_path, 300);
+                if (url) window.open(url, '_blank');
               }}
               className="btn btn-ghost btn-xs gap-1"
             >
@@ -221,9 +220,9 @@ function PdfPreview({ filePath }: { filePath: string }) {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(filePath, 3600);
-      if (error) setErr(error.message);
-      else setUrl(data.signedUrl);
+      const url = await getDocumentSignedUrl(filePath, 3600);
+      if (!url) setErr('Could not generate URL');
+      else setUrl(url);
     })();
   }, [filePath]);
 
@@ -253,16 +252,14 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
     setLoading(true);
     setError('');
     try {
-      const { data: signed, error: urlErr } = await supabase.storage
-        .from('deal-documents')
-        .createSignedUrl(doc.storage_path, 300);
-      if (urlErr) throw new Error('Could not sign URL: ' + urlErr.message);
+      const signed = await getDocumentSignedUrl(doc.storage_path, 300);
+      if (!signed) throw new Error('Could not sign URL');
 
       const res = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file_url: signed.signedUrl,
+          file_url: signed,
           file_name: doc.file_name,
           deal_id: deal.id,
           deal_address: deal.propertyAddress,
@@ -503,16 +500,14 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
     setLoading(true);
     setError('');
     try {
-      const { data: signedUrl, error: urlErr } = await supabase.storage
-        .from('deal-documents')
-        .createSignedUrl(doc.storage_path, 300);
-      if (urlErr) throw new Error('Could not generate file URL: ' + urlErr.message);
+      const signedUrl = await getDocumentSignedUrl(doc.storage_path, 300);
+      if (!signedUrl) throw new Error('Could not generate file URL');
 
       const res = await fetch('/api/extract-contract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file_url: signedUrl.signedUrl,
+          file_url: signedUrl,
           file_name: doc.file_name,
           deal_id: deal.id,
           deal_address: deal.propertyAddress,
@@ -1040,9 +1035,9 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   const handleDownload = async (doc: DealDocument) => {
-    const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
-    if (error) { alert('Could not generate download link'); return; }
-    window.open(data.signedUrl, '_blank');
+    const url = await getDocumentSignedUrl(doc.storage_path, 300);
+    if (!url) { alert('Could not generate download link'); return; }
+    window.open(url, '_blank');
   };
 
   const handleDelete = async (doc: DealDocument) => {
