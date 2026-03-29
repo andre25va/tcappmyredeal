@@ -399,7 +399,7 @@ async function handleThreads(req: VercelRequest, res: VercelResponse) {
     const threads: any[] = [];
     try {
       const messages = await client.search({ all: true }, { uid: true });
-      const recent = messages.slice(-50).reverse();
+      const recent = (messages || []).slice(-50).reverse();
       for await (const msg of client.fetch(recent.join(','), {
         envelope: true, flags: true, uid: true, internalDate: true, bodyStructure: true,
       }, { uid: true })) {

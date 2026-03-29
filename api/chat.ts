@@ -234,7 +234,7 @@ const TOOLS = [
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof createClient<any>>,
   openaiKey: string,
 ): Promise<string> {
   try {
@@ -627,7 +627,7 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: 'Server configuration error — missing environment variables.' });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = createClient<any>(supabaseUrl, supabaseKey);
 
   try {
     const { messages } = req.body;
