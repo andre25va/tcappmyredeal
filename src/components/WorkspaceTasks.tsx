@@ -4,7 +4,7 @@ import {
   MoreVertical, Smartphone, AtSign, MessageCircle, Phone, Loader2,
 } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, AppUser } from '../types';
-import { generateId formatDate, } from '../utils/helpers';
+import { generateId, formatDate, } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';
 import { StatusBadge } from './ui/StatusBadge';
