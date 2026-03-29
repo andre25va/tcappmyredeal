@@ -171,7 +171,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
       home_warranty_paid_by, home_warranty_company, commission_paid_by,
-      org_id, deal_ref, buyers_agent_id, listing_agent_id, title_company_id, created_by_user_id
+      org_id, deal_ref
     `)
     .order('created_at', { ascending: false });
 
