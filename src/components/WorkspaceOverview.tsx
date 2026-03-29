@@ -8,7 +8,7 @@ import { CompliancePreCheck } from './CompliancePreCheck';
 import { DraftFollowUp } from './DraftFollowUp';
 import { SmartSuggestions } from './SmartSuggestions';
 import { dealToRecord } from '../ai/dealConverter';
-import { formatPhoneLive, formatPhone } from '../utils/helpers';
+import { formatPhoneLive, formatPhone, calcCommissionAmount, calcCommissionPct} from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder, DealTask } from '../types';
@@ -1356,7 +1356,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                           onChange={e => {
                             const amt = e.target.value;
                             const cp = parseFloat(fields.contractPrice || '0');
-                            const pct = cp > 0 ? ((parseFloat(amt) / cp) * 100).toFixed(2) : '';
+                            const pct = cp > 0 ? calcCommissionPct(cp, parseFloat(amt)).toFixed(2) : '';
                             setFields(p => ({ ...p, clientAgentCommission: amt, clientAgentCommissionPct: pct }));
                           }} />
                       </div>
@@ -1369,7 +1369,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                           onChange={e => {
                             const pct = e.target.value;
                             const cp = parseFloat(fields.contractPrice || '0');
-                            const amt = cp > 0 ? ((parseFloat(pct) / 100) * cp).toFixed(2) : '';
+                            const amt = cp > 0 ? calcCommissionAmount(cp, parseFloat(pct)).toFixed(2) : '';
                             setFields(p => ({ ...p, clientAgentCommissionPct: pct, clientAgentCommission: amt }));
                           }} />
                       </div>

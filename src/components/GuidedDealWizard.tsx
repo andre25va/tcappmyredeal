@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
+import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct} from '../utils/helpers';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 
 interface Props {
@@ -729,7 +729,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
             const commAmt = stripFmt(d.commission || p.clientAgentCommission || '0');
             const price = stripFmt(d.contractPrice || p.contractPrice || '0');
-            if (commAmt && price) return ((commAmt / price) * 100).toFixed(2);
+            if (commAmt && price) return (calcCommissionPct(price, commAmt)).toFixed(2);
             return p.clientAgentCommissionPct;
           })(),
           transactionType: (d.transactionType as any) || p.transactionType,
@@ -1959,7 +1959,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
                           if (price > 0 && pct) {
                             // Contract price known: amount = price × %
-                            const totalAmt = (parseFloat(pct) / 100) * price;
+                            const totalAmt = calcCommissionAmount(price, parseFloat(pct));
                             const amt = Math.max(0, totalAmt - em).toFixed(0);
                             setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt }));
                           } else if (loan > 0 && pct) {
@@ -2025,7 +2025,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           onChange={e => {
                             const raw = e.target.value.replace(/[^0-9.]/g, '');
                             const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                            const pct = price > 0 && raw ? ((parseFloat(raw) / price) * 100).toFixed(1) : '';
+                            const pct = price > 0 && raw ? (calcCommissionPct(price, parseFloat(raw))).toFixed(1) : '';
                             setForm(p => ({ ...p, clientAgentCommission: raw, clientAgentCommissionPct: pct }));
                           }}
                           onBlur={e => {
@@ -2042,7 +2042,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           onChange={e => {
                             const raw = e.target.value.replace(/[^0-9.]/g, '');
                             const price = parseFloat(form.contractPrice) || parseFloat(form.listPrice) || 0;
-                            const amt = price > 0 && raw ? ((parseFloat(raw) / 100) * price).toFixed(2) : '';
+                            const amt = price > 0 && raw ? calcCommissionAmount(price, parseFloat(raw)).toFixed(2) : '';
                             setForm(p => ({ ...p, clientAgentCommissionPct: raw, clientAgentCommission: amt }));
                           }}
                           onBlur={e => {
