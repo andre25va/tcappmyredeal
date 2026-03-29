@@ -8,6 +8,7 @@ import { CallButton } from './CallButton';
 import { Deal } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from "./ui/Button";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -268,9 +269,9 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
                       )}
                       <p className="text-xs text-base-content/40 mt-1">{fmtDateTime(cr.created_at)}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button onClick={() => updateChangeRequest(cr.id, 'approved')} className="btn btn-success btn-xs rounded-xl gap-1">✅ Approve</button>
-                        <button onClick={() => updateChangeRequest(cr.id, 'rejected')} className="btn btn-error btn-xs rounded-xl gap-1">❌ Reject</button>
-                        <button onClick={() => updateChangeRequest(cr.id, 'needs_clarification')} className="btn btn-ghost btn-xs rounded-xl gap-1">💬 Clarify</button>
+                        <Button variant="success" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'approved')}>✅ Approve</Button>
+                        <Button variant="error" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'rejected')}>❌ Reject</Button>
+                        <Button variant="ghost" size="xs" className="rounded-xl" onClick={() => updateChangeRequest(cr.id, 'needs_clarification')}>💬 Clarify</Button>
                       </div>
                     </div>
                   ))}

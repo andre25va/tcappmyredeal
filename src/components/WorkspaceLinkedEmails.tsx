@@ -3,6 +3,7 @@ import { Mail, Paperclip, Zap, User, Sparkles, RefreshCw, Inbox, ChevronDown, Ch
 import { useLinkedEmails, LinkedEmailThread } from '../hooks/useLinkedEmails';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from './ui/Button';
 
 interface Props {
   deal: Deal;
@@ -197,7 +198,7 @@ export const WorkspaceLinkedEmails: React.FC<Props> = ({ deal, onUnreadCount }) 
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
         <p className="text-sm text-error">Failed to load emails: {error}</p>
-        <button className="btn btn-sm btn-outline" onClick={refetch}>Retry</button>
+        <Button variant="outline" onClick={refetch}>Retry</Button>
       </div>
     );
   }

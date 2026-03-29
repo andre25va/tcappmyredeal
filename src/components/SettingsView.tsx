@@ -22,6 +22,7 @@ import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 import { MilestonesTab }           from './settings/MilestonesTab';
 import { OrgManagementTab }        from './settings/OrgManagementTab';
 import { ClientPortalTab }         from './settings/ClientPortalTab';
+import { Button } from './ui/Button';
 
 // -- Props
 
@@ -98,7 +99,7 @@ function UserForm({ user, onSave, onClose }: UserFormProps) {
       <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-base">{user ? 'Edit User' : 'Add User'}</h3>
-          <button className="btn btn-ghost btn-xs btn-square" onClick={onClose}><X size={14}/></button>
+          <Button variant="ghost" size="xs" square onClick={onClose}><X size={14}/></Button>
         </div>
         <div className="flex flex-col gap-3">
           <div>
@@ -119,7 +120,7 @@ function UserForm({ user, onSave, onClose }: UserFormProps) {
           </div>
         </div>
         <div className="flex gap-2 justify-end pt-1">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={!name.trim() || !email.trim()}>
             <Check size={13}/> Save
           </button>

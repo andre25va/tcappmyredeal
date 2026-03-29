@@ -7,6 +7,7 @@ import {
 import { MlsEntry, MlsDocument } from '../types';
 // generateId removed - using crypto.randomUUID() for UUID-compatible IDs
 import { ConfirmModal } from './ConfirmModal';
+import { Button } from './ui/Button';
 
 interface Props {
   mls: MlsEntry[];
@@ -453,7 +454,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
               </div>
             </div>
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-base-300">
-              <button onClick={() => setShowEntryModal(false)} className="btn btn-ghost btn-sm">Cancel</button>
+              <Button variant="ghost" onClick={() => setShowEntryModal(false)}>Cancel</Button>
               <button
                 onClick={saveEntry}
                 disabled={!entryForm.name.trim() || !entryForm.state}
@@ -522,7 +523,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
               </label>
             </div>
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-base-300">
-              <button onClick={() => setShowDocModal(false)} className="btn btn-ghost btn-sm">Cancel</button>
+              <Button variant="ghost" onClick={() => setShowDocModal(false)}>Cancel</Button>
               <button
                 onClick={saveDoc}
                 disabled={!docForm.name.trim()}

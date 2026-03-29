@@ -3,6 +3,7 @@ import { Search, X, Sparkles, Bookmark, ChevronDown, Home, Users, CheckSquare, F
 import { supabase } from '../lib/supabase';
 import { interpretSearchAI } from '../ai/apiClient';
 import type { DealSearchQuery, SearchInterpretationResponse } from '../ai/types';
+import { Button } from './ui/Button';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -687,8 +688,8 @@ export const NaturalLanguageSearchBar: React.FC<NaturalLanguageSearchBarProps> =
               onKeyDown={e => { if (e.key === 'Enter') handleSaveView(); }}
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setSaveModalOpen(false)} className="btn btn-sm btn-ghost">Cancel</button>
-              <button onClick={handleSaveView} className="btn btn-sm btn-primary" disabled={!saveName.trim()}>Save</button>
+              <Button variant="ghost" onClick={() => setSaveModalOpen(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleSaveView} disabled={!saveName.trim()}>Save</Button>
             </div>
           </div>
         </div>

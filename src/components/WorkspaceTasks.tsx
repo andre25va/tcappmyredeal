@@ -10,6 +10,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { StatusBadge } from './ui/StatusBadge';
 import { supabase } from '../lib/supabase';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from './ui/Button';
 
 // ── Comm task types (mirrors comm_tasks table) ──────────────────────────────
 
@@ -346,7 +347,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
               >
                 <Check size={10} /> Confirm Complete
               </button>
-              <button onClick={() => setCompletingId(null)} className="btn btn-xs btn-ghost">Cancel</button>
+              <Button variant="ghost" size="xs" onClick={() => setCompletingId(null)}>Cancel</Button>
             </div>
           </div>
         )}
@@ -471,7 +472,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
             <button onClick={handleAdd} disabled={!newTitle.trim()} className="btn btn-xs btn-primary gap-1 disabled:opacity-40">
               <Plus size={10} /> Add
             </button>
-            <button onClick={() => setShowAdd(false)} className="btn btn-xs btn-ghost">Cancel</button>
+            <Button variant="ghost" size="xs" onClick={() => setShowAdd(false)}>Cancel</Button>
           </div>
         </div>
       )}

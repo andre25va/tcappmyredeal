@@ -15,6 +15,7 @@ import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from './ui/Button';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -136,7 +137,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
           <AlertCircle size={18} className="text-warning" />
           <h3 className="font-bold text-base-content">{title}</h3>
         </div>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm btn-square"><X size={14} /></button>
+        <Button variant="ghost" square onClick={onCancel}><X size={14} /></Button>
       </div>
       <div className="p-4">
         <p className="text-sm text-base-content/60 mb-4">
@@ -181,7 +182,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
             </button>
           ))}
         </div>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm w-full mt-3">Cancel</button>
+        <Button variant="ghost" className="w-full mt-3" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   </div>
@@ -1135,7 +1136,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <p className="font-bold text-gray-900">MLS Mismatch Detected</p>
                 <p className="text-xs text-amber-700 mt-0.5">Please verify MLS information for <span className="font-semibold">{mlsMismatchWarning.agentName}</span></p>
               </div>
-              <button onClick={() => setMlsMismatchWarning(null)} className="ml-auto btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+              <Button variant="ghost" size="xs" square className="ml-auto" onClick={() => setMlsMismatchWarning(null)}><X size={14} /></Button>
             </div>
             {/* Body */}
             <div className="px-5 py-4 space-y-4">
@@ -1211,7 +1212,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   {showPdfPanel ? 'Hide PDF' : 'View PDF'}
                 </button>
               )}
-              <button onClick={onClose} className="btn btn-ghost btn-sm btn-square"><X size={16} /></button>
+              <Button variant="ghost" square onClick={onClose}><X size={16} /></Button>
             </div>
           </div>
 
@@ -2230,7 +2231,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         {selectedTitleContact.company && <p className="text-xs text-base-content/50 truncate">{selectedTitleContact.company}</p>}
                         {selectedTitleContact.email && <p className="text-xs text-base-content/40 truncate">{selectedTitleContact.email}</p>}
                       </div>
-                      <button type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '' })); setIntroEmailSent(false); }} className="btn btn-ghost btn-xs btn-square"><X size={12} /></button>
+                      <Button variant="ghost" size="xs" square type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '' })); setIntroEmailSent(false); }}><X size={12} /></Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2295,7 +2296,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <div className="border border-base-300 rounded-xl p-4 bg-base-50 space-y-3">
                       <div className="flex items-center justify-between mb-1">
                         <p className="text-sm font-semibold text-base-content">New Contact</p>
-                        <button type="button" className="btn btn-ghost btn-xs btn-square" onClick={() => setShowCreateTitleContact(false)}><X size={12} /></button>
+                        <Button variant="ghost" size="xs" square type="button" onClick={() => setShowCreateTitleContact(false)}><X size={12} /></Button>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -2357,7 +2358,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                             >
                               {sendingIntroEmail ? <><Loader2 size={13} className="animate-spin" /> Sending...</> : <><Send size={13} /> Send Intro Email</>}
                             </button>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setIntroEmailSkipped(true)}>Skip</button>
+                            <Button variant="ghost" type="button" onClick={() => setIntroEmailSkipped(true)}>Skip</Button>
                           </div>
                           {!form.titleContactEmail && (
                             <p className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle size={11} /> No email on file — add one to this contact to send.</p>
@@ -2382,7 +2383,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 {aiError && (
                   <div className="alert alert-error text-sm py-2 mb-3">
                     {aiError}
-                    <button className="btn btn-ghost btn-xs" onClick={runAIReview}>Retry</button>
+                    <Button variant="ghost" size="xs" onClick={runAIReview}>Retry</Button>
                   </div>
                 )}
                 {aiReview && (

@@ -19,6 +19,7 @@ import {
   buildDealUpdates,
 } from '../utils/contractExtraction';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from './ui/Button';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {
@@ -108,7 +109,7 @@ function PdfPreviewModal({ doc, onClose }: { doc: DealDocument; onClose: () => v
             >
               <ExternalLink size={12} /> Open in new tab
             </button>
-            <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+            <Button variant="ghost" className="btn-circle" onClick={onClose}><X size={16} /></Button>
           </div>
         </div>
         <div className="flex-1 min-h-0 bg-base-200">
@@ -242,7 +243,7 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
             </div>
             <p className="text-xs text-base-content/40 mt-0.5 ml-6">{doc.file_name}</p>
           </div>
-          <button onClick={onDismiss} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+          <Button variant="ghost" className="btn-circle" onClick={onDismiss}><X size={16} /></Button>
         </div>
 
         {/* Body: PDF left, comparison right */}
@@ -463,7 +464,7 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
             <span className="font-semibold text-base-content">Extract Contract Data</span>
             <span className="text-xs text-base-content/40 ml-1">— {doc.file_name}</span>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={16} /></button>
+          <Button variant="ghost" className="btn-circle" onClick={onClose}><X size={16} /></Button>
         </div>
 
         <div className="flex flex-1 min-h-0">
@@ -536,7 +537,7 @@ function ExtractionModal({ doc, deal, onConfirm, onClose }: ExtractionModalProps
 
         {result && !loading && !error && (
           <div className="flex items-center justify-between p-4 border-t border-base-300 flex-none">
-            <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <div className="flex items-center gap-3">
               <p className="text-xs text-base-content/40">{result.fields.length} field{result.fields.length !== 1 ? 's' : ''} extracted</p>
               <button onClick={handleConfirm} className="btn btn-primary btn-sm gap-1.5">
@@ -600,7 +601,7 @@ function ChecklistLinkPicker({ doc, checklistItems, docLinks, onLink, onUnlink, 
             <p className="font-semibold text-sm text-base-content">Link to Checklist Item</p>
             <p className="text-xs text-base-content/40 truncate max-w-xs">{doc.file_name}</p>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-xs btn-circle"><X size={14} /></button>
+          <Button variant="ghost" size="xs" className="btn-circle" onClick={onClose}><X size={14} /></Button>
         </div>
         <div className="overflow-y-auto p-2" style={{ maxHeight: 'calc(70vh - 60px)' }}>
           {checklistItems.length === 0 ? (
@@ -1324,8 +1325,8 @@ function ConfirmModal({ title, message, onConfirm, onCancel }: ConfirmModalProps
         <h3 className="font-semibold text-base-content">{title}</h3>
         <p className="text-sm text-base-content/70">{message}</p>
         <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
-          <button onClick={onConfirm} className="btn btn-error btn-sm">Confirm</button>
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="error" onClick={onConfirm}>Confirm</Button>
         </div>
       </div>
     </div>
@@ -1356,7 +1357,7 @@ function RequestModal({ existing, onSave, onClose }: RequestModalProps) {
       <div className="m-auto bg-base-100 rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-base-content">{existing ? 'Edit Request' : 'New Document Request'}</h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={15} /></button>
+          <Button variant="ghost" className="btn-circle" onClick={onClose}><X size={15} /></Button>
         </div>
         <div className="space-y-3">
           <div>
@@ -1383,8 +1384,8 @@ function RequestModal({ existing, onSave, onClose }: RequestModalProps) {
           </div>
         </div>
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
-          <button onClick={handleSave} className="btn btn-primary btn-sm">Save</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save</Button>
         </div>
       </div>
     </div>
@@ -1462,8 +1463,8 @@ function LegacyDocRequests({ deal, onUpdate }: { deal: Deal; onUpdate: (d: Deal)
                     <option value="approved">Approved</option>
                     <option value="rejected">Rejected</option>
                   </select>
-                  <button onClick={() => { setEditingRequest(r); setShowRequestModal(true); }} className="btn btn-ghost btn-xs btn-circle"><Info size={13} /></button>
-                  <button onClick={() => setConfirmDelete(r.id)} className="btn btn-ghost btn-xs btn-circle text-error/60 hover:text-error"><X size={13} /></button>
+                  <Button variant="ghost" size="xs" className="btn-circle" onClick={() => { setEditingRequest(r); setShowRequestModal(true); }}><Info size={13} /></Button>
+                  <Button variant="ghost" size="xs" className="btn-circle text-error/60 hover:text-error" onClick={() => setConfirmDelete(r.id)}><X size={13} /></Button>
                 </div>
               </div>
             );

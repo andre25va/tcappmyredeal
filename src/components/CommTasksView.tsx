@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
 import { EmptyState } from './ui/EmptyState';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from "./ui/Button";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="font-bold text-base text-gray-900">Create Communication Task</h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-square"><X size={16} /></button>
+          <Button variant="ghost" square onClick={onClose}><X size={16} /></Button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
@@ -355,7 +356,7 @@ function CreateTaskModal({ contacts, deals, onSave, onClose, prefill }: CreateTa
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <button
             onClick={handleSave}
             disabled={!title.trim() || saving}

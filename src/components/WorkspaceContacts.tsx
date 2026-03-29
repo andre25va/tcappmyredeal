@@ -13,6 +13,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 import { MRDChip } from './ui/MRDChip';
 import { EmptyState } from './ui/EmptyState';
+import { Button } from "./ui/Button";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,7 +182,7 @@ const EditConfirmModal: React.FC<{
 
         {/* Footer */}
         <div className="px-5 pb-4 flex gap-2">
-          <button onClick={onCancel} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+          <Button variant="ghost" className="flex-1" onClick={onCancel}>Cancel</Button>
           <button
             onClick={onConfirm}
             disabled={!canConfirm}
@@ -247,7 +248,7 @@ const DealSheetEmailModal: React.FC<{
             <p className="font-bold text-white text-sm leading-tight">Send Deal Sheet</p>
             <p className="text-xs text-white/70 truncate">{address}</p>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-xs btn-square text-white hover:bg-white/20"><X size={14} /></button>
+          <Button variant="ghost" size="xs" square className="text-white hover:bg-white/20" onClick={onClose}><X size={14} /></Button>
         </div>
         <div className="px-5 py-4 space-y-3">
           <div>
@@ -264,7 +265,7 @@ const DealSheetEmailModal: React.FC<{
           </div>
         </div>
         <div className="px-5 pb-4 flex gap-2">
-          <button onClick={onClose} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+          <Button variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
           <button onClick={handleSend} disabled={!to.trim()} className="btn btn-primary btn-sm flex-1 gap-1.5">
             <Send size={13} /> Send Deal Sheet
           </button>
@@ -387,7 +388,7 @@ const ContactPopup: React.FC<{
                 <p className="font-bold text-black text-base leading-tight">Edit Contact</p>
                 <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
               </div>
-              <button onClick={() => setEditing(false)} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+              <Button variant="ghost" size="xs" square onClick={() => setEditing(false)}><X size={14} /></Button>
             </div>
             {/* Edit form */}
             <div className="px-5 py-4 space-y-3">
@@ -442,7 +443,7 @@ const ContactPopup: React.FC<{
             </div>
             {/* Footer */}
             <div className="px-5 pb-4 flex gap-2">
-              <button onClick={() => setEditing(false)} className="btn btn-ghost btn-sm flex-1">Cancel</button>
+              <Button variant="ghost" className="flex-1" onClick={() => setEditing(false)}>Cancel</Button>
               <button
                 onClick={handleSaveClick}
                 disabled={saving || !form.name.trim()}
@@ -478,7 +479,7 @@ const ContactPopup: React.FC<{
             <p className="font-bold text-black text-base leading-tight">{contact.name}</p>
             <span className={`badge badge-xs mt-0.5 ${roleBadge(contact.role)}`}>{roleLabel(contact.role)}</span>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+          <Button variant="ghost" size="xs" square onClick={onClose}><X size={14} /></Button>
         </div>
 
         {/* Body */}
@@ -782,8 +783,8 @@ const AdditionalPeopleSection: React.FC<{
               <input className="input input-bordered input-xs w-full text-xs" placeholder="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
               <input className="input input-bordered input-xs w-full text-xs" placeholder="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
               <div className="flex gap-1.5 pt-0.5">
-                <button onClick={saveForm} className="btn btn-primary btn-xs flex-1 gap-1"><Save size={10} /> Save</button>
-                <button onClick={resetForm} className="btn btn-ghost btn-xs flex-1">Cancel</button>
+                <Button variant="primary" size="xs" className="flex-1" onClick={saveForm}><Save size={10} /> Save</Button>
+                <Button variant="ghost" size="xs" className="flex-1" onClick={resetForm}>Cancel</Button>
               </div>
             </div>
           ) : (
@@ -950,7 +951,7 @@ const ContactSearchModal: React.FC<{
               <p className="font-bold text-black text-sm">Add {slot.label}</p>
               <p className="text-xs text-gray-400 mt-0.5">Showing {slot.label}s from your contacts directory</p>
             </div>
-            <button onClick={onClose} className="btn btn-ghost btn-xs btn-square"><X size={14} /></button>
+            <Button variant="ghost" size="xs" square onClick={onClose}><X size={14} /></Button>
           </div>
 
           {/* Search */}
@@ -1032,7 +1033,7 @@ const ContactSearchModal: React.FC<{
                     className="flex-1 btn btn-primary btn-xs disabled:opacity-40">
                     Create &amp; Add
                   </button>
-                  <button onClick={() => setShowCreateForm(false)} className="btn btn-ghost btn-xs">Cancel</button>
+                  <Button variant="ghost" size="xs" onClick={() => setShowCreateForm(false)}>Cancel</Button>
                 </div>
               </div>
             ) : (

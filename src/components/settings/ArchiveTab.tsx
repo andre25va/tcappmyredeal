@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, Loader2, AlertCircle, Building2, Users, Inbox, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '../ui/Button';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -62,7 +63,7 @@ const ConfirmRow: React.FC<ConfirmRowProps> = ({ label, onConfirm, onCancel, loa
       {loading ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
       Yes, Unarchive
     </button>
-    <button onClick={onCancel} className="btn btn-xs btn-ghost">Cancel</button>
+    <Button variant="ghost" size="xs" onClick={onCancel}>Cancel</Button>
   </div>
 );
 

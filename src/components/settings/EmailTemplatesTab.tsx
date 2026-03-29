@@ -4,6 +4,7 @@ import { EmailTemplate, ConfirmationButton } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '../ui/Button';
 
 const MERGE_TAGS = [
   { tag: '{{address}}', desc: 'Property street address' },
@@ -78,7 +79,7 @@ export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTempla
       <div className="w-56 shrink-0 border-r border-base-300 flex flex-col overflow-y-auto bg-base-200">
         <div className="p-3 border-b border-base-300 flex items-center justify-between">
           <p className="text-xs font-bold text-base-content uppercase tracking-wide">Templates</p>
-          <button className="btn btn-xs btn-primary gap-1" onClick={startNew}><Plus size={10} /> New</button>
+          <Button variant="primary" size="xs" onClick={startNew}><Plus size={10} /> New</Button>
         </div>
         {orgId && (
           <div className="flex items-center gap-1 p-2 border-b border-base-300">
@@ -124,8 +125,8 @@ export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTempla
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-sm">{isNew ? 'New Template' : `Editing: ${selectedTemplate?.name ?? ''}`}</h3>
               <div className="flex gap-2">
-                <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
-                <button className="btn btn-primary btn-sm gap-1" onClick={saveForm} disabled={!form.name.trim()}><Check size={13} /> Save Template</button>
+                <Button variant="ghost" onClick={cancelEdit}>Cancel</Button>
+                <Button variant="primary" onClick={saveForm} disabled={!form.name.trim()}><Check size={13} /> Save Template</Button>
                 {!isNew && selectedId && <button className="btn btn-error btn-outline btn-sm gap-1" onClick={() => setDeleteConfirmId(selectedId)}><Trash2 size={13} /> Delete</button>}
               </div>
             </div>
@@ -136,7 +137,7 @@ export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTempla
             <div className="border border-base-300 rounded-xl p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div><p className="text-xs font-bold">Confirmation Buttons</p><p className="text-xs text-base-content/50 mt-0.5">Each button opens a pre-filled reply email</p></div>
-                <button className="btn btn-xs btn-outline gap-1" onClick={addButton}><Plus size={10} /> Add Button</button>
+                <Button variant="outline" size="xs" onClick={addButton}><Plus size={10} /> Add Button</Button>
               </div>
               {form.buttons.length === 0 && <p className="text-xs text-base-content/40 text-center py-2">No confirmation buttons yet</p>}
               {form.buttons.map((btn, idx) => (
@@ -153,8 +154,8 @@ export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTempla
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-sm flex items-center gap-2"><Mail size={14} className="text-primary" />{selectedTemplate.name}</h3>
               <div className="flex gap-2">
-                <button className="btn btn-sm btn-primary gap-1" onClick={() => startEdit(selectedTemplate)}><Pencil size={12} /> Edit</button>
-                <button className="btn btn-sm btn-error btn-outline gap-1" onClick={() => setDeleteConfirmId(selectedTemplate.id)}><Trash2 size={12} /> Delete</button>
+                <Button variant="primary" onClick={() => startEdit(selectedTemplate)}><Pencil size={12} /> Edit</Button>
+                <Button variant="outline" onClick={() => setDeleteConfirmId(selectedTemplate.id)}><Trash2 size={12} /> Delete</Button>
               </div>
             </div>
             <div className="bg-base-200 rounded-xl p-3"><p className="text-xs font-semibold text-base-content/50 mb-1">SUBJECT:</p><p className="text-xs font-mono">{selectedTemplate.subject}</p></div>
@@ -164,7 +165,7 @@ export function EmailTemplatesTab({ emailTemplates, onSave, orgId }: EmailTempla
           <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
             <Mail size={32} className="text-base-content/20" />
             <p className="text-sm text-base-content/40">Select a template or create a new one</p>
-            <button className="btn btn-sm btn-primary gap-1" onClick={startNew}><Plus size={13} /> New Template</button>
+            <Button variant="primary" onClick={startNew}><Plus size={13} /> New Template</Button>
           </div>
         )}
       </div>

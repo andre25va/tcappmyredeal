@@ -9,6 +9,7 @@ import { Deal, DealStatus, DealMilestone } from '../types';
 import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import { supabase } from '../lib/supabase';
+import { Button } from './ui/Button';
 
 interface Props {
   deals: Deal[];
@@ -551,7 +552,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                 </h2>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-red-400">{stats.terminated.length} deal{stats.terminated.length !== 1 ? 's' : ''} · {formatCurrency(stats.totalTerminatedVolume)} lost volume</span>
-                  <button onClick={() => { onGoToDeals(); }} className="btn btn-error btn-xs">View in List →</button>
+                  <Button variant="error" size="xs" onClick={() => { onGoToDeals(); }}>View in List →</Button>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
@@ -632,7 +633,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
                 ) : (
                   <div className="flex items-center justify-between bg-error/10 border border-error/30 rounded-lg p-2">
                     <span className="text-xs text-error font-medium">⚠ {stats.overdueItems.length} overdue</span>
-                    <button onClick={onGoToDeals} className="btn btn-error btn-xs">Review</button>
+                    <Button variant="error" size="xs" onClick={onGoToDeals}>Review</Button>
                   </div>
                 )}
               </div>

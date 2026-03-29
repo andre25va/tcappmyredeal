@@ -9,6 +9,7 @@ import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { generateId, formatDateTime } from '../utils/helpers';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from './ui/Button';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Amendment {
@@ -141,7 +142,7 @@ function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: Amendm
             <FileText size={16} className="text-primary" />
             <span className="font-semibold">{existing ? 'Edit Amendment' : 'Add Amendment / Addendum'}</span>
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-sm btn-circle"><X size={15} /></button>
+          <Button variant="ghost" className="btn-circle" onClick={onClose}><X size={15} /></Button>
         </div>
 
         {/* Body */}
@@ -218,7 +219,7 @@ function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: Amendm
                       value={pair.value}
                       onChange={e => updatePair(i, 'value', e.target.value)}
                     />
-                    <button onClick={() => removePair(i)} className="btn btn-ghost btn-xs btn-circle text-error/60"><X size={11} /></button>
+                    <Button variant="ghost" size="xs" className="btn-circle text-error/60" onClick={() => removePair(i)}><X size={11} /></Button>
                   </div>
                 ))}
               </div>
@@ -228,7 +229,7 @@ function AmendmentForm({ dealId, nextNumber, existing, onSave, onClose }: Amendm
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-base-300 flex-none">
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <button
             onClick={handleSave}
             disabled={saving || !form.amendment_date || !form.description?.trim()}
@@ -288,8 +289,8 @@ function AmendmentCard({ amendment, onEdit, onDelete }: CardProps) {
             </button>
           )}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={onEdit} className="btn btn-ghost btn-xs btn-circle" title="Edit"><Edit3 size={12} /></button>
-            <button onClick={onDelete} className="btn btn-ghost btn-xs btn-circle text-error/60 hover:text-error" title="Delete"><Trash2 size={12} /></button>
+            <Button variant="ghost" size="xs" className="btn-circle" onClick={onEdit} title="Edit"><Edit3 size={12} /></Button>
+            <Button variant="ghost" size="xs" className="btn-circle text-error/60 hover:text-error" onClick={onDelete} title="Delete"><Trash2 size={12} /></Button>
           </div>
         </div>
       </div>

@@ -21,6 +21,7 @@ import { ClientOnboardingWizard } from './ClientOnboardingWizard';
 import { CallButton } from './CallButton';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { Button } from "./ui/Button";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ function TeamMemberRow({ member, isEditing, onEdit, onCancelEdit, onSave, onDele
             <button className="btn btn-primary btn-xs gap-1" onClick={() => onSave(local)} disabled={saving || !local.name.trim()}>
               {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Save
             </button>
-            <button className="btn btn-ghost btn-xs" onClick={onCancelEdit}>Cancel</button>
+            <Button variant="ghost" size="xs" onClick={onCancelEdit}>Cancel</Button>
           </div>
         </div>
       </div>
@@ -344,8 +345,8 @@ function TeamMemberRow({ member, isEditing, onEdit, onCancelEdit, onSave, onDele
             {member.notifyEmail && <span title="CC on emails" className="text-primary"><Mail size={10} /></span>}
             {member.notifySms && <span title="CC on SMS" className="text-primary"><Phone size={10} /></span>}
           </div>
-          <button className="btn btn-ghost btn-xs btn-circle" onClick={onEdit}><Pencil size={11} /></button>
-          <button className="btn btn-ghost btn-xs btn-circle text-error" onClick={onDelete}><Trash2 size={11} /></button>
+          <Button variant="ghost" size="xs" className="btn-circle" onClick={onEdit}><Pencil size={11} /></Button>
+          <Button variant="ghost" size="xs" className="btn-circle text-error" onClick={onDelete}><Trash2 size={11} /></Button>
         </div>
       </div>
     </div>
@@ -1050,7 +1051,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-base-300">
               <h3 className="font-bold text-base">{isEditing ? 'Edit Contact' : 'Add Contact'}</h3>
-              <button className="btn btn-ghost btn-sm btn-circle" onClick={closeModal}><X size={16} /></button>
+              <Button variant="ghost" className="btn-circle" onClick={closeModal}><X size={16} /></Button>
             </div>
 
             {/* Body */}
@@ -1573,7 +1574,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300">
-              <button className="btn btn-ghost btn-sm" onClick={closeModal}>Cancel</button>
+              <Button variant="ghost" onClick={closeModal}>Cancel</Button>
               <button className="btn btn-primary btn-sm gap-1" onClick={handleSave} disabled={saving || !form.firstName.trim() || !form.timezone}>
                 {saving ? <span className="loading loading-spinner loading-xs" /> : <Save size={14} />}
                 {isEditing ? 'Save Changes' : dupWarning ? 'Save Anyway' : 'Add Contact'}

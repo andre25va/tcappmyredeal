@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, X, Check, Shield, UserCheck, AlertCircle, Copy, C
 import { ConfirmModal } from '../ConfirmModal';
 import { supabase } from '../../lib/supabase';
 import { EmptyState } from '../ui/EmptyState';
+import { Button } from '../ui/Button';
 
 interface AllowedUser {
   id: string;
@@ -80,7 +81,7 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
       <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-base">{user ? 'Edit User' : 'Add User'}</h3>
-          <button className="btn btn-ghost btn-xs btn-square" onClick={onClose}><X size={14} /></button>
+          <Button variant="ghost" size="xs" square onClick={onClose}><X size={14} /></Button>
         </div>
         <div className="flex flex-col gap-3">
           <div>
@@ -131,7 +132,7 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
           </label>
         </div>
         <div className="flex gap-2 justify-end pt-1">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <button className="btn btn-primary btn-sm gap-1" onClick={save} disabled={saving || !name.trim() || !phoneValid}>
             {saving ? <span className="loading loading-spinner loading-xs" /> : <Check size={13} />}
             {user ? 'Save Changes' : 'Add User'}
@@ -245,7 +246,7 @@ export function AccessUsersTab() {
   if (fetchError) return (
     <div className="max-w-xl mx-auto mt-8 bg-error/10 border border-error/20 rounded-xl p-4 text-sm text-error flex items-center gap-2">
       <AlertCircle size={16} className="flex-none" /> {fetchError}
-      <button className="btn btn-xs btn-ghost ml-auto" onClick={loadUsers}>Retry</button>
+      <Button variant="ghost" size="xs" className="ml-auto" onClick={loadUsers}>Retry</Button>
     </div>
   );
 
@@ -260,7 +261,7 @@ export function AccessUsersTab() {
       {actionError && (
         <div className="flex items-center gap-2 bg-error/10 border border-error/20 rounded-xl px-3 py-2 text-xs text-error">
           <AlertCircle size={13} className="flex-none" /> {actionError}
-          <button className="ml-auto btn btn-ghost btn-xs" onClick={() => setActionError(null)}><X size={11} /></button>
+          <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setActionError(null)}><X size={11} /></Button>
         </div>
       )}
       <div className="flex items-center gap-4">
@@ -322,8 +323,8 @@ export function AccessUsersTab() {
                     <button className="btn btn-xs btn-ghost" onClick={() => setRevokeTarget(u)} title={u.is_active ? 'Revoke access' : 'Restore access'}>
                       <Ban size={13} className={u.is_active ? 'text-base-content/30 hover:text-warning' : 'text-success'} />
                     </button>
-                    <button className="btn btn-xs btn-ghost" onClick={() => { setEditUser(u); setShowForm(true); }}><Pencil size={13} className="text-base-content/40" /></button>
-                    <button className="btn btn-xs btn-ghost" onClick={() => setDeleteTarget(u)}><Trash2 size={13} className="text-error/50 hover:text-error" /></button>
+                    <Button variant="ghost" size="xs" onClick={() => { setEditUser(u); setShowForm(true); }}><Pencil size={13} className="text-base-content/40" /></Button>
+                    <Button variant="ghost" size="xs" onClick={() => setDeleteTarget(u)}><Trash2 size={13} className="text-error/50 hover:text-error" /></Button>
                   </div>
                 </div>
               </div>

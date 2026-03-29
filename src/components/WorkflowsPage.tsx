@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Button } from './ui/Button';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface WorkflowRule {
@@ -244,7 +245,7 @@ function CreateWorkflowModal({ onClose, onSaved }: CreateModalProps) {
 
         {/* Footer */}
         <div className="px-6 pb-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary btn-sm gap-2">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Create Workflow

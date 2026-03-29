@@ -11,6 +11,7 @@ import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/h
 import { ConfirmModal } from './ConfirmModal';
 import { SmartChecklistSuggestions } from './SmartChecklistSuggestions';
 import { supabase } from '../lib/supabase';
+import { Button } from './ui/Button';
 
 interface ChecklistDocLink { id: string; checklist_item_id: string; document_id: string; file_name?: string; }
 
@@ -128,8 +129,8 @@ const DDTableRow: React.FC<{
                 if (e.key === 'Escape') { setEditVal(item.title); setEditing(false); }
               }}
             />
-            <button className="btn btn-success btn-xs btn-square" onClick={() => { onRename(editVal); setEditing(false); }}><Check size={11} /></button>
-            <button className="btn btn-ghost btn-xs btn-square" onClick={() => { setEditVal(item.title); setEditing(false); }}><X size={11} /></button>
+            <Button variant="success" size="xs" square onClick={() => { onRename(editVal); setEditing(false); }}><Check size={11} /></Button>
+            <Button variant="ghost" size="xs" square onClick={() => { setEditVal(item.title); setEditing(false); }}><X size={11} /></Button>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -165,8 +166,8 @@ const DDTableRow: React.FC<{
                 if (e.key === 'Escape') setNoteOpen(false);
               }}
             />
-            <button className="btn btn-primary btn-xs" onClick={() => { onNote(noteVal); setNoteOpen(false); }}>Save</button>
-            <button className="btn btn-ghost btn-xs" onClick={() => setNoteOpen(false)}>Cancel</button>
+            <Button variant="primary" size="xs" onClick={() => { onNote(noteVal); setNoteOpen(false); }}>Save</Button>
+            <Button variant="ghost" size="xs" onClick={() => setNoteOpen(false)}>Cancel</Button>
           </div>
         )}
       </div>
@@ -475,8 +476,8 @@ const ItemRow: React.FC<{
                   if (e.key === 'Escape') { setEditVal(item.title); setEditing(false); }
                 }}
               />
-              <button className="btn btn-success btn-xs btn-square" onClick={() => { onRename(editVal); setEditing(false); }}><Check size={11} /></button>
-              <button className="btn btn-ghost btn-xs btn-square" onClick={() => { setEditVal(item.title); setEditing(false); }}><X size={11} /></button>
+              <Button variant="success" size="xs" square onClick={() => { onRename(editVal); setEditing(false); }}><Check size={11} /></Button>
+              <Button variant="ghost" size="xs" square onClick={() => { setEditVal(item.title); setEditing(false); }}><X size={11} /></Button>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -520,8 +521,8 @@ const ItemRow: React.FC<{
                   if (e.key === 'Escape') setNoteOpen(false);
                 }}
               />
-              <button className="btn btn-primary btn-xs" onClick={() => { onNote(noteVal); setNoteOpen(false); }}>Save</button>
-              <button className="btn btn-ghost btn-xs" onClick={() => setNoteOpen(false)}>Cancel</button>
+              <Button variant="primary" size="xs" onClick={() => { onNote(noteVal); setNoteOpen(false); }}>Save</Button>
+              <Button variant="ghost" size="xs" onClick={() => setNoteOpen(false)}>Cancel</Button>
             </div>
           )}
         </div>
@@ -582,7 +583,7 @@ const ComplianceSection: React.FC<{
           onKeyDown={e => { if (e.key === 'Enter') submit(); }}
         />
         <input type="date" className="input input-bordered input-sm w-32 flex-none" value={newDate} onChange={e => setNewDate(e.target.value)} />
-        <button className="btn btn-secondary btn-sm gap-1 flex-none" onClick={submit}><Plus size={13} /> Add</button>
+        <Button variant="secondary" className="flex-none" onClick={submit}><Plus size={13} /> Add</Button>
       </div>
       <div className="space-y-1.5">
         {items.length === 0 && (
@@ -760,7 +761,7 @@ const ComplianceTabPanel: React.FC<{
             </p>
             <p className="text-xs text-gray-400">This cannot be undone.</p>
             <div className="flex gap-2 justify-end">
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmLoad(null)}>Cancel</button>
+              <Button variant="ghost" onClick={() => setConfirmLoad(null)}>Cancel</Button>
               <button
                 className="btn btn-error btn-sm"
                 onClick={() => { onLoadTemplate(confirmLoad.tplId); setConfirmLoad(null); }}
@@ -1221,8 +1222,8 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                   <input type="checkbox" className="checkbox checkbox-xs checkbox-error" checked={addReq} onChange={e => setAddReq(e.target.checked)} />
                   Required
                 </label>
-                <button className="btn btn-primary btn-xs" onClick={() => { if (addTitle.trim()) addDD(addTitle, addReq); }}>Add</button>
-                <button className="btn btn-ghost btn-xs btn-square" onClick={() => { setAddOpen(false); setAddTitle(''); }}><X size={11} /></button>
+                <Button variant="primary" size="xs" onClick={() => { if (addTitle.trim()) addDD(addTitle, addReq); }}>Add</Button>
+                <Button variant="ghost" size="xs" square onClick={() => { setAddOpen(false); setAddTitle(''); }}><X size={11} /></Button>
               </div>
             )}
           </div>
@@ -1390,7 +1391,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
             }}
           />
           <div className="flex gap-2 justify-end">
-            <button className="btn btn-ghost btn-sm" onClick={() => { setPendingConfirm(null); setConfirmInput(''); }}>Cancel</button>
+            <Button variant="ghost" onClick={() => { setPendingConfirm(null); setConfirmInput(''); }}>Cancel</Button>
             <button
               className="btn btn-success btn-sm"
               disabled={confirmInput.toLowerCase() !== userFirstName.toLowerCase()}
@@ -1471,7 +1472,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                             </button>
                           )}
                           {!item.completed && isConfirming && (
-                            <button className="btn btn-xs btn-ghost text-gray-400" onClick={() => setCompletingId(null)}>Cancel</button>
+                            <Button variant="ghost" size="xs" className="text-gray-400" onClick={() => setCompletingId(null)}>Cancel</Button>
                           )}
                           {item.completed && (
                             <button className="btn btn-xs btn-ghost text-gray-400" onClick={() => uncompleteDD(item.id)} title="Mark incomplete">
@@ -1501,7 +1502,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                             </div>
                           </div>
                           <div className="flex gap-2 justify-end pt-0.5">
-                            <button className="btn btn-ghost btn-xs" onClick={() => setCompletingId(null)}>Cancel</button>
+                            <Button variant="ghost" size="xs" onClick={() => setCompletingId(null)}>Cancel</Button>
                             <button className="btn btn-success btn-xs gap-1" onClick={() => completeDDFromModal(item.id)} disabled={!completionUser.trim()}>
                               <Check size={11}/> Confirm Complete
                             </button>
@@ -1581,7 +1582,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
 
           {/* Footer */}
           <div className="p-4 border-t border-base-300 flex-none flex justify-end">
-            <button className="btn btn-sm btn-ghost" onClick={() => { setShowViewModal(false); setCompletingId(null); }}>Close</button>
+            <Button variant="ghost" onClick={() => { setShowViewModal(false); setCompletingId(null); }}>Close</Button>
           </div>
         </div>
       </div>

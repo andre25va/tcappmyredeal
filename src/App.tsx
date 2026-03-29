@@ -40,6 +40,7 @@ import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 import { RequestCenterView } from './components/RequestCenterView';
 import { PageIdBadge } from './components/PageIdBadge';
 import { PAGE_IDS } from './utils/pageTracking';
+import { Button } from './components/ui/Button';
 
 // View → Page ID mapping for the floating badge
 const VIEW_PAGE_IDS: Record<string, string> = {
@@ -496,7 +497,7 @@ function AppInner() {
         <span className="text-5xl">⚠️</span>
         <h2 className="text-xl font-bold text-base-content">Database Connection Error</h2>
         <p className="text-sm text-base-content/60 text-center max-w-sm">{loadError}</p>
-        <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button>
+        <Button variant="primary" size="md" onClick={() => window.location.reload()}>Retry</Button>
       </div>
     );
   }
