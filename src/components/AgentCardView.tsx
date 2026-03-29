@@ -89,8 +89,6 @@ function getAgentUrgencyScore(agentDeals: Deal[]): number {
   return minDays === Infinity ? 999999 : minDays;
 }
 
-}
-
 // ── CellTooltip ───────────────────────────────────────────────────────────────
 // Shows a dark pill above the cell on hover with full text content.
 
