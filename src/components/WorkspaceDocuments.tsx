@@ -4,7 +4,7 @@ import {
   Upload, FileText, Link2, AlertTriangle, CheckCircle2, Clock,
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
-  Paperclip, Lock, ArrowRight, ChevronUp,
+  Paperclip, Lock, ArrowRight, ChevronUp, MapPin,
 } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
@@ -855,6 +855,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['category']>('purchase_contract');
+  // Option C: Source-of-Truth replacement lock
+  const [sotPending, setSotPending] = useState<{ file: File; docType: DealDocument['category'] } | null>(null);
   const [showDocRequests, setShowDocRequests] = useState(true);
 
   // Modal states
@@ -913,6 +915,12 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    // Option C: if replacing an existing Source of Truth contract, require confirmation
+    const existingSot = docs.find(d => d.category === 'purchase_contract' && d.is_source_of_truth);
+    if (docTypeForUpload === 'purchase_contract' && existingSot) {
+      setSotPending({ file, docType: docTypeForUpload });
+      return;
+    }
     await uploadFile(file, docTypeForUpload);
   };
 
@@ -1115,12 +1123,70 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   return (
     <div className="p-4 space-y-6 pb-10">
 
+      {/* Option C: Source-of-Truth replacement confirmation modal */}
+      {sotPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-base-100 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base-content">Replace Source of Truth?</h3>
+                <p className="text-sm text-base-content/60 mt-1">
+                  This deal already has a protected contract on file. Replacing it is irreversible.
+                </p>
+              </div>
+            </div>
+            {/* Option A: show deal address so TC can confirm they're on the right deal */}
+            <div className="rounded-xl bg-base-200 px-4 py-3 space-y-1">
+              <p className="text-xs text-base-content/50 font-medium uppercase tracking-wide">This Deal</p>
+              <p className="text-sm font-semibold text-base-content">
+                {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? ` ${deal.state}` : ''}
+              </p>
+            </div>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-1">
+              <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">New File</p>
+              <p className="text-sm font-semibold text-amber-900 truncate">{sotPending.file.name}</p>
+            </div>
+            <p className="text-xs text-base-content/50">
+              ⚠️ The current Source of Truth will be demoted. Make sure this is the correct contract for <strong>{deal.propertyAddress}</strong>.
+            </p>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setSotPending(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm btn-error"
+                onClick={async () => {
+                  const { file, docType } = sotPending;
+                  setSotPending(null);
+                  await uploadFile(file, docType);
+                }}
+              >
+                Yes, Replace Source of Truth
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Upload hero CTA (no contract yet) ─────────────────────────── */}
       {contractDocs.length === 0 && (
         <div
           onClick={() => { setDocTypeForUpload('purchase_contract'); fileInputRef.current?.click(); }}
           className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 flex flex-col items-center gap-3 cursor-pointer hover:bg-primary/10 transition-colors"
         >
+          {/* Option A: address banner so TC can confirm the right deal */}
+          <div className="w-full rounded-lg bg-base-200 px-3 py-2 flex items-center gap-2 text-left mb-1">
+            <MapPin size={13} className="text-base-content/40 shrink-0" />
+            <span className="text-xs text-base-content/60 truncate">
+              {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? ` ${deal.state}` : ''}
+            </span>
+          </div>
           <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center">
             <Upload size={22} className="text-primary" />
           </div>
@@ -1133,7 +1199,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
       {/* ── Upload controls ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">Documents</h3>
+        {/* Option A: always show deal address near upload controls */}
+        <div className="flex items-center gap-1.5 text-xs text-base-content/40">
+          <MapPin size={11} className="shrink-0" />
+          <span className="truncate max-w-[180px]">
+            {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? ` ${deal.state}` : ''}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <select
             className="select select-xs select-bordered"

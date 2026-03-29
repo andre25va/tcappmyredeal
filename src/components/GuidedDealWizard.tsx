@@ -9,7 +9,7 @@ import {
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig } from '../utils/helpers';
-import { saveDealParticipant } from '../utils/supabaseDb';
+import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -969,7 +969,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       updatedAt: new Date().toISOString(),
       orgId: primaryOrgId() ?? undefined,
     };
-    // ── Upload purchase contract BEFORE opening workspace so it appears immediately ──
+    // ── Save deal to DB FIRST so FK constraints are satisfied ──────────────────
+    try {
+      await saveSingleDeal(deal, profile?.id);
+    } catch (saveErr: any) {
+      console.error('[GuidedDealWizard] Failed to save deal to DB:', saveErr);
+      setError(`Failed to create deal: ${saveErr.message}`);
+      setIsCreating(false);
+      return;
+    }
+
+    // ── Upload purchase contract (deal now exists in DB) ────────────────────────
     let contractUploadSuccess = true;
     if (contractFile) {
       try {
