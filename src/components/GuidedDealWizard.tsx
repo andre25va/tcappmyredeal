@@ -13,6 +13,7 @@ import { MLS_BY_STATE } from '../utils/mlsData';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
+import StepExtractedData from './StepExtractedData';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -63,7 +64,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -362,7 +363,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   // Load all contacts when step 7 is reached
   useEffect(() => {
-    if (step === 7 && !titleContactsLoaded) {
+    if (step === 8 && !titleContactsLoaded) {
       supabase
         .from('contacts')
         .select('*')
@@ -600,12 +601,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const canAdvance = (): boolean => {
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim() && form.mlsBoard);
-      case 2: return isDuplex ? form.duplexAddressCount !== '' : true;
-      case 3: return true;
+      case 2: return true; // AI Review step — always allow advance
+      case 3: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 4: return true;
-      case 5: return !!form.closingDate;
-      case 6: return !!form.agentClientId;
-      case 7: return true;
+      case 5: return true;
+      case 6: return !!form.closingDate;
+      case 7: return !!form.agentClientId;
+      case 8: return true;
       default: return true;
     }
   };
@@ -614,12 +616,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (!canAdvance()) {
       if (step === 1) setError('Address, city, and MLS Board are required.');
-      if (step === 2) setError('Please select whether this duplex has 1 or 2 addresses.');
-      if (step === 5) setError('Closing date is required.');
-      if (step === 6) setError('Please select a client to continue.');
+      if (step === 3) setError('Please select whether this duplex has 1 or 2 addresses.');
+      if (step === 6) setError('Closing date is required.');
+      if (step === 7) setError('Please select a client to continue.');
       return;
     }
-    if (step === 8) runAIReview();
+    if (step === 9) runAIReview();
+    // When advancing from step 1: go to AI Review if extraction exists, else skip to Property Type
+    if (step === 1) {
+      setStep(extractedRawData ? 2 : 3);
+      return;
+    }
     if (step < TOTAL_STEPS) setStep(step + 1);
   };
 
@@ -733,6 +740,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
       setExtractedRawData(d);
       setShowExtractedTable(false);
+      setStep(2); // advance to AI Review step
     } catch (err: any) {
       setError('Could not extract from document — please fill in manually.');
     } finally {
@@ -1080,7 +1088,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(false);
   };
 
-  const stepTitles = ['', 'Property Address', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'AI Review', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -1101,7 +1109,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       {/* Page ID Badge — shows current wizard step for debugging */}
       <PageIdBadge
         pageId={PAGE_IDS[`WIZARD_STEP_${step}` as keyof typeof PAGE_IDS] || `wizard-step-${step}`}
-        context={`step ${step} of 8`}
+        context={`step ${step} of 9`}
       />
 
       {disambigClientCandidates && (
@@ -1396,79 +1404,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
-                {extractionBanner && (() => {
-                  const FIELD_LABELS: Record<string, string> = {
-                    address: 'Street Address', city: 'City', state: 'State', zipCode: 'ZIP',
-                    listPrice: 'List Price', purchasePrice: 'Purchase Price', mlsNumber: 'MLS #',
-                    contractDate: 'Contract Date', closingDate: 'Closing Date',
-                    inspectionDate: 'Inspection Date', financeDeadline: 'Finance Deadline',
-                    titleDate: 'Title / Clear to Close', possessionDate: 'Possession Date', earnestMoney: 'Earnest Money',
-                    earnestMoneyDueDate: 'EM Due Date', sellerConcessions: 'Seller Concessions',
-                    loanType: 'Loan Type', loanAmount: 'Loan Amount', downPaymentAmount: 'Down Payment',
-                    buyerNames: 'Buyer Name(s)', sellerNames: 'Seller Name(s)',
-                    titleCompany: 'EM Held With', loanOfficer: 'Loan Officer', commissionAmount: 'Commission Amount',
-                    transactionType: 'Transaction Type', propertyType: 'Property Type',
-                    asIsSale: 'As-Is Sale', inspectionWaived: 'Inspection Waived',
-                    homeWarranty: 'Home Warranty', homeWarrantyCompany: 'Warranty Company',
-                    buyerAgentName: "Buyer's Agent", sellerAgentName: "Seller's Agent",
-                  };
-                  const rows = extractedRawData
-                    ? Object.entries(FIELD_LABELS)
-                        .map(([key, label]) => ({ label, value: extractedRawData[key] }))
-                        .filter(r => r.value !== undefined && r.value !== null && r.value !== '')
-                    : [];
-                  return (
-                    <div className="rounded-lg border border-green-200 bg-green-50 -mt-1 overflow-hidden">
-                      <div className="flex items-center justify-between p-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 size={13} className="text-green-500 flex-none" />
-                          <span className="text-xs text-green-700 font-medium">
-                            {extractionBanner.count} fields extracted from {extractionBanner.fileName}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={e => { e.stopPropagation(); setShowPdfPanel(v => !v); }}
-                            className="text-xs text-green-700 font-semibold border border-green-300 bg-white hover:bg-green-100 rounded px-2 py-0.5 transition-colors"
-                          >
-                            {showPdfPanel ? 'Hide PDF' : 'View PDF'}
-                          </button>
-                          <button
-                            onClick={e => { e.stopPropagation(); setShowExtractedTable(v => !v); }}
-                            className="text-xs text-green-700 font-semibold border border-green-300 bg-white hover:bg-green-100 rounded px-2 py-0.5 transition-colors"
-                          >
-                            {showExtractedTable ? 'Hide Table' : 'View Table'}
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); setExtractionBanner(null); setShowExtractedTable(false); setShowPdfPanel(false); }} className="btn btn-ghost btn-xs p-0 min-h-0 h-auto ml-1"><X size={12} /></button>
-                        </div>
-                      </div>
-                      {showExtractedTable && (
-                        <div className="border-t border-green-200 bg-white max-h-64 overflow-y-auto">
-                          <table className="w-full text-xs">
-                            <thead className="bg-green-50 sticky top-0">
-                              <tr>
-                                <th className="text-left px-3 py-1.5 text-green-800 font-semibold w-2/5">Field</th>
-                                <th className="text-left px-3 py-1.5 text-green-800 font-semibold">Extracted Value</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.length === 0 ? (
-                                <tr><td colSpan={2} className="px-3 py-3 text-center text-base-content/40">No data extracted</td></tr>
-                              ) : rows.map((row, i) => (
-                                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-green-50/40'}>
-                                  <td className="px-3 py-1.5 text-base-content/60 font-medium">{row.label}</td>
-                                  <td className="px-3 py-1.5 text-base-content font-semibold">
-                                    {typeof row.value === 'boolean' ? (row.value ? 'Yes' : 'No') : String(row.value)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+
                 <div className="flex items-center gap-2 text-xs text-base-content/30">
                   <div className="flex-1 h-px bg-base-300" />
                   <span>or enter manually</span>
@@ -1638,6 +1574,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {step === 2 && (
+              <StepExtractedData
+                extractedData={extractedRawData}
+                onConfirm={() => setStep(3)}
+                onEdit={() => setStep(3)}
+                onReExtract={() => setStep(1)}
+              />
+            )}
+
+            {step === 3 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
                 {/* MLS Property Data Card */}
@@ -1802,7 +1747,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">Which side of the transaction?</h3>
                 <div className="flex gap-4">
@@ -1832,7 +1777,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <div style={form.isHeartlandMls ? {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',alignItems:'start'} : {}}>
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
@@ -2039,7 +1984,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 5 && (() => {
+            {step === 6 && (() => {
               const presetBtn = (label: string, field: keyof typeof form, days: number) => (
                 <button key={label} type="button"
                   className={`btn btn-xs ${form[field] === calcDate(form.contractDate, days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
@@ -2137,7 +2082,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               );
             })()}
 
-            {step === 6 && (
+            {step === 7 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -2233,7 +2178,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {/* ── Step 7: Title & Escrow ── */}
-            {step === 7 && (() => {
+            {step === 8 && (() => {
               const selectedTitleContact = allContacts.find(c => c.id === form.titleContactId);
               const filteredContacts = allContacts.filter(c =>
                 !titleSearch.trim() ||
@@ -2424,7 +2369,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               );
             })()}
 
-            {step === 8 && (
+            {step === 9 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles size={18} className="text-primary" />
