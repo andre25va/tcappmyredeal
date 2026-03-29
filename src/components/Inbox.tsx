@@ -775,10 +775,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       {(tab === 'email' || (tab === 'waiting' && emailWaiting > 0)) && (
         <div className="flex-1 overflow-y-auto">
           {emailLoading ? (
-            <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-sm">Loading Gmail...</span>
-            </div>
+            <LoadingSpinner size="sm" label="Loading Gmail..." />
           ) : gmailConnected === false ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3 px-4 text-center">
               <Mail size={32} className="text-base-content/20" />
@@ -877,10 +874,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       {tab !== 'email' && (
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-32 gap-2 text-base-content/40">
-              <Loader2 size={16} className="animate-spin" />
-              <span className="text-sm">Loading...</span>
-            </div>
+            <LoadingSpinner size="sm" label="Loading..." />
           ) : filteredConvs.length === 0 && tab !== 'waiting' ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-base-content/30 px-4 text-center">
               <MessageCircle size={32} />
@@ -1052,10 +1046,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {emailMsgLoading ? (
-          <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Loading messages...</span>
-          </div>
+          <LoadingSpinner size="sm" label="Loading messages..." />
         ) : emailMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-24 text-base-content/30 gap-2">
             <Mail size={24} />
@@ -1198,10 +1189,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {msgLoading ? (
-          <div className="flex items-center justify-center h-20 gap-2 text-base-content/40">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Loading messages...</span>
-          </div>
+          <LoadingSpinner size="sm" label="Loading messages..." />
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-24 text-base-content/30 gap-2">
             <MessageCircle size={24} />

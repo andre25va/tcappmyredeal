@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Users, UserPlus, X, Shield, Loader2 } from 'lucide-react';
 import { Deal } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -75,9 +76,7 @@ export function DealAccessPanel({ deal }: Props) {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center p-12">
-      <Loader2 size={20} className="animate-spin text-black/30" />
-    </div>
+    <LoadingSpinner />
   );
 
   return (

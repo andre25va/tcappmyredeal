@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 import {
   X, Mail, Paperclip, ChevronDown, ChevronRight,
-  Download, FileText, Image, Film, File, Loader2,
+  Download, FileText, Image, Film, File,
   AlertCircle, Inbox, Search, Cpu, Shield, MessageSquare,
 } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
@@ -520,19 +521,7 @@ export const PropertyEmailModal: React.FC<PropertyEmailModalProps> = ({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading && (
-            <div className="flex flex-col items-center justify-center h-full gap-3 py-16">
-              <Loader2 size={28} className="animate-spin text-primary" />
-              <div className="text-sm text-base-content/60">
-                {useClassifier
-                  ? <>Searching Gmail + running AI classifier for <strong>"{label}"</strong>…</>
-                  : <>Searching Gmail for <strong>"{label}"</strong>…</>}
-              </div>
-              {useClassifier && (
-                <div className="text-xs text-base-content/40 flex items-center gap-1">
-                  <Cpu size={11} /> 3-layer filter: rules → scoring → AI gray zone
-                </div>
-              )}
-            </div>
+            <LoadingSpinner />
           )}
 
           {error && !loading && (

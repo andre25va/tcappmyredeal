@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 import {
   Globe,
   Shield,
@@ -182,10 +183,7 @@ export function ClientPortalTab() {
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-400 gap-2">
-        <Loader2 className="w-5 h-5 animate-spin" />
-        <span className="text-sm">Loading portal settings…</span>
-      </div>
+      <LoadingSpinner label="Loading portal settings…" />
     );
   }
 

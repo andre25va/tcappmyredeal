@@ -1,4 +1,5 @@
 import { formatDate, formatDateTime } from '../utils/helpers';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -407,9 +408,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 size={20} className="animate-spin text-base-content/50" />
-              </div>
+              <LoadingSpinner />
             ) : tasks.length === 0 ? (
               <div className="text-sm text-base-content/50 text-center py-8">
                 No tasks found for this deal.
@@ -633,9 +632,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
           {historyOpen && (
             <div className="px-4 pb-4">
               {logLoading ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 size={18} className="animate-spin text-base-content/50" />
-                </div>
+                <LoadingSpinner />
               ) : nudgeLog.length === 0 ? (
                 <div className="text-sm text-base-content/50 text-center py-4">
                   No nudges sent for this deal yet.

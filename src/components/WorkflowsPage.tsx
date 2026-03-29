@@ -320,9 +320,7 @@ export function WorkflowsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 size={24} className="animate-spin text-violet-500" />
-      </div>
+      <LoadingSpinner />
     );
   }
 

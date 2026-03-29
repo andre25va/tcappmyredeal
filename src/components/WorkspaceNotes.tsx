@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -131,9 +132,7 @@ export default function WorkspaceNotes({ deal }: Props) {
   /* ---- Render ---- */
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-base-content/40" />
-      </div>
+      <LoadingSpinner />
     );
   }
 

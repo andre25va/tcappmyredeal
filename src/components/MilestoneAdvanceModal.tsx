@@ -367,9 +367,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
 
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
           {loadingSettings ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={24} className="animate-spin text-primary" />
-            </div>
+            <LoadingSpinner />
           ) : (
             <>
               {/* Tasks section */}

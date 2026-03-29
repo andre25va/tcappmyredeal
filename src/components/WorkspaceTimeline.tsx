@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 import {
   Clock,
   CheckCircle2,
@@ -328,9 +329,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
   /* ---- Render ---- */
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-base-content/40" />
-      </div>
+      <LoadingSpinner />
     );
   }
 
