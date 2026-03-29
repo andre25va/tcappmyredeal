@@ -5,6 +5,7 @@ import {
   Loader2, Plus, X, Save, ToggleLeft, ToggleRight, Info,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface WorkflowRule {

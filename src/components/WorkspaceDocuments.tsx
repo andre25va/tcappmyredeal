@@ -11,6 +11,7 @@ import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
 import { StatusBadge } from './ui/StatusBadge';
 import {
+import { LoadingSpinner } from './ui/LoadingSpinner';
   ExtractionResult,
   DOC_TYPE_LABELS,
   FIELD_DEAL_MAP,

@@ -14,6 +14,7 @@ import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 interface Props {
   onAdd: (deal: Deal) => void;

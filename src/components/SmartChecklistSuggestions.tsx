@@ -3,6 +3,7 @@ import { Sparkles, CheckCircle2, AlertCircle, Plus, ChevronDown, ChevronUp } fro
 import { Deal, ChecklistItem } from '../types';
 import { generateId } from '../utils/helpers';
 import { StatusBadge } from './ui/StatusBadge';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 interface Props {
   deal: Deal;

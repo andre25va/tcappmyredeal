@@ -16,6 +16,7 @@ import {
   parseFromName, formatFileSize, getFileIcon, waitingDuration
 } from './inbox/helpers';
 import {
+import { LoadingSpinner } from './ui/LoadingSpinner';
   ChannelBadge, ChannelAvatar, AttachmentChips,
   EmailBodyRenderer, NeedReplyCheckbox
 } from './inbox/InboxAtoms';

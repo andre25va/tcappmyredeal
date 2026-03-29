@@ -7,6 +7,7 @@ import { generateId } from '../utils/helpers';
 import { PageIdBadge } from './PageIdBadge';
 import { StatusBadge } from './ui/StatusBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;

@@ -8,6 +8,7 @@ import {
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { generateId, formatDateTime } from '../utils/helpers';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Amendment {
