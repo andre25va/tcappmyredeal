@@ -5,6 +5,7 @@ import { Deal, DealMilestone, ContactRecord, MilestoneNotificationSetting } from
 import { MILESTONE_LABELS, generateTasksForMilestone } from '../utils/taskTemplates';
 import { generateId } from '../utils/helpers';
 import { PageIdBadge } from './PageIdBadge';
+import { StatusBadge } from './ui/StatusBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -339,11 +340,6 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
     }
   };
 
-  const priorityDot = (priority: string) => {
-    if (priority === 'high') return 'bg-red-500';
-    if (priority === 'medium') return 'bg-yellow-400';
-    return 'bg-gray-300';
-  };
 
   return (
     <div
@@ -385,7 +381,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
                   <div className="space-y-1.5 rounded-xl bg-base-200 border border-base-300 p-3">
                     {tasksToGenerate.slice(0, 3).map(t => (
                       <div key={t.id} className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full flex-none ${priorityDot(t.priority)}`} />
+                        <StatusBadge status={t.priority} dot />
                         <span className="text-sm text-base-content truncate">{t.title}</span>
                         <span className="text-xs text-base-content/40 flex-none">{t.category}</span>
                       </div>

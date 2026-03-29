@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 'lucide-react';
+import { StatusBadge } from './ui/StatusBadge';
 import { CallButton } from './CallButton';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -294,7 +295,6 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
 
   const renderCallbacksTab = () => {
     if (callbacks.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-base-content/40"><span className="text-4xl mb-2">☎️</span><p className="text-sm">No open callback requests</p></div>;
-    const priorityColors: Record<string, string> = { high: 'badge-error', urgent: 'badge-error', medium: 'badge-warning', normal: 'badge-warning', low: 'badge-success' };
     return (
       <div className="flex flex-col gap-3">
         {callbacks.map((cb: any) => (
@@ -304,7 +304,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm text-base-content">{contactName(cb.contact)}</span>
                   {cb.contact?.phone && <span className="text-xs text-base-content/50">{cb.contact.phone}</span>}
-                  <span className={`badge badge-xs ${priorityColors[cb.priority] || 'badge-ghost'}`}>{cb.priority}</span>
+                  <StatusBadge status={cb.priority} />
                 </div>
                 {cb.reason && <p className="text-xs text-base-content/70 mt-1">{cb.reason}</p>}
                 {cb.preferred_time && <p className="text-xs text-base-content/50 mt-0.5">Preferred: {cb.preferred_time}</p>}

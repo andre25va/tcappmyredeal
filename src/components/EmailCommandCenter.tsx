@@ -11,6 +11,7 @@ import type {
   DealRecord, DealTask, RawEmail, EmailSummary,
   SuggestedTask, CompliancePrecheckResult,
 } from "../ai/types";
+import { StatusBadge } from './ui/StatusBadge';
 
 interface Props {
   deal: DealRecord;
@@ -343,11 +344,7 @@ export const EmailCommandCenter: React.FC<Props> = ({
                   <ul className="text-sm space-y-1.5">
                     {aiTasks.map((task, i) => (
                       <li key={i} className="flex items-start gap-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 ${
-                          task.priority === "high" ? "bg-red-100 text-red-700" :
-                          task.priority === "medium" ? "bg-yellow-100 text-yellow-700" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>{task.priority}</span>
+                        <StatusBadge status={task.priority} />
                         <div>
                           <div className="text-gray-800">{task.title}</div>
                           {task.suggestedOwnerRole && (

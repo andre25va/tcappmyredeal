@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Loader2, CheckCircle2, AlertCircle, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Deal, ChecklistItem } from '../types';
 import { generateId } from '../utils/helpers';
+import { StatusBadge } from './ui/StatusBadge';
 
 interface Props {
   deal: Deal;
@@ -26,14 +27,6 @@ interface SuggestResult {
   explanation: string;
 }
 
-const priorityBadge = (p: string) => {
-  switch (p) {
-    case 'high': return 'badge-error';
-    case 'medium': return 'badge-warning';
-    case 'low': return 'badge-info';
-    default: return 'badge-ghost';
-  }
-};
 
 export const SmartChecklistSuggestions: React.FC<Props> = ({ deal, onUpdate }) => {
   const [result, setResult] = useState<SuggestResult | null>(null);
@@ -237,7 +230,7 @@ export const SmartChecklistSuggestions: React.FC<Props> = ({ deal, onUpdate }) =
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm font-medium text-base-content">{item.title}</span>
-                            <span className={`badge badge-xs ${priorityBadge(item.priority)}`}>{item.priority}</span>
+                            <StatusBadge status={item.priority} />
                           </div>
                           <p className="text-xs text-base-content/50">{item.reason}</p>
                         </div>

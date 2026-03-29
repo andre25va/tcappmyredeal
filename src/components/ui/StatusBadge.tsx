@@ -48,8 +48,10 @@ const MISC_CONFIG: Record<string, { label: string; badge: string }> = {
   'rejected':  { label: 'Rejected',  badge: 'badge-error' },
   'draft':     { label: 'Draft',     badge: 'badge-neutral' },
   'sent':      { label: 'Sent',      badge: 'badge-info' },
-  'active':    { label: 'Active',    badge: 'badge-success' },
-  'inactive':  { label: 'Inactive',  badge: 'badge-neutral' },
+  'active':      { label: 'Active',      badge: 'badge-success' },
+  'inactive':    { label: 'Inactive',    badge: 'badge-neutral' },
+  'in_progress': { label: 'In Progress', badge: 'badge-success' },
+  'confirmed':   { label: 'Confirmed',   badge: 'badge-info' },
 };
 
 type BadgeSize = 'xs' | 'sm' | 'md';
