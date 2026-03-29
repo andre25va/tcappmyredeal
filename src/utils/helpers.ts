@@ -179,3 +179,21 @@ export const closingCountdown = (closingDate: string): { label: string; color: s
   if (days <= 14) return { label: `${days}d to close`, color: 'text-info', pillBg: 'bg-blue-500', pillText: 'text-white' };
   return { label: `${days}d to close`, color: 'text-base-content/60', pillBg: 'bg-gray-200', pillText: 'text-black' };
 };
+
+/**
+ * Calculates commission amount from price and percentage.
+ * commPct is a percentage (e.g. 3 for 3%).
+ */
+export const calcCommissionAmount = (price: number, commPct: number): number => {
+  if (!price || !commPct) return 0;
+  return (commPct / 100) * price;
+};
+
+/**
+ * Calculates commission percentage from price and amount.
+ * Returns percentage (e.g. 3 for 3%).
+ */
+export const calcCommissionPct = (price: number, commAmount: number): number => {
+  if (!price || !commAmount) return 0;
+  return (commAmount / price) * 100;
+};
