@@ -88,18 +88,20 @@ export function normalizeVal(key: string, val: string): string {
 /** Build deal updates from checked extraction fields */
 export function buildDealUpdates(checked: Record<string, boolean>, result: ExtractionResult): Partial<Deal> {
   const updates: any = {};
+  const boolKeys = ['asIsSale', 'inspectionWaived', 'homeWarranty'];
+  const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'clientAgentCommission'];
   result.fields.forEach(f => {
     if (!checked[f.key]) return;
     const val = f.value;
     if (!val) return;
-    const boolKeys = ['asIsSale', 'inspectionWaived', 'homeWarranty'];
-    const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'clientAgentCommission'];
     if (boolKeys.includes(f.key)) {
       updates[f.key] = val === 'true' || val === 'yes' || val === '1';
     } else if (moneyKeys.includes(f.key)) {
-      updates[f.key] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
+      const n = parseFloat(val.replace(/[$,]/g, ''));
+      updates[f.key] = isNaN(n) ? undefined : n;
     } else if (f.key === 'downPaymentAmount') {
-      updates['downPayment'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
+      const n = parseFloat(val.replace(/[$,]/g, ''));
+      updates['downPayment'] = isNaN(n) ? undefined : n;
     } else if (f.key === 'buyerNames') {
       updates['buyerName'] = val;
     } else if (f.key === 'sellerNames') {
