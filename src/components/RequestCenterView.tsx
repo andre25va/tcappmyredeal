@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ClipboardList, Filter, RefreshCw, ChevronRight } from 'lucide-react';
 import { RequestRecord, RequestStatus, RequestType } from '../types';
 import { supabase } from '../lib/supabase';
+import { EmptyState } from './ui/EmptyState';
 
 // ── Display maps ───────────────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, string> = {
@@ -187,13 +188,11 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
             <span className="ml-3 text-sm text-base-content/60">Loading requests…</span>
           </div>
         ) : requests.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <ClipboardList size={48} className="text-base-content/15 mb-4" />
-            <p className="font-semibold text-base-content/40">No requests found</p>
-            <p className="text-sm text-base-content/30 mt-1">
-              Create requests from within a deal's Requests tab
-            </p>
-          </div>
+          <EmptyState
+            icon={<ClipboardList size={48} />}
+            title="No requests found"
+            message="Create requests from within a deal's Requests tab"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table table-sm w-full">

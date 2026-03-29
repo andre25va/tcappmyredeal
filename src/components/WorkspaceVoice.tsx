@@ -7,6 +7,7 @@ import {
 import { CallButton } from './CallButton';
 import { Deal } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { EmptyState } from './ui/EmptyState';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -279,11 +280,11 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
 
             {/* Call Logs */}
             {callLogs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
-                <Mic size={40} className="mb-3 opacity-30" />
-                <p className="text-sm font-medium">No calls recorded yet</p>
-                <p className="text-xs mt-1">Calls made through this deal will appear here with AI summaries</p>
-              </div>
+              <EmptyState
+                icon={<Mic size={40} className="opacity-30" />}
+                title="No calls recorded yet"
+                message="Calls made through this deal will appear here with AI summaries"
+              />
             ) : (
               <div className="flex flex-col gap-3">
                 <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">
@@ -432,10 +433,10 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
         {activeSection === 'timeline' && (
           <>
             {filteredEvents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
-                <span className="text-4xl mb-2">📋</span>
-                <p className="text-sm">No communications recorded for this deal yet</p>
-              </div>
+              <EmptyState
+                icon={<span className="text-4xl">📋</span>}
+                title="No communications recorded for this deal yet"
+              />
             ) : (
               <div className="flex flex-col gap-3">
                 {filteredEvents.map(ev => {

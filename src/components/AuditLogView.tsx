@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, RefreshCw, Shield, User, FileText, MessageSquare, Briefcase, Settings, Clock } from 'lucide-react';
+import { EmptyState } from './ui/EmptyState';
 
 
 interface AuditEntry {
@@ -156,10 +157,10 @@ export function AuditLogView() {
             <span className="loading loading-spinner loading-md text-primary" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-base-content/30 gap-2">
-            <Shield size={40} />
-            <p className="text-sm">No audit entries found</p>
-          </div>
+          <EmptyState
+            icon={<Shield size={40} />}
+            title="No audit entries found"
+          />
         ) : (
           <table className="table table-sm w-full">
             <thead className="sticky top-0 bg-base-100 z-10">

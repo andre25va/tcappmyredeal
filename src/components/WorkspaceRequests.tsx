@@ -11,6 +11,7 @@ import type {
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { DealContactPicker, DealContact } from './DealContactPicker';
+import { EmptyState } from './ui/EmptyState';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -573,16 +574,12 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
       </div>
 
       {requests.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed border-base-300 rounded-xl">
-          <ClipboardList size={40} className="text-base-content/20 mb-3" />
-          <p className="font-semibold text-base-content/50">No requests yet</p>
-          <p className="text-sm text-base-content/40 mt-1 max-w-xs">
-            Track earnest money receipts, inspections, repair confirmations, and seller credit changes.
-          </p>
-          <button className="btn btn-primary btn-sm mt-4 gap-1.5" onClick={handleOpenNewModal}>
-            <Plus size={14} /> Create First Request
-          </button>
-        </div>
+        <EmptyState
+          icon={<ClipboardList size={40} />}
+          title="No requests yet"
+          message="Track earnest money receipts, inspections, repair confirmations, and seller credit changes."
+          action={<button className="btn btn-primary btn-sm gap-1.5" onClick={handleOpenNewModal}><Plus size={14} /> Create First Request</button>}
+        />
       )}
 
       {activeRequests.length > 0 && (

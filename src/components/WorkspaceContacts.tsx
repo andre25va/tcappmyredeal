@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ConfirmModal } from './ConfirmModal';
 import { CallButton } from './CallButton';
 import { MRDChip } from './ui/MRDChip';
+import { EmptyState } from './ui/EmptyState';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -972,11 +973,11 @@ const ContactSearchModal: React.FC<{
                 <span className="loading loading-spinner loading-sm text-primary" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-                <User size={24} className="text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400 font-medium">No {slot.label}s in your directory yet</p>
-                <p className="text-xs text-gray-300 mt-0.5">Create a new contact below</p>
-              </div>
+              <EmptyState
+                icon={<User size={24} />}
+                title={`No ${slot.label}s in your directory yet`}
+                message="Create a new contact below"
+              />
             ) : (
               filtered.map(c => {
                 const name = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';

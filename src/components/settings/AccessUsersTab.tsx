@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Pencil, Trash2, X, Check, Shield, UserCheck, AlertCircle, Copy, CheckCheck, Ban } from 'lucide-react';
 import { ConfirmModal } from '../ConfirmModal';
 import { supabase } from '../../lib/supabase';
+import { EmptyState } from '../ui/EmptyState';
 
 interface AllowedUser {
   id: string;
@@ -274,11 +275,12 @@ export function AccessUsersTab() {
         </button>
       </div>
       {users.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-base-content/40">
-          <UserCheck size={40} strokeWidth={1.5} />
-          <p className="text-sm">No users yet. Add your first team member.</p>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}><Plus size={13} /> Add First User</button>
-        </div>
+        <EmptyState
+          icon={<UserCheck size={40} strokeWidth={1.5} />}
+          title="No users yet"
+          message="Add your first team member."
+          action={<button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}><Plus size={13} /> Add First User</button>}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {users.map(u => {

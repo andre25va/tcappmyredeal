@@ -9,6 +9,7 @@ import {
   updateOrgMemberRole, removeOrgMember, OrgMemberRecord
 } from '../../utils/supabaseDb';
 import { ConfirmModal } from '../ConfirmModal';
+import { EmptyState } from '../ui/EmptyState';
 
 const ROLE_INFO: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   team_admin: { label: 'Team Admin', color: 'badge-error',   icon: <Shield size={11} /> },
@@ -265,13 +266,11 @@ export function OrgManagementTab() {
 
   if (orgs.length === 0 && !loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-base-content/40">
-        <Building2 size={32} />
-        <p className="text-sm">No organizations to manage.</p>
-        {!isAdmin && (
-          <p className="text-xs text-center max-w-xs">You need Team Admin role in an organization to manage its members.</p>
-        )}
-      </div>
+      <EmptyState
+        icon={<Building2 size={32} />}
+        title="No organizations to manage."
+        message={!isAdmin ? 'You need Team Admin role in an organization to manage its members.' : undefined}
+      />
     );
   }
 
