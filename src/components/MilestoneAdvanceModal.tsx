@@ -8,6 +8,7 @@ import { PageIdBadge } from './PageIdBadge';
 import { StatusBadge } from './ui/StatusBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 import { LoadingSpinner } from './ui/LoadingSpinner';
+import { Modal } from './ui/Modal';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -343,14 +344,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
 
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <div
-        className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-base-300"
-        onClick={e => e.stopPropagation()}
-      >
+    <Modal isOpen={true} onClose={onCancel} size="md" noPadding className="!max-w-lg max-h-[90vh] flex flex-col border border-base-300">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-base-300 flex-none">
           <div>
@@ -567,10 +561,8 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
             )}
           </button>
         </div>
-      </div>
-
       {/* Page ID Badge */}
       <PageIdBadge pageId={PAGE_IDS.MILESTONE_ADVANCE} context={deal.id.slice(0, 8)} />
-    </div>
+    </Modal>
   );
 };

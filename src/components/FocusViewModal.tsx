@@ -4,6 +4,7 @@ import { Deal, Contact } from '../types';
 import { CallButton } from './CallButton';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
+import { Modal } from './ui/Modal';
 
 interface CallStartedData {
   contactName: string;
@@ -132,9 +133,7 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose, onCallStarted }
   const otherLabel = side === 'buyer' ? 'Seller Side' : 'Buyer Side';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+    <Modal isOpen={true} onClose={onClose} size="sm" noPadding className="overflow-hidden flex flex-col max-h-[90vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200 flex-none">
@@ -254,7 +253,6 @@ export const FocusViewModal: React.FC<Props> = ({ deal, onClose, onCallStarted }
 
         {/* Page ID Badge */}
         <PageIdBadge pageId={PAGE_IDS.FOCUS_VIEW_MODAL} context={deal.id.slice(0, 8)} />
-      </div>
-    </div>
+    </Modal>
   );
 };

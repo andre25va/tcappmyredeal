@@ -32,6 +32,8 @@ interface ModalProps {
   size?: ModalSize;
   /** Prevent closing when clicking the backdrop */
   disableBackdropClose?: boolean;
+  /** Skip the default p-6 body wrapper — children control their own padding/layout */
+  noPadding?: boolean;
   children: React.ReactNode;
   className?: string;
 }
@@ -58,6 +60,7 @@ export function Modal({
   subtitle,
   size = 'md',
   disableBackdropClose = false,
+  noPadding = false,
   children,
   className = '',
 }: ModalProps) {
@@ -81,7 +84,7 @@ export function Modal({
       }}
     >
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full ${sizeMap[size]} mx-4 ${className}`}
+        className={`bg-base-100 rounded-2xl shadow-2xl w-full ${sizeMap[size]} mx-4 ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -103,9 +106,9 @@ export function Modal({
         )}
 
         {/* Body */}
-        <div className="p-6">
-          {children}
-        </div>
+        {noPadding ? children : (
+          <div className="p-6">{children}</div>
+        )}
       </div>
     </div>
   );
