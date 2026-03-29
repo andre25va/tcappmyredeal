@@ -4,6 +4,7 @@ import { EmailTemplate, ConfirmationButton } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '../ui/Button';
 
 const MERGE_TAGS = [
   { tag: '{{address}}', desc: 'Property street address' },

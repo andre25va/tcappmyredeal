@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Star, Alert
 import { DDMasterItem } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 interface DDChecklistTabProps {
   items: DDMasterItem[];

@@ -7,7 +7,7 @@ import {
 import { MlsEntry, MlsDocument } from '../types';
 // generateId removed - using crypto.randomUUID() for UUID-compatible IDs
 import { ConfirmModal } from './ConfirmModal';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   mls: MlsEntry[];

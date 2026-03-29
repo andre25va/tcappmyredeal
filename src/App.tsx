@@ -40,6 +40,7 @@ import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 import { RequestCenterView } from './components/RequestCenterView';
 import { PageIdBadge } from './components/PageIdBadge';
 import { PAGE_IDS } from './utils/pageTracking';
+import { Button } from './components/ui/Button';
 
 // View → Page ID mapping for the floating badge
 const VIEW_PAGE_IDS: Record<string, string> = {

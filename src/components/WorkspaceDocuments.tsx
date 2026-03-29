@@ -19,7 +19,7 @@ import {
   buildDealUpdates,
 } from '../utils/contractExtraction';
 import { LoadingSpinner } from './ui/LoadingSpinner';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {

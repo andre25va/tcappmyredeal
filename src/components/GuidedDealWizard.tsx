@@ -15,7 +15,7 @@ import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
 import { LoadingSpinner } from './ui/LoadingSpinner';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   onAdd: (deal: Deal) => void;

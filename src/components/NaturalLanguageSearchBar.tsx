@@ -3,7 +3,7 @@ import { Search, X, Sparkles, Bookmark, ChevronDown, Home, Users, CheckSquare, F
 import { supabase } from '../lib/supabase';
 import { interpretSearchAI } from '../ai/apiClient';
 import type { DealSearchQuery, SearchInterpretationResponse } from '../ai/types';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

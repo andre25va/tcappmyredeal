@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Building2, ArrowRight, RefreshCw, Phone, KeyRound, CheckCircle2, Eye, Mail, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 type Step = 'phone' | 'otp' | 'success';
 

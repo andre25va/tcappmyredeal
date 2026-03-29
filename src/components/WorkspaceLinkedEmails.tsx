@@ -3,7 +3,7 @@ import { Mail, Paperclip, Zap, User, Sparkles, RefreshCw, Inbox, ChevronDown, Ch
 import { useLinkedEmails, LinkedEmailThread } from '../hooks/useLinkedEmails';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   deal: Deal;

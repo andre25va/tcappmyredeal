@@ -16,7 +16,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

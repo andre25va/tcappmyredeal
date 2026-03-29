@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Shield } fr
 import { ComplianceMasterItem } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 interface ComplianceChecklistTabProps {
   items: ComplianceMasterItem[];

@@ -11,7 +11,7 @@ import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/h
 import { ConfirmModal } from './ConfirmModal';
 import { SmartChecklistSuggestions } from './SmartChecklistSuggestions';
 import { supabase } from '../lib/supabase';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface ChecklistDocLink { id: string; checklist_item_id: string; document_id: string; file_name?: string; }
 

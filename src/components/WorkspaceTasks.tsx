@@ -10,7 +10,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { StatusBadge } from './ui/StatusBadge';
 import { supabase } from '../lib/supabase';
 import { EmptyState } from './ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // ── Comm task types (mirrors comm_tasks table) ──────────────────────────────
 

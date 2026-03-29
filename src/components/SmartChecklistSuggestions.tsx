@@ -4,7 +4,7 @@ import { Deal, ChecklistItem } from '../types';
 import { generateId } from '../utils/helpers';
 import { StatusBadge } from './ui/StatusBadge';
 import { LoadingSpinner } from './ui/LoadingSpinner';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   deal: Deal;

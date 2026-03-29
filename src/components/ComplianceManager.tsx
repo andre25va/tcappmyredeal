@@ -23,7 +23,7 @@ const US_STATES: { abbr: string; name: string }[] = [
 import { ComplianceTemplate, ComplianceTemplateItem, ContactRecord } from '../types';
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   templates: ComplianceTemplate[];

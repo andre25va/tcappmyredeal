@@ -7,7 +7,7 @@ import {
 import { Deal, DealStatus } from '../types';
 import { statusLabel, daysUntil, formatDate } from '../utils/helpers';
 import { StatusDotLabel } from './ui/StatusBadge';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
 type AgentTypeFilter = 'all' | 'buyer' | 'seller';

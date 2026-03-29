@@ -7,7 +7,7 @@ import {
   pendingDocCount, checklistProgress, daysUntil,
 } from '../utils/helpers';
 import { StatusDotLabel } from './ui/StatusBadge';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 const ARCHIVE_REASONS = [
   { value: 'deal-closed',  label: 'Deal Closed'  },

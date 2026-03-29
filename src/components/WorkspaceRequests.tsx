@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { DealContactPicker, DealContact } from './DealContactPicker';
 import { EmptyState } from './ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {

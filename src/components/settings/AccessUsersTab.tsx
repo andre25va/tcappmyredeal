@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, X, Check, Shield, UserCheck, AlertCircle, Copy, C
 import { ConfirmModal } from '../ConfirmModal';
 import { supabase } from '../../lib/supabase';
 import { EmptyState } from '../ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 interface AllowedUser {
   id: string;

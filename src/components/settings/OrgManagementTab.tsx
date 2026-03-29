@@ -10,7 +10,7 @@ import {
 } from '../../utils/supabaseDb';
 import { ConfirmModal } from '../ConfirmModal';
 import { EmptyState } from '../ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 const ROLE_INFO: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   team_admin: { label: 'Team Admin', color: 'badge-error',   icon: <Shield size={11} /> },

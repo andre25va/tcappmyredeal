@@ -57,7 +57,7 @@ import { WorkspaceAmendments } from './WorkspaceAmendments';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
 import { supabase } from '../lib/supabase';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
 

@@ -3,7 +3,7 @@ import { BarChart3, TrendingUp, Users, Shield, Calendar, AlertTriangle, CheckCir
 import { portfolioReportAI, PortfolioReportResponse, evaluateRulesAI, RulesEvaluationResponse } from '../ai/apiClient';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   deals: Deal[];

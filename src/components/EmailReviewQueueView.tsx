@@ -7,7 +7,7 @@ import {
 import { useEmailReviewQueue, ReviewQueueItem } from '../hooks/useEmailReviewQueue';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   deals: Deal[];

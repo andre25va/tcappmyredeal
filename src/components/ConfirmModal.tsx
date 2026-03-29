@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 import { Modal } from './ui/Modal';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   isOpen: boolean;

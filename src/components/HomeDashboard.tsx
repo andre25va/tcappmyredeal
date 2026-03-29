@@ -9,7 +9,7 @@ import { Deal, DealStatus, DealMilestone } from '../types';
 import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import { supabase } from '../lib/supabase';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 interface Props {
   deals: Deal[];

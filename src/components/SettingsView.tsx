@@ -22,7 +22,7 @@ import { BriefingConfigPanel }     from './settings/BriefingConfigPanel';
 import { MilestonesTab }           from './settings/MilestonesTab';
 import { OrgManagementTab }        from './settings/OrgManagementTab';
 import { ClientPortalTab }         from './settings/ClientPortalTab';
-import { Button } from '@/components/ui/Button';
+import { Button } from './ui/Button';
 
 // -- Props
 

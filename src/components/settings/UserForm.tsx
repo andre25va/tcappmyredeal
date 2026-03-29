@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { AppUser, UserRole } from '../../types';
 import { generateId } from '../../utils/helpers';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',

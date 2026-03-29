@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Check, Trash2, ExternalLink, AlertCircle, Search, Pencil } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '../ui/Button';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
