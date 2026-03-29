@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 'lucide-react';
 import { StatusBadge } from './ui/StatusBadge';
+import { EmptyState } from './ui/EmptyState';
 import { CallButton } from './CallButton';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -202,7 +203,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
   /* ── Render helpers ──────────────────────────────────────────────── */
 
   const renderVoiceTab = () => {
-    if (voiceUpdates.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-base-content/40"><span className="text-4xl mb-2">🎙️</span><p className="text-sm">No pending voice updates</p></div>;
+    if (voiceUpdates.length === 0) return <EmptyState icon={<span className="text-4xl">🎙️</span>} title="No pending voice updates" />;
     return (
       <div className="flex flex-col gap-3">
         {voiceUpdates.map((v: any) => (
@@ -294,7 +295,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
   };
 
   const renderCallbacksTab = () => {
-    if (callbacks.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-base-content/40"><span className="text-4xl mb-2">☎️</span><p className="text-sm">No open callback requests</p></div>;
+    if (callbacks.length === 0) return <EmptyState icon={<span className="text-4xl">☎️</span>} title="No open callback requests" />;
     return (
       <div className="flex flex-col gap-3">
         {callbacks.map((cb: any) => (
@@ -344,7 +345,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
   };
 
   const renderChangesTab = () => {
-    if (changeReqs.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-base-content/40"><span className="text-4xl mb-2">⚡</span><p className="text-sm">No pending change requests</p></div>;
+    if (changeReqs.length === 0) return <EmptyState icon={<span className="text-4xl">⚡</span>} title="No pending change requests" />;
     const impactColors: Record<string, string> = { critical: 'badge-error', high: 'badge-warning text-orange-700 bg-orange-100 border-orange-200', medium: 'badge-warning', low: 'badge-success' };
     return (
       <div className="flex flex-col gap-3">
@@ -383,7 +384,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
   };
 
   const renderUnidentifiedTab = () => {
-    if (unidentified.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-base-content/40"><span className="text-4xl mb-2">❓</span><p className="text-sm">No unidentified callers</p></div>;
+    if (unidentified.length === 0) return <EmptyState icon={<span className="text-4xl">❓</span>} title="No unidentified callers" />;
     const filteredContacts = contacts.filter(c => {
       const term = contactSearch.toLowerCase();
       const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();

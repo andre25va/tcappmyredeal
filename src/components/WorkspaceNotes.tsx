@@ -11,6 +11,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Deal } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -178,12 +179,11 @@ export default function WorkspaceNotes({ deal }: Props) {
 
       {/* Notes list */}
       {notes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center">
-          <StickyNote className="w-10 h-10 text-base-content/20 mb-2" />
-          <p className="text-sm text-base-content/50">
-            No internal notes yet. Add a note to track important deal details.
-          </p>
-        </div>
+        <EmptyState
+          icon={<StickyNote className="w-10 h-10" />}
+          title="No internal notes yet"
+          message="Add a note to track important deal details."
+        />
       ) : (
         <div className="space-y-2">
           {notes.map((note) => {

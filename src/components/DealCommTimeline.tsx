@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { RefreshCw, ChevronDown, ChevronUp, Phone } from 'lucide-react';
 import { CallButton } from './CallButton';
 import { Deal } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -156,10 +157,10 @@ export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCall
 
             {/* Timeline */}
             {filteredEvents.length === 0 && changeReqs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
-                <span className="text-4xl mb-2">📞</span>
-                <p className="text-sm">No communications recorded for this deal yet</p>
-              </div>
+              <EmptyState
+                icon={<span className="text-4xl">📞</span>}
+                title="No communications recorded for this deal yet"
+              />
             ) : filteredEvents.length === 0 ? null : (
               <div className="flex flex-col gap-3">
                 {filteredEvents.map(ev => {

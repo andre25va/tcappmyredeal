@@ -7,6 +7,7 @@ import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId } from '../utils/helpers';
 import { supabase } from '../lib/supabase';
+import { EmptyState } from './ui/EmptyState';
 
 interface ChangeDiff { field: string; old_value: string; new_value: string; }
 
@@ -368,10 +369,10 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
           <span className="loading loading-spinner loading-md text-primary" />
         </div>
       ) : grouped.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-base-content/30">
-          <Activity size={32} className="mb-2 opacity-30" />
-          <p className="text-sm">No activity recorded for this deal yet.</p>
-        </div>
+        <EmptyState
+          icon={<Activity size={32} className="opacity-30" />}
+          title="No activity recorded for this deal yet."
+        />
       ) : (
         grouped.map(group => (
           <div key={group.date}>

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { CallButton } from './CallButton';
+import { EmptyState } from './ui/EmptyState';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -785,24 +786,20 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
       {/* Task list */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-3">
-            <CheckSquare size={40} className="opacity-30" />
-            <p className="text-sm font-medium">
-              {searchQuery ? 'No tasks match your search' : 'No tasks here'}
-            </p>
-            <p className="text-xs text-center max-w-xs">
-              {statusFilter === 'active'
-                ? 'Create a task to follow up with clients via SMS, Email, or WhatsApp.'
-                : statusFilter === 'done'
-                ? 'Completed tasks will appear here.'
-                : 'No tasks with this status.'}
-            </p>
-            {statusFilter === 'active' && (
+          <EmptyState
+            icon={<CheckSquare size={40} className="opacity-30" />}
+            title={searchQuery ? 'No tasks match your search' : 'No tasks here'}
+            message={statusFilter === 'active'
+              ? 'Create a task to follow up with clients via SMS, Email, or WhatsApp.'
+              : statusFilter === 'done'
+              ? 'Completed tasks will appear here.'
+              : 'No tasks with this status.'}
+            action={statusFilter === 'active' ? (
               <button onClick={() => setShowCreate(true)} className="btn btn-primary btn-sm gap-1.5 mt-2">
                 <Plus size={13} /> Create First Task
               </button>
-            )}
-          </div>
+            ) : undefined}
+          />
         ) : (
           filteredTasks.map(task => (
             <TaskCard

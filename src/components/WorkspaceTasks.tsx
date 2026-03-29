@@ -9,6 +9,7 @@ import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';
 import { StatusBadge } from './ui/StatusBadge';
 import { supabase } from '../lib/supabase';
+import { EmptyState } from './ui/EmptyState';
 
 // ── Comm task types (mirrors comm_tasks table) ──────────────────────────────
 
@@ -477,10 +478,11 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
 
       {/* Empty state */}
       {tasks.length === 0 && commTasks.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-300 gap-3">
-          <CheckSquare size={40} />
-          <p className="text-sm">No tasks yet. Advance the milestone or add a task manually.</p>
-        </div>
+        <EmptyState
+          icon={<CheckSquare size={40} />}
+          title="No tasks yet"
+          message="Advance the milestone or add a task manually."
+        />
       )}
 
       {/* ── Checklist tasks by urgency ─────────────────────────────────────── */}

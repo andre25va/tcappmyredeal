@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Paperclip, Zap, User, Sparkles, RefreshCw, Inbox, ChevronDown, ChevronUp } from 'lucide-react';
 import { useLinkedEmails, LinkedEmailThread } from '../hooks/useLinkedEmails';
 import { Deal } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 interface Props {
   deal: Deal;
@@ -234,15 +235,11 @@ export const WorkspaceLinkedEmails: React.FC<Props> = ({ deal, onUnreadCount }) 
 
       {/* Thread list */}
       {threads.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-          <div className="w-12 h-12 rounded-full bg-base-200 flex items-center justify-center">
-            <Mail size={20} className="text-base-content/30" />
-          </div>
-          <p className="text-sm font-medium text-base-content/60">No linked emails yet</p>
-          <p className="text-xs text-base-content/40 max-w-xs">
-            Emails sent to tc@myredeal.com that mention this deal's address will automatically appear here.
-          </p>
-        </div>
+        <EmptyState
+          icon={<Mail size={20} />}
+          title="No linked emails yet"
+          message="Emails sent to tc@myredeal.com that mention this deal's address will automatically appear here."
+        />
       ) : (
         <div className="space-y-2">
           {threads.map(thread => (

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useEmailReviewQueue, ReviewQueueItem } from '../hooks/useEmailReviewQueue';
 import { Deal } from '../types';
+import { EmptyState } from './ui/EmptyState';
 
 interface Props {
   deals: Deal[];
@@ -436,10 +437,7 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
 
         {!loading && !error && section === 'review' && (
           needsReview.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-base-content/30 gap-2">
-              <CheckCircle size={32} />
-              <p className="text-sm">No emails need review</p>
-            </div>
+            <EmptyState icon={<CheckCircle size={32} />} title="No emails need review" />
           ) : (
             needsReview.map(item => (
               <ReviewCard
@@ -456,10 +454,7 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
 
         {!loading && !error && section === 'unmatched' && (
           unmatched.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-base-content/30 gap-2">
-              <Inbox size={32} />
-              <p className="text-sm">No unmatched emails</p>
-            </div>
+            <EmptyState icon={<Inbox size={32} />} title="No unmatched emails" />
           ) : (
             unmatched.map(item => (
               <UnmatchedCard
@@ -474,10 +469,7 @@ export const EmailReviewQueueView: React.FC<Props> = ({ deals, onSelectDeal }) =
 
         {!loading && !error && section === 'linked' && (
           recentlyLinked.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-base-content/30 gap-2">
-              <Link2 size={32} />
-              <p className="text-sm">No recently linked threads</p>
-            </div>
+            <EmptyState icon={<Link2 size={32} />} title="No recently linked threads" />
           ) : (
             recentlyLinked.map(thread => (
               <div

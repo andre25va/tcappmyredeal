@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, AlertCircle, RefreshCw, ChevronRight, FileText } from 'lucide-react';
 import { FIELD_DEAL_MAP, fmtExtracted } from '../utils/contractExtraction';
+import { EmptyState } from './ui/EmptyState';
 
 interface StepExtractedDataProps {
   extractedData: Record<string, unknown> | null;
@@ -29,12 +30,11 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           <FileText size={18} className="text-base-content/40" />
           <h3 className="text-lg font-bold text-base-content">AI Extraction Review</h3>
         </div>
-        <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
-          <AlertCircle size={32} className="text-base-content/30" />
-          <p className="text-base-content/60 text-sm max-w-xs">
-            No extraction data available. You can fill in the fields manually.
-          </p>
-        </div>
+        <EmptyState
+          icon={<AlertCircle size={32} />}
+          title="No extraction data available"
+          message="You can fill in the fields manually."
+        />
         <div className="flex flex-col gap-2">
           <button
             onClick={onEdit}
