@@ -5,7 +5,7 @@ import {
   Archive, RotateCcw, UserX, Home, Calendar,
 } from 'lucide-react';
 import { Deal, DealStatus } from '../types';
-import { statusLabel, statusDot, daysUntil } from '../utils/helpers';
+import { statusLabel, statusDot, daysUntil, formatDate } from '../utils/helpers';
 
 type ViewFilter = 'active' | 'closed' | 'archived' | 'all';
 type AgentTypeFilter = 'all' | 'buyer' | 'seller';
@@ -86,14 +86,6 @@ function getAgentUrgencyScore(agentDeals: Deal[]): number {
   });
   if (overdueCount > 0) return -overdueCount * 10000 + minDays;
   return minDays === Infinity ? 999999 : minDays;
-}
-
-function formatCloseDate(dateStr: string | undefined): string {
-  if (!dateStr) return '\u2014';
-  try {
-    const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-  } catch { return dateStr; }
 }
 
 // ── CellTooltip ───────────────────────────────────────────────────────────────
@@ -446,7 +438,7 @@ export const AgentCardView: React.FC<Props> = ({
                           const propTypeLabel = deal.propertyType
                             ? (PROPERTY_TYPE_LABELS[deal.propertyType] ?? deal.propertyType)
                             : '\u2014';
-                          const closeDateStr = formatCloseDate(
+                          const closeDateStr = formatDate(
                             deal.closingDate ?? (deal as any).closeDate ?? (deal as any).closing_date
                           );
 
@@ -458,7 +450,7 @@ export const AgentCardView: React.FC<Props> = ({
 
                           // Tooltip text for Next Due cell
                           const nextDueTooltip = nextItem
-                            ? `${nextItem.label} — Due ${formatCloseDate(nextItem.dueDate)}`
+                            ? `${nextItem.label} — Due ${formatDate(nextItem.dueDate)}`
                             : '';
 
                           return (

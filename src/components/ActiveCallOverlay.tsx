@@ -5,6 +5,7 @@ import {
   Clock, Loader2, ChevronRight, CalendarDays, Building2, Edit3, ChevronDown, X,
 } from 'lucide-react';
 import { Deal } from '../types';
+import { formatDate } from '../utils/helpers';
 import { PageIdBadge } from './PageIdBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 
@@ -332,7 +333,7 @@ export const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
                   <div className="flex justify-between">
                     <span className="text-base-content/50">Closing</span>
                     <span className="font-medium text-base-content">
-                      {new Date(deal.closingDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {formatDate(deal.closingDate)}
                     </span>
                   </div>
                 )}

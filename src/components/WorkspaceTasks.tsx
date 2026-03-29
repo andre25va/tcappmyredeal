@@ -4,7 +4,7 @@ import {
   MoreVertical, Smartphone, AtSign, MessageCircle, Phone, Loader2,
 } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, AppUser } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';
 import { supabase } from '../lib/supabase';
@@ -219,10 +219,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
   const activeCommTasks = commTasks.filter(t => t.status !== 'done');
   const doneCommTasks   = commTasks.filter(t => t.status === 'done');
 
-  const formatDue = (date: string) => {
-    const d = new Date(date + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDue = (date: string) => formatDate(date);
 
   const formatRelative = (dateStr: string) => {
     const d = new Date(dateStr);

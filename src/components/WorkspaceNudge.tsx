@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { formatDate, formatDateTime } from '../utils/helpers';
 import { useAuth } from '../contexts/AuthContext';
 import { Deal } from '../types';
 import {
@@ -63,7 +64,7 @@ function resolveMergeTags(
   resolved = resolved.replace(
     /\{\{due_date\}\}/g,
     task?.due_date
-      ? new Date(task.due_date).toLocaleDateString()
+      ? formatDate(task.due_date)
       : ''
   );
   resolved = resolved.replace(
@@ -72,25 +73,6 @@ function resolveMergeTags(
   );
   resolved = resolved.replace(/\{\{deal_ref\}\}/g, deal.dealRef ?? '');
   return resolved;
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
