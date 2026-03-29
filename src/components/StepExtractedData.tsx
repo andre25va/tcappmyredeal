@@ -92,8 +92,16 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   const foundRows = rows.filter(r => r.displayValue !== null);
   const missingRows = rows.filter(r => r.displayValue === null);
 
-  // Confidence — some extraction results include a top-level confidence score
-  const confidence = (extractedData as any)?.confidence as string | undefined;
+  // Confidence — extract-deal returns confidence as 0.0-1.0 number; map to label
+  const confidenceRaw = (extractedData as any)?.confidence;
+  const confidence: string | undefined =
+    confidenceRaw == null
+      ? undefined
+      : typeof confidenceRaw === 'string'
+      ? confidenceRaw
+      : typeof confidenceRaw === 'number'
+      ? confidenceRaw >= 0.8 ? 'high' : confidenceRaw >= 0.5 ? 'medium' : 'low'
+      : undefined;
 
   return (
     <div className="space-y-4">

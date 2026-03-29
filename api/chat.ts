@@ -780,7 +780,7 @@ export default async function handler(req: any, res: any) {
       entity_type: 'ai_chat',
       description: `AI Chat: ${messages[messages.length - 1]?.content?.substring(0, 200)}`,
       metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds, navigated: !!navigateTo }),
-    }).then(() => {}).catch(() => {});
+    }).then(() => {}, () => {});
 
     return res.status(200).json({ reply, toolsUsed: rounds > 0, navigateTo, propertyEmailSearch });
   } catch (err: any) {
