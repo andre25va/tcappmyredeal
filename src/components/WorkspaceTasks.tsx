@@ -4,7 +4,7 @@ import {
   MoreVertical, Smartphone, AtSign, MessageCircle, Phone, Loader2,
 } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, AppUser } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId formatDate, } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';
 import { StatusBadge } from './ui/StatusBadge';
@@ -215,10 +215,6 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
   const activeCommTasks = commTasks.filter(t => t.status !== 'done');
   const doneCommTasks   = commTasks.filter(t => t.status === 'done');
 
-  const formatDue = (date: string) => {
-    const d = new Date(date + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
 
   const formatRelative = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -249,7 +245,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Calendar size={10} />
-                {task.completedAt ? `Done ${formatDue(task.completedAt)}` : formatDue(task.dueDate)}
+                {task.completedAt ? `Done ${formatDate(task.completedAt)}` : formatDate(task.dueDate)}
               </span>
               <StatusBadge status={task.priority} />
               <span className="text-xs text-gray-400">{task.category}</span>
