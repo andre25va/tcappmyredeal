@@ -468,6 +468,19 @@ export async function deleteDealParticipant(id: string): Promise<void> {
 }
 
 /**
+ * Fetches all participants for a single deal, including nested contact info
+ * needed for display in the WorkspaceOverview panel.
+ */
+export async function getDealParticipants(dealId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('deal_participants')
+    .select(`id, deal_role, side, is_extracted, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
+    .eq('deal_id', dealId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
  * Syncs free-text buyer/seller/lender names from the Edit Deal form into
  * deal_participants + contacts. Only creates stub records when a participant
  * with that role does not already exist for the deal.
