@@ -160,7 +160,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
     .from('deals')
     .select(`
       id, property_address, city, state, zip, mls_number,
-      deal_type, status, pipeline_stage,
+      status, pipeline_stage,
       contract_date, closing_date, purchase_price, notes, legal_description,
       primary_client_account_id, transaction_type, risk_level,
       assigned_tc_user_id, assigned_compliance_user_id,
@@ -209,7 +209,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       propertyType: (row.property_type || (dd.propertyType as string) || 'single-family') as PropertyType,
       status: (row.status || (dd.status as string) || 'contract') as DealStatus,
       milestone: (row.pipeline_stage || (dd.milestone as string) || 'contract-received') as DealMilestone,
-      transactionType: (row.transaction_type || row.deal_type || (dd.transactionType as string) || 'buyer') as TransactionType,
+      transactionType: (row.transaction_type || (dd.transactionType as string) || 'buyer') as TransactionType,
       riskLevel: row.risk_level || 'normal',
       contractDate: row.contract_date || (dd.contractDate as string) || '',
       closingDate: row.closing_date || (dd.closingDate as string) || '',
@@ -290,7 +290,6 @@ export async function saveDeals(deals: Deal[]): Promise<void> {
     state: deal.state ?? null,
     zip: deal.zipCode ?? null,
     mls_number: deal.mlsNumber ?? null,
-    deal_type: deal.transactionType || 'buyer',
     status: deal.status ?? 'contract',
     pipeline_stage: deal.milestone ?? 'contract-received',
     contract_date: deal.contractDate || null,
@@ -361,7 +360,6 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       state: deal.state ?? null,
       zip: deal.zipCode ?? null,
       mls_number: deal.mlsNumber ?? null,
-      deal_type: deal.transactionType || 'buyer',
       status: deal.status ?? 'contract',
       pipeline_stage: deal.milestone ?? 'contract-received',
       contract_date: deal.contractDate || null,
@@ -396,16 +394,6 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
       org_id: deal.orgId ?? null,
-      created_by_user_id: (deal as any).createdByUserId ?? createdByUserId ?? null,
-      buyers_agent_id:
-        deal.transactionType === 'buyer' && agentContactId
-          ? agentContactId
-          : null,
-      listing_agent_id:
-        deal.transactionType === 'seller' && agentContactId
-          ? agentContactId
-          : null,
-      title_company_id: titleContactId,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },
