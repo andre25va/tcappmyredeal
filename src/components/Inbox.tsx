@@ -16,10 +16,10 @@ import {
   parseFromName, formatFileSize, getFileIcon, waitingDuration
 } from './inbox/helpers';
 import {
-import { LoadingSpinner } from './ui/LoadingSpinner';
   ChannelBadge, ChannelAvatar, AttachmentChips,
   EmailBodyRenderer, NeedReplyCheckbox
 } from './inbox/InboxAtoms';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
 const TC_LABEL_LINKED = 'Label_29';
 const TC_LABEL_NEEDS_REVIEW = 'Label_30';
