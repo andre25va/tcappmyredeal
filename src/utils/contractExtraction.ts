@@ -93,7 +93,7 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
     const val = f.value;
     if (!val) return;
     const boolKeys = ['asIsSale', 'inspectionWaived', 'homeWarranty'];
-    const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount'];
+    const moneyKeys = ['contractPrice', 'listPrice', 'earnestMoney', 'loanAmount', 'clientAgentCommission'];
     if (boolKeys.includes(f.key)) {
       updates[f.key] = val === 'true' || val === 'yes' || val === '1';
     } else if (moneyKeys.includes(f.key)) {
@@ -108,8 +108,6 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
       updates['titleCompanyName'] = val;
     } else if (f.key === 'loanOfficer') {
       updates['loanOfficerName'] = val;
-    } else if (f.key === 'clientAgentCommission') {
-      updates['clientAgentCommission'] = parseFloat(val.replace(/[$,]/g, '')) || undefined;
     } else {
       updates[f.key] = val;
     }
