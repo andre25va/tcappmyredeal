@@ -407,6 +407,7 @@ const extractDealSchema = {
     sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    additionalSellerCosts: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -424,7 +425,7 @@ const extractDealSchema = {
   required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'contractPrice', 'mlsNumber',
     'contractDate', 'closingDate', 'inspectionDeadline', 'loanCommitmentDate', 'possessionDate',
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'downPaymentPercent', 'sellerCredit', 'buyerAgentCommission', 'listingAgentCommission',
+    'downPaymentAmount', 'downPaymentPercent', 'sellerCredit', 'buyerAgentCommission', 'listingAgentCommission', 'additionalSellerCosts',
     'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
     'homeWarrantyCompany', 'legalDescription', 'confidence', 'extractedFields'],
@@ -1026,6 +1027,7 @@ For transactionType: if this is a buyer's purchase offer/agreement, return "buye
 For buyerAgentCommission and listingAgentCommission: extract each agent's commission as written on the contract. If shown as a percentage (e.g. "3%"), return the string "3%". If shown as a dollar amount (e.g. "$4,950"), return the numeric string "4950". If both are stated, return the percentage (e.g. "3%"). Return null if not found.
 For downPaymentPercent: extract or infer the down payment percentage. If explicitly stated (e.g. "5%", "20%"), use that. If not stated but LTV (loan-to-value) is present, calculate it as 100% minus LTV (e.g. LTV 97% → "3%"). Return the string including the % sign (e.g. "3%"). Return null only if neither down payment % nor LTV can be found.
 For sellerCredit: extract any explicit seller credit or seller contribution toward buyer closing costs as a numeric string without formatting (e.g. "5000" not "$5,000"). Return null if not found.
+For additionalSellerCosts: in the "Total Additional Seller Expenses" section (often labeled section f), extract the dollar amount from line 2 "Additional SELLER paid costs" — extra closing costs the seller agreed to pay beyond agent compensation. Return as a numeric string without formatting (e.g. "4380" not "$4,380"). Return null if not found.
 For propertyType: infer from property description. Default to "single-family".
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
