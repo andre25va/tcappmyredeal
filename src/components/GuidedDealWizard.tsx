@@ -205,7 +205,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     specialNotes: '',
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '', extractedDpPct: '',
-    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
+    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', sellerCredit: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDate: '', financeDeadline: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
@@ -676,6 +676,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           earnestMoney: d.earnestMoney || p.earnestMoney,
           earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
           sellerConcessions: d.sellerConcessions || p.sellerConcessions,
+          sellerCredit: d.sellerCredit || p.sellerCredit || '',
           loanType: d.loanType || p.loanType,
           loanAmount: d.loanAmount || p.loanAmount,
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
@@ -683,11 +684,24 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           sellerNames: d.sellerNames || p.sellerNames,
           titleCompany: d.titleCompany || p.titleCompany,
           loanOfficer: d.loanOfficer || p.loanOfficer,
-          commissionAmount: d.commissionAmount || p.commissionAmount,
+          // buyerAgentCommission comes from AI extraction (e.g. "3%" or "4950").
+          // Map it to the correct form fields based on whether it's % or dollar amount.
+          commissionAmount: (() => {
+            const raw = d.buyerAgentCommission || d.commissionAmount;
+            if (!raw) return p.commissionAmount;
+            if (String(raw).includes('%')) return p.commissionAmount; // % form — no $ yet
+            return String(raw);
+          })(),
           clientAgentCommissionPct: (() => {
             const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
-            const commAmt = stripFmt(d.commissionAmount || p.commissionAmount || '0');
-            const price = stripFmt(d.purchasePrice || p.purchasePrice || '0');
+            const agentComm = d.buyerAgentCommission;
+            // If AI returns a % (e.g. "3%"), use it directly
+            if (agentComm && String(agentComm).includes('%')) {
+              return parseFloat(String(agentComm)).toFixed(2);
+            }
+            // Otherwise derive % from dollar amount ÷ price
+            const commAmt = stripFmt(agentComm || d.commissionAmount || p.commissionAmount || '0');
+            const price = stripFmt(d.contractPrice || d.purchasePrice || p.purchasePrice || '0');
             if (commAmt && price) return (calcCommissionPct(price, commAmt)).toFixed(2);
             return p.clientAgentCommissionPct;
           })(),
@@ -1988,7 +2002,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     downPaymentPercent={form.extractedDpPct || form.downPaymentPercent}
                     loanType={form.loanType}
                     clientAgentCommission={form.commissionAmount}
+                    clientAgentCommissionPct={form.clientAgentCommissionPct}
                     sellerConcessions={form.sellerConcessions}
+                    sellerCredit={form.sellerCredit || ''}
                   />
                 )}
               </div>
