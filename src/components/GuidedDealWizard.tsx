@@ -205,7 +205,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     specialNotes: '',
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '', extractedDpPct: '',
-    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', sellerCredit: '',
+    earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', sellerCredit: '', additionalSellerCosts: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDate: '', financeDeadline: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
@@ -677,6 +677,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           earnestMoneyDueDate: d.earnestMoneyDueDate || p.earnestMoneyDueDate,
           sellerConcessions: d.sellerConcessions || p.sellerConcessions,
           sellerCredit: d.sellerCredit || p.sellerCredit || '',
+          additionalSellerCosts: d.additionalSellerCosts || p.additionalSellerCosts || '',
           loanType: d.loanType || p.loanType,
           loanAmount: d.loanAmount || p.loanAmount,
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
@@ -2005,6 +2006,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     clientAgentCommissionPct={form.clientAgentCommissionPct}
                     sellerConcessions={form.sellerConcessions}
                     sellerCredit={form.sellerCredit || ''}
+                    additionalSellerCosts={form.additionalSellerCosts || ''}
                   />
                 )}
               </div>

@@ -13,6 +13,7 @@ interface Props {
   clientAgentCommissionPct?: string; // ln 207 % if available
   sellerConcessions: string;    // ln 211
   sellerCredit?: string;
+  additionalSellerCosts?: string;
 }
 
 const LOAN_DP_DEFAULTS: Record<string, number> = {
@@ -115,6 +116,7 @@ const ContractReferencePanel: React.FC<Props> = ({
   clientAgentCommissionPct = '',
   sellerConcessions,
   sellerCredit = '',
+  additionalSellerCosts = '',
 }) => {
   const price   = parseFloat(contractPrice) || parseFloat(listPrice) || 0;
   const loan    = parseFloat(loanAmount) || 0;
@@ -122,8 +124,9 @@ const ContractReferencePanel: React.FC<Props> = ({
   const addlEM  = parseFloat(additionalEarnestMoney) || 0;
   const comm    = parseFloat(clientAgentCommission) || 0;
   const commPct = parseFloat(clientAgentCommissionPct) || 0;
-  const conc    = parseFloat(sellerConcessions) || 0;
-  const credit  = parseFloat(sellerCredit) || 0;
+  const conc      = parseFloat(sellerConcessions) || 0;
+  const credit    = parseFloat(sellerCredit) || 0;
+  const addlCosts = parseFloat(additionalSellerCosts) || 0;
 
   // ── "Should Be" down payment % ────────────────────────────────────────────
   const extractedDpPct = parseFloat(downPaymentPercent) || 0;
@@ -140,14 +143,14 @@ const ContractReferencePanel: React.FC<Props> = ({
 
   // ── RIGHT: what the contract/extraction says (raw values) ─────────────────
   const contractCertFunds   = price > 0 && loan > 0 ? price - em - addlEM - loan : 0;
-  const contractTotalSeller = comm + conc + credit;
+  const contractTotalSeller = comm + addlCosts + credit;
 
   // ── LEFT: "Should Be" — independent calculation from first principles ──────
   const shouldBeLoan        = price > 0 ? Math.round(price * (ltv / 100)) : 0;
   const shouldBeDownPmt     = price > 0 ? Math.round(price * (rightDpPct / 100)) : 0;
   const shouldBeCertFunds   = shouldBeDownPmt - em - addlEM;
   const shouldBeComm        = commPct > 0 && price > 0 ? Math.round((commPct / 100) * price) : comm;
-  const shouldBeTotalSeller = shouldBeComm + conc + credit;
+  const shouldBeTotalSeller = shouldBeComm + addlCosts + credit;
 
   // ── mismatches ────────────────────────────────────────────────────────────
   const loanMismatch  = loan > 0 && shouldBeLoan > 0 && Math.abs(loan - shouldBeLoan) > 1;
@@ -260,8 +263,8 @@ const ContractReferencePanel: React.FC<Props> = ({
           <Row
             label="+ Add'l Seller Costs"
             lineNo="211"
-            shouldBeVal={fmtSigned(conc, '+')}
-            contractVal={fmtSigned(conc, '+')}
+            shouldBeVal={fmtSigned(addlCosts, '+')}
+            contractVal={fmtSigned(addlCosts, '+')}
           />
           {credit > 0 && (
             <Row
