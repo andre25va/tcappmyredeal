@@ -419,6 +419,8 @@ const extractDealSchema = {
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
@@ -428,7 +430,7 @@ const extractDealSchema = {
     'downPaymentAmount', 'downPaymentPercent', 'sellerCredit', 'buyerAgentCommission', 'listingAgentCommission', 'additionalSellerCosts',
     'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'confidence', 'extractedFields'],
+    'homeWarrantyCompany', 'legalDescription', 'buyerAgentName', 'sellerAgentName', 'confidence', 'extractedFields'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1028,6 +1030,9 @@ For buyerAgentCommission and listingAgentCommission: extract each agent's commis
 For downPaymentPercent: extract or infer the down payment percentage. If explicitly stated (e.g. "5%", "20%"), use that. If not stated but LTV (loan-to-value) is present, calculate it as 100% minus LTV (e.g. LTV 97% → "3%"). Return the string including the % sign (e.g. "3%"). Return null only if neither down payment % nor LTV can be found.
 For sellerCredit: extract any explicit seller credit or seller contribution toward buyer closing costs as a numeric string without formatting (e.g. "5000" not "$5,000"). Return null if not found.
 For additionalSellerCosts: in the "Total Additional Seller Expenses" section (often labeled section f), extract the dollar amount from line 2 "Additional SELLER paid costs" — extra closing costs the seller agreed to pay beyond agent compensation. Return as a numeric string without formatting (e.g. "4380" not "$4,380"). Return null if not found.
+For buyerAgentName: extract the full name of the buyer's agent (also called buyer's representative, buyer's broker, selling agent, or buyer's licensee). On Heartland MLS / Kansas City contracts, look specifically for the line labeled "Name of Licensee assisting Buyer (Please Print)" — the name filled in on that line is the buyer agent. Also check: the commission section (section f), the broker certification block, the two-column broker signature area on the last page, or any line labeled "Buyer's Agent", "Buyer's Broker", "Selling Agent", or "Licensee". Return the agent's personal name (not the brokerage/company name). Return null if not found.
+For sellerAgentName: extract the full name of the seller's agent (also called listing agent, seller's broker, seller's representative, or seller's licensee). On Heartland MLS / Kansas City contracts, look specifically for the line labeled "Name of Licensee assisting Seller (Please Print)" — the name filled in on that line is the seller agent. Also check: the commission section (section f), the broker certification block, the two-column broker signature area on the last page, or any line labeled "Listing Agent", "Seller's Agent", "Seller's Broker", or "Licensee". Return the agent's personal name (not the brokerage/company name). Return null if not found.
+For titleCompany: extract the name of the title company or escrow company holding the earnest money. On Heartland MLS / Kansas City contracts, look in section 4.b (Earnest Money) for the line labeled "Deposited with:" — the company name filled in there is the earnest money holder / title company. Also check section 4.c for a second "Deposited with:" line. Return the company name only (e.g., "Security 1st Title"). Return null if not found.
 For propertyType: infer from property description. Default to "single-family".
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
