@@ -210,6 +210,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDate: '', financeDeadline: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
+    buyerAgentName: '', sellerAgentName: '',
     commissionAmount: '', clientAgentCommissionPct: '', tcFee: '',
     titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
     legalDescription: '',
@@ -678,6 +679,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           sellerConcessions: d.sellerConcessions || p.sellerConcessions,
           sellerCredit: d.sellerCredit || p.sellerCredit || '',
           additionalSellerCosts: d.additionalSellerCosts || p.additionalSellerCosts || '',
+          buyerAgentName: (d.buyerAgentName as string) || p.buyerAgentName || '',
+          sellerAgentName: (d.sellerAgentName as string) || p.sellerAgentName || '',
           loanType: d.loanType || p.loanType,
           loanAmount: d.loanAmount || p.loanAmount,
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
@@ -690,13 +693,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           commissionAmount: (() => {
             const raw = d.buyerAgentCommission || d.commissionAmount;
             if (!raw) return p.commissionAmount;
-            if (String(raw).includes('%')) {
-              // AI returned a %, compute dollar amount from contract price
-              const pct = parseFloat(String(raw));
-              const price = parseFloat((d.contractPrice || d.purchasePrice || p.purchasePrice || '').replace(/[$,]/g, ''));
-              if (pct && price) return String(Math.round((pct / 100) * price));
-              return p.commissionAmount;
-            }
+            if (String(raw).includes('%')) return p.commissionAmount; // % form — no $ yet
             return String(raw);
           })(),
           clientAgentCommissionPct: (() => {
@@ -927,6 +924,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       titleCompanyName: form.titleCompany || undefined,
       titleCompanySide: (form.titleCompanySide === 'both' ? 'internal' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'internal',
       loanOfficerName: form.loanOfficer || undefined,
+      buyerAgentName: form.buyerAgentName || undefined,
+      sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
         ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
