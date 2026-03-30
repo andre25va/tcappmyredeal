@@ -697,7 +697,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               if (pct && price) return String(Math.round((pct / 100) * price));
               return p.commissionAmount;
             }
-            return String(raw).replace(/[$,]/g, ''); // strip any $ formatting
+            return String(raw);
           })(),
           clientAgentCommissionPct: (() => {
             const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
