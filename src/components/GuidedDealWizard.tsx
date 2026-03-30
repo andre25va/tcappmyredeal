@@ -204,7 +204,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     agentClientId: '',
     specialNotes: '',
     loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
-    loanAmount: '', downPaymentAmount: '', downPaymentPercent: '',
+    loanAmount: '', downPaymentAmount: '', downPaymentPercent: '', extractedDpPct: '',
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '',
     asIsSale: false, inspectionWaived: false,
     homeWarranty: false, homeWarrantyCompany: '',
@@ -719,6 +719,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             updated.downPaymentPercent = rawPct.toFixed(1);
           } else {
             updated.downPaymentPercent = cp > 0 ? ((totalGap / cp) * 100).toFixed(1) : '';
+          }
+          // Always store AI-extracted DP% (from LTV line 330) separately so recalc never overwrites it.
+          // The panel uses this for independent "Should Be" calculations.
+          if (d.downPaymentPercent) {
+            let rawExtracted = parseFloat(d.downPaymentPercent as string);
+            if (rawExtracted > 0 && rawExtracted < 1) rawExtracted = rawExtracted * 100;
+            updated.extractedDpPct = rawExtracted.toFixed(1);
           }
         }
         return updated;
@@ -1978,7 +1985,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     loanAmount={form.loanAmount}
                     earnestMoney={form.earnestMoney}
                     downPaymentAmount={form.downPaymentAmount}
-                    downPaymentPercent={form.downPaymentPercent}
+                    downPaymentPercent={form.extractedDpPct || form.downPaymentPercent}
                     loanType={form.loanType}
                     clientAgentCommission={form.commissionAmount}
                     sellerConcessions={form.sellerConcessions}
