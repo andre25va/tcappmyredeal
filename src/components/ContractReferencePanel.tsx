@@ -1,120 +1,288 @@
 import React from 'react';
-import { calculateDownPayment } from '../utils/helpers';
 
 interface Props {
   contractPrice: string;
   listPrice: string;
-  loanAmount: string;
-  earnestMoney: string;
+  loanAmount: string;           // ln 196 — what agent wrote
+  earnestMoney: string;         // ln 176
+  additionalEarnestMoney?: string; // ln 186
+  downPaymentPercent: string;   // ln 330 LTV-derived % (e.g. "3" for 97% LTV)
   downPaymentAmount: string;
-  downPaymentPercent: string;
-  clientAgentCommission: string;
-  sellerConcessions: string;
+  loanType?: string;            // conventional / fha / va / usda / cash
+  clientAgentCommission: string;     // ln 207 $ amount
+  clientAgentCommissionPct?: string; // ln 207 % if available
+  sellerConcessions: string;    // ln 211
+  sellerCredit?: string;
 }
 
+const LOAN_DP_DEFAULTS: Record<string, number> = {
+  fha: 3.5,
+  va: 0,
+  usda: 0,
+  conventional: 5,
+  cash: 0,
+  other: 0,
+};
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+const fmt = (n: number) =>
+  n === 0 ? '—' : '$' + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+const fmtSigned = (n: number, sign: '−' | '+') =>
+  n > 0 ? sign + fmt(n) : '—';
+
+// ─── single comparison row ───────────────────────────────────────────────────
+const Row: React.FC<{
+  label: string;
+  lineNo?: string;
+  contractVal: string;
+  correctVal: string;
+  mismatch?: boolean;       // contract side is wrong
+  match?: boolean;          // both match, highlight green
+  isTotal?: boolean;
+  dim?: boolean;
+}> = ({ label, lineNo, contractVal, correctVal, mismatch = false, match = false, isTotal = false, dim = false }) => {
+  const rowCls = isTotal ? 'border-t border-base-300' : '';
+  const labelCls = dim ? 'text-base-content/35' : 'text-base-content/60';
+  const lnCls = 'text-base-content/35 font-normal';
+
+  const contractCls = mismatch
+    ? 'text-red-600 font-bold'
+    : dim
+    ? 'text-base-content/35'
+    : isTotal
+    ? 'font-bold text-base-content'
+    : 'text-base-content/80';
+
+  const correctCls = mismatch
+    ? 'text-green-700 font-bold'
+    : match
+    ? 'text-green-700 font-semibold'
+    : dim
+    ? 'text-base-content/35'
+    : isTotal
+    ? 'font-bold text-base-content'
+    : 'text-base-content/80';
+
+  return (
+    <tr className={rowCls}>
+      {/* Label + line number */}
+      <td className={`py-1 pr-2 text-xs ${labelCls} whitespace-nowrap`}>
+        {label}
+        {lineNo && <span className={`ml-1 text-[10px] ${lnCls}`}>(ln {lineNo})</span>}
+      </td>
+
+      {/* Contract Says */}
+      <td className={`py-1 px-3 text-right font-mono text-xs ${contractCls}`}>
+        {contractVal}
+        {mismatch && <span className="ml-1 text-red-500">⚠</span>}
+      </td>
+
+      {/* Should Be */}
+      <td className={`py-1 pl-3 text-right font-mono text-xs ${correctCls}`}>
+        {correctVal}
+        {mismatch && <span className="ml-1 text-green-600">✓</span>}
+        {match && !mismatch && <span className="ml-1 text-green-500">✓</span>}
+      </td>
+    </tr>
+  );
+};
+
+// ─── section header row ──────────────────────────────────────────────────────
+const Section: React.FC<{ label: string }> = ({ label }) => (
+  <tr>
+    <td colSpan={3} className="pt-3 pb-1 text-[10px] font-bold text-amber-700 uppercase tracking-widest">
+      {label}
+    </td>
+  </tr>
+);
+
+// ─── main component ──────────────────────────────────────────────────────────
 const ContractReferencePanel: React.FC<Props> = ({
   contractPrice,
   listPrice,
   loanAmount,
   earnestMoney,
-  downPaymentAmount,
+  additionalEarnestMoney = '',
   downPaymentPercent,
+  downPaymentAmount,
+  loanType = '',
   clientAgentCommission,
+  clientAgentCommissionPct = '',
   sellerConcessions,
+  sellerCredit = '',
 }) => {
-  const price      = parseFloat(contractPrice) || parseFloat(listPrice) || 0;
-  const loan       = parseFloat(loanAmount) || 0;
-  const em         = parseFloat(earnestMoney) || 0;
-  const dp         = parseFloat(downPaymentAmount) || 0;
-  const enteredPct = parseFloat(downPaymentPercent) || 0; // what agent wrote on line 330
-  const comm       = parseFloat(clientAgentCommission) || 0;
-  const conc       = parseFloat(sellerConcessions) || 0;
-  // derivedPct + conflict check via shared helper (guards loan > 0 to preserve original behaviour)
-  const { derivedPct: _rawDerivedPct, hasConflict } = calculateDownPayment(price, loan, em, enteredPct);
-  const derivedPct  = price > 0 && loan > 0 ? _rawDerivedPct : 0;
-  // Line 330 % is the agent's intent (the truth); fall back to derivedPct only if not extracted
-  const pctForCalc  = enteredPct > 0 ? enteredPct : derivedPct;
-  const totalDown   = price > 0 && pctForCalc ? price * (pctForCalc / 100) : (dp + em);
-  const certFunds   = price > 0 && loan > 0 ? price - em - loan : 0;
-  const cashClose   = totalDown > em ? totalDown - em : dp;
-  const totalSeller = comm + conc;
-  const showPctWarning = price > 0 && loan > 0 && enteredPct > 0 && hasConflict;
-  const fmt = (n: number) => n > 0 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-  const fmtPct = (n: number) => n.toFixed(2).replace(/\.?0+$/, '') + '%';
+  const price   = parseFloat(contractPrice) || parseFloat(listPrice) || 0;
+  const loan    = parseFloat(loanAmount) || 0;
+  const em      = parseFloat(earnestMoney) || 0;
+  const addlEM  = parseFloat(additionalEarnestMoney) || 0;
+  const comm    = parseFloat(clientAgentCommission) || 0;
+  const commPct = parseFloat(clientAgentCommissionPct) || 0;
+  const conc    = parseFloat(sellerConcessions) || 0;
+  const credit  = parseFloat(sellerCredit) || 0;
+
+  // ── right-side down payment % ─────────────────────────────────────────────
+  const extractedDpPct = parseFloat(downPaymentPercent) || 0;
+  const loanTypeLower  = loanType.toLowerCase();
+  const fallbackDpPct  = LOAN_DP_DEFAULTS[loanTypeLower] ?? 5;
+  const rightDpPct     = extractedDpPct > 0 ? extractedDpPct : fallbackDpPct;
+  const ltv            = 100 - rightDpPct;
+
+  const dpSource = extractedDpPct > 0
+    ? `${rightDpPct}% down · from ln 330 (LTV ${ltv.toFixed(0)}%)`
+    : loanType
+    ? `${rightDpPct}% down · ${loanType} default`
+    : `${rightDpPct}% down`;
+
+  // ── LEFT: strictly what contract says ────────────────────────────────────
+  const leftCertFunds   = price > 0 && loan > 0 ? price - em - addlEM - loan : 0;
+  const leftTotalSeller = comm + conc + credit;
+
+  // ── RIGHT: independent calculation from first principles ─────────────────
+  const rightLoan        = price > 0 ? Math.round(price * (ltv / 100)) : 0;
+  const rightDownPmt     = price > 0 ? Math.round(price * (rightDpPct / 100)) : 0;
+  const rightCertFunds   = rightDownPmt - em - addlEM;
+  const rightComm        = commPct > 0 && price > 0 ? Math.round((commPct / 100) * price) : comm;
+  const rightTotalSeller = rightComm + conc + credit;
+
+  // ── mismatches ────────────────────────────────────────────────────────────
+  const loanMismatch  = loan > 0 && rightLoan > 0 && Math.abs(loan - rightLoan) > 1;
+  const certMismatch  = price > 0 && Math.abs(leftCertFunds - rightCertFunds) > 1;
+  const commMismatch  = commPct > 0 && Math.abs(comm - rightComm) > 1;
+  const totalMismatch = Math.abs(leftTotalSeller - rightTotalSeller) > 1;
+  const anyMismatch   = loanMismatch || certMismatch || commMismatch || totalMismatch;
 
   return (
-    <div className="border border-amber-200 rounded-lg p-3 text-xs bg-amber-50/60 space-y-3">
-      <p className="text-amber-700 font-semibold uppercase tracking-wide text-[10px]">📋 Heartland Contract Reference</p>
+    <div className={`rounded-lg border text-xs ${
+      anyMismatch ? 'border-red-200 bg-red-50/20' : 'border-amber-200 bg-amber-50/30'
+    } p-3`}>
 
-      {/* Section 1: Certified Funds */}
-      <div>
-        <p className="text-amber-700 font-semibold mb-1.5">① Verify Certified Funds — line 200</p>
-        <div className="space-y-0.5 font-mono">
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">Purchase Price <span className="text-base-content/35">(ln 164)</span></span>
-            <span className="font-medium">{price > 0 ? fmt(price) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">− Earnest Money <span className="text-base-content/35">(ln 176)</span></span>
-            <span className="font-medium">{em > 0 ? '− ' + fmt(em) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">− Add'l Earnest Money <span className="text-base-content/35">(ln 186)</span></span>
-            <span className="text-base-content/35">—</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">− Total Financed by Buyer <span className="text-base-content/35">(ln 196)</span></span>
-            <span className="font-medium">{loan > 0 ? '− ' + fmt(loan) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
-            <span className="text-amber-700 font-semibold">= Certified Funds <span className="text-amber-500/70">(ln 200)</span></span>
-            <span className="text-amber-800 font-bold">{certFunds > 0 ? fmt(certFunds) : '—'}</span>
-          </div>
-        </div>
-        <p className="text-base-content/40 mt-1 text-[10px]">Verify line 200 on physical contract matches ↑</p>
+      {/* ── Header bar ── */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">
+          📋 Heartland Contract — Check &amp; Balance
+        </span>
+        {anyMismatch
+          ? <span className="text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">⚠ Mismatch Found</span>
+          : <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ Numbers Match</span>
+        }
       </div>
 
-      {/* Section 2: Down Payment — line 330 % is the truth; warning fires if ln 196 conflicts */}
-      <div>
-        <p className="text-amber-700 font-semibold mb-1.5">② Down Payment</p>
-        <div className="space-y-0.5 font-mono">
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">Purchase Price × {pctForCalc > 0 ? fmtPct(pctForCalc) : '%'} <span className="text-base-content/35">(incl. EM)</span></span>
-            <span className="font-medium">{totalDown > 0 ? fmt(totalDown) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">− Earnest Money <span className="text-base-content/35">(ln 176)</span></span>
-            <span className="font-medium">{em > 0 ? '− ' + fmt(em) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
-            <span className="text-amber-700 font-semibold">= Cash at Close</span>
-            <span className="text-amber-800 font-bold">{cashClose > 0 ? fmt(cashClose) : '—'}</span>
-          </div>
-        </div>
-        {showPctWarning && (
-          <p className="text-orange-600 mt-1 text-[10px]">⚠ Ln 196 loan amount implies {fmtPct(derivedPct)} down — agent's ln 330 says {fmtPct(enteredPct)} — verify line 196 is correct</p>
-        )}
-      </div>
+      {/* ── Table ── */}
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-base-300">
+            <th className="text-left pb-1.5 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide w-[42%]">
+              Line Item
+            </th>
+            <th className="text-right pb-1.5 px-3 text-[10px] font-bold text-amber-700 uppercase tracking-wide w-[29%]">
+              Contract Says
+            </th>
+            <th className="text-right pb-1.5 pl-3 text-[10px] font-bold text-green-700 uppercase tracking-wide w-[29%]">
+              Should Be
+            </th>
+          </tr>
+        </thead>
+        <tbody>
 
-      {/* Section 3: Seller Expenses */}
-      <div>
-        <p className="text-amber-700 font-semibold mb-1.5">③ Total Additional Seller Expenses</p>
-        <div className="space-y-0.5 font-mono">
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">Seller comp to Buyer's Broker <span className="text-base-content/35">(ln 207)</span></span>
-            <span className="font-medium">{comm > 0 ? fmt(comm) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-base-content/55">+ Add'l Seller paid costs <span className="text-base-content/35">(ln 211)</span></span>
-            <span className="font-medium">{conc > 0 ? '+ ' + fmt(conc) : '—'}</span>
-          </div>
-          <div className="flex justify-between gap-4 border-t border-amber-200 pt-1">
-            <span className="text-amber-700 font-semibold">= Total Additional Seller Expenses <span className="text-amber-500/70">(ln 218)</span></span>
-            <span className="text-amber-800 font-bold">{totalSeller > 0 ? fmt(totalSeller) : '—'}</span>
-          </div>
+          {/* ─ Section ①: Certified Funds ─ */}
+          <Section label="① Certified Funds — ln 200" />
+
+          <Row
+            label="Purchase Price"
+            lineNo="164"
+            contractVal={price > 0 ? fmt(price) : '—'}
+            correctVal={price > 0 ? fmt(price) : '—'}
+          />
+          <Row
+            label="− Earnest Money"
+            lineNo="176"
+            contractVal={fmtSigned(em, '−')}
+            correctVal={fmtSigned(em, '−')}
+          />
+          <Row
+            label="− Add'l Earnest Money"
+            lineNo="186"
+            contractVal={fmtSigned(addlEM, '−')}
+            correctVal={fmtSigned(addlEM, '−')}
+            dim={addlEM === 0}
+          />
+          <Row
+            label="− Loan Amount"
+            lineNo="196"
+            contractVal={loan > 0 ? fmtSigned(loan, '−') : '—'}
+            correctVal={rightLoan > 0 ? fmtSigned(rightLoan, '−') : '—'}
+            mismatch={loanMismatch}
+          />
+          <Row
+            label="= Certified Funds"
+            lineNo="200"
+            contractVal={leftCertFunds > 0 ? fmt(leftCertFunds) : '—'}
+            correctVal={rightCertFunds > 0 ? fmt(rightCertFunds) : '—'}
+            mismatch={certMismatch}
+            match={!certMismatch && price > 0}
+            isTotal
+          />
+
+          {/* ─ Section ②: Seller Expenses ─ */}
+          <Section label="② Total Seller Expenses — ln 218" />
+
+          <Row
+            label="Buyer Agent Comp"
+            lineNo="207"
+            contractVal={comm > 0 ? fmt(comm) : '—'}
+            correctVal={rightComm > 0 ? fmt(rightComm) : '—'}
+            mismatch={commMismatch}
+          />
+          <Row
+            label="+ Add'l Seller Costs"
+            lineNo="211"
+            contractVal={fmtSigned(conc, '+')}
+            correctVal={fmtSigned(conc, '+')}
+          />
+          {credit > 0 && (
+            <Row
+              label="+ Seller Credit"
+              contractVal={fmtSigned(credit, '+')}
+              correctVal={fmtSigned(credit, '+')}
+            />
+          )}
+          <Row
+            label="= Total Seller Expenses"
+            lineNo="218"
+            contractVal={leftTotalSeller > 0 ? fmt(leftTotalSeller) : '—'}
+            correctVal={rightTotalSeller > 0 ? fmt(rightTotalSeller) : '—'}
+            mismatch={totalMismatch}
+            match={!totalMismatch && leftTotalSeller > 0}
+            isTotal
+          />
+
+        </tbody>
+      </table>
+
+      {/* ── Mismatch detail box ── */}
+      {loanMismatch && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-[10px] text-red-700 space-y-0.5">
+          <p className="font-bold">⚠ Loan Amount Discrepancy — Verify line 196 on physical contract</p>
+          <p>
+            Contract: <strong>{fmt(loan)}</strong>
+            &nbsp;·&nbsp;
+            Expected ({rightDpPct}% down on {fmt(price)}): <strong>{fmt(rightLoan)}</strong>
+            &nbsp;·&nbsp;
+            Difference: <strong>{fmt(Math.abs(loan - rightLoan))}</strong>
+          </p>
         </div>
-        <p className="text-base-content/40 mt-1 text-[10px]">Verify line 218 on physical contract matches ↑</p>
-      </div>
+      )}
+
+      {/* ── Down payment basis footnote ── */}
+      {price > 0 && (
+        <p className="mt-2 text-center text-[10px] text-base-content/40">
+          Right side using&nbsp;
+          <span className="font-semibold text-green-700">{dpSource}</span>
+          {loanType && <span className="ml-1 capitalize text-base-content/40">· {loanType}</span>}
+        </p>
+      )}
+
     </div>
   );
 };

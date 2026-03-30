@@ -1979,6 +1979,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     earnestMoney={form.earnestMoney}
                     downPaymentAmount={form.downPaymentAmount}
                     downPaymentPercent={form.downPaymentPercent}
+                    loanType={form.loanType}
                     clientAgentCommission={form.commissionAmount}
                     sellerConcessions={form.sellerConcessions}
                   />
