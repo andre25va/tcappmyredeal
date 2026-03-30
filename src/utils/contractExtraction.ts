@@ -63,13 +63,14 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'listingAgentCommission',label: 'Listing Agent Commission', getDealVal: d => (d as any).listingAgentCommission || '' },
   { key: 'downPaymentPercent',    label: 'Down Payment %',          getDealVal: d => (d as any).downPaymentPercent || '' },
   { key: 'sellerCredit',          label: 'Seller Credit',           getDealVal: d => (d as any).sellerCredit ? `$${Number((d as any).sellerCredit).toLocaleString()}` : '' },
+  { key: 'additionalSellerCosts', label: "Add'l Seller Costs",      getDealVal: d => (d as any).additionalSellerCosts ? `$${Number((d as any).additionalSellerCosts).toLocaleString()}` : '' },
 ];
 
 // ─── Value Formatting ──────────────────────────────────────────────────────────
 
 /** Format a raw extracted value for display */
 export function fmtExtracted(key: string, val: string): string {
-  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
+  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit', 'additionalSellerCosts'];
   if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     if (!isNaN(n)) return `$${n.toLocaleString()}`;
@@ -86,7 +87,7 @@ export function fmtExtracted(key: string, val: string): string {
 /** Normalize values for equality comparison */
 export function normalizeVal(key: string, val: string): string {
   if (!val) return '';
-  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
+  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit', 'additionalSellerCosts'];
   if (moneyKeys.includes(key)) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
@@ -139,6 +140,9 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
     } else if (f.key === 'sellerCredit') {
       const n = parseFloat(val.replace(/[$,]/g, ''));
       updates['sellerCredit'] = isNaN(n) ? undefined : n;
+    } else if (f.key === 'additionalSellerCosts') {
+      const n = parseFloat(val.replace(/[$,]/g, ''));
+      updates['additionalSellerCosts'] = isNaN(n) ? undefined : n;
     } else {
       updates[f.key] = val;
     }
