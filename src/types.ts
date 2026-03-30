@@ -424,6 +424,8 @@ export interface Deal {
   titleCompanyName?: string;
   titleCompanySide?: 'buyer' | 'seller' | 'internal';  // which side the title company represents
   loanOfficerName?: string;
+  buyerAgentName?: string;         // Extracted from contract — buyer's agent full name
+  sellerAgentName?: string;        // Extracted from contract — seller's/listing agent full name
 
   // ── Property extras ────────────────────────────────────────────────────────
   hoa?: boolean;
