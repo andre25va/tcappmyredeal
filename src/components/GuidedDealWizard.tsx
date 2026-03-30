@@ -666,7 +666,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           state: d.state || p.state,
           zipCode: d.zipCode || p.zipCode,
           listPrice: d.listPrice || p.listPrice,
-          purchasePrice: d.purchasePrice || p.purchasePrice,
+          purchasePrice: d.purchasePrice || d.contractPrice || p.purchasePrice,
           mlsNumber: d.mlsNumber || p.mlsNumber,
           contractDate: d.contractDate || p.contractDate,
           closingDate: d.closingDate || p.closingDate,
