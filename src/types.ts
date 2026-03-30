@@ -442,6 +442,7 @@ export interface Deal {
   totalSellerCredits?: number;
 
   // ── Contract Conditions ────────────────────────────────────────────────────
+  hasCounterOffer?: boolean;          // Was there a counter offer on this deal?
   asIsSale?: boolean;
   inspectionWaived?: boolean;
   homeWarranty?: boolean;
