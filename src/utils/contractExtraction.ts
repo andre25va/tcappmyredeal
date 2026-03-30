@@ -58,14 +58,24 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'inspectionWaived',      label: 'Inspection Waived',     getDealVal: d => (d as any).inspectionWaived !== undefined ? String((d as any).inspectionWaived) : '' },
   { key: 'homeWarranty',          label: 'Home Warranty',         getDealVal: d => (d as any).homeWarranty !== undefined ? String((d as any).homeWarranty) : '' },
   { key: 'commissionAmount',      label: 'Commission Amount',     getDealVal: d => (d as any).commissionAmount ? `$${Number((d as any).commissionAmount).toLocaleString()}` : '' },
+  { key: 'buyerAgentCommission',  label: 'Buyer Agent Commission',  getDealVal: d => (d as any).buyerAgentCommission  || '' },
+  { key: 'listingAgentCommission',label: 'Listing Agent Commission', getDealVal: d => (d as any).listingAgentCommission || '' },
+  { key: 'downPaymentPercent',    label: 'Down Payment %',          getDealVal: d => (d as any).downPaymentPercent || '' },
+  { key: 'sellerCredit',          label: 'Seller Credit',           getDealVal: d => (d as any).sellerCredit ? `$${Number((d as any).sellerCredit).toLocaleString()}` : '' },
 ];
 
 // ─── Value Formatting ──────────────────────────────────────────────────────────
 
 /** Format a raw extracted value for display */
 export function fmtExtracted(key: string, val: string): string {
-  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
   if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
+    const n = parseFloat(val.replace(/[$,]/g, ''));
+    if (!isNaN(n)) return `$${n.toLocaleString()}`;
+  }
+  // Commission fields: keep % as-is, format plain numbers as $
+  if ((key === 'buyerAgentCommission' || key === 'listingAgentCommission') && val) {
+    if (val.includes('%')) return val;
     const n = parseFloat(val.replace(/[$,]/g, ''));
     if (!isNaN(n)) return `$${n.toLocaleString()}`;
   }
@@ -75,8 +85,13 @@ export function fmtExtracted(key: string, val: string): string {
 /** Normalize values for equality comparison */
 export function normalizeVal(key: string, val: string): string {
   if (!val) return '';
-  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
   if (moneyKeys.includes(key)) {
+    const n = parseFloat(val.replace(/[$,]/g, ''));
+    return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
+  }
+  if (key === 'buyerAgentCommission' || key === 'listingAgentCommission') {
+    if (val.includes('%')) return val.trim();
     const n = parseFloat(val.replace(/[$,]/g, ''));
     return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
   }
@@ -89,7 +104,7 @@ export function normalizeVal(key: string, val: string): string {
 export function buildDealUpdates(checked: Record<string, boolean>, result: ExtractionResult): Partial<Deal> {
   const updates: any = {};
   const boolKeys = ['asIsSale', 'inspectionWaived', 'homeWarranty'];
-  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'commissionAmount'];
+  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'commissionAmount', 'sellerCredit'];
   result.fields.forEach(f => {
     if (!checked[f.key]) return;
     const val = f.value;
@@ -110,6 +125,15 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
       updates['titleCompanyName'] = val;
     } else if (f.key === 'loanOfficer') {
       updates['loanOfficerName'] = val;
+    } else if (f.key === 'buyerAgentCommission') {
+      updates['buyerAgentCommission'] = val;
+    } else if (f.key === 'listingAgentCommission') {
+      updates['listingAgentCommission'] = val;
+    } else if (f.key === 'downPaymentPercent') {
+      updates['downPaymentPercent'] = val;
+    } else if (f.key === 'sellerCredit') {
+      const n = parseFloat(val.replace(/[$,]/g, ''));
+      updates['sellerCredit'] = isNaN(n) ? undefined : n;
     } else {
       updates[f.key] = val;
     }
