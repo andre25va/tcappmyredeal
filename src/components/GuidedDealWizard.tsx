@@ -1385,7 +1385,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </div>
 
                 {/* ── Extracted agent name reference fields ── */}
-                {extractedRawData && (extractedRawData.buyerAgentName || extractedRawData.sellerAgentName) && (
+                {extractedRawData && (
                   <div className="mt-2 rounded-lg border border-base-300 bg-base-200/50 px-3 py-2 space-y-1">
                     <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1">From Contract</p>
                     <div className="flex items-center gap-2">
