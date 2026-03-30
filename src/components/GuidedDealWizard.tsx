@@ -1024,19 +1024,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
     // Persist participants BEFORE opening workspace — prevents race condition duplicates
     try {
-      // Helper: find existing contact by name OR create new one (prevents duplicate contacts)
+      // Helper: find existing contact by name OR create new one (prevents duplicate contacts).
+      // Uses .limit(1) instead of .maybeSingle() to gracefully handle pre-existing duplicates
+      // (maybeSingle throws when multiple rows match, causing false misses and new contact creation).
       const findOrCreateContact = async (fullName: string, orgId: string | null) => {
         const parts = fullName.trim().split(' ');
         const firstName = parts[0];
         const lastName = parts.slice(1).join(' ') || null;
-        // Check if contact already exists with this name
-        const { data: existing } = await supabase
+        // Check if contact already exists with this name (org-scoped, picks oldest match)
+        const { data: existingList } = await supabase
           .from('contacts')
           .select('id')
           .ilike('first_name', firstName)
           .ilike('last_name', lastName ?? '')
-          .maybeSingle();
-        if (existing) return existing.id;
+          .eq('org_id', orgId ?? '')
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (existingList && existingList.length > 0) return existingList[0].id;
         // Create new contact
         const { data: created } = await supabase.from('contacts').insert({
           first_name: firstName,

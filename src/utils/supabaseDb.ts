@@ -518,24 +518,39 @@ export async function upsertBuyerSellerParticipants(params: {
     const parts = trimmed.split(/\s+/);
     const firstName = parts[0] || '';
     const lastName = parts.slice(1).join(' ') || '';
-    const contactId = crypto.randomUUID();
 
-    // Insert stub contact (name only — phone/email empty until filled via Contacts tab)
-    const { error: contactErr } = await supabase.from('contacts').insert({
-      id: contactId,
-      first_name: firstName,
-      last_name: lastName,
-      full_name: trimmed,
-      contact_type: 'other',
-      email: null,
-      phone: null,
-      is_active: true,
-      org_id: orgId ?? null,
-      updated_at: new Date().toISOString(),
-    });
-    if (contactErr) {
-      console.error('[upsertBuyerSellerParticipants] contact insert failed:', contactErr);
-      return;
+    // Find-or-create: reuse existing contact with same name to prevent duplicates
+    // Use .limit(1) instead of .maybeSingle() to gracefully handle pre-existing duplicates
+    let contactId: string;
+    const { data: existingContacts } = await supabase
+      .from('contacts')
+      .select('id')
+      .ilike('first_name', firstName)
+      .ilike('last_name', lastName || '')
+      .eq('org_id', orgId ?? '')
+      .limit(1);
+
+    if (existingContacts && existingContacts.length > 0) {
+      contactId = existingContacts[0].id;
+    } else {
+      contactId = crypto.randomUUID();
+      // Insert stub contact (name only — phone/email empty until filled via Contacts tab)
+      const { error: contactErr } = await supabase.from('contacts').insert({
+        id: contactId,
+        first_name: firstName,
+        last_name: lastName,
+        full_name: trimmed,
+        contact_type: 'other',
+        email: null,
+        phone: null,
+        is_active: true,
+        org_id: orgId ?? null,
+        updated_at: new Date().toISOString(),
+      });
+      if (contactErr) {
+        console.error('[upsertBuyerSellerParticipants] contact insert failed:', contactErr);
+        return;
+      }
     }
 
     // Link to deal_participants
