@@ -38,7 +38,8 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
 // Maps extraction field keys → deal field paths for comparison
 
 export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal) => string }[] = [
-  { key: 'purchasePrice',         label: 'Purchase Price',        getDealVal: d => (d as any).purchasePrice    ? `$${Number((d as any).purchasePrice).toLocaleString()}`    : '' },
+  { key: 'contractPrice',          label: 'Purchase Price',        getDealVal: d => (d as any).purchasePrice    ? `$${Number((d as any).purchasePrice).toLocaleString()}`    : '' },
+  { key: 'purchasePrice',         label: 'Purchase Price (alt)',  getDealVal: d => (d as any).purchasePrice    ? `$${Number((d as any).purchasePrice).toLocaleString()}`    : '' },
   { key: 'listPrice',             label: 'List Price',            getDealVal: d => d.listPrice        ? `$${Number(d.listPrice).toLocaleString()}`        : '' },
   { key: 'contractDate',          label: 'Contract Date',         getDealVal: d => d.contractDate     || '' },
   { key: 'closingDate',           label: 'Closing Date',          getDealVal: d => d.closingDate      || '' },
@@ -68,7 +69,7 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
 
 /** Format a raw extracted value for display */
 export function fmtExtracted(key: string, val: string): string {
-  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
+  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
   if (moneyKeys.includes(key) && val && !val.startsWith('$')) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     if (!isNaN(n)) return `$${n.toLocaleString()}`;
@@ -85,7 +86,7 @@ export function fmtExtracted(key: string, val: string): string {
 /** Normalize values for equality comparison */
 export function normalizeVal(key: string, val: string): string {
   if (!val) return '';
-  const moneyKeys = ['purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
+  const moneyKeys = ['contractPrice', 'purchasePrice', 'listPrice', 'earnestMoney', 'loanAmount', 'downPaymentAmount', 'commissionAmount', 'sellerCredit'];
   if (moneyKeys.includes(key)) {
     const n = parseFloat(val.replace(/[$,]/g, ''));
     return isNaN(n) ? val.toLowerCase().trim() : String(Math.round(n));
@@ -111,6 +112,10 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
     if (!val) return;
     if (boolKeys.includes(f.key)) {
       updates[f.key] = val === 'true' || val === 'yes' || val === '1';
+    } else if (f.key === 'contractPrice') {
+      // AI extraction returns 'contractPrice'; map it to 'purchasePrice' used by the form/panel
+      const n = parseFloat(val.replace(/[$,]/g, ''));
+      updates['purchasePrice'] = isNaN(n) ? undefined : n;
     } else if (moneyKeys.includes(f.key)) {
       const n = parseFloat(val.replace(/[$,]/g, ''));
       updates[f.key] = isNaN(n) ? undefined : n;
