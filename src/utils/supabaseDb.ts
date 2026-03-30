@@ -270,6 +270,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       hoaMonthlyFee: (dd.hoaMonthlyFee as number) ?? undefined,
       surveyRequired: (dd.surveyRequired as boolean) ?? undefined,
       isHeartlandMls: (dd.isHeartlandMls as boolean) ?? undefined,
+      hasCounterOffer: (dd.hasCounterOffer as boolean) ?? false,
       archiveReason: (dd.archiveReason as string) ?? undefined,
       orgId: row.org_id as string | undefined,
       dealRef: row.deal_ref as string | undefined,
