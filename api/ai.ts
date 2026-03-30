@@ -403,6 +403,10 @@ const extractDealSchema = {
     loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
     loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    downPaymentPercent: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -414,17 +418,16 @@ const extractDealSchema = {
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    buyerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    sellerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
   required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'contractPrice', 'mlsNumber',
     'contractDate', 'closingDate', 'inspectionDeadline', 'loanCommitmentDate', 'possessionDate',
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
+    'downPaymentAmount', 'downPaymentPercent', 'sellerCredit', 'buyerAgentCommission', 'listingAgentCommission',
+    'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'buyerAgentName', 'sellerAgentName', 'confidence', 'extractedFields'],
+    'homeWarrantyCompany', 'legalDescription', 'confidence', 'extractedFields'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1020,10 +1023,9 @@ async function handleExtractDeal(apiKey: string, body: any) {
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
-For buyerAgentName: extract the full name of the buyer's agent (also called buyer's representative, buyer's broker, or selling agent) from the contract. Return null if not found.
-For sellerAgentName: extract the full name of the seller's agent (also called listing agent, seller's broker, or seller's representative) from the contract. Return null if not found.
-For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount using the purchase price. If both $ and % are present, prefer the $ amount.
-For commission: extract the buyer's agent (client agent) commission amount — this is what will be paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), calculate the dollar amount from the purchase price. If both $ and % are present, prefer the $ amount.
+For buyerAgentCommission and listingAgentCommission: extract each agent's commission as written on the contract. If shown as a percentage (e.g. "3%"), return the string "3%". If shown as a dollar amount (e.g. "$4,950"), return the numeric string "4950". If both are stated, return the percentage (e.g. "3%"). Return null if not found.
+For downPaymentPercent: extract or infer the down payment percentage. If explicitly stated (e.g. "5%", "20%"), use that. If not stated but LTV (loan-to-value) is present, calculate it as 100% minus LTV (e.g. LTV 97% → "3%"). Return the string including the % sign (e.g. "3%"). Return null only if neither down payment % nor LTV can be found.
+For sellerCredit: extract any explicit seller credit or seller contribution toward buyer closing costs as a numeric string without formatting (e.g. "5000" not "$5,000"). Return null if not found.
 For propertyType: infer from property description. Default to "single-family".
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
@@ -1066,134 +1068,6 @@ Set extractedFields to an array of field names that had non-null values found.`;
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
-
-
-// ── Portfolio Report Schema & Handler (Tier 3) ────────────────────────────
-
-const bottleneckSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    stage: { type: 'string' },
-    dealCount: { type: 'number' },
-    avgDaysStuck: { type: 'number' },
-    description: { type: 'string' },
-    recommendation: { type: 'string' },
-  },
-  required: ['stage', 'dealCount', 'avgDaysStuck', 'description', 'recommendation'],
-};
-
-const agentPerfSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    agentName: { type: 'string' },
-    activeDealCount: { type: 'number' },
-    avgDaysToClose: { type: 'number' },
-    taskCompletionRate: { type: 'number' },
-    riskLevel: { type: 'string' },
-    notes: { type: 'string' },
-  },
-  required: ['agentName', 'activeDealCount', 'avgDaysToClose', 'taskCompletionRate', 'riskLevel', 'notes'],
-};
-
-const closingForecastSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    period: { type: 'string' },
-    expectedClosings: { type: 'number' },
-    totalVolume: { type: 'number' },
-    confidence: { type: 'string' },
-  },
-  required: ['period', 'expectedClosings', 'totalVolume', 'confidence'],
-};
-
-const portfolioReportSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    executiveSummary: { type: 'string' },
-    bottlenecks: { type: 'array', items: bottleneckSchema },
-    agentPerformance: { type: 'array', items: agentPerfSchema },
-    complianceOverview: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        overallScore: { type: 'number' },
-        atRiskDeals: { type: 'number' },
-        commonGaps: { type: 'array', items: { type: 'string' } },
-        recommendation: { type: 'string' },
-      },
-      required: ['overallScore', 'atRiskDeals', 'commonGaps', 'recommendation'],
-    },
-    closingForecast: { type: 'array', items: closingForecastSchema },
-    actionItems: { type: 'array', items: { type: 'string' } },
-    generatedAt: { type: 'string' },
-  },
-  required: ['executiveSummary', 'bottlenecks', 'agentPerformance', 'complianceOverview', 'closingForecast', 'actionItems', 'generatedAt'],
-};
-
-async function handlePortfolioReport(apiKey: string, body: any) {
-  const { deals } = body;
-  if (!deals?.length) throw new Error('Missing deals data');
-
-  const systemPrompt = `You are a senior real estate transaction coordinator analyzing a portfolio of active deals. Provide a concise executive summary, identify bottlenecks, assess agent performance, give compliance overview, forecast closings, and list top action items. Base your analysis ONLY on the provided data. Today: ${new Date().toISOString().split('T')[0]}`;
-
-  const userContent = `PORTFOLIO DATA (${deals.length} deals):
-${JSON.stringify(deals, null, 2)}`;
-
-  const result = await callOpenAI(apiKey, systemPrompt, userContent, portfolioReportSchema, 'portfolio_report_response', 'gpt-4o');
-  result.generatedAt = new Date().toISOString();
-  return result;
-}
-
-// ── Evaluate Rules Schema & Handler (Tier 3) ────────────────────────────────
-
-const triggeredRuleItemSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    ruleId: { type: 'string' },
-    ruleName: { type: 'string' },
-    dealId: { type: 'string' },
-    dealAddress: { type: 'string' },
-    triggerReason: { type: 'string' },
-    suggestedAction: { type: 'string' },
-    actionType: { type: 'string' },
-    priority: { type: 'string' },
-    confidence: { type: 'number' },
-  },
-  required: ['ruleId', 'ruleName', 'dealId', 'dealAddress', 'triggerReason', 'suggestedAction', 'actionType', 'priority', 'confidence'],
-};
-
-const evaluateRulesSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    triggeredRules: { type: 'array', items: triggeredRuleItemSchema },
-    summary: { type: 'string' },
-    rulesChecked: { type: 'number' },
-    dealsScanned: { type: 'number' },
-  },
-  required: ['triggeredRules', 'summary', 'rulesChecked', 'dealsScanned'],
-};
-
-async function handleEvaluateRules(apiKey: string, body: any) {
-  const { deals, rules } = body;
-  if (!deals?.length) throw new Error('Missing deals data');
-  if (!rules?.length) return { triggeredRules: [], summary: 'No rules to evaluate.', rulesChecked: 0, dealsScanned: deals.length };
-
-  const systemPrompt = `You are evaluating automation rules against a set of real estate deals. For each rule that is triggered by the data, return a triggered rule entry with a specific reason and suggested action. Only flag rules that clearly match the deal data conditions. Today: ${new Date().toISOString().split('T')[0]}`;
-
-  const userContent = `RULES:
-${JSON.stringify(rules, null, 2)}
-
-DEALS (${deals.length}):
-${JSON.stringify(deals, null, 2)}`;
-
-  return callOpenAI(apiKey, systemPrompt, userContent, evaluateRulesSchema, 'evaluate_rules_response', 'gpt-4o');
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1254,12 +1128,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'extract-deal':
         result = await handleExtractDeal(apiKey, req.body);
-        break;
-      case 'portfolio-report':
-        result = await handlePortfolioReport(apiKey, req.body);
-        break;
-      case 'evaluate-rules':
-        result = await handleEvaluateRules(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
