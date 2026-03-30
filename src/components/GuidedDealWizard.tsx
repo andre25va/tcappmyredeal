@@ -690,8 +690,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           commissionAmount: (() => {
             const raw = d.buyerAgentCommission || d.commissionAmount;
             if (!raw) return p.commissionAmount;
-            if (String(raw).includes('%')) return p.commissionAmount; // % form — no $ yet
-            return String(raw);
+            if (String(raw).includes('%')) {
+              // AI returned a %, compute dollar amount from contract price
+              const pct = parseFloat(String(raw));
+              const price = parseFloat((d.contractPrice || d.purchasePrice || p.purchasePrice || '').replace(/[$,]/g, ''));
+              if (pct && price) return String(Math.round((pct / 100) * price));
+              return p.commissionAmount;
+            }
+            return String(raw).replace(/[$,]/g, ''); // strip any $ formatting
           })(),
           clientAgentCommissionPct: (() => {
             const stripFmt = (v: string) => parseFloat((v || '').replace(/[$,]/g, ''));
