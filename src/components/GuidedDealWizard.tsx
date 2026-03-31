@@ -446,7 +446,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   };
 
   // Resolve merge tags eagerly so the textarea preview shows real values
-  const resolveIntroBody = (rawBody: string): string => {
+  const resolveIntroBody = (rawBody: string, overrides?: { emHeldWith?: string; loanOfficer?: string }): string => {
     const ac = agentClients?.find(c => c.id === form.agentClientId);
     const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
     return rawBody
