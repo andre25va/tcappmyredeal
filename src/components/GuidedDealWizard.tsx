@@ -266,6 +266,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [savingTitleContact, setSavingTitleContact] = useState(false);
   const [sendingIntroEmail, setSendingIntroEmail] = useState(false);
   const [introEmailSent, setIntroEmailSent] = useState(false);
+  // Pre-generate deal ID so Step 8 intro email can be linked to the deal before it's created
+  const [preDealId] = useState<string>(() => generateId());
   const [introEmailSkipped, setIntroEmailSkipped] = useState(false);
   const titleSearchRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
@@ -492,6 +494,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           subject: form.introEmailSubject,
           bodyHtml,
           sentBy: 'TC Team',
+          dealId: preDealId,
+          emailType: 'deal',
+          templateName: 'intro',
         }),
       });
       if (!res.ok) throw new Error('Send failed');
@@ -843,7 +848,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     const agentClient = agentClients?.find(c => c.id === form.agentClientId);
 
     const deal: Deal = {
-      id: generateId(),
+      id: preDealId,
       propertyAddress: form.address.trim(),
       secondaryAddress: hasTwoAddresses && form.secondaryAddress.trim() ? form.secondaryAddress.trim() : undefined,
       city: form.city.trim(),
@@ -1006,6 +1011,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             is_protected: true,
             uploaded_by: profile?.name || 'TC Staff',
             created_at: new Date().toISOString(),
+            // Persist AI extraction results so Changes Timeline is populated from day 1
+            extraction_data: extractedRawData ?? undefined,
           });
           
           if (dbErr) {
