@@ -661,9 +661,11 @@ interface DocRowProps {
   onDownload: (doc: DealDocument) => void;
   onLinkChecklist: (doc: DealDocument) => void;
   onArchive: (doc: DealDocument) => void;
+  onSummary: (doc: DealDocument) => void;
+  onFinancialChanges: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
@@ -752,7 +754,7 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           <div className="absolute right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-20 min-w-[160px] overflow-hidden hidden group-hover/menu:block">
             {isPdf && (
               <button
-                onClick={() => onExtract(doc)}
+                onClick={() => onSummary(doc)}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
               >
                 <Sparkles size={12} className="text-primary" /> Summary
@@ -760,7 +762,7 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
             )}
             {isPdf && (
               <button
-                onClick={() => onExtract(doc)}
+                onClick={() => onFinancialChanges(doc)}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
               >
                 <ArrowRight size={12} className="text-blue-500" /> Financial Changes
@@ -835,6 +837,19 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [comparisonDoc, setComparisonDoc] = useState<DealDocument | null>(null);
   const [manualExtractDoc, setManualExtractDoc] = useState<DealDocument | null>(null);
   const [linkingDoc, setLinkingDoc] = useState<DealDocument | null>(null);
+
+  // Summary modal
+  const [summaryDoc, setSummaryDoc] = useState<DealDocument | null>(null);
+  const [summaryText, setSummaryText] = useState<string>('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Financial Changes modal
+  const [financialDoc, setFinancialDoc] = useState<DealDocument | null>(null);
+  const [financialChanges, setFinancialChanges] = useState<Array<{ field: string; current: string; proposed: string; delta: string }>>([]);
+  const [financialLoading, setFinancialLoading] = useState(false);
+
+  // Download Packet
+  const [packetLoading, setPacketLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1163,6 +1178,82 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     window.open(data.signedUrl, '_blank');
   };
 
+  const handleSummary = async (doc: DealDocument) => {
+    setSummaryDoc(doc);
+    setSummaryLoading(true);
+    setSummaryText('');
+    try {
+      const resp = await fetch('/api/ai?action=summarize-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+      const result = await resp.json();
+      setSummaryText(result.summary || 'Could not generate summary.');
+    } catch {
+      setSummaryText('Failed to generate summary. Please try again.');
+    }
+    setSummaryLoading(false);
+  };
+
+  const handleFinancialChanges = async (doc: DealDocument) => {
+    setFinancialDoc(doc);
+    setFinancialLoading(true);
+    setFinancialChanges([]);
+    try {
+      const currentDealData = {
+        salesPrice: deal.salesPrice,
+        closingDate: deal.closingDate,
+        optionFee: deal.optionFee,
+        optionPeriodEndDate: deal.optionPeriodEndDate,
+        earnestMoney: deal.earnestMoney,
+        financeAmount: deal.financeAmount,
+        downPayment: deal.downPayment,
+        interestRate: deal.interestRate,
+        loanType: deal.loanType,
+      };
+      const resp = await fetch('/api/ai?action=financial-changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id, currentDealData }),
+      });
+      const result = await resp.json();
+      setFinancialChanges(result.changes || []);
+    } catch {
+      setFinancialChanges([]);
+    }
+    setFinancialLoading(false);
+  };
+
+  const handleDownloadPacket = async () => {
+    setPacketLoading(true);
+    try {
+      const resp = await fetch('/api/ai?action=generate-packet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dealId: deal.id }),
+      });
+      const result = await resp.json();
+      if (result.pdfBase64) {
+        const byteChars = atob(result.pdfBase64);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArr], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename || 'document-packet.pdf';
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        alert('Could not generate packet. Please try again.');
+      }
+    } catch {
+      alert('Failed to generate packet. Please try again.');
+    }
+    setPacketLoading(false);
+  };
+
   const handleDelete = async (doc: DealDocument) => {
     if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
     await supabase.storage.from('deal-documents').remove([doc.storage_path]);
@@ -1405,6 +1496,16 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           >
             <Clock size={13} /> Document Activity
           </button>
+          <button
+            onClick={handleDownloadPacket}
+            disabled={packetLoading}
+            className="btn btn-sm btn-ghost gap-1"
+          >
+            {packetLoading
+              ? <><span className="loading loading-spinner loading-xs" /> Generating…</>
+              : <><Download size={13} /> Download Packet</>
+            }
+          </button>
           <label className="flex items-center gap-1.5 text-xs text-base-content/50 cursor-pointer">
             <input
               type="checkbox"
@@ -1474,6 +1575,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1501,6 +1604,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1528,6 +1633,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1555,6 +1662,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1580,6 +1689,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1699,48 +1810,156 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
               {!loadingLog && activityLog.length === 0 && (
                 <p className="text-sm text-base-content/40 text-center py-8">No activity recorded yet.</p>
               )}
-              {!loadingLog && activityLog.map(entry => {
-                const changedFields = entry.changed_fields as Record<string, { from: any; to: any; delta?: string }> | null;
+              {!loadingLog && activityLog.map((entry, idx) => {
+                const changes: Array<{ label: string; from?: string; to?: string; delta?: string }> =
+                  entry.changed_fields
+                    ? (Array.isArray(entry.changed_fields)
+                        ? entry.changed_fields
+                        : Object.entries(entry.changed_fields).map(([k, v]: any) => ({
+                            label: k,
+                            ...(typeof v === 'object' && v !== null ? v : { to: String(v) }),
+                          })))
+                    : [];
+                const dt = new Date(entry.created_at);
+                const dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
                 return (
-                  <div key={entry.id} className="border-b border-base-200 pb-4 last:border-0">
-                    {/* Timestamp + actor + action */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-xs text-base-content/40">{formatLogDate(entry.created_at)}</span>
-                        <span className="text-xs text-base-content/40 ml-2">·</span>
-                        <span className="text-xs font-medium text-base-content ml-2">{entry.actor_name}</span>
-                      </div>
-                      {entry.doc_id && (
-                        <span className="text-xs font-mono bg-base-300/60 px-1.5 py-0.5 rounded text-base-content/40 border border-base-300 flex-none">
-                          {entry.doc_id}
-                        </span>
-                      )}
-                    </div>
-                    {/* Action description */}
-                    <p className="text-sm font-medium text-base-content mt-0.5">{entry.note || entry.action}</p>
-                    {/* Changed fields */}
-                    {changedFields && Object.keys(changedFields).length > 0 && (
-                      <div className="mt-2 space-y-1 pl-3 border-l-2 border-base-300">
-                        {Object.entries(changedFields).map(([field, change]: [string, any]) => (
-                          <div key={field} className="flex items-center gap-2 text-xs">
-                            <span className="text-base-content/50 w-32 flex-none">{field}</span>
-                            <span className="text-base-content/40">{change.from}</span>
-                            <ArrowRight size={10} className="text-base-content/30 flex-none" />
-                            <span className="text-base-content font-medium">{change.to}</span>
-                            {change.delta && (
-                              <span className={`font-medium ${change.delta.startsWith('+') ? 'text-error' : 'text-success'}`}>
-                                ({change.delta})
-                              </span>
-                            )}
+                  <div key={entry.id || idx} className="py-3 border-b border-base-200 last:border-0">
+                    <div className="flex gap-3">
+                      <span className="text-xs text-base-content/40 whitespace-nowrap font-mono min-w-[110px]">
+                        {dateStr} · {timeStr}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-semibold text-base-content">{entry.actor_name}</span>
+                        <span className="text-xs text-base-content/70">{' '}{entry.note || entry.action}</span>
+                        {entry.doc_id && (
+                          <span className="ml-1 text-xs font-mono text-primary opacity-70">· {entry.doc_id}</span>
+                        )}
+                        {changes.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {changes.map((change, ci) => {
+                              const isLast = ci === changes.length - 1;
+                              const treeChar = isLast ? '└' : '├';
+                              return (
+                                <div key={ci} className="flex gap-1.5 items-baseline">
+                                  <span className="text-base-content/30 font-mono text-xs select-none">{treeChar}</span>
+                                  <span className="text-xs text-base-content/60">{change.label}</span>
+                                  {change.from !== undefined && (
+                                    <>
+                                      <span className="text-xs text-base-content/40 font-mono">{change.from}</span>
+                                      <span className="text-xs text-base-content/30">→</span>
+                                      <span className="text-xs font-medium text-base-content">{change.to}</span>
+                                    </>
+                                  )}
+                                  {change.from === undefined && change.to !== undefined && (
+                                    <span className="text-xs text-base-content/70">{change.to}</span>
+                                  )}
+                                  {change.delta && (
+                                    <span className={`text-xs font-mono font-semibold ml-1 ${
+                                      String(change.delta).startsWith('+') ? 'text-success' :
+                                      String(change.delta).startsWith('-') ? 'text-error' : 'text-base-content/50'
+                                    }`}>({change.delta})</span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ─── Summary Modal ───────────────────────────────────────────────────── */}
+      {summaryDoc && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg">Document Summary</h3>
+                <p className="text-sm text-base-content/60">{summaryDoc.display_name || summaryDoc.file_name}</p>
+              </div>
+              <button className="btn btn-sm btn-ghost btn-circle" onClick={() => { setSummaryDoc(null); setSummaryText(''); }}>✕</button>
+            </div>
+            {summaryLoading ? (
+              <div className="flex items-center gap-3 py-8 justify-center text-base-content/50">
+                <span className="loading loading-spinner loading-md" />
+                <span>Analyzing document…</span>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm leading-relaxed">
+                {summaryText}
+              </div>
+            )}
+            <div className="modal-action">
+              <button className="btn btn-sm" onClick={() => { setSummaryDoc(null); setSummaryText(''); }}>Close</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => { setSummaryDoc(null); setSummaryText(''); }} />
+        </div>
+      )}
+
+      {/* ─── Financial Changes Modal ─────────────────────────────────────────── */}
+      {financialDoc && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg">Financial Changes</h3>
+                <p className="text-sm text-base-content/60">{financialDoc.display_name || financialDoc.file_name}</p>
+              </div>
+              <button className="btn btn-sm btn-ghost btn-circle" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }}>✕</button>
+            </div>
+            {financialLoading ? (
+              <div className="flex items-center gap-3 py-8 justify-center text-base-content/50">
+                <span className="loading loading-spinner loading-md" />
+                <span>Comparing financial terms…</span>
+              </div>
+            ) : financialChanges.length === 0 ? (
+              <div className="text-center py-8 text-base-content/50">
+                <p className="text-sm">No financial changes detected vs. current deal data.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table table-sm w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-xs">Field</th>
+                      <th className="text-xs">Current</th>
+                      <th className="text-xs">Proposed</th>
+                      <th className="text-xs">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financialChanges.map((change, i) => (
+                      <tr key={i}>
+                        <td className="font-medium text-xs">{change.field}</td>
+                        <td className="text-xs text-base-content/60">{change.current}</td>
+                        <td className="text-xs font-medium">{change.proposed}</td>
+                        <td className="text-xs">
+                          <span className={`font-mono font-semibold ${
+                            change.delta.startsWith('+') ? 'text-success' :
+                            change.delta.startsWith('-') ? 'text-error' : 'text-warning'
+                          }`}>
+                            {change.delta}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="modal-action">
+              <button className="btn btn-sm" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }}>Close</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }} />
         </div>
       )}
     </div>
