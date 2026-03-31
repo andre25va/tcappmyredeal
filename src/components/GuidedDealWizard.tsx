@@ -1573,8 +1573,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       >
                         {mlsFetching ? (
                           <span className="loading loading-spinner loading-xs" />
-                        ) : mlsFetchStatus === 'found' ? (
+                        ) : mlsFetchStatus === 'found' && form.mlsNumber ? (
                           <span className="text-success">✓ Found</span>
+                        ) : mlsFetchStatus === 'found' && !form.mlsNumber ? (
+                          <span className="text-warning">Found, no MLS#</span>
                         ) : mlsFetchStatus === 'not_found' ? (
                           <span className="text-error">Not found</span>
                         ) : (
