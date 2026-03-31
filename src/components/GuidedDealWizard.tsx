@@ -212,7 +212,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
     buyerAgentName: '', sellerAgentName: '',
     commissionAmount: '', clientAgentCommissionPct: '', tcFee: '',
-    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
+    titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
     legalDescription: '',
     hasCounterOffer: false,
   });
@@ -433,7 +433,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         titleContactId: id,
         titleContactEmail: created.email || '',
         introEmailSubject: `${addr} – Introduction from TC Team`,
-        introEmailBody: resolveIntroBody(`Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
+        emHeldWith: created.company || '',
+        introEmailBody: resolveIntroBody(`Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
       }));
       setShowCreateTitleContact(false);
       setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
@@ -455,6 +456,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
       .replace(/\{\{agentPhone\}\}/g, (ac as any)?.phone || '')
       .replace(/\{\{agentEmail\}\}/g, (ac as any)?.email || '')
+      .replace(/\{\{loanOfficer\}\}/g, form.loanOfficer || '')
+      .replace(/\{\{emHeldWith\}\}/g, form.emHeldWith || '')
       .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSig);
   };
 
@@ -475,6 +478,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         .replace(/\{\{agentName\}\}/g, ac?.fullName || '')
         .replace(/\{\{agentPhone\}\}/g, (ac as any)?.phone || '')
         .replace(/\{\{agentEmail\}\}/g, (ac as any)?.email || '')
+        .replace(/\{\{loanOfficer\}\}/g, form.loanOfficer || '')
+        .replace(/\{\{emHeldWith\}\}/g, form.emHeldWith || '')
         .replace(/\{\{tcTeamSignature\}\}/g, tcTeamSig);
       const bodyLines = resolvedBody.split('\n');
       const bodyHtml = '<p>' + bodyLines.map(l => l.trim() === '' ? '</p><p>' : l).join('<br/>') + '</p>';
@@ -483,6 +488,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({
           to: [form.titleContactEmail],
+          cc: ac?.email ? [(ac as any).email] : [],
           subject: form.introEmailSubject,
           bodyHtml,
           sentBy: 'TC Team',
@@ -2316,7 +2322,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         {selectedTitleContact.company && <p className="text-xs text-base-content/50 truncate">{selectedTitleContact.company}</p>}
                         {selectedTitleContact.email && <p className="text-xs text-base-content/40 truncate">{selectedTitleContact.email}</p>}
                       </div>
-                      <Button variant="ghost" size="xs" square type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '' })); setIntroEmailSent(false); }}><X size={12} /></Button>
+                      <Button variant="ghost" size="xs" square type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '' })); setIntroEmailSent(false); }}><X size={12} /></Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2346,7 +2352,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
                                     introEmailSubject: `${addr} – Introduction from TC Team`,
-                                    introEmailBody: resolveIntroBody(`Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
+                                    emHeldWith: c.company || '',
+                                    introEmailBody: resolveIntroBody(`Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`),
                                   }));
                                   setTitleDropdownOpen(false);
                                   setTitleSearch('');
@@ -2426,13 +2433,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                       ) : (
                         <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
+                              <input className="input input-bordered w-full input-sm" placeholder="Title / escrow company" value={form.emHeldWith} onChange={e => setForm(p => ({ ...p, emHeldWith: e.target.value }))} />
+                            </div>
+                            <div>
+                              <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
+                              <input className="input input-bordered w-full input-sm" placeholder="Jane Smith – First Bank" value={form.loanOfficer} onChange={e => setForm(p => ({ ...p, loanOfficer: e.target.value }))} />
+                            </div>
+                          </div>
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Subject</label>
                             <input className="input input-bordered w-full input-sm" value={form.introEmailSubject} onChange={e => setForm(p => ({ ...p, introEmailSubject: e.target.value }))} />
                           </div>
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Message</label>
-                            <textarea className="textarea textarea-bordered w-full text-sm resize-none" rows={6} value={form.introEmailBody} onChange={e => setForm(p => ({ ...p, introEmailBody: e.target.value }))} />
+                            <textarea className="textarea textarea-bordered w-full text-sm resize-none" rows={8} value={form.introEmailBody} onChange={e => setForm(p => ({ ...p, introEmailBody: e.target.value }))} />
                           </div>
                           <div className="flex gap-2">
                             <button
