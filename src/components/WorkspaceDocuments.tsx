@@ -1834,6 +1834,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                 <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Purchase Contract</h3>
                 <span className="badge badge-sm bg-primary/10 text-primary border-0">{contractDocs.length}</span>
                 <div className="flex-1" />
+                <span className="text-xs text-base-content/30">Source of truth pinned · Original contract protected</span>
                 <button
                   onClick={() => setShowTimeline(true)}
                   className="btn btn-xs btn-ghost gap-1 text-primary/50 hover:text-primary normal-case font-normal"
