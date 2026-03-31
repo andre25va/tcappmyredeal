@@ -929,7 +929,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       buyerName: form.buyerNames || undefined,
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
-      titleCompanySide: (form.titleCompanySide === 'both' ? 'internal' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'internal',
+      titleCompanySide: (form.titleCompanySide === 'both' ? 'both' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'both',
       loanOfficerName: form.loanOfficer || undefined,
       buyerAgentName: form.buyerAgentName || undefined,
       sellerAgentName: form.sellerAgentName || undefined,
@@ -1038,14 +1038,19 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         const firstName = parts[0];
         const lastName = parts.slice(1).join(' ') || null;
         // Check if contact already exists with this name (org-scoped, picks oldest match)
-        const { data: existingList } = await supabase
-          .from('contacts')
-          .select('id')
-          .ilike('first_name', firstName)
-          .ilike('last_name', lastName ?? '')
-          .eq('org_id', orgId ?? '')
-          .order('created_at', { ascending: true })
-          .limit(1);
+        // Handle null last_name and null org_id correctly — .ilike('last_name', '') never matches IS NULL
+        let q = supabase.from('contacts').select('id').ilike('first_name', firstName);
+        if (lastName) {
+          q = q.ilike('last_name', lastName);
+        } else {
+          q = q.or('last_name.is.null,last_name.eq.');
+        }
+        if (orgId) {
+          q = q.eq('org_id', orgId);
+        } else {
+          q = q.is('org_id', null);
+        }
+        const { data: existingList } = await q.order('created_at', { ascending: true }).limit(1);
         if (existingList && existingList.length > 0) return existingList[0].id;
         // Create new contact
         const { data: created } = await supabase.from('contacts').insert({
@@ -2191,7 +2196,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.titleCompany} onChange={f('titleCompany')} placeholder="ABC Title Co." />
+                    <input className="input input-bordered w-full no-spinner" value={form.titleCompany} onChange={e => setForm(p => ({ ...p, titleCompany: e.target.value, emHeldWith: e.target.value }))} placeholder="ABC Title Co." />
                     {form.titleCompany && (
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <span className="text-xs text-base-content/50">Side:</span>
