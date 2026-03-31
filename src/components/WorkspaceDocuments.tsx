@@ -1213,22 +1213,23 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     setFinancialLoading(true);
     setFinancialChanges([]);
     try {
+      const d = deal as any;
       const currentDealData = {
-        salesPrice: deal.salesPrice,
-        closingDate: deal.closingDate,
-        optionFee: deal.optionFee,
-        optionPeriodEndDate: deal.optionPeriodEndDate,
-        earnestMoney: deal.earnestMoney,
-        financeAmount: deal.financeAmount,
-        downPayment: deal.downPayment,
-        interestRate: deal.interestRate,
-        loanType: deal.loanType,
-        buyerName: (deal as any).buyerName || '',
-        sellerName: (deal as any).sellerName || '',
-        buyerAgentName: (deal as any).buyer_agent_name || '',
-        sellerAgentName: (deal as any).seller_agent_name || '',
-        titleCompanyName: (deal as any).titleCompanyName || '',
-        loanOfficerName: (deal as any).loanOfficerName || '',
+        salesPrice: d.contractPrice ?? d.salesPrice ?? '',
+        closingDate: deal.closingDate || '',
+        optionFee: d.optionFee ?? '',
+        optionPeriodEndDate: d.optionPeriodEndDate ?? '',
+        earnestMoney: deal.earnestMoney ?? '',
+        financeAmount: d.loanAmount ?? d.financeAmount ?? '',
+        downPayment: deal.downPayment ?? '',
+        interestRate: d.interestRate ?? '',
+        loanType: deal.loanType || '',
+        buyerName: deal.buyerName || '',
+        sellerName: deal.sellerName || '',
+        buyerAgentName: deal.buyerAgentName || '',
+        sellerAgentName: deal.sellerAgentName || '',
+        titleCompanyName: deal.titleCompanyName || '',
+        loanOfficerName: deal.loanOfficerName || '',
       };
       const resp = await fetch('/api/ai?action=financial-changes', {
         method: 'POST',
