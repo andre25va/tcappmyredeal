@@ -1074,6 +1074,117 @@ Set extractedFields to an array of field names that had non-null values found.`;
   return JSON.parse(content);
 }
 
+// ── Classify Document ─────────────────────────────────────────────────────────
+
+const CLASSIFY_DOC_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    docType: {
+      type: 'string',
+      enum: ['purchase_contract', 'counter_offer', 'amendment', 'addendum', 'as_is', 'inspection_notice', 'unacceptable_conditions', 'other'],
+    },
+    addressExtracted: { type: 'string', description: 'Full property address as written in the document' },
+    addressMatch: {
+      type: 'string',
+      enum: ['match', 'partial', 'mismatch'],
+      description: 'How closely the document address matches the deal address',
+    },
+    confidence: { type: 'number', description: '0-1 confidence in classification' },
+    summary: { type: 'string', description: 'One or two sentence plain-English summary of what this document does' },
+    extractedFields: {
+      type: 'object',
+      description: 'Key financial/date fields if available',
+      properties: {
+        salesPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        optionFee: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        optionPeriodDays: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        financeAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      },
+      additionalProperties: false,
+      required: ['salesPrice', 'closingDate', 'optionFee', 'optionPeriodDays', 'earnestMoney', 'financeAmount'],
+    },
+  },
+  required: ['docType', 'addressExtracted', 'addressMatch', 'confidence', 'summary', 'extractedFields'],
+};
+
+async function handleClassifyDocument(apiKey: string, body: any) {
+  const { fileBase64, fileName, dealAddress, userSelectedType } = body;
+  if (!fileBase64) throw new Error('Missing fileBase64');
+
+  const systemPrompt = `You are a real estate document classifier. Given a document (PDF or image), you must:
+1. Identify the document type from: purchase_contract, counter_offer, amendment, addendum, as_is, inspection_notice, unacceptable_conditions, other
+2. Extract the property address exactly as written
+3. Compare it to the deal address and report: match (same address), partial (street matches but city/zip differ), or mismatch (different property)
+4. Extract key financial/date fields if present
+5. Write a 1-2 sentence plain-English summary
+
+Document types:
+- purchase_contract: Original purchase offer/contract
+- counter_offer: Seller's response with modified terms
+- amendment: Modifies an already-agreed term
+- addendum: Adds new terms not in original contract
+- as_is: As-is addendum (no repair obligations)
+- inspection_notice: Buyer's response to inspection
+- unacceptable_conditions: Buyer rejects inspection / may terminate
+- other: Anything else
+
+The user has pre-selected type: "${userSelectedType || 'not specified'}". Use this as a strong hint but override if clearly wrong.
+Deal address: "${dealAddress || 'not provided'}"`;
+
+  const isPdf = fileName?.toLowerCase().endsWith('.pdf');
+
+  // Use type:'file' for PDFs (same approach as handleExtractDeal — works correctly with GPT-4o).
+  // Use type:'image_url' for images (JPEG, PNG, WEBP).
+  const userContent = isPdf
+    ? [
+        {
+          type: 'file',
+          file: {
+            filename: fileName || 'document.pdf',
+            file_data: `data:application/pdf;base64,${fileBase64}`,
+          },
+        },
+        { type: 'text', text: 'Classify this document and extract fields.' },
+      ]
+    : [
+        {
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${fileBase64}`, detail: 'high' },
+        },
+        { type: 'text', text: 'Classify this document and extract fields.' },
+      ];
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'classify_document', strict: true, schema: CLASSIFY_DOC_SCHEMA },
+      },
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenAI error: ${err}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content from OpenAI');
+  return JSON.parse(content);
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1135,6 +1246,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'extract-deal':
         result = await handleExtractDeal(apiKey, req.body);
+        break;
+      case 'classify-document':
+        result = await handleClassifyDocument(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
