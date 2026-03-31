@@ -2433,16 +2433,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                       ) : (
                         <>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
-                              <input className="input input-bordered w-full input-sm" placeholder="Title / escrow company" value={form.emHeldWith} onChange={e => setForm(p => ({ ...p, emHeldWith: e.target.value }))} />
-                            </div>
-                            <div>
-                              <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
-                              <input className="input input-bordered w-full input-sm" placeholder="Jane Smith – First Bank" value={form.loanOfficer} onChange={e => setForm(p => ({ ...p, loanOfficer: e.target.value }))} />
-                            </div>
-                          </div>
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Subject</label>
                             <input className="input input-bordered w-full input-sm" value={form.introEmailSubject} onChange={e => setForm(p => ({ ...p, introEmailSubject: e.target.value }))} />
