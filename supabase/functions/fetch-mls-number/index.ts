@@ -1,6 +1,5 @@
 // fetch-mls-number Edge Function
 // Uses OpenAI web search to find rich MLS property data for a given property address
-// Only considers Active, Pending, Under Contract, or Contingent listings
 // Supports single and split (duplex) addresses
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -44,13 +43,12 @@ serve(async (req: Request) => {
     }
 
     const searchQuery = `Search Zillow, Realtor.com, Redfin, or MLS listing sites for the property: "${fullAddress}".
-IMPORTANT: Only include results where the listing status is Active, Pending, Under Contract, or Contingent. Do NOT include sold or closed listings.
 Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
 mlsBoardName: the name of the MLS board or association this listing belongs to (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if unknown.
 propertyType must be one of: Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other.
-listingStatus must be one of: Active, Pending, Under Contract, Contingent.
+listingStatus must be one of: Active, Pending, Under Contract, Contingent, Sold, Closed.
 pool must be a boolean (true or false).
-If the property cannot be found with one of those active statuses, return exactly: {"found":false}
+If the property cannot be found at all, return exactly: {"found":false}
 If found, return: {"found":true,"data":{...all fields...}}`;
 
     const response = await fetch('https://api.openai.com/v1/responses', {
@@ -93,7 +91,7 @@ If found, return: {"found":true,"data":{...all fields...}}`;
       );
     }
 
-    // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    // Strip markdown code fences if present
     let jsonText = outputText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -121,14 +119,14 @@ If found, return: {"found":true,"data":{...all fields...}}`;
 
     // Return the rich property data
     return new Response(
-      JSON.stringify({ found: true, data: parsed.data || {} }),
+      JSON.stringify(parsed),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error: any) {
-    console.error('fetch-mls-number error:', error);
+  } catch (err) {
+    console.error('Unexpected error:', err);
     return new Response(
-      JSON.stringify({ error: error.message || 'Unknown error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
