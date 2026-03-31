@@ -2433,6 +2433,19 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                       ) : (
                         <>
+                          {/* To / CC recipients display */}
+                          <div className="space-y-1 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-base-content/50 w-6 shrink-0">To:</span>
+                              <span className="badge badge-ghost text-xs">{selectedTitleContact.fullName}{selectedTitleContact.email ? ` <${selectedTitleContact.email}>` : ''}</span>
+                            </div>
+                            {(() => { const ac = agentClients?.find(c => c.id === form.agentClientId); return ac?.email ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-base-content/50 w-6 shrink-0">CC:</span>
+                                <span className="badge badge-ghost text-xs">{ac.fullName}{ac.email ? ` <${ac.email}>` : ''}</span>
+                              </div>
+                            ) : null; })()}
+                          </div>
                           <div>
                             <label className="text-xs text-base-content/50 mb-1 block">Subject</label>
                             <input className="input input-bordered w-full input-sm" value={form.introEmailSubject} onChange={e => setForm(p => ({ ...p, introEmailSubject: e.target.value }))} />
