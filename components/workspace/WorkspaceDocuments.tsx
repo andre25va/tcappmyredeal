@@ -260,7 +260,7 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-primary" />
               <span className="font-semibold text-base-content">
-                {doc.category === 'amendment' ? 'Amendment' : 'Contract'} — Review Data Changes
+                {doc.category === 'counter_offer' ? 'Counter Offer' : doc.category === 'amendment' ? 'Amendment' : 'Contract'} — Review Proposed Changes
               </span>
             </div>
             <p className="text-xs text-base-content/40 mt-0.5 ml-6">{doc.file_name}</p>
@@ -663,9 +663,10 @@ interface DocRowProps {
   onArchive: (doc: DealDocument) => void;
   onSummary: (doc: DealDocument) => void;
   onFinancialChanges: (doc: DealDocument) => void;
+  onReviewChanges?: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onReviewChanges }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
@@ -743,6 +744,17 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
         {isPdf && (
           <button onClick={() => onPreview(doc)} className="btn btn-ghost btn-xs btn-circle" title="Preview document">
             <Eye size={13} />
+          </button>
+        )}
+
+        {/* Review Changes — for counter offers */}
+        {onReviewChanges && doc.category === 'counter_offer' && (
+          <button
+            onClick={() => onReviewChanges(doc)}
+            className="btn btn-xs btn-outline btn-warning gap-1"
+            title="Review proposed changes"
+          >
+            <Sparkles size={11} /> Review
           </button>
         )}
 
@@ -1086,8 +1098,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         });
       }
 
-      // Auto-trigger comparison for contracts and amendments
-      if (docType === 'purchase_contract' || docType === 'amendment') {
+      // Auto-trigger comparison for contracts, amendments, and counter offers
+      if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'counter_offer') {
         setTimeout(() => setComparisonDoc(newDoc), 400);
       }
     } catch (e: any) {
@@ -1167,7 +1179,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       });
     }
 
-    if (docType === 'purchase_contract' || docType === 'amendment') {
+    if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'counter_offer') {
       setTimeout(() => setComparisonDoc(newDoc), 400);
     }
   };
@@ -1320,6 +1332,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const visibleDocs = docs.filter(d => showArchived || !d.archived);
   const contractDocs = visibleDocs.filter(d => d.category === 'purchase_contract');
   const counterOfferDocs = visibleDocs.filter(d => d.category === 'counter_offer').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const unreviewedCounterOffers = counterOfferDocs.filter(d => !d.extracted_at);
   const amendmentDocs = visibleDocs.filter(d => d.category === 'amendment' || d.category === 'addendum' || d.category === 'as_is');
   const inspectionDocs = visibleDocs.filter(d => d.category === 'inspection_notice' || d.category === 'unacceptable_conditions');
   const otherDocs = visibleDocs.filter(d => d.category === 'other' || !d.category);
@@ -1443,17 +1456,21 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       )}
 
       {/* ── Pending Changes banner ──────────────────────────────────────── */}
-      {counterOfferDocs.length > 0 && (
-        <div className="rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3 mb-2">
+      {unreviewedCounterOffers.length > 0 && (
+        <div
+          onClick={() => setComparisonDoc(unreviewedCounterOffers[0])}
+          className="rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3 mb-2 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors"
+        >
           <span className="text-lg mt-0.5">🔄</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-              Pending Changes — Counter Offer{counterOfferDocs.length > 1 ? `s (${counterOfferDocs.length})` : ''}
+              Pending Changes — {unreviewedCounterOffers.length} Unreviewed Counter Offer{unreviewedCounterOffers.length > 1 ? 's' : ''}
             </p>
             <p className="text-xs text-amber-600/80 dark:text-amber-400/60 mt-0.5">
-              Review the counter offer terms and confirm or reject changes before proceeding.
+              Click to review counter offer terms and confirm or reject changes.
             </p>
           </div>
+          <span className="text-xs text-amber-600 dark:text-amber-400 mt-1 shrink-0">Review →</span>
         </div>
       )}
 
@@ -1606,6 +1623,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onReviewChanges={setComparisonDoc}
                   />
                 ))}
               </div>

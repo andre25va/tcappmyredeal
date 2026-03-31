@@ -1291,11 +1291,11 @@ async function handleFinancialChanges(apiKey: string, body: any) {
   const userContent: any[] = isPdf
     ? [
         { type: 'file', file: { filename: doc.file_name, file_data: `data:application/pdf;base64,${base64}` } },
-        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL and DATE fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no financial fields differ.` },
+        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL, DATE, and PARTY/AGENT NAME fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type, Buyer Name, Seller Name, Buyer Agent Name, Seller Agent Name, Title Company, Loan Officer.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If a name was added where none existed, use "Added". If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no fields differ.` },
       ]
     : [
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL and DATE fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no financial fields differ.` },
+        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL, DATE, and PARTY/AGENT NAME fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type, Buyer Name, Seller Name, Buyer Agent Name, Seller Agent Name, Title Company, Loan Officer.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If a name was added where none existed, use "Added". If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no fields differ.` },
       ];
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1304,7 +1304,7 @@ async function handleFinancialChanges(apiKey: string, body: any) {
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: 'You are a real estate transaction coordinator. Extract financial changes precisely.' },
+        { role: 'system', content: 'You are a real estate transaction coordinator. Extract financial, date, and party/agent name changes precisely.' },
         { role: 'user', content: userContent },
       ],
       response_format: {
