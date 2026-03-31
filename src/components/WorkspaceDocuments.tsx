@@ -851,14 +851,10 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       const { path, file_name, file_size } = await uploadRes.json();
       setUploadProgress('Saving record…');
 
-      // If uploading a new purchase contract, demote previous source-of-truth
-      if (docType === 'purchase_contract') {
-        await supabase
-          .from('deal_documents')
-          .update({ is_source_of_truth: false })
-          .eq('deal_id', deal.id)
-          .eq('category', 'purchase_contract');
-      }
+      // Only demote existing source-of-truth when explicitly replacing (sotPending flow)
+      // A new upload does NOT automatically steal Source of Truth from the protected original
+      const existingProtected = docs.find(d => d.category === 'purchase_contract' && d.is_protected);
+      const isFirstContract = docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0;
 
       const rec = {
         deal_id: deal.id,
@@ -869,8 +865,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         source: 'upload' as const,
         created_at: new Date().toISOString(),
         uploaded_by: userName,
-        is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
-        is_source_of_truth: docType === 'purchase_contract',
+        is_protected: isFirstContract,
+        is_source_of_truth: isFirstContract, // only SoT if it's the very first contract
       };
 
       const { data: inserted, error: dbErr } = await supabase
@@ -901,14 +897,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const ext = file.name.split('.').pop() ?? 'bin';
     const path = `${deal.id}/${generateId()}.${ext}`;
 
-    // Demote previous source-of-truth if uploading a new purchase contract
-    if (docType === 'purchase_contract') {
-      await supabase
-        .from('deal_documents')
-        .update({ is_source_of_truth: false })
-        .eq('deal_id', deal.id)
-        .eq('category', 'purchase_contract');
-    }
+    // Do not demote existing SoT here — only the explicit "Replace Source of Truth" confirmation flow does that
 
     const { error: upErr } = await supabase.storage
       .from('deal-documents')
@@ -925,7 +914,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       created_at: new Date().toISOString(),
       uploaded_by: userName,
       is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
-      is_source_of_truth: docType === 'purchase_contract',
+      is_source_of_truth: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
     };
 
     const { data: inserted, error: dbErr } = await supabase
@@ -1006,9 +995,10 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const amendmentDocs = docs.filter(d => d.category === 'amendment' || d.category === 'addendum');
   const otherDocs = docs.filter(d => d.category === 'other' || !d.category);
 
-  // Source of truth = flagged doc; fallback to oldest purchase_contract
+  // Source of truth priority: 1) is_protected (original upload), 2) is_source_of_truth flag, 3) oldest by created_at
   const originalContractId = contractDocs.length > 0
-    ? (contractDocs.find(d => d.is_source_of_truth)?.id
+    ? (contractDocs.find(d => d.is_protected)?.id
+        ?? contractDocs.find(d => d.is_source_of_truth)?.id
         ?? [...contractDocs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].id)
     : null;
 
