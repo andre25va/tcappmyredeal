@@ -1337,7 +1337,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
   // ─── Derived data ────────────────────────────────────────────────────────
   const visibleDocs = docs.filter(d => showArchived || !d.archived);
-  const contractDocs = visibleDocs.filter(d => d.category === 'purchase_contract');
+  const contractDocs = visibleDocs
+    .filter(d => d.category === 'purchase_contract')
+    .sort((a, b) => {
+      if (a.is_source_of_truth && !b.is_source_of_truth) return -1;
+      if (!a.is_source_of_truth && b.is_source_of_truth) return 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
   const counterOfferDocs = visibleDocs.filter(d => d.category === 'counter_offer').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   const unreviewedCounterOffers = counterOfferDocs.filter(d => !d.extracted_at);
   const amendmentDocs = visibleDocs.filter(d => d.category === 'amendment' || d.category === 'addendum' || d.category === 'as_is');
@@ -1578,13 +1584,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         <>
           {/* ── Purchase Contracts (pinned at top, bordered card) ─────── */}
           {contractDocs.length > 0 && (
-            <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.02] overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/15 bg-primary/[0.04]">
+            <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.02]">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/15 bg-primary/[0.04] rounded-t-2xl">
                 <FileText size={14} className="text-primary" />
                 <h3 className="text-sm font-semibold text-primary uppercase tracking-wide">Purchase Contract</h3>
                 <span className="badge badge-sm bg-primary/10 text-primary border-0">{contractDocs.length}</span>
                 <div className="flex-1" />
-                <span className="text-xs text-base-content/30">Newest first · Original contract protected</span>
+                <span className="text-xs text-base-content/30">Source of truth pinned · Original contract protected</span>
               </div>
               <div className="p-3 space-y-2">
                 {contractDocs.map(doc => (
@@ -1609,8 +1615,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
           {/* ── Counter Offers ──────────────────────────────────────────────── */}
           {counterOfferDocs.length > 0 && (
-            <section className="rounded-2xl border-2 border-amber-200 bg-amber-50/30 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200 bg-amber-50/50">
+            <section className="rounded-2xl border-2 border-amber-200 bg-amber-50/30">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200 bg-amber-50/50 rounded-t-2xl">
                 <span className="text-amber-600">🔄</span>
                 <h3 className="text-sm font-semibold text-amber-700 uppercase tracking-wide">Counter Offers</h3>
                 <span className="badge badge-sm bg-amber-100 text-amber-700 border-0">{counterOfferDocs.length}</span>
@@ -1639,8 +1645,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
           {/* ── Amendments & Addenda ──────────────────────────────────── */}
           {amendmentDocs.length > 0 && (
-            <section className="rounded-2xl border border-base-300 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200/50">
+            <section className="rounded-2xl border border-base-300">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200/50 rounded-t-2xl">
                 <FileText size={14} className="text-base-content/60" />
                 <h3 className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">Amendments &amp; Addenda</h3>
                 <span className="badge badge-sm badge-ghost">{amendmentDocs.length}</span>
@@ -1669,8 +1675,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
           {/* ── Inspection Documents ────────────────────────────────────────── */}
           {inspectionDocs.length > 0 && (
-            <section className="rounded-2xl border border-teal-200 bg-teal-50/20 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-200 bg-teal-50/30">
+            <section className="rounded-2xl border border-teal-200 bg-teal-50/20">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-200 bg-teal-50/30 rounded-t-2xl">
                 <span>🔍</span>
                 <h3 className="text-sm font-semibold text-teal-700 uppercase tracking-wide">Inspection Documents</h3>
                 <span className="badge badge-sm bg-teal-100 text-teal-700 border-0">{inspectionDocs.length}</span>
