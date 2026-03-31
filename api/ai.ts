@@ -1030,8 +1030,10 @@ For buyerAgentCommission and listingAgentCommission: extract each agent's commis
 For downPaymentPercent: extract or infer the down payment percentage. If explicitly stated (e.g. "5%", "20%"), use that. If not stated but LTV (loan-to-value) is present, calculate it as 100% minus LTV (e.g. LTV 97% → "3%"). Return the string including the % sign (e.g. "3%"). Return null only if neither down payment % nor LTV can be found.
 For sellerCredit: extract any explicit seller credit or seller contribution toward buyer closing costs as a numeric string without formatting (e.g. "5000" not "$5,000"). Return null if not found.
 For additionalSellerCosts: in the "Total Additional Seller Expenses" section (often labeled section f), extract the dollar amount from line 2 "Additional SELLER paid costs" — extra closing costs the seller agreed to pay beyond agent compensation. Return as a numeric string without formatting (e.g. "4380" not "$4,380"). Return null if not found.
-For buyerAgentName: find the exact label text "Name of Licensee assisting Buyer (Please Print)" anywhere in the document. This label appears near the BOTTOM/END of the contract in the licensee section. The buyer agent's name is the printed or typed text on the blank line directly associated with that label. IMPORTANT RULES: (1) Do NOT use buyer or seller client names — clients appear early in the contract under "BUYER:" or "SELLER:" lines and may have designations like AMC (Applying as Married Couple) or ASP (Applying as Single Person) after their name. (2) Do NOT use signature lines — a cursive/handwritten signature on a BUYER or SELLER signature line is a client signature, not an agent name. (3) The licensee name near the "Name of Licensee assisting Buyer (Please Print)" label is a printed/typed name, not a signature. (4) Do NOT use the BROKERAGE line. (5) Agents are found at the END of the contract near brokerage info, phone numbers, and email addresses. If the licensee line is blank, return null. Return the agent's personal name only (not the brokerage/company name).
-For sellerAgentName: find the exact label text "Name of Licensee assisting Seller (Please Print)" anywhere in the document. This label appears near the BOTTOM/END of the contract in the licensee section. The seller agent's name is the printed or typed text on the blank line directly associated with that label. IMPORTANT RULES: (1) Do NOT use buyer or seller client names — clients appear early in the contract under "BUYER:" or "SELLER:" lines and may have designations like AMC (Applying as Married Couple) or ASP (Applying as Single Person) after their name. (2) Do NOT use signature lines — a cursive/handwritten signature on a BUYER or SELLER signature line is a client signature, not an agent name. (3) The licensee name near the "Name of Licensee assisting Seller (Please Print)" label is a printed/typed name, not a signature. (4) Do NOT use the BROKERAGE line. (5) Agents are found at the END of the contract near brokerage info, phone numbers, and email addresses. If the licensee line is blank, return null. Return the agent's personal name only (not the brokerage/company name).
+For buyerAgentName: find the exact label text "Name of Licensee assisting Buyer (Please Print)" anywhere in the document. The buyer agent's name is the handwritten or printed text that appears on the blank line IMMEDIATELY BEFORE (above) that label in the document's reading order. Do NOT use the line labeled "BUYER" — that is the buyer client's signature, not the agent. Do NOT use the BROKERAGE line. Return the agent's personal name only (not the brokerage/company name). Return null if the label is not found or the line above it is blank.
+For sellerAgentName: find the exact label text "Name of Licensee assisting Seller (Please Print)" anywhere in the document. The seller agent's name is the handwritten or printed text that appears on the blank line IMMEDIATELY BEFORE (above) that label in the document's reading order. Do NOT use the line labeled "SELLER" — that is the seller client's signature, not the agent. Do NOT use the BROKERAGE line. Return the agent's personal name only (not the brokerage/company name). Return null if the label is not found or the line above it is blank.
+For buyerNames: find the "BUYER:" or "BUYERS:" labeled line(s) near the TOP of the contract (typically in the first 1-2 pages). These are the people or entities PURCHASING the property. Their names appear on the blank lines immediately following the "BUYER:" label. If multiple buyers are listed (e.g., two spouses), join them with " & ". Strip any status designations that follow the name — such as AMC (Applying as Married Couple), ASP (Applying as Single Person), or similar abbreviations — from the returned value. Do NOT use agent names, brokerage names, TC names, or any name from the licensee/signature section. Return null if not found.
+For sellerNames: find the "SELLER:" or "SELLERS:" labeled line(s) near the TOP of the contract (typically in the first 1-2 pages). These are the people or entities SELLING the property. Their names appear on the blank lines immediately following the "SELLER:" label. If multiple sellers are listed, join them with " & ". Strip any status designations (AMC, ASP, etc.) from the returned value. Do NOT use agent names, brokerage names, TC names, or any name from the licensee/signature section at the end of the contract. Return null if not found.
 For titleCompany: extract the name of the title company or escrow company holding the earnest money. On Heartland MLS / Kansas City contracts, look in section 4.b (Earnest Money) for the line labeled "Deposited with:" — the company name filled in there is the earnest money holder / title company. Also check section 4.c for a second "Deposited with:" line. Return the company name only (e.g., "Security 1st Title"). Return null if not found.
 For propertyType: infer from property description. Default to "single-family".
 Return null for any field not found in the document.
@@ -1134,28 +1136,7 @@ Document types:
 The user has pre-selected type: "${userSelectedType || 'not specified'}". Use this as a strong hint but override if clearly wrong.
 Deal address: "${dealAddress || 'not provided'}"`;
 
-  const isPdf = fileName?.toLowerCase().endsWith('.pdf');
-
-  // Use type:'file' for PDFs (same approach as handleExtractDeal — works correctly with GPT-4o).
-  // Use type:'image_url' for images (JPEG, PNG, WEBP).
-  const userContent = isPdf
-    ? [
-        {
-          type: 'file',
-          file: {
-            filename: fileName || 'document.pdf',
-            file_data: `data:application/pdf;base64,${fileBase64}`,
-          },
-        },
-        { type: 'text', text: 'Classify this document and extract fields.' },
-      ]
-    : [
-        {
-          type: 'image_url',
-          image_url: { url: `data:image/jpeg;base64,${fileBase64}`, detail: 'high' },
-        },
-        { type: 'text', text: 'Classify this document and extract fields.' },
-      ];
+  const mediaType = fileName?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -1164,7 +1145,16 @@ Deal address: "${dealAddress || 'not provided'}"`;
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mediaType};base64,${fileBase64}`, detail: 'high' },
+            },
+            { type: 'text', text: 'Classify this document and extract fields.' },
+          ],
+        },
       ],
       response_format: {
         type: 'json_schema',
@@ -1186,236 +1176,6 @@ Deal address: "${dealAddress || 'not provided'}"`;
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
-
-
-// ── PR #219: Summarize Document ──────────────────────────────────────────────
-async function handleSummarizeDocument(apiKey: string, body: any) {
-  const { documentId } = body;
-  if (!documentId) throw new Error('documentId required');
-
-  // Fetch doc record from DB
-  const { data: doc, error: docErr } = await supabase
-    .from('deal_documents')
-    .select('storage_path, file_name, category')
-    .eq('id', documentId)
-    .single();
-  if (docErr || !doc) throw new Error('Document not found');
-
-  // Download file from storage
-  const { data: fileData, error: fileErr } = await supabase.storage
-    .from('deal-documents')
-    .download(doc.storage_path);
-  if (fileErr || !fileData) throw new Error('Could not download file');
-
-  const arrayBuffer = await fileData.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-  const isPdf = (doc.file_name as string).toLowerCase().endsWith('.pdf');
-
-  const userContent: any[] = isPdf
-    ? [
-        { type: 'file', file: { filename: doc.file_name, file_data: `data:application/pdf;base64,${base64}` } },
-        { type: 'text', text: `Provide a concise plain-English summary of this document (2–4 short paragraphs). Focus on: what the document is, key terms/obligations, important dates or deadlines, and anything a real estate agent needs to know. Document type hint: ${doc.category}.` },
-      ]
-    : [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-        { type: 'text', text: `Provide a concise plain-English summary of this document (2–4 short paragraphs). Focus on: what the document is, key terms/obligations, important dates or deadlines, and anything a real estate agent needs to know. Document type hint: ${doc.category}.` },
-      ];
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You are a real estate transaction coordinator. Be concise and professional.' },
-        { role: 'user', content: userContent },
-      ],
-      max_tokens: 600,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI error: ${err}`);
-  }
-
-  const data = await response.json();
-  const summary = data.choices?.[0]?.message?.content?.trim() || 'Could not generate summary.';
-  return { summary };
-}
-
-// ── PR #219: Financial Changes ─────────────────────────────────────────────────
-const FINANCIAL_CHANGES_SCHEMA = {
-  type: 'object',
-  properties: {
-    changes: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          field:    { type: 'string' },
-          current:  { type: 'string' },
-          proposed: { type: 'string' },
-          delta:    { type: 'string' },
-        },
-        required: ['field', 'current', 'proposed', 'delta'],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ['changes'],
-  additionalProperties: false,
-};
-
-async function handleFinancialChanges(apiKey: string, body: any) {
-  const { documentId, currentDealData } = body;
-  if (!documentId) throw new Error('documentId required');
-
-  const { data: doc, error: docErr } = await supabase
-    .from('deal_documents')
-    .select('storage_path, file_name, category')
-    .eq('id', documentId)
-    .single();
-  if (docErr || !doc) throw new Error('Document not found');
-
-  const { data: fileData, error: fileErr } = await supabase.storage
-    .from('deal-documents')
-    .download(doc.storage_path);
-  if (fileErr || !fileData) throw new Error('Could not download file');
-
-  const arrayBuffer = await fileData.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
-  const isPdf = (doc.file_name as string).toLowerCase().endsWith('.pdf');
-  const dealContext = JSON.stringify(currentDealData || {}, null, 2);
-
-  const userContent: any[] = isPdf
-    ? [
-        { type: 'file', file: { filename: doc.file_name, file_data: `data:application/pdf;base64,${base64}` } },
-        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL, DATE, and PARTY/AGENT NAME fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type, Buyer Name, Seller Name, Buyer Agent Name, Seller Agent Name, Title Company, Loan Officer.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If a name was added where none existed, use "Added". If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no fields differ.` },
-      ]
-    : [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-        { type: 'text', text: `Current deal data:\n${dealContext}\n\nExtract all FINANCIAL, DATE, and PARTY/AGENT NAME fields from this document. Compare each against the current deal data above. Return ONLY fields that are present in this document AND differ from the current deal data.\n\nFields to look for: Sales Price, Closing Date, Option Fee, Option Period End Date, Earnest Money, Finance Amount, Down Payment, Interest Rate, Loan Type, Buyer Name, Seller Name, Buyer Agent Name, Seller Agent Name, Title Company, Loan Officer.\n\nFor "current": use the value from currentDealData (or "Not set" if absent). For "proposed": use the value found in this document. For "delta": calculate the change (e.g. "+$7,500", "+7 days", "-$1,000"). If a name was added where none existed, use "Added". If not calculable, use "Changed". For "field": use the human-readable field name.\n\nReturn empty changes array if no fields differ.` },
-      ];
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You are a real estate transaction coordinator. Extract financial, date, and party/agent name changes precisely.' },
-        { role: 'user', content: userContent },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'financial_changes', strict: true, schema: FINANCIAL_CHANGES_SCHEMA },
-      },
-      max_tokens: 800,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI error: ${err}`);
-  }
-
-  const data = await response.json();
-  const raw = data.choices?.[0]?.message?.content || '{"changes":[]}';
-  return JSON.parse(raw);
-}
-
-// ── PR #219: Generate Document Packet ─────────────────────────────────────────
-async function handleGeneratePacket(apiKey: string, body: any) {
-  const { dealId } = body;
-  if (!dealId) throw new Error('dealId required');
-
-  // Dynamic import of pdf-lib (ESM compatible)
-  const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
-
-  // Fetch deal info for cover page
-  const { data: deal } = await supabase
-    .from('deals')
-    .select('propertyAddress, city, state, zipCode, buyer_agent_name, seller_agent_name, salesPrice, closingDate')
-    .eq('id', dealId)
-    .single();
-
-  // Fetch all non-archived documents
-  const { data: docs, error: docsErr } = await supabase
-    .from('deal_documents')
-    .select('id, doc_id, display_name, file_name, category, storage_path, uploaded_at')
-    .eq('deal_id', dealId)
-    .eq('archived', false)
-    .order('sort_order', { ascending: true });
-
-  if (docsErr || !docs) throw new Error('Could not fetch documents');
-
-  // Create merged PDF
-  const mergedPdf = await PDFDocument.create();
-  const helveticaBold = await mergedPdf.embedFont(StandardFonts.HelveticaBold);
-  const helvetica = await mergedPdf.embedFont(StandardFonts.Helvetica);
-
-  // ── Cover page ──────────────────────────────────────────────────────────────
-  const coverPage = mergedPdf.addPage([612, 792]); // Letter size
-  const { width, height } = coverPage.getSize();
-
-  // Header bar
-  coverPage.drawRectangle({ x: 0, y: height - 80, width, height: 80, color: rgb(0.07, 0.33, 0.71) });
-  coverPage.drawText('TRANSACTION DOCUMENT PACKET', {
-    x: 40, y: height - 50, size: 20, font: helveticaBold, color: rgb(1, 1, 1)
-  });
-  coverPage.drawText('myREDeal', {
-    x: 40, y: height - 70, size: 11, font: helvetica, color: rgb(0.8, 0.9, 1)
-  });
-
-  // Property address
-  const address = [deal?.propertyAddress, deal?.city, deal?.state, deal?.zipCode].filter(Boolean).join(', ') || 'Unknown Property';
-  coverPage.drawText('Property', { x: 40, y: height - 120, size: 10, font: helveticaBold, color: rgb(0.4, 0.4, 0.4) });
-  coverPage.drawText(address, { x: 40, y: height - 138, size: 16, font: helveticaBold, color: rgb(0.1, 0.1, 0.1) });
-
-  // Date generated
-  const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  coverPage.drawText(`Generated: ${now}`, { x: 40, y: height - 170, size: 10, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
-
-  // Table of contents
-  coverPage.drawText('DOCUMENTS INCLUDED', { x: 40, y: height - 220, size: 12, font: helveticaBold, color: rgb(0.2, 0.2, 0.2) });
-  coverPage.drawLine({ start: { x: 40, y: height - 228 }, end: { x: width - 40, y: height - 228 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-
-  let tocY = height - 250;
-  for (let i = 0; i < (docs as any[]).length; i++) {
-    const d = (docs as any[])[i];
-    const label = d.display_name || d.file_name;
-    const docIdStr = d.doc_id ? `${d.doc_id}  ` : '';
-    coverPage.drawText(`${docIdStr}${label}`, { x: 60, y: tocY, size: 10, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-    tocY -= 20;
-    if (tocY < 80) break;
-  }
-
-  // ── Append each document PDF ────────────────────────────────────────────────
-  for (const doc of docs as any[]) {
-    try {
-      const { data: fileData, error: fileErr } = await supabase.storage
-        .from('deal-documents')
-        .download(doc.storage_path);
-      if (fileErr || !fileData) continue;
-
-      const arrayBuffer = await fileData.arrayBuffer();
-      const docPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-      const copiedPages = await mergedPdf.copyPages(docPdf, docPdf.getPageIndices());
-      copiedPages.forEach((page: any) => mergedPdf.addPage(page));
-    } catch (e) {
-      console.error(`Skipping doc ${doc.doc_id}:`, e);
-    }
-  }
-
-  const pdfBytes = await mergedPdf.save();
-  const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
-  const nowSlug = new Date().toISOString().slice(0,10);
-  const addressSlug = ((deal as any)?.propertyAddress || 'deal').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  const filename = `packet_${addressSlug}_${nowSlug}.pdf`;
-
-  return { pdfBase64, filename };
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1479,15 +1239,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'classify-document':
         result = await handleClassifyDocument(apiKey, req.body);
-        break;
-      case 'summarize-document':
-        result = await handleSummarizeDocument(apiKey, req.body);
-        break;
-      case 'financial-changes':
-        result = await handleFinancialChanges(apiKey, req.body);
-        break;
-      case 'generate-packet':
-        result = await handleGeneratePacket(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
