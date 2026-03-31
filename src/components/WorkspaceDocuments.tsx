@@ -4,7 +4,7 @@ import {
   Upload, FileText, Link2, AlertTriangle, CheckCircle2, Clock,
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
-  Paperclip, Lock, ArrowRight, ChevronUp, MapPin,
+  Paperclip, Lock, ArrowRight, ChevronUp, MapPin, Table2,
 } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
@@ -20,6 +20,241 @@ import {
 } from '../utils/contractExtraction';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
+
+// ─── Timeline Fields ──────────────────────────────────────────────────────────
+const TIMELINE_FIELDS = [
+  { key: 'contractPrice',   label: 'Sale Price'     },
+  { key: 'closingDate',     label: 'Closing Date'   },
+  { key: 'earnestMoney',    label: 'Earnest Money'  },
+  { key: 'loanAmount',      label: 'Loan Amount'    },
+  { key: 'loanType',        label: 'Loan Type'      },
+  { key: 'buyerNames',      label: 'Buyer Name(s)'  },
+  { key: 'sellerNames',     label: 'Seller Name(s)' },
+  { key: 'buyerAgentName',  label: 'Buyer Agent'    },
+  { key: 'sellerAgentName', label: 'Seller Agent'   },
+  { key: 'titleCompany',    label: 'Title Co.'      },
+  { key: 'loanOfficer',     label: 'Lender'         },
+] as const;
+
+const TIMELINE_TYPE_BADGE: Record<string, string> = {
+  purchase_contract: 'badge-primary',
+  counter_offer:     'badge-warning',
+  amendment:         'badge-info',
+  addendum:          'badge-secondary',
+  as_is:             'badge-ghost',
+  other:             'badge-ghost',
+};
+
+const TIMELINE_TYPE_LABEL: Record<string, string> = {
+  purchase_contract: 'Contract',
+  counter_offer:     'Counter',
+  amendment:         'Amendment',
+  addendum:          'Addendum',
+  as_is:             'As-Is',
+  other:             'Other',
+};
+
+// ─── Changes Timeline Modal ───────────────────────────────────────────────────
+interface ChangesTimelineProps {
+  docs: DealDocument[];
+  deal: Deal;
+  onClose: () => void;
+}
+
+function ChangesTimeline({ docs, deal, onClose }: ChangesTimelineProps) {
+  // Sort: SoT pinned to bottom, others newest first
+  const sorted = [...docs].sort((a, b) => {
+    if (a.is_source_of_truth && !b.is_source_of_truth) return 1;
+    if (!a.is_source_of_truth && b.is_source_of_truth) return -1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const sotDoc = sorted.find(d => d.is_source_of_truth);
+  const sotData = sotDoc?.extraction_data as Record<string, string> | null | undefined;
+
+  // Fallback: use deal field values as SoT baseline if extraction_data not saved yet
+  const da = deal as any;
+  const sotFallback: Record<string, string> = {
+    contractPrice:   da.purchasePrice   ? String(Number(da.purchasePrice).toLocaleString())   : '',
+    closingDate:     da.closingDate     || '',
+    earnestMoney:    da.earnestMoney    ? String(Number(da.earnestMoney).toLocaleString())    : '',
+    loanAmount:      da.loanAmount      ? String(Number(da.loanAmount).toLocaleString())      : '',
+    loanType:        da.loanType        || '',
+    buyerNames:      da.buyerName       || '',
+    sellerNames:     da.sellerName      || '',
+    buyerAgentName:  da.buyerAgentName  || '',
+    sellerAgentName: da.sellerAgentName || '',
+    titleCompany:    da.titleCompanyName || '',
+    loanOfficer:     da.loanOfficerName  || '',
+  };
+
+  const getSotValue = (key: string): string =>
+    (sotData?.[key] ?? sotFallback[key] ?? '');
+
+  const getDocValue = (doc: DealDocument, key: string): string | null => {
+    const data = doc.extraction_data as Record<string, string> | null | undefined;
+    if (!data) return null;
+    return data[key] ?? '';
+  };
+
+  const isCellChanged = (doc: DealDocument, key: string): boolean => {
+    if (doc.is_source_of_truth) return false;
+    const val = getDocValue(doc, key);
+    if (val === null) return false;
+    const sot = getSotValue(key);
+    if (!val && !sot) return false;
+    return (val || '').trim().toLowerCase() !== (sot || '').trim().toLowerCase();
+  };
+
+  // Show fields that have at least one change; if none, show all
+  const changedFields = TIMELINE_FIELDS.filter(f =>
+    sorted.some(doc => !doc.is_source_of_truth && isCellChanged(doc, f.key))
+  );
+  const fieldsToShow = changedFields.length > 0 ? changedFields : [...TIMELINE_FIELDS];
+
+  return (
+    <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm">
+      <div
+        className="m-auto bg-base-100 rounded-2xl shadow-2xl flex flex-col"
+        style={{ width: '96vw', maxWidth: '1440px', height: '90vh', overflow: 'hidden' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-base-300 flex-none">
+          <div className="flex items-center gap-2">
+            <Table2 size={16} className="text-primary" />
+            <span className="font-semibold text-base-content">Changes Timeline</span>
+            <span className="text-xs text-base-content/40 ml-1">newest first · source of truth pinned at bottom</span>
+          </div>
+          <button className="btn btn-ghost btn-circle btn-sm" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        {/* Scrollable table */}
+        <div className="flex-1 min-h-0 overflow-auto">
+          <table
+            className="text-sm border-collapse"
+            style={{ minWidth: `${220 + fieldsToShow.length * 165}px`, width: '100%' }}
+          >
+            <thead className="sticky top-0 z-20 bg-base-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-base-content/50 uppercase tracking-wide border-b border-r border-base-300 sticky left-0 bg-base-200 w-56 min-w-[220px]">
+                  Document
+                </th>
+                {fieldsToShow.map(f => {
+                  const changes = sorted.filter(doc => !doc.is_source_of_truth && isCellChanged(doc, f.key)).length;
+                  return (
+                    <th key={f.key} className="text-left px-3 py-3 text-xs font-semibold text-base-content/50 uppercase tracking-wide border-b border-base-300 min-w-[155px] whitespace-nowrap">
+                      {f.label}
+                      {changes > 0 && (
+                        <span className="ml-1.5 badge badge-xs badge-warning">{changes}×</span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((doc, idx) => {
+                const hasData = !!doc.extraction_data;
+                const isSot = !!doc.is_source_of_truth;
+                const rowBase = isSot
+                  ? 'bg-primary/[0.04]'
+                  : idx % 2 === 0
+                    ? 'bg-base-100'
+                    : 'bg-base-50/60';
+                const fmtDate = new Date(doc.created_at).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', year: '2-digit',
+                });
+                return (
+                  <tr key={doc.id} className={`${rowBase} border-b border-base-300/50`}>
+                    {/* Doc label — sticky left */}
+                    <td className={`px-4 py-3 sticky left-0 ${rowBase} border-r border-base-300/40 w-56 min-w-[220px]`}>
+                      <div className="flex items-start gap-2">
+                        {isSot && <Lock size={11} className="text-primary mt-0.5 flex-none" />}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {doc.doc_id && (
+                              <span className="font-mono text-[10px] text-base-content/40">{doc.doc_id}</span>
+                            )}
+                            <span className={`badge badge-xs ${TIMELINE_TYPE_BADGE[doc.category ?? 'other'] ?? 'badge-ghost'}`}>
+                              {TIMELINE_TYPE_LABEL[doc.category ?? 'other'] ?? doc.category}
+                            </span>
+                            {isSot && <span className="badge badge-xs badge-primary">SoT</span>}
+                          </div>
+                          <p
+                            className="text-xs text-base-content/60 truncate mt-0.5 max-w-[180px]"
+                            title={doc.display_name || doc.file_name}
+                          >
+                            {doc.display_name || doc.file_name}
+                          </p>
+                          <p className="text-[10px] text-base-content/30 mt-0.5">{fmtDate}</p>
+                        </div>
+                      </div>
+                    </td>
+
+                    {fieldsToShow.map(f => {
+                      if (!hasData) {
+                        return (
+                          <td key={f.key} className="px-3 py-3 text-center">
+                            <span className="text-[10px] text-base-content/20 italic">—</span>
+                          </td>
+                        );
+                      }
+
+                      const val = getDocValue(doc, f.key);
+                      const changed = isCellChanged(doc, f.key);
+                      const sotVal = getSotValue(f.key);
+
+                      if (isSot) {
+                        return (
+                          <td key={f.key} className="px-3 py-3">
+                            <span className="text-xs text-base-content/60 font-medium">
+                              {val || sotVal || '—'}
+                            </span>
+                          </td>
+                        );
+                      }
+
+                      if (changed) {
+                        return (
+                          <td key={f.key} className="px-3 py-3 bg-warning/10">
+                            <span className="text-xs font-semibold text-amber-800">{val}</span>
+                          </td>
+                        );
+                      }
+
+                      // Not changed and not SoT
+                      return (
+                        <td key={f.key} className="px-3 py-3">
+                          <span className="text-xs text-base-content/25 italic">same</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer legend */}
+        <div className="flex items-center gap-6 px-5 py-2.5 border-t border-base-300 flex-none bg-base-50 text-xs text-base-content/40 flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded bg-warning/30 border border-warning/40" />
+            Changed from source of truth
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="italic text-base-content/25">same</span>
+            &nbsp;— field matches source of truth
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="text-base-content/20">—</span>
+            &nbsp;— document not yet extracted
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Document Type Config ─────────────────────────────────────────────────────
 const DOC_TYPE_CONFIG: Record<string, { label: string; description: string; icon: string; color: string; autoTask?: string; taskPriority?: 'high' | 'medium' | 'low' }> = {
@@ -56,6 +291,7 @@ interface DealDocument {
   archived?: boolean;
   archived_at?: string;
   archived_by?: string;
+  extraction_data?: Record<string, string> | null;
   address_verified?: boolean;
   address_extracted?: string;
   address_mismatch?: boolean;
@@ -206,6 +442,13 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
       if (!res.ok) throw new Error(`Extraction failed (${res.status})`);
       const data: ExtractionResult = await res.json();
       setResult(data);
+
+      // Save raw extracted fields to DB for timeline view
+      const extractionMap: Record<string, string> = {};
+      data.fields.forEach(f => { if (f.value != null && f.value !== '') extractionMap[f.key] = f.value; });
+      if (Object.keys(extractionMap).length > 0) {
+        supabase.from('deal_documents').update({ extraction_data: extractionMap }).eq('id', doc.id).then(() => {});
+      }
 
       // Auto-check all fields that are CHANGED vs current deal
       const init: Record<string, boolean> = {};
@@ -846,6 +1089,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
   // Modal states
   const [previewDoc, setPreviewDoc] = useState<DealDocument | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [comparisonDoc, setComparisonDoc] = useState<DealDocument | null>(null);
   const [manualExtractDoc, setManualExtractDoc] = useState<DealDocument | null>(null);
   const [linkingDoc, setLinkingDoc] = useState<DealDocument | null>(null);
@@ -1591,6 +1835,12 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                 <span className="badge badge-sm bg-primary/10 text-primary border-0">{contractDocs.length}</span>
                 <div className="flex-1" />
                 <span className="text-xs text-base-content/30">Source of truth pinned · Original contract protected</span>
+                <button
+                  onClick={() => setShowTimeline(true)}
+                  className="btn btn-xs btn-ghost gap-1 text-primary/50 hover:text-primary normal-case font-normal"
+                >
+                  <Table2 size={11} /> Changes Timeline
+                </button>
               </div>
               <div className="p-3 space-y-2">
                 {contractDocs.map(doc => (
@@ -1787,6 +2037,14 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       )}
 
       {/* Change comparison (auto-triggered on contract/amendment upload) */}
+      {showTimeline && (
+        <ChangesTimeline
+          docs={[...contractDocs, ...counterOfferDocs, ...amendmentDocs]}
+          deal={deal}
+          onClose={() => setShowTimeline(false)}
+        />
+      )}
+
       {comparisonDoc && (
         <ChangeComparisonModal
           doc={comparisonDoc}
