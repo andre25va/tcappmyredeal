@@ -1134,7 +1134,28 @@ Document types:
 The user has pre-selected type: "${userSelectedType || 'not specified'}". Use this as a strong hint but override if clearly wrong.
 Deal address: "${dealAddress || 'not provided'}"`;
 
-  const mediaType = fileName?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+  const isPdf = fileName?.toLowerCase().endsWith('.pdf');
+
+  // Use type:'file' for PDFs (same approach as handleExtractDeal — works correctly with GPT-4o).
+  // Use type:'image_url' for images (JPEG, PNG, WEBP).
+  const userContent = isPdf
+    ? [
+        {
+          type: 'file',
+          file: {
+            filename: fileName || 'document.pdf',
+            file_data: `data:application/pdf;base64,${fileBase64}`,
+          },
+        },
+        { type: 'text', text: 'Classify this document and extract fields.' },
+      ]
+    : [
+        {
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${fileBase64}`, detail: 'high' },
+        },
+        { type: 'text', text: 'Classify this document and extract fields.' },
+      ];
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -1143,16 +1164,7 @@ Deal address: "${dealAddress || 'not provided'}"`;
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mediaType};base64,${fileBase64}`, detail: 'high' },
-            },
-            { type: 'text', text: 'Classify this document and extract fields.' },
-          ],
-        },
+        { role: 'user', content: userContent },
       ],
       response_format: {
         type: 'json_schema',
