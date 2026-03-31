@@ -21,6 +21,18 @@ import {
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
 
+// ─── Document Type Config ─────────────────────────────────────────────────────
+const DOC_TYPE_CONFIG: Record<string, { label: string; description: string; icon: string; color: string; autoTask?: string; taskPriority?: 'high' | 'medium' | 'low' }> = {
+  purchase_contract: { label: 'Purchase Contract', description: 'Original offer from buyer to seller', icon: '📄', color: 'text-primary' },
+  counter_offer:     { label: 'Counter Offer',     description: "Seller's response changing original terms", icon: '🔄', color: 'text-amber-600', autoTask: 'Review counter offer — contract numbers may have changed', taskPriority: 'high' },
+  amendment:         { label: 'Amendment',          description: 'Changes existing terms in the contract', icon: '✏️', color: 'text-blue-600' },
+  addendum:          { label: 'Addendum',           description: 'Adds new terms not in original contract', icon: '➕', color: 'text-purple-600' },
+  as_is:             { label: 'As-Is Addendum',     description: 'Property sold in present condition, no repairs', icon: '🏚️', color: 'text-orange-600' },
+  inspection_notice: { label: 'Inspection Notice',  description: "Buyer's response to inspection findings", icon: '🔍', color: 'text-teal-600', autoTask: 'Review inspection findings with client', taskPriority: 'medium' },
+  unacceptable_conditions: { label: 'Unacceptable Conditions', description: 'Buyer rejects inspection — may terminate', icon: '⚠️', color: 'text-red-600', autoTask: 'URGENT: Buyer flagged unacceptable conditions — respond before deadline', taskPriority: 'high' },
+  other:             { label: 'Other',              description: 'Any other document', icon: '📋', color: 'text-base-content/60' },
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealDocument {
   id: string;
@@ -28,7 +40,7 @@ interface DealDocument {
   file_name: string;
   storage_path: string;           // path in Supabase bucket e.g. deal_id/uuid.pdf
   file_size_bytes?: number;
-  category?: 'purchase_contract' | 'amendment' | 'addendum' | 'other';
+  category?: 'purchase_contract' | 'counter_offer' | 'amendment' | 'addendum' | 'as_is' | 'inspection_notice' | 'unacceptable_conditions' | 'other';
   source: 'upload' | 'email';
   gmail_thread_id?: string;
   document_type?: string;         // legacy column kept from original schema
@@ -38,6 +50,16 @@ interface DealDocument {
   uploaded_by?: string;
   is_protected?: boolean;
   is_source_of_truth?: boolean;
+  doc_id?: string;
+  display_name?: string;
+  sort_order?: number;
+  archived?: boolean;
+  archived_at?: string;
+  archived_by?: string;
+  address_verified?: boolean;
+  address_extracted?: string;
+  address_mismatch?: boolean;
+  address_mismatch_acknowledged?: boolean;
 }
 
 interface DocLink {
@@ -638,9 +660,10 @@ interface DocRowProps {
   onDelete: (doc: DealDocument) => void;
   onDownload: (doc: DealDocument) => void;
   onLinkChecklist: (doc: DealDocument) => void;
+  onArchive: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
@@ -659,7 +682,12 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.file_name}</p>
+          <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.display_name || doc.file_name}</p>
+          {doc.doc_id && (
+            <span className="text-xs px-1.5 py-0.5 rounded font-mono bg-base-300/60 text-base-content/40 border border-base-300">
+              {doc.doc_id}
+            </span>
+          )}
           {isOriginal && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
               ⭐ Source of Truth
@@ -678,6 +706,11 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           {isEmail && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-info/10 text-info flex items-center gap-1">
               <Mail size={10} /> From Email
+            </span>
+          )}
+          {doc.archived && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-base-300 text-base-content/40 italic">
+              Archived
             </span>
           )}
         </div>
@@ -710,38 +743,56 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
             <Eye size={13} />
           </button>
         )}
-        {/* Download */}
-        <button onClick={() => onDownload(doc)} className="btn btn-ghost btn-xs btn-circle" title="Download">
-          <Download size={13} />
-        </button>
-        {/* Extract — for contracts (primary) or any PDF (secondary) */}
-        {isPdf && (
-          <button
-            onClick={() => onExtract(doc)}
-            className={`btn btn-xs gap-1 ${isContract ? 'btn-primary' : 'btn-ghost'}`}
-            title="Extract data with AI"
-          >
-            <Sparkles size={11} /> Extract
+
+        {/* ⋯ Menu */}
+        <div className="relative group/menu">
+          <button className="btn btn-ghost btn-xs btn-circle" title="More options">
+            <span className="text-base-content/50 font-bold text-lg leading-none">⋯</span>
           </button>
-        )}
-        {/* Link to checklist */}
-        <button
-          onClick={() => onLinkChecklist(doc)}
-          className="btn btn-ghost btn-xs btn-circle"
-          title="Link to checklist item"
-        >
-          <Paperclip size={13} />
-        </button>
-        {/* Delete — blocked for original contract */}
-        {isOriginal ? (
-          <button disabled className="btn btn-ghost btn-xs btn-circle opacity-30 cursor-not-allowed" title="Original contract cannot be deleted">
-            <Lock size={13} />
-          </button>
-        ) : (
-          <button onClick={() => onDelete(doc)} className="btn btn-ghost btn-xs btn-circle text-error/60 hover:text-error" title="Delete">
-            <Trash2 size={13} />
-          </button>
-        )}
+          <div className="absolute right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-20 min-w-[160px] overflow-hidden hidden group-hover/menu:block">
+            {isPdf && (
+              <button
+                onClick={() => onExtract(doc)}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
+              >
+                <Sparkles size={12} className="text-primary" /> Summary
+              </button>
+            )}
+            {isPdf && (
+              <button
+                onClick={() => onExtract(doc)}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
+              >
+                <ArrowRight size={12} className="text-blue-500" /> Financial Changes
+              </button>
+            )}
+            <button
+              onClick={() => onLinkChecklist(doc)}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
+            >
+              <Paperclip size={12} /> Link to Checklist
+            </button>
+            <button
+              onClick={() => onDownload(doc)}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
+            >
+              <Download size={12} /> Download
+            </button>
+            <div className="border-t border-base-300" />
+            {isOriginal ? (
+              <button disabled className="w-full text-left px-3 py-2 text-xs text-base-content/30 flex items-center gap-2 cursor-not-allowed">
+                <Lock size={12} /> Protected
+              </button>
+            ) : (
+              <button
+                onClick={() => onArchive(doc)}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 text-warning flex items-center gap-2"
+              >
+                <Trash2 size={12} /> Archive
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -762,6 +813,12 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   // Option C: Source-of-Truth replacement lock
   const [sotPending, setSotPending] = useState<{ file: File; docType: DealDocument['category'] } | null>(null);
   const [showDocRequests, setShowDocRequests] = useState(true);
+
+  // Activity log state
+  const [showActivityLog, setShowActivityLog] = useState(false);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [loadingLog, setLoadingLog] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Modal states
   const [previewDoc, setPreviewDoc] = useState<DealDocument | null>(null);
@@ -812,6 +869,42 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         link_method: r.link_method ?? '',
       })));
     }
+  };
+
+  // ─── Document Log ────────────────────────────────────────────────────────────
+  const logDocumentAction = async (
+    docId: string | undefined,
+    documentId: string | undefined,
+    action: string,
+    changedFields?: Record<string, any>,
+    note?: string
+  ) => {
+    await supabase.from('document_log').insert({
+      deal_id: deal.id,
+      doc_id: docId,
+      document_id: documentId,
+      action,
+      changed_fields: changedFields ?? null,
+      actor_name: userName,
+      note: note ?? null,
+    });
+  };
+
+  const loadActivityLog = async () => {
+    setLoadingLog(true);
+    const { data } = await supabase
+      .from('document_log')
+      .select('*')
+      .eq('deal_id', deal.id)
+      .order('created_at', { ascending: false });
+    if (data) setActivityLog(data);
+    setLoadingLog(false);
+  };
+
+  const formatLogDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+      ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   // ─── Upload ─────────────────────────────────────────────────────────────────
@@ -880,6 +973,22 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       const newDoc = inserted as DealDocument;
       setDocs(prev => [newDoc, ...prev]);
 
+      // Log the upload
+      await logDocumentAction(
+        newDoc.doc_id,
+        newDoc.id,
+        'uploaded',
+        undefined,
+        `${userName} uploaded ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType}`
+      );
+
+      // Auto-create task for certain document types
+      const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
+      if (typeConfig?.autoTask) {
+        // Note: task creation would be handled by parent — for now just log
+        console.log('Auto-task needed:', typeConfig.autoTask, typeConfig.taskPriority);
+      }
+
       // Auto-trigger comparison for contracts and amendments
       if (docType === 'purchase_contract' || docType === 'amendment') {
         setTimeout(() => setComparisonDoc(newDoc), 400);
@@ -927,6 +1036,21 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const newDoc = inserted as DealDocument;
     setDocs(prev => [newDoc, ...prev]);
 
+    // Log the upload
+    await logDocumentAction(
+      newDoc.doc_id,
+      newDoc.id,
+      'uploaded',
+      undefined,
+      `${userName} uploaded ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType}`
+    );
+
+    // Auto-create task for certain document types
+    const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
+    if (typeConfig?.autoTask) {
+      console.log('Auto-task needed:', typeConfig.autoTask, typeConfig.taskPriority);
+    }
+
     if (docType === 'purchase_contract' || docType === 'amendment') {
       setTimeout(() => setComparisonDoc(newDoc), 400);
     }
@@ -943,6 +1067,16 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     await supabase.storage.from('deal-documents').remove([doc.storage_path]);
     await supabase.from('deal_documents').delete().eq('id', doc.id);
     setDocs(prev => prev.filter(d => d.id !== doc.id));
+  };
+
+  const handleArchive = async (doc: DealDocument) => {
+    if (!confirm(`Archive "${doc.display_name || doc.file_name}"? It will be hidden but not deleted.`)) return;
+    await supabase
+      .from('deal_documents')
+      .update({ archived: true, archived_at: new Date().toISOString(), archived_by: profile?.id })
+      .eq('id', doc.id);
+    setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, archived: true } : d));
+    await logDocumentAction(doc.doc_id, doc.id, 'archived', undefined, `Archived by ${userName}`);
   };
 
   // ─── Extraction handlers ─────────────────────────────────────────────────
@@ -991,9 +1125,12 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   // ─── Derived data ────────────────────────────────────────────────────────
-  const contractDocs = docs.filter(d => d.category === 'purchase_contract');
-  const amendmentDocs = docs.filter(d => d.category === 'amendment' || d.category === 'addendum');
-  const otherDocs = docs.filter(d => d.category === 'other' || !d.category);
+  const visibleDocs = docs.filter(d => showArchived || !d.archived);
+  const contractDocs = visibleDocs.filter(d => d.category === 'purchase_contract');
+  const counterOfferDocs = visibleDocs.filter(d => d.category === 'counter_offer').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const amendmentDocs = visibleDocs.filter(d => d.category === 'amendment' || d.category === 'addendum' || d.category === 'as_is');
+  const inspectionDocs = visibleDocs.filter(d => d.category === 'inspection_notice' || d.category === 'unacceptable_conditions');
+  const otherDocs = visibleDocs.filter(d => d.category === 'other' || !d.category);
 
   // Source of truth priority: 1) is_protected (original upload), 2) is_source_of_truth flag, 3) oldest by created_at
   const originalContractId = contractDocs.length > 0
@@ -1101,15 +1238,34 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowActivityLog(true); loadActivityLog(); }}
+            className="btn btn-sm btn-ghost gap-1"
+          >
+            <Clock size={13} /> Document Activity
+          </button>
+          <label className="flex items-center gap-1.5 text-xs text-base-content/50 cursor-pointer">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-xs"
+              checked={showArchived}
+              onChange={e => setShowArchived(e.target.checked)}
+            />
+            Show Archived
+          </label>
           <select
             className="select select-xs select-bordered"
             value={docTypeForUpload}
             onChange={e => setDocTypeForUpload(e.target.value as DealDocument['category'])}
           >
-            <option value="purchase_contract">Purchase Contract</option>
-            <option value="amendment">Amendment</option>
-            <option value="addendum">Addendum</option>
-            <option value="other">Other</option>
+            <option value="purchase_contract">📄 Purchase Contract</option>
+            <option value="counter_offer">🔄 Counter Offer</option>
+            <option value="amendment">✏️ Amendment</option>
+            <option value="addendum">➕ Addendum</option>
+            <option value="as_is">🏚️ As-Is Addendum</option>
+            <option value="inspection_notice">🔍 Inspection Notice</option>
+            <option value="unacceptable_conditions">⚠️ Unacceptable Conditions</option>
+            <option value="other">📋 Other</option>
           </select>
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1156,6 +1312,34 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDelete={handleDelete}
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
+                    onArchive={handleArchive}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Counter Offers ──────────────────────────────────────────────── */}
+          {counterOfferDocs.length > 0 && (
+            <section className="rounded-2xl border-2 border-amber-200 bg-amber-50/30 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200 bg-amber-50/50">
+                <span className="text-amber-600">🔄</span>
+                <h3 className="text-sm font-semibold text-amber-700 uppercase tracking-wide">Counter Offers</h3>
+                <span className="badge badge-sm bg-amber-100 text-amber-700 border-0">{counterOfferDocs.length}</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {counterOfferDocs.map((doc, idx) => (
+                  <DocRow
+                    key={doc.id}
+                    doc={{ ...doc, display_name: doc.display_name || `Counter Offer #${idx + 1}` }}
+                    isOriginal={false}
+                    linkedItemTitles={linkedTitlesByDocId[doc.id] ?? []}
+                    onPreview={setPreviewDoc}
+                    onExtract={setManualExtractDoc}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                    onLinkChecklist={setLinkingDoc}
+                    onArchive={handleArchive}
                   />
                 ))}
               </div>
@@ -1182,6 +1366,34 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDelete={handleDelete}
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
+                    onArchive={handleArchive}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Inspection Documents ────────────────────────────────────────── */}
+          {inspectionDocs.length > 0 && (
+            <section className="rounded-2xl border border-teal-200 bg-teal-50/20 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-200 bg-teal-50/30">
+                <span>🔍</span>
+                <h3 className="text-sm font-semibold text-teal-700 uppercase tracking-wide">Inspection Documents</h3>
+                <span className="badge badge-sm bg-teal-100 text-teal-700 border-0">{inspectionDocs.length}</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {inspectionDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    isOriginal={false}
+                    linkedItemTitles={linkedTitlesByDocId[doc.id] ?? []}
+                    onPreview={setPreviewDoc}
+                    onExtract={setManualExtractDoc}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                    onLinkChecklist={setLinkingDoc}
+                    onArchive={handleArchive}
                   />
                 ))}
               </div>
@@ -1206,6 +1418,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDelete={handleDelete}
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
+                    onArchive={handleArchive}
                   />
                 ))}
               </div>
@@ -1299,6 +1512,75 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           onUnlink={handleUnlink}
           onClose={() => setLinkingDoc(null)}
         />
+      )}
+
+      {/* ── Document Activity Log ───────────────────────────────────────── */}
+      {showActivityLog && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" onClick={() => setShowActivityLog(false)}>
+          <div
+            className="h-full w-full max-w-lg bg-base-100 shadow-2xl flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-base-300 flex-none">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-primary" />
+                <span className="font-semibold text-base-content">Document Activity</span>
+              </div>
+              <button onClick={() => setShowActivityLog(false)} className="btn btn-ghost btn-circle btn-sm">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Log entries */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {loadingLog && <LoadingSpinner label="Loading activity..." />}
+              {!loadingLog && activityLog.length === 0 && (
+                <p className="text-sm text-base-content/40 text-center py-8">No activity recorded yet.</p>
+              )}
+              {!loadingLog && activityLog.map(entry => {
+                const changedFields = entry.changed_fields as Record<string, { from: any; to: any; delta?: string }> | null;
+                return (
+                  <div key={entry.id} className="border-b border-base-200 pb-4 last:border-0">
+                    {/* Timestamp + actor + action */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-xs text-base-content/40">{formatLogDate(entry.created_at)}</span>
+                        <span className="text-xs text-base-content/40 ml-2">·</span>
+                        <span className="text-xs font-medium text-base-content ml-2">{entry.actor_name}</span>
+                      </div>
+                      {entry.doc_id && (
+                        <span className="text-xs font-mono bg-base-300/60 px-1.5 py-0.5 rounded text-base-content/40 border border-base-300 flex-none">
+                          {entry.doc_id}
+                        </span>
+                      )}
+                    </div>
+                    {/* Action description */}
+                    <p className="text-sm font-medium text-base-content mt-0.5">{entry.note || entry.action}</p>
+                    {/* Changed fields */}
+                    {changedFields && Object.keys(changedFields).length > 0 && (
+                      <div className="mt-2 space-y-1 pl-3 border-l-2 border-base-300">
+                        {Object.entries(changedFields).map(([field, change]: [string, any]) => (
+                          <div key={field} className="flex items-center gap-2 text-xs">
+                            <span className="text-base-content/50 w-32 flex-none">{field}</span>
+                            <span className="text-base-content/40">{change.from}</span>
+                            <ArrowRight size={10} className="text-base-content/30 flex-none" />
+                            <span className="text-base-content font-medium">{change.to}</span>
+                            {change.delta && (
+                              <span className={`font-medium ${change.delta.startsWith('+') ? 'text-error' : 'text-success'}`}>
+                                ({change.delta})
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
