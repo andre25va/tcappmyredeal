@@ -260,7 +260,7 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-primary" />
               <span className="font-semibold text-base-content">
-                {doc.category === 'counter_offer' ? 'Counter Offer' : doc.category === 'amendment' ? 'Amendment' : 'Contract'} — Review Proposed Changes
+                {doc.category === 'counter_offer' ? 'Counter Offer' : doc.category === 'amendment' ? 'Amendment' : doc.category === 'addendum' ? 'Addendum' : 'Contract'} — Review Proposed Changes
               </span>
             </div>
             <p className="text-xs text-base-content/40 mt-0.5 ml-6">{doc.file_name}</p>
@@ -1098,8 +1098,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         });
       }
 
-      // Auto-trigger comparison for contracts, amendments, and counter offers
-      if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'counter_offer') {
+      // Auto-trigger comparison for contracts, amendments, addendums, and counter offers
+      if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'addendum' || docType === 'counter_offer') {
         setTimeout(() => setComparisonDoc(newDoc), 400);
       }
     } catch (e: any) {
@@ -1179,7 +1179,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       });
     }
 
-    if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'counter_offer') {
+    if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'addendum' || docType === 'counter_offer') {
       setTimeout(() => setComparisonDoc(newDoc), 400);
     }
   };
@@ -1659,6 +1659,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onReviewChanges={(doc.category === 'amendment' || doc.category === 'addendum') ? setComparisonDoc : undefined}
                   />
                 ))}
               </div>
