@@ -42,8 +42,11 @@ serve(async (req: Request) => {
       fullAddress = `${address}, ${cityStateZip}`;
     }
 
-    const searchQuery = `Search Zillow, Realtor.com, Redfin, or MLS listing sites for the property: "${fullAddress}".
-Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
+    const searchQuery = `Search Zillow, Realtor.com, Redfin, or any MLS listing site for the property: "${fullAddress}".
+
+CRITICAL: Your most important task is to find the MLS listing number (also called "MLS #", "Listing ID", or "Property ID") for this property. Check the listing page URL and page content carefully — it is almost always displayed prominently on Zillow, Redfin, and Realtor.com listing pages. On Zillow it appears near the bottom as "MLS #XXXXXXX". On Redfin it appears as "MLS# XXXXXXX". On Realtor.com it appears as "MLS ID XXXXXXX". Never return null for mlsNumber unless you have exhaustively searched and truly cannot find it anywhere.
+
+Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if truly unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
 mlsBoardName: the name of the MLS board or association this listing belongs to (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if unknown.
 propertyType must be one of: Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other.
 listingStatus must be one of: Active, Pending, Under Contract, Contingent, Sold, Closed.
