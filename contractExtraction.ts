@@ -64,6 +64,8 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'downPaymentPercent',    label: 'Down Payment %',          getDealVal: d => (d as any).downPaymentPercent || '' },
   { key: 'sellerCredit',          label: 'Seller Credit',           getDealVal: d => (d as any).sellerCredit ? `$${Number((d as any).sellerCredit).toLocaleString()}` : '' },
   { key: 'additionalSellerCosts', label: "Add'l Seller Costs",      getDealVal: d => (d as any).additionalSellerCosts ? `$${Number((d as any).additionalSellerCosts).toLocaleString()}` : '' },
+  { key: 'buyerAgentName',       label: 'Buyer Agent',             getDealVal: d => (d as any).buyer_agent_name || '' },
+  { key: 'sellerAgentName',      label: 'Seller Agent',            getDealVal: d => (d as any).seller_agent_name || '' },
 ];
 
 // ─── Value Formatting ──────────────────────────────────────────────────────────
@@ -143,6 +145,10 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
     } else if (f.key === 'additionalSellerCosts') {
       const n = parseFloat(val.replace(/[$,]/g, ''));
       updates['additionalSellerCosts'] = isNaN(n) ? undefined : n;
+    } else if (f.key === 'buyerAgentName') {
+      updates['buyer_agent_name'] = val;
+    } else if (f.key === 'sellerAgentName') {
+      updates['seller_agent_name'] = val;
     } else {
       updates[f.key] = val;
     }

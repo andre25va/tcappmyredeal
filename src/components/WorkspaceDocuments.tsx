@@ -260,7 +260,7 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-primary" />
               <span className="font-semibold text-base-content">
-                {doc.category === 'amendment' ? 'Amendment' : 'Contract'} — Review Data Changes
+                {doc.category === 'counter_offer' ? 'Counter Offer' : doc.category === 'amendment' ? 'Amendment' : doc.category === 'addendum' ? 'Addendum' : 'Contract'} — Review Proposed Changes
               </span>
             </div>
             <p className="text-xs text-base-content/40 mt-0.5 ml-6">{doc.file_name}</p>
@@ -661,9 +661,12 @@ interface DocRowProps {
   onDownload: (doc: DealDocument) => void;
   onLinkChecklist: (doc: DealDocument) => void;
   onArchive: (doc: DealDocument) => void;
+  onSummary: (doc: DealDocument) => void;
+  onFinancialChanges: (doc: DealDocument) => void;
+  onReviewChanges?: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onReviewChanges }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
@@ -744,6 +747,17 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           </button>
         )}
 
+        {/* Review Changes — for counter offers */}
+        {onReviewChanges && doc.category === 'counter_offer' && (
+          <button
+            onClick={() => onReviewChanges(doc)}
+            className="btn btn-xs btn-outline btn-warning gap-1"
+            title="Review proposed changes"
+          >
+            <Sparkles size={11} /> Review
+          </button>
+        )}
+
         {/* ⋯ Menu */}
         <div className="relative group/menu">
           <button className="btn btn-ghost btn-xs btn-circle" title="More options">
@@ -752,7 +766,7 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           <div className="absolute right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-20 min-w-[160px] overflow-hidden hidden group-hover/menu:block">
             {isPdf && (
               <button
-                onClick={() => onExtract(doc)}
+                onClick={() => onSummary(doc)}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
               >
                 <Sparkles size={12} className="text-primary" /> Summary
@@ -760,7 +774,7 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
             )}
             {isPdf && (
               <button
-                onClick={() => onExtract(doc)}
+                onClick={() => onFinancialChanges(doc)}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
               >
                 <ArrowRight size={12} className="text-blue-500" /> Financial Changes
@@ -820,11 +834,34 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [loadingLog, setLoadingLog] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
+  // Address mismatch / classify state
+  const [classifying, setClassifying] = useState(false);
+  const [addressMismatchPending, setAddressMismatchPending] = useState<{
+    file: File;
+    docType: DealDocument['category'];
+    extracted: string;
+    match: 'match' | 'partial' | 'mismatch';
+    classifyResult: any;
+  } | null>(null);
+
   // Modal states
   const [previewDoc, setPreviewDoc] = useState<DealDocument | null>(null);
   const [comparisonDoc, setComparisonDoc] = useState<DealDocument | null>(null);
   const [manualExtractDoc, setManualExtractDoc] = useState<DealDocument | null>(null);
   const [linkingDoc, setLinkingDoc] = useState<DealDocument | null>(null);
+
+  // Summary modal
+  const [summaryDoc, setSummaryDoc] = useState<DealDocument | null>(null);
+  const [summaryText, setSummaryText] = useState<string>('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Financial Changes modal
+  const [financialDoc, setFinancialDoc] = useState<DealDocument | null>(null);
+  const [financialChanges, setFinancialChanges] = useState<Array<{ field: string; current: string; proposed: string; delta: string }>>([]);
+  const [financialLoading, setFinancialLoading] = useState(false);
+
+  // Download Packet
+  const [packetLoading, setPacketLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -908,20 +945,77 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   // ─── Upload ─────────────────────────────────────────────────────────────────
+
+  // ─── AI Pre-upload Classification ───────────────────────────────────────────
+  const classifyDocument = async (file: File, userSelectedType: DealDocument['category']): Promise<any | null> => {
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]); // strip data:...;base64,
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const dealAddress = [deal.propertyAddress, deal.city, deal.state, deal.zipCode].filter(Boolean).join(', ');
+
+      const res = await fetch('/api/ai?action=classify-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileBase64: base64,
+          fileName: file.name,
+          dealAddress,
+          userSelectedType,
+        }),
+      });
+
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null; // classify failure should never block upload
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+
     // Option C: if replacing an existing Source of Truth contract, require confirmation
     const existingSot = docs.find(d => d.category === 'purchase_contract' && d.is_source_of_truth);
     if (docTypeForUpload === 'purchase_contract' && existingSot) {
       setSotPending({ file, docType: docTypeForUpload });
       return;
     }
-    await uploadFile(file, docTypeForUpload);
+
+    // Pre-upload AI classification
+    setClassifying(true);
+    setUploadProgress('Analyzing document…');
+    const classified = await classifyDocument(file, docTypeForUpload);
+    setClassifying(false);
+    setUploadProgress('');
+
+    if (classified) {
+      // Address mismatch — force acknowledgment before upload
+      if (classified.addressMatch === 'mismatch' || classified.addressMatch === 'partial') {
+        setAddressMismatchPending({
+          file,
+          docType: docTypeForUpload,
+          extracted: classified.addressExtracted,
+          match: classified.addressMatch,
+          classifyResult: classified,
+        });
+        return;
+      }
+    }
+
+    await uploadFile(file, docTypeForUpload, classified);
   };
 
-  const uploadFile = async (file: File, docType: DealDocument['category']) => {
+  const uploadFile = async (file: File, docType: DealDocument['category'], classifyResult?: any) => {
     setUploading(true);
     setUploadProgress('Compressing & uploading…');
     try {
@@ -937,17 +1031,21 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
       if (!uploadRes.ok) {
         // Fallback: direct upload if API route unavailable
-        await directUpload(file, docType);
+        await directUpload(file, docType, classifyResult);
         return;
       }
 
       const { path, file_name, file_size } = await uploadRes.json();
       setUploadProgress('Saving record…');
 
-      // Only demote existing source-of-truth when explicitly replacing (sotPending flow)
-      // A new upload does NOT automatically steal Source of Truth from the protected original
-      const existingProtected = docs.find(d => d.category === 'purchase_contract' && d.is_protected);
-      const isFirstContract = docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0;
+      // If uploading a new purchase contract, demote previous source-of-truth
+      if (docType === 'purchase_contract') {
+        await supabase
+          .from('deal_documents')
+          .update({ is_source_of_truth: false })
+          .eq('deal_id', deal.id)
+          .eq('category', 'purchase_contract');
+      }
 
       const rec = {
         deal_id: deal.id,
@@ -958,8 +1056,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         source: 'upload' as const,
         created_at: new Date().toISOString(),
         uploaded_by: userName,
-        is_protected: isFirstContract,
-        is_source_of_truth: isFirstContract, // only SoT if it's the very first contract
+        is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
+        is_source_of_truth: docType === 'purchase_contract',
+        // AI classification results
+        address_verified: classifyResult ? classifyResult.addressMatch === 'match' : null,
+        address_extracted: classifyResult?.addressExtracted ?? null,
+        address_mismatch: classifyResult ? classifyResult.addressMatch !== 'match' : false,
+        address_mismatch_acknowledged: classifyResult?.addressMatch === 'mismatch' || classifyResult?.addressMatch === 'partial' ? true : false,
       };
 
       const { data: inserted, error: dbErr } = await supabase
@@ -985,12 +1088,18 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       // Auto-create task for certain document types
       const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
       if (typeConfig?.autoTask) {
-        // Note: task creation would be handled by parent — for now just log
-        console.log('Auto-task needed:', typeConfig.autoTask, typeConfig.taskPriority);
+        await supabase.from('tasks').insert({
+          deal_id: deal.id,
+          title: typeConfig.autoTask,
+          description: `Auto-created on ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType} upload (${newDoc.doc_id ?? ''})`,
+          priority: typeConfig.taskPriority ?? 'normal',
+          status: 'pending',
+          category: 'document',
+        });
       }
 
-      // Auto-trigger comparison for contracts and amendments
-      if (docType === 'purchase_contract' || docType === 'amendment') {
+      // Auto-trigger comparison for contracts, amendments, addendums, and counter offers
+      if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'addendum' || docType === 'counter_offer') {
         setTimeout(() => setComparisonDoc(newDoc), 400);
       }
     } catch (e: any) {
@@ -1002,11 +1111,18 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   // Fallback direct upload if API route isn't available
-  const directUpload = async (file: File, docType: DealDocument['category']) => {
+  const directUpload = async (file: File, docType: DealDocument['category'], classifyResult?: any) => {
     const ext = file.name.split('.').pop() ?? 'bin';
     const path = `${deal.id}/${generateId()}.${ext}`;
 
-    // Do not demote existing SoT here — only the explicit "Replace Source of Truth" confirmation flow does that
+    // Demote previous source-of-truth if uploading a new purchase contract
+    if (docType === 'purchase_contract') {
+      await supabase
+        .from('deal_documents')
+        .update({ is_source_of_truth: false })
+        .eq('deal_id', deal.id)
+        .eq('category', 'purchase_contract');
+    }
 
     const { error: upErr } = await supabase.storage
       .from('deal-documents')
@@ -1023,7 +1139,12 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       created_at: new Date().toISOString(),
       uploaded_by: userName,
       is_protected: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
-      is_source_of_truth: docType === 'purchase_contract' && docs.filter(d => d.category === 'purchase_contract').length === 0,
+      is_source_of_truth: docType === 'purchase_contract',
+      // AI classification results
+      address_verified: classifyResult ? classifyResult.addressMatch === 'match' : null,
+      address_extracted: classifyResult?.addressExtracted ?? null,
+      address_mismatch: classifyResult ? classifyResult.addressMatch !== 'match' : false,
+      address_mismatch_acknowledged: classifyResult?.addressMatch === 'mismatch' || classifyResult?.addressMatch === 'partial' ? true : false,
     };
 
     const { data: inserted, error: dbErr } = await supabase
@@ -1048,10 +1169,17 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     // Auto-create task for certain document types
     const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
     if (typeConfig?.autoTask) {
-      console.log('Auto-task needed:', typeConfig.autoTask, typeConfig.taskPriority);
+      await supabase.from('tasks').insert({
+        deal_id: deal.id,
+        title: typeConfig.autoTask,
+        description: `Auto-created on ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType} upload (${newDoc.doc_id ?? ''})`,
+        priority: typeConfig.taskPriority ?? 'normal',
+        status: 'pending',
+        category: 'document',
+      });
     }
 
-    if (docType === 'purchase_contract' || docType === 'amendment') {
+    if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'addendum' || docType === 'counter_offer') {
       setTimeout(() => setComparisonDoc(newDoc), 400);
     }
   };
@@ -1060,6 +1188,89 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const { data, error } = await supabase.storage.from('deal-documents').createSignedUrl(doc.storage_path, 300);
     if (error) { alert('Could not generate download link'); return; }
     window.open(data.signedUrl, '_blank');
+  };
+
+  const handleSummary = async (doc: DealDocument) => {
+    setSummaryDoc(doc);
+    setSummaryLoading(true);
+    setSummaryText('');
+    try {
+      const resp = await fetch('/api/ai?action=summarize-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+      const result = await resp.json();
+      setSummaryText(result.summary || 'Could not generate summary.');
+    } catch {
+      setSummaryText('Failed to generate summary. Please try again.');
+    }
+    setSummaryLoading(false);
+  };
+
+  const handleFinancialChanges = async (doc: DealDocument) => {
+    setFinancialDoc(doc);
+    setFinancialLoading(true);
+    setFinancialChanges([]);
+    try {
+      const d = deal as any;
+      const currentDealData = {
+        salesPrice: d.contractPrice ?? d.salesPrice ?? '',
+        closingDate: deal.closingDate || '',
+        optionFee: d.optionFee ?? '',
+        optionPeriodEndDate: d.optionPeriodEndDate ?? '',
+        earnestMoney: deal.earnestMoney ?? '',
+        financeAmount: d.loanAmount ?? d.financeAmount ?? '',
+        downPayment: deal.downPayment ?? '',
+        interestRate: d.interestRate ?? '',
+        loanType: deal.loanType || '',
+        buyerName: deal.buyerName || '',
+        sellerName: deal.sellerName || '',
+        buyerAgentName: deal.buyerAgentName || '',
+        sellerAgentName: deal.sellerAgentName || '',
+        titleCompanyName: deal.titleCompanyName || '',
+        loanOfficerName: deal.loanOfficerName || '',
+      };
+      const resp = await fetch('/api/ai?action=financial-changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: doc.id, currentDealData }),
+      });
+      const result = await resp.json();
+      setFinancialChanges(result.changes || []);
+    } catch {
+      setFinancialChanges([]);
+    }
+    setFinancialLoading(false);
+  };
+
+  const handleDownloadPacket = async () => {
+    setPacketLoading(true);
+    try {
+      const resp = await fetch('/api/ai?action=generate-packet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dealId: deal.id }),
+      });
+      const result = await resp.json();
+      if (result.pdfBase64) {
+        const byteChars = atob(result.pdfBase64);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArr], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename || 'document-packet.pdf';
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        alert('Could not generate packet. Please try again.');
+      }
+    } catch {
+      alert('Failed to generate packet. Please try again.');
+    }
+    setPacketLoading(false);
   };
 
   const handleDelete = async (doc: DealDocument) => {
@@ -1128,14 +1339,14 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const visibleDocs = docs.filter(d => showArchived || !d.archived);
   const contractDocs = visibleDocs.filter(d => d.category === 'purchase_contract');
   const counterOfferDocs = visibleDocs.filter(d => d.category === 'counter_offer').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const unreviewedCounterOffers = counterOfferDocs.filter(d => !d.extracted_at);
   const amendmentDocs = visibleDocs.filter(d => d.category === 'amendment' || d.category === 'addendum' || d.category === 'as_is');
   const inspectionDocs = visibleDocs.filter(d => d.category === 'inspection_notice' || d.category === 'unacceptable_conditions');
   const otherDocs = visibleDocs.filter(d => d.category === 'other' || !d.category);
 
-  // Source of truth priority: 1) is_protected (original upload), 2) is_source_of_truth flag, 3) oldest by created_at
+  // Source of truth = flagged doc; fallback to oldest purchase_contract
   const originalContractId = contractDocs.length > 0
-    ? (contractDocs.find(d => d.is_protected)?.id
-        ?? contractDocs.find(d => d.is_source_of_truth)?.id
+    ? (contractDocs.find(d => d.is_source_of_truth)?.id
         ?? [...contractDocs].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0].id)
     : null;
 
@@ -1205,6 +1416,71 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         </div>
       )}
 
+      {/* ── Address Mismatch Modal ──────────────────────────────────────── */}
+      {addressMismatchPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-base-100 rounded-2xl shadow-xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-3">
+              {addressMismatchPending.match === 'mismatch' ? (
+                <span className="text-2xl">🔴</span>
+              ) : (
+                <span className="text-2xl">⚠️</span>
+              )}
+              <h3 className="font-bold text-lg">
+                {addressMismatchPending.match === 'mismatch' ? 'Address Mismatch' : 'Address Partial Match'}
+              </h3>
+            </div>
+            <p className="text-sm text-base-content/70 mb-2">
+              The address in this document doesn't fully match this deal.
+            </p>
+            <div className="rounded-lg bg-base-200 p-3 text-sm mb-4 space-y-1">
+              <div><span className="text-base-content/50">Deal address: </span><span className="font-medium">{[deal.propertyAddress, deal.city, deal.state].filter(Boolean).join(', ')}</span></div>
+              <div><span className="text-base-content/50">Document address: </span><span className="font-medium text-warning">{addressMismatchPending.extracted || 'Not found'}</span></div>
+            </div>
+            <p className="text-xs text-base-content/50 mb-4">
+              This will be logged. You can still upload — just confirm you've reviewed this.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setAddressMismatchPending(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm btn-warning"
+                onClick={async () => {
+                  const { file, docType, classifyResult } = addressMismatchPending;
+                  setAddressMismatchPending(null);
+                  await uploadFile(file, docType, classifyResult);
+                }}
+              >
+                Acknowledge & Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pending Changes banner ──────────────────────────────────────── */}
+      {unreviewedCounterOffers.length > 0 && (
+        <div
+          onClick={() => setComparisonDoc(unreviewedCounterOffers[0])}
+          className="rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3 mb-2 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors"
+        >
+          <span className="text-lg mt-0.5">🔄</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              Pending Changes — {unreviewedCounterOffers.length} Unreviewed Counter Offer{unreviewedCounterOffers.length > 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-amber-600/80 dark:text-amber-400/60 mt-0.5">
+              Click to review counter offer terms and confirm or reject changes.
+            </p>
+          </div>
+          <span className="text-xs text-amber-600 dark:text-amber-400 mt-1 shrink-0">Review →</span>
+        </div>
+      )}
+
       {/* ── Upload hero CTA (no contract yet) ─────────────────────────── */}
       {contractDocs.length === 0 && (
         <div
@@ -1244,6 +1520,16 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           >
             <Clock size={13} /> Document Activity
           </button>
+          <button
+            onClick={handleDownloadPacket}
+            disabled={packetLoading}
+            className="btn btn-sm btn-ghost gap-1"
+          >
+            {packetLoading
+              ? <><span className="loading loading-spinner loading-xs" /> Generating…</>
+              : <><Download size={13} /> Download Packet</>
+            }
+          </button>
           <label className="flex items-center gap-1.5 text-xs text-base-content/50 cursor-pointer">
             <input
               type="checkbox"
@@ -1270,10 +1556,10 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-sm btn-primary gap-1"
-            disabled={uploading}
+            disabled={uploading || classifying}
           >
-            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-            {uploading ? uploadProgress : 'Upload File'}
+            {(uploading || classifying) ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            {uploading ? uploadProgress : classifying ? 'Analyzing…' : 'Upload File'}
           </button>
         </div>
       </div>
@@ -1313,6 +1599,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1340,6 +1628,9 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
+                    onReviewChanges={setComparisonDoc}
                   />
                 ))}
               </div>
@@ -1367,6 +1658,9 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
+                    onReviewChanges={(doc.category === 'amendment' || doc.category === 'addendum') ? setComparisonDoc : undefined}
                   />
                 ))}
               </div>
@@ -1394,6 +1688,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1419,6 +1715,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onDownload={handleDownload}
                     onLinkChecklist={setLinkingDoc}
                     onArchive={handleArchive}
+                    onSummary={handleSummary}
+                    onFinancialChanges={handleFinancialChanges}
                   />
                 ))}
               </div>
@@ -1538,48 +1836,156 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
               {!loadingLog && activityLog.length === 0 && (
                 <p className="text-sm text-base-content/40 text-center py-8">No activity recorded yet.</p>
               )}
-              {!loadingLog && activityLog.map(entry => {
-                const changedFields = entry.changed_fields as Record<string, { from: any; to: any; delta?: string }> | null;
+              {!loadingLog && activityLog.map((entry, idx) => {
+                const changes: Array<{ label: string; from?: string; to?: string; delta?: string }> =
+                  entry.changed_fields
+                    ? (Array.isArray(entry.changed_fields)
+                        ? entry.changed_fields
+                        : Object.entries(entry.changed_fields).map(([k, v]: any) => ({
+                            label: k,
+                            ...(typeof v === 'object' && v !== null ? v : { to: String(v) }),
+                          })))
+                    : [];
+                const dt = new Date(entry.created_at);
+                const dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
                 return (
-                  <div key={entry.id} className="border-b border-base-200 pb-4 last:border-0">
-                    {/* Timestamp + actor + action */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-xs text-base-content/40">{formatLogDate(entry.created_at)}</span>
-                        <span className="text-xs text-base-content/40 ml-2">·</span>
-                        <span className="text-xs font-medium text-base-content ml-2">{entry.actor_name}</span>
-                      </div>
-                      {entry.doc_id && (
-                        <span className="text-xs font-mono bg-base-300/60 px-1.5 py-0.5 rounded text-base-content/40 border border-base-300 flex-none">
-                          {entry.doc_id}
-                        </span>
-                      )}
-                    </div>
-                    {/* Action description */}
-                    <p className="text-sm font-medium text-base-content mt-0.5">{entry.note || entry.action}</p>
-                    {/* Changed fields */}
-                    {changedFields && Object.keys(changedFields).length > 0 && (
-                      <div className="mt-2 space-y-1 pl-3 border-l-2 border-base-300">
-                        {Object.entries(changedFields).map(([field, change]: [string, any]) => (
-                          <div key={field} className="flex items-center gap-2 text-xs">
-                            <span className="text-base-content/50 w-32 flex-none">{field}</span>
-                            <span className="text-base-content/40">{change.from}</span>
-                            <ArrowRight size={10} className="text-base-content/30 flex-none" />
-                            <span className="text-base-content font-medium">{change.to}</span>
-                            {change.delta && (
-                              <span className={`font-medium ${change.delta.startsWith('+') ? 'text-error' : 'text-success'}`}>
-                                ({change.delta})
-                              </span>
-                            )}
+                  <div key={entry.id || idx} className="py-3 border-b border-base-200 last:border-0">
+                    <div className="flex gap-3">
+                      <span className="text-xs text-base-content/40 whitespace-nowrap font-mono min-w-[110px]">
+                        {dateStr} · {timeStr}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-semibold text-base-content">{entry.actor_name}</span>
+                        <span className="text-xs text-base-content/70">{' '}{entry.note || entry.action}</span>
+                        {entry.doc_id && (
+                          <span className="ml-1 text-xs font-mono text-primary opacity-70">· {entry.doc_id}</span>
+                        )}
+                        {changes.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {changes.map((change, ci) => {
+                              const isLast = ci === changes.length - 1;
+                              const treeChar = isLast ? '└' : '├';
+                              return (
+                                <div key={ci} className="flex gap-1.5 items-baseline">
+                                  <span className="text-base-content/30 font-mono text-xs select-none">{treeChar}</span>
+                                  <span className="text-xs text-base-content/60">{change.label}</span>
+                                  {change.from !== undefined && (
+                                    <>
+                                      <span className="text-xs text-base-content/40 font-mono">{change.from}</span>
+                                      <span className="text-xs text-base-content/30">→</span>
+                                      <span className="text-xs font-medium text-base-content">{change.to}</span>
+                                    </>
+                                  )}
+                                  {change.from === undefined && change.to !== undefined && (
+                                    <span className="text-xs text-base-content/70">{change.to}</span>
+                                  )}
+                                  {change.delta && (
+                                    <span className={`text-xs font-mono font-semibold ml-1 ${
+                                      String(change.delta).startsWith('+') ? 'text-success' :
+                                      String(change.delta).startsWith('-') ? 'text-error' : 'text-base-content/50'
+                                    }`}>({change.delta})</span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ─── Summary Modal ───────────────────────────────────────────────────── */}
+      {summaryDoc && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg">Document Summary</h3>
+                <p className="text-sm text-base-content/60">{summaryDoc.display_name || summaryDoc.file_name}</p>
+              </div>
+              <button className="btn btn-sm btn-ghost btn-circle" onClick={() => { setSummaryDoc(null); setSummaryText(''); }}>✕</button>
+            </div>
+            {summaryLoading ? (
+              <div className="flex items-center gap-3 py-8 justify-center text-base-content/50">
+                <span className="loading loading-spinner loading-md" />
+                <span>Analyzing document…</span>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm leading-relaxed">
+                {summaryText}
+              </div>
+            )}
+            <div className="modal-action">
+              <button className="btn btn-sm" onClick={() => { setSummaryDoc(null); setSummaryText(''); }}>Close</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => { setSummaryDoc(null); setSummaryText(''); }} />
+        </div>
+      )}
+
+      {/* ─── Financial Changes Modal ─────────────────────────────────────────── */}
+      {financialDoc && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg">Financial Changes</h3>
+                <p className="text-sm text-base-content/60">{financialDoc.display_name || financialDoc.file_name}</p>
+              </div>
+              <button className="btn btn-sm btn-ghost btn-circle" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }}>✕</button>
+            </div>
+            {financialLoading ? (
+              <div className="flex items-center gap-3 py-8 justify-center text-base-content/50">
+                <span className="loading loading-spinner loading-md" />
+                <span>Comparing financial terms…</span>
+              </div>
+            ) : financialChanges.length === 0 ? (
+              <div className="text-center py-8 text-base-content/50">
+                <p className="text-sm">No financial changes detected vs. current deal data.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table table-sm w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-xs">Field</th>
+                      <th className="text-xs">Current</th>
+                      <th className="text-xs">Proposed</th>
+                      <th className="text-xs">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financialChanges.map((change, i) => (
+                      <tr key={i}>
+                        <td className="font-medium text-xs">{change.field}</td>
+                        <td className="text-xs text-base-content/60">{change.current}</td>
+                        <td className="text-xs font-medium">{change.proposed}</td>
+                        <td className="text-xs">
+                          <span className={`font-mono font-semibold ${
+                            change.delta.startsWith('+') ? 'text-success' :
+                            change.delta.startsWith('-') ? 'text-error' : 'text-warning'
+                          }`}>
+                            {change.delta}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="modal-action">
+              <button className="btn btn-sm" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }}>Close</button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => { setFinancialDoc(null); setFinancialChanges([]); }} />
         </div>
       )}
     </div>
