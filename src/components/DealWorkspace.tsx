@@ -669,7 +669,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       )}
 
       {/* Page ID badge — bottom-right, for quick reference & bug reporting */}
-      <PageIdBadge pageId="deal-workspace" context={deal.id} />
+      <PageIdBadge pageId="deal-workspace" context={`${deal.id} · tab:${tab}`} />
     </div>
   );
 };
