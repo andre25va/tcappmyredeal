@@ -53,6 +53,8 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'possessionDate',        label: 'Possession Date',       getDealVal: d => (d as any).possessionDate || '' },
   { key: 'buyerNames',            label: 'Buyer Name(s)',         getDealVal: d => (d as any).buyerName || '' },
   { key: 'sellerNames',           label: 'Seller Name(s)',        getDealVal: d => (d as any).sellerName || '' },
+  { key: 'buyerAgentName',        label: 'Buyer Agent Name',      getDealVal: d => (d as any).buyerAgentName || '' },
+  { key: 'sellerAgentName',       label: 'Seller Agent Name',     getDealVal: d => (d as any).sellerAgentName || '' },
   { key: 'titleCompany',          label: 'Title Company',         getDealVal: d => (d as any).titleCompanyName || '' },
   { key: 'loanOfficer',           label: 'Lender / Loan Officer', getDealVal: d => (d as any).loanOfficerName || '' },
   { key: 'asIsSale',              label: 'As-Is Sale',            getDealVal: d => (d as any).asIsSale !== undefined ? String((d as any).asIsSale) : '' },
@@ -64,6 +66,8 @@ export const FIELD_DEAL_MAP: { key: string; label: string; getDealVal: (d: Deal)
   { key: 'downPaymentPercent',    label: 'Down Payment %',          getDealVal: d => (d as any).downPaymentPercent || '' },
   { key: 'sellerCredit',          label: 'Seller Credit',           getDealVal: d => (d as any).sellerCredit ? `$${Number((d as any).sellerCredit).toLocaleString()}` : '' },
   { key: 'additionalSellerCosts', label: "Add'l Seller Costs",      getDealVal: d => (d as any).additionalSellerCosts ? `$${Number((d as any).additionalSellerCosts).toLocaleString()}` : '' },
+  { key: 'buyerAgentName',       label: 'Buyer Agent',             getDealVal: d => (d as any).buyer_agent_name || '' },
+  { key: 'sellerAgentName',      label: 'Seller Agent',            getDealVal: d => (d as any).seller_agent_name || '' },
 ];
 
 // ─── Value Formatting ──────────────────────────────────────────────────────────
@@ -127,6 +131,10 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
       updates['buyerName'] = val;
     } else if (f.key === 'sellerNames') {
       updates['sellerName'] = val;
+    } else if (f.key === 'buyerAgentName') {
+      updates['buyerAgentName'] = val;
+    } else if (f.key === 'sellerAgentName') {
+      updates['sellerAgentName'] = val;
     } else if (f.key === 'titleCompany') {
       updates['titleCompanyName'] = val;
     } else if (f.key === 'loanOfficer') {
@@ -143,6 +151,10 @@ export function buildDealUpdates(checked: Record<string, boolean>, result: Extra
     } else if (f.key === 'additionalSellerCosts') {
       const n = parseFloat(val.replace(/[$,]/g, ''));
       updates['additionalSellerCosts'] = isNaN(n) ? undefined : n;
+    } else if (f.key === 'buyerAgentName') {
+      updates['buyer_agent_name'] = val;
+    } else if (f.key === 'sellerAgentName') {
+      updates['seller_agent_name'] = val;
     } else {
       updates[f.key] = val;
     }
