@@ -1023,16 +1023,15 @@ async function handleExtractDeal(apiKey: string, body: any) {
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
-For buyerAgentName: extract the full name of the agent representing the BUYER. Use these anchors in order of priority:
-  1. Find the label "Name of Licensee assisting Buyer" — the name printed in the blank on that line (or immediately above it) is the buyer's agent.
-  2. Find the label "Selling Licensee's Email Address" — IMPORTANT TERMINOLOGY WARNING: in real estate contracts, "Selling Licensee" means the agent who BROUGHT THE BUYER, i.e., the BUYER's agent. It does NOT mean the seller's agent. The name associated with "Selling Licensee's Email Address" is the BUYER's agent = buyerAgentName.
-  3. Also check lines labeled "Buyer's Agent", "Buyer's Broker", "Selling Agent", or "Licensee assisting Buyer".
-  CRITICAL: Do NOT confuse "Selling Licensee" with the seller's agent — they are opposite. "Selling Licensee" = buyer's agent. The name printed near "Listing Licensee's Email Address" is a DIFFERENT person (the seller's agent) — do NOT use that name for buyerAgentName. Return the agent's personal name (not brokerage name). Return null if not found.
-For sellerAgentName: extract the full name of the agent representing the SELLER. Use these anchors in order of priority:
-  1. Find the label "Name of Licensee assisting Seller" — the name printed in the blank on that line (or immediately above it) is the seller's agent.
-  2. Find the label "Listing Licensee's Email Address" — "Listing Licensee" means the agent who LISTED the property = the SELLER's agent. The name associated with "Listing Licensee's Email Address" is the SELLER's agent = sellerAgentName.
-  3. Also check lines labeled "Listing Agent", "Seller's Agent", "Seller's Broker", or "Licensee assisting Seller".
-  CRITICAL: Do NOT confuse "Listing Licensee" with the buyer's agent — they are opposite. "Listing Licensee" = seller's agent. The name printed near "Selling Licensee's Email Address" is a DIFFERENT person (the buyer's agent) — do NOT use that name for sellerAgentName. Return the agent's personal name (not brokerage name). Return null if not found.
+For buyerAgentName: MECHANICAL EXTRACTION ONLY — do not reason about roles, just locate and copy.
+  Step 1: Find the section or column on this contract labeled "Selling Licensee". Copy the personal name (first + last, not a brokerage or company) that appears inside that labeled section. Stop here if found.
+  Step 2: If no "Selling Licensee" section, find "Licensee assisting Buyer" or "Buyer's Agent" and copy that name.
+  RULE: Stay within the labeled section. Do not borrow a name from a neighboring column or section. Return null if not found.
+For sellerAgentName: MECHANICAL EXTRACTION ONLY — do not reason about roles, just locate and copy.
+  Step 1: Find the section or column on this contract labeled "Listing Licensee". Copy the personal name (first + last, not a brokerage or company) that appears inside that labeled section. Stop here if found.
+  Step 2: If no "Listing Licensee" section, find "Licensee assisting Seller" or "Seller's Agent" and copy that name.
+  RULE: Stay within the labeled section. Do not borrow a name from a neighboring column or section. Return null if not found.
+HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — one labeled "Listing Licensee" (with that licensee's name, phone, email) and one labeled "Selling Licensee" (with that licensee's name, phone, email). Each column is self-contained. Extract the name from WITHIN each column — never cross columns.
 For mlsBoardName: extract the MLS board or association name mentioned in the contract (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if not found.
 For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330 "Principal Amount or LTV ___ ___". Return as a numeric percentage string (e.g., "3" for 3%). If written as a decimal less than 1 (e.g., ".03"), convert to percentage form (multiply by 100, return "3"). Return null if not found.
 For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), return the raw percentage string (e.g., "3%") and the app will calculate the dollar amount. If both $ and % are present, prefer the $ amount.
