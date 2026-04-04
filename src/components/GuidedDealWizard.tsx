@@ -637,6 +637,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   // All agent clients — includes any newly created during this wizard session
   const allAgentClients: ContactRecord[] = [...(agentClients || []), ...localNewClients];
 
+  // If extraction already ran, compare the selected client's last name against
+  // the extracted agent names and return the correct side — or null if no match.
+  const autoDetectSideFromClient = (clientFullName: string): 'seller' | 'buyer' | null => {
+    if (!extractedRawData) return null;
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    const lastName = norm((clientFullName.trim().split(' ').pop() || ''));
+    if (lastName.length < 3) return null;
+    const sellerNorm = norm(form.sellerAgentName);
+    const buyerNorm  = norm(form.buyerAgentName);
+    if (sellerNorm.includes(lastName)) return 'seller';
+    if (buyerNorm.includes(lastName))  return 'buyer';
+    return null;
+  };
+
   const selectAgentClient = (id: string) => {
     setClientDropdownOpen(false);
     const chosen = allAgentClients.find(c => c.id === id);
@@ -647,7 +661,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
-      setForm(p => ({ ...p, agentClientId: id }));
+      const detected = autoDetectSideFromClient(chosen.fullName);
+      setForm(p => ({ ...p, agentClientId: id, ...(detected ? { transactionType: detected } : {}) }));
       setClientSearch('');
       if (form.mlsBoard) checkMlsMismatch(id, form.mlsBoard);
     }
@@ -663,7 +678,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
-      setForm(p => ({ ...p, agentClientId: selectedId }));
+      const detected = autoDetectSideFromClient(chosen.fullName);
+      setForm(p => ({ ...p, agentClientId: selectedId, ...(detected ? { transactionType: detected } : {}) }));
     }
   };
 
@@ -784,7 +800,26 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             if (commAmt && price) return (calcCommissionPct(price, commAmt)).toFixed(2);
             return p.clientAgentCommissionPct;
           })(),
-          transactionType: (d.transactionType as any) || p.transactionType,
+          transactionType: (() => {
+            // Auto-detect side: compare selected agent client's last name against
+            // extracted buyer/seller agent names. This is more reliable than asking
+            // the AI to guess "which side is the TC on" from a purchase agreement,
+            // because all KC purchase agreements are "buyer" offers by document type.
+            if (p.agentClientId) {
+              const ac = allAgentClients.find(c => c.id === p.agentClientId);
+              if (ac?.fullName) {
+                const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                const lastName = norm((ac.fullName.trim().split(' ').pop() || ''));
+                if (lastName.length >= 3) {
+                  const sellerNorm = norm((d.sellerAgentName as string) || p.sellerAgentName || '');
+                  const buyerNorm  = norm((d.buyerAgentName as string) || p.buyerAgentName || '');
+                  if (sellerNorm.includes(lastName)) return 'seller';
+                  if (buyerNorm.includes(lastName))  return 'buyer';
+                }
+              }
+            }
+            return (d.transactionType as any) || p.transactionType;
+          })(),
           propertyType: (d.propertyType as any) || p.propertyType,
           asIsSale: d.asIsSale ?? p.asIsSale,
           inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
