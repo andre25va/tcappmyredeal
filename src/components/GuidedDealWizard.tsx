@@ -272,6 +272,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [preDealId] = useState<string>(() => generateId());
   const [introEmailSkipped, setIntroEmailSkipped] = useState(false);
   const titleSearchRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [showClientCreateModal, setShowClientCreateModal] = useState(false);
   const [localNewClients, setLocalNewClients] = useState<ContactRecord[]>([]);
@@ -469,6 +470,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   useEffect(() => {
     return () => { if (contractObjectUrl) URL.revokeObjectURL(contractObjectUrl); };
   }, [contractObjectUrl]);
+
+  // Scroll content back to top whenever the step changes
+  useEffect(() => {
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [step]);
 
   const handleClientCreateModalSaved = (saved: SavedContact) => {
     // Add to local list so it's findable without a prop refresh
@@ -1367,7 +1373,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           </div>
 
           <div className={`flex-1 overflow-hidden min-h-0 flex ${showPdfPanel ? 'flex-row-reverse' : 'flex-col'}`}>
-          <div className={showPdfPanel ? 'w-1/2 flex-none overflow-y-auto p-5 border-l border-base-300' : 'flex-1 overflow-y-auto min-h-0 p-5'}>
+          <div ref={contentScrollRef} className={showPdfPanel ? 'w-1/2 flex-none overflow-y-auto p-5 border-l border-base-300' : 'flex-1 overflow-y-auto min-h-0 p-5'}>
             {error && <div className="alert alert-error mb-4 text-sm py-2">{error}</div>}
 
             {step === 1 && (
