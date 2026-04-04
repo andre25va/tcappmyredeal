@@ -803,7 +803,7 @@ function AppInner() {
       {showAdd && (
         <GuidedDealWizard
           onAdd={handleAdd}
-          onClose={() => setShowAdd(false)}
+          onClose={() => { setShowAdd(false); loadContactsFull().then(data => setContactRecords(data)).catch(console.error); }}
           complianceTemplates={complianceTemplates}
           agentClients={agentClients}
           ddMasterItems={ddMasterItems}
