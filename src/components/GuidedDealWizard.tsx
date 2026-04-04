@@ -1384,7 +1384,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <User size={11} /> Agent Client <span className="text-red-400 ml-0.5">*</span>
                   </label>
                   {form.agentClientId ? (() => {
-                    const ac = agentClients?.find(c => c.id === form.agentClientId);
+                    const ac = allAgentClients.find(c => c.id === form.agentClientId);
                     if (!ac) return null;
                     // Compare selected agent name against contract-extracted agent name
                     const buyerAgentName = extractedRawData?.buyerAgentName as string | null | undefined;
@@ -2561,7 +2561,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                               <span className="text-xs text-base-content/50 w-6 shrink-0">To:</span>
                               <span className="badge badge-ghost text-xs">{selectedTitleContact.fullName}{selectedTitleContact.email ? ` <${selectedTitleContact.email}>` : ''}</span>
                             </div>
-                            {(() => { const ac = agentClients?.find(c => c.id === form.agentClientId); return ac?.email ? (
+                            {(() => { const ac = allAgentClients.find(c => c.id === form.agentClientId); return ac?.email ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-base-content/50 w-6 shrink-0">CC:</span>
                                 <span className="badge badge-ghost text-xs">{ac.fullName}{ac.email ? ` <${ac.email}>` : ''}</span>
