@@ -289,6 +289,8 @@ export interface ContactModalProps {
   defaultCompany?: string;
   defaultFirstName?: string;
   defaultLastName?: string;
+  /** Pre-check the "Client Agent" toggle when creating a new contact */
+  initialIsClient?: boolean;
   /** All contacts — used for duplicate detection */
   allContacts: ContactRecord[];
   onClose: () => void;
@@ -304,6 +306,7 @@ export function ContactModal({
   defaultCompany = '',
   defaultFirstName = '',
   defaultLastName = '',
+  initialIsClient = false,
   allContacts,
   onClose,
   onSaved,
@@ -370,6 +373,10 @@ export function ContactModal({
       f.firstName = defaultFirstName;
       f.lastName = defaultLastName;
       f.orgId = primaryOrgId ?? '';
+      if (initialIsClient) {
+        f.isClient = true;
+        f.contactType = 'agent'; // agent clients are always agent-type contacts
+      }
       setForm(f);
     }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
