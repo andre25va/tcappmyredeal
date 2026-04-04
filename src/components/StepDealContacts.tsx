@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { DealParticipantRole } from '../types';
+import { DealParticipantRole, ContactRole, ContactRecord } from '../types';
 import { generateId } from '../utils/helpers';
-import { Plus, Search, X, Pencil, AlertCircle } from 'lucide-react';
+import { Plus, Search, X, Pencil, AlertCircle, UserPlus } from 'lucide-react';
+import { ContactModal, SavedContact } from './ContactModal';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface WizardParticipant {
   tempId: string;
   contactId?: string;        // set if linked to an existing contacts row
+  company: string;           // company / organization name (e.g. "Alliance Title")
   firstName: string;
   lastName: string;
   email: string;
@@ -50,6 +52,26 @@ function defaultRole(side: 'buyer' | 'seller' | 'both'): DealParticipantRole {
   return 'title_officer';
 }
 
+/** Map a contact's professional type to their role in this deal */
+function contactTypeToRole(ct: ContactRole, side: 'buyer' | 'seller' | 'both'): DealParticipantRole {
+  switch (ct) {
+    case 'agent':     return 'lead_agent';
+    case 'lender':    return 'lender';
+    case 'title':     return 'title_officer';
+    case 'inspector': return 'inspector';
+    case 'appraiser': return 'appraiser';
+    case 'tc':        return 'tc';
+    case 'buyer':     return 'buyer';
+    case 'seller':    return 'seller';
+    default:          return defaultRole(side);
+  }
+}
+
+/** Default contact type to suggest when adding to a given side */
+function defaultContactType(side: 'buyer' | 'seller' | 'both'): ContactRole {
+  return side === 'both' ? 'title' : 'agent';
+}
+
 // ── Search Result type ─────────────────────────────────────────────────────
 
 interface SearchResult {
@@ -57,84 +79,80 @@ interface SearchResult {
   fullName: string;
   email: string;
   phone: string;
+  company: string;
   firstName: string;
   lastName: string;
+  contactType: ContactRole;
 }
 
 // ── ContactCard — stable top-level component ───────────────────────────────
 
 interface ContactCardProps {
   p: WizardParticipant;
-  isEditing: boolean;
   isOurSide: boolean;
-  onEdit: (tempId: string) => void;
-  onDone: () => void;
+  onOpenContact: (p: WizardParticipant) => void;
   onRemove: (tempId: string) => void;
   onUpdate: (tempId: string, patch: Partial<WizardParticipant>) => void;
 }
 
-function ContactCard({ p, isEditing, isOurSide, onEdit, onDone, onRemove, onUpdate }: ContactCardProps) {
-  const roles       = roleOptions(p.side);
+function ContactCard({ p, isOurSide, onOpenContact, onRemove, onUpdate }: ContactCardProps) {
+  const roles = roleOptions(p.side);
   const displayName = [p.firstName, p.lastName].filter(Boolean).join(' ');
 
-  if (isEditing) return (
-    <div className="border border-primary/40 rounded-xl p-3 bg-base-100 space-y-2 shadow-sm">
-      <div className="grid grid-cols-2 gap-2">
-        <input className="input input-bordered input-sm" placeholder="First name"
-          value={p.firstName} onChange={e => onUpdate(p.tempId, { firstName: e.target.value })} />
-        <input className="input input-bordered input-sm" placeholder="Last name"
-          value={p.lastName}  onChange={e => onUpdate(p.tempId, { lastName:  e.target.value })} />
-      </div>
-      <input className="input input-bordered input-sm w-full" placeholder="Email" type="email"
-        value={p.email} onChange={e => onUpdate(p.tempId, { email: e.target.value })} />
-      <input className="input input-bordered input-sm w-full" placeholder="Phone" type="tel"
-        value={p.phone} onChange={e => onUpdate(p.tempId, { phone: e.target.value })} />
-      <div className="flex gap-2">
-        <select className="select select-bordered select-sm flex-1" value={p.role}
-          onChange={e => onUpdate(p.tempId, { role: e.target.value as DealParticipantRole })}>
-          {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-        </select>
-        <select className="select select-bordered select-sm w-28" value={p.side}
-          onChange={e => onUpdate(p.tempId, { side: e.target.value as 'buyer' | 'seller' | 'both' })}>
-          <option value="buyer">Buy Side</option>
-          <option value="seller">Sell Side</option>
-          <option value="both">Both Sides</option>
-        </select>
-      </div>
-      <div className="flex justify-end">
-        <button className="btn btn-ghost btn-xs" onClick={onDone}>Done</button>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="border border-base-300 rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors group">
+    <div className="border border-base-300 rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
+          {p.company && (
+            <p className="text-xs font-bold text-base-content/60 truncate mb-0.5">{p.company}</p>
+          )}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-semibold text-sm text-base-content">
-              {displayName || <span className="italic text-base-content/40">No name</span>}
+              {displayName || <span className="italic text-base-content/40">No name — click ✎</span>}
             </span>
-            <span className="badge badge-sm badge-ghost">{ROLE_LABELS[p.role]}</span>
             {p.isExtracted && <span className="badge badge-sm badge-info badge-outline">Auto</span>}
             {isOurSide && <span className="badge badge-sm badge-success badge-outline">Our Side</span>}
           </div>
           {p.email && <p className="text-xs text-base-content/60 mt-0.5 truncate">{p.email}</p>}
           {p.phone && <p className="text-xs text-base-content/60 truncate">{p.phone}</p>}
-          {!p.email && !p.phone &&
+          {!p.email && !p.phone && (
             <p className="text-xs text-warning/70 mt-0.5 flex items-center gap-1">
               <AlertCircle size={11} /> No contact info yet
             </p>
-          }
+          )}
         </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button className="btn btn-ghost btn-xs btn-square" onClick={() => onEdit(p.tempId)}>
+        <div className="flex gap-1 shrink-0">
+          <button
+            className="btn btn-ghost btn-xs btn-square"
+            title="Edit contact details"
+            onClick={() => onOpenContact(p)}
+          >
             <Pencil size={11} />
           </button>
           <button className="btn btn-ghost btn-xs btn-square text-error" onClick={() => onRemove(p.tempId)}>
             <X size={11} />
           </button>
         </div>
+      </div>
+
+      {/* Role + side — always visible inline dropdowns */}
+      <div className="flex gap-2 mt-2">
+        <select
+          className="select select-bordered select-xs flex-1"
+          value={p.role}
+          onChange={e => onUpdate(p.tempId, { role: e.target.value as DealParticipantRole })}
+        >
+          {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+        </select>
+        <select
+          className="select select-bordered select-xs w-28"
+          value={p.side}
+          onChange={e => onUpdate(p.tempId, { side: e.target.value as 'buyer' | 'seller' | 'both' })}
+        >
+          <option value="buyer">Buy Side</option>
+          <option value="seller">Sell Side</option>
+          <option value="both">Both Sides</option>
+        </select>
       </div>
     </div>
   );
@@ -148,21 +166,17 @@ interface AddPanelProps {
   query: string;
   results: SearchResult[];
   searching: boolean;
-  newContact: { firstName: string; lastName: string; email: string; phone: string; role: DealParticipantRole };
   onQueryChange: (q: string) => void;
-  onNewContactChange: (patch: Partial<AddPanelProps['newContact']>) => void;
   onAddFromSearch: (r: SearchResult) => void;
-  onAddNew: () => void;
+  onCreateNew: () => void;
   onClose: () => void;
 }
 
 function AddPanel({
   side, visible, query, results, searching,
-  newContact, onQueryChange, onNewContactChange,
-  onAddFromSearch, onAddNew, onClose,
+  onQueryChange, onAddFromSearch, onCreateNew, onClose,
 }: AddPanelProps) {
   if (!visible) return null;
-  const roles = roleOptions(side);
 
   return (
     <div className="border border-dashed border-primary/40 rounded-xl p-3 bg-base-50 space-y-3">
@@ -186,40 +200,29 @@ function AddPanel({
             <button key={r.id} onClick={() => onAddFromSearch(r)}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-base-200 transition-colors">
               <p className="text-sm font-medium leading-tight">{r.fullName}</p>
-              {r.email && <p className="text-xs text-base-content/50">{r.email}</p>}
+              {r.company && <p className="text-xs text-base-content/50">{r.company}</p>}
+              {r.email && <p className="text-xs text-base-content/40">{r.email}</p>}
             </button>
           ))}
         </div>
       )}
 
       {query.length >= 2 && !searching && results.length === 0 && (
-        <p className="text-xs text-center text-base-content/40">No match — create below</p>
+        <p className="text-xs text-center text-base-content/40">No match — create a new contact below</p>
       )}
 
-      {/* New contact inline form */}
-      <div className="border-t border-base-200 pt-3 space-y-2">
-        <p className="text-xs font-medium text-base-content/50">New contact</p>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input input-bordered input-sm" placeholder="First name *"
-            value={newContact.firstName} onChange={e => onNewContactChange({ firstName: e.target.value })} />
-          <input className="input input-bordered input-sm" placeholder="Last name"
-            value={newContact.lastName}  onChange={e => onNewContactChange({ lastName:  e.target.value })} />
-        </div>
-        <input className="input input-bordered input-sm w-full" placeholder="Email" type="email"
-          value={newContact.email} onChange={e => onNewContactChange({ email: e.target.value })} />
-        <input className="input input-bordered input-sm w-full" placeholder="Phone" type="tel"
-          value={newContact.phone} onChange={e => onNewContactChange({ phone: e.target.value })} />
-        <select className="select select-bordered select-sm w-full" value={newContact.role}
-          onChange={e => onNewContactChange({ role: e.target.value as DealParticipantRole })}>
-          {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-        </select>
+      {/* Create new contact → opens full ContactModal */}
+      <div className="border-t border-base-200 pt-3">
+        <button
+          className="btn btn-outline btn-sm btn-block gap-1"
+          onClick={onCreateNew}
+        >
+          <UserPlus size={13} /> Create New Contact
+        </button>
       </div>
 
-      <div className="flex gap-2 justify-end pt-1">
+      <div className="flex justify-end">
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary btn-sm" onClick={onAddNew} disabled={!newContact.firstName.trim()}>
-          Add Contact
-        </button>
       </div>
     </div>
   );
@@ -231,30 +234,26 @@ interface SideColumnProps {
   side: 'buyer' | 'seller';
   label: string;
   list: WizardParticipant[];
-  editingId: string | null;
   transactionType: 'buyer' | 'seller';
   addingSide: string | null;
   query: string;
   results: SearchResult[];
   searching: boolean;
-  newContact: { firstName: string; lastName: string; email: string; phone: string; role: DealParticipantRole };
-  onEdit: (id: string) => void;
-  onDone: () => void;
+  onOpenContact: (p: WizardParticipant) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, patch: Partial<WizardParticipant>) => void;
   onSetAdding: (side: 'buyer' | 'seller' | 'both') => void;
   onQueryChange: (q: string) => void;
-  onNewContactChange: (patch: Partial<SideColumnProps['newContact']>) => void;
   onAddFromSearch: (r: SearchResult) => void;
-  onAddNew: () => void;
+  onCreateNew: () => void;
   onCloseAdd: () => void;
 }
 
 function SideColumn({
-  side, label, list, editingId, transactionType,
-  addingSide, query, results, searching, newContact,
-  onEdit, onDone, onRemove, onUpdate,
-  onSetAdding, onQueryChange, onNewContactChange, onAddFromSearch, onAddNew, onCloseAdd,
+  side, label, list, transactionType,
+  addingSide, query, results, searching,
+  onOpenContact, onRemove, onUpdate,
+  onSetAdding, onQueryChange, onAddFromSearch, onCreateNew, onCloseAdd,
 }: SideColumnProps) {
   return (
     <div className="flex-1 min-w-0 space-y-2">
@@ -266,10 +265,8 @@ function SideColumn({
         <ContactCard
           key={p.tempId}
           p={p}
-          isEditing={editingId === p.tempId}
           isOurSide={transactionType === side}
-          onEdit={onEdit}
-          onDone={onDone}
+          onOpenContact={onOpenContact}
           onRemove={onRemove}
           onUpdate={onUpdate}
         />
@@ -280,11 +277,9 @@ function SideColumn({
         query={query}
         results={results}
         searching={searching}
-        newContact={newContact}
         onQueryChange={onQueryChange}
-        onNewContactChange={onNewContactChange}
         onAddFromSearch={onAddFromSearch}
-        onAddNew={onAddNew}
+        onCreateNew={onCreateNew}
         onClose={onCloseAdd}
       />
       {addingSide !== side && (
@@ -305,28 +300,25 @@ interface Props {
   onChange: (p: WizardParticipant[]) => void;
   transactionType: 'buyer' | 'seller';
   orgId?: string;
+  allContacts: ContactRecord[];
 }
 
 type AddingSide = 'buyer' | 'seller' | 'both' | null;
 
-export default function StepDealContacts({ participants, onChange, transactionType, orgId }: Props) {
-  const [editingId,  setEditingId]  = useState<string | null>(null);
+// Contact modal state: null = closed; edit mode = participant; add mode = side string
+type ContactModalState =
+  | null
+  | { mode: 'edit'; participant: WizardParticipant }
+  | { mode: 'add'; side: AddingSide };
+
+export default function StepDealContacts({ participants, onChange, transactionType, orgId, allContacts }: Props) {
   const [addingSide, setAddingSide] = useState<AddingSide>(null);
   const [query,      setQuery]      = useState('');
   const [results,    setResults]    = useState<SearchResult[]>([]);
   const [searching,  setSearching]  = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const emptyNew = (side: 'buyer' | 'seller' | 'both') => ({
-    firstName: '', lastName: '', email: '', phone: '',
-    role: defaultRole(side),
-  });
-  const [newContact, setNewContact] = useState(emptyNew('buyer'));
-
-  // reset new-contact role when side panel switches
-  useEffect(() => {
-    if (addingSide) setNewContact(emptyNew(addingSide));
-  }, [addingSide]);
+  const [contactModalState, setContactModalState] = useState<ContactModalState>(null);
 
   // debounced contact search
   useEffect(() => {
@@ -337,17 +329,19 @@ export default function StepDealContacts({ participants, onChange, transactionTy
       try {
         const { data } = await supabase
           .from('contacts')
-          .select('id, first_name, last_name, full_name, email, phone')
-          .or(`full_name.ilike.%${query}%,first_name.ilike.%${query}%,email.ilike.%${query}%`)
+          .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
+          .or(`full_name.ilike.%${query}%,first_name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
           .eq('is_active', true)
           .limit(6);
         setResults((data ?? []).map(r => ({
-          id:        r.id,
-          fullName:  r.full_name || `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim(),
-          email:     r.email  ?? '',
-          phone:     r.phone  ?? '',
-          firstName: r.first_name ?? '',
-          lastName:  r.last_name  ?? '',
+          id:          r.id,
+          fullName:    r.full_name || `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim(),
+          email:       r.email     ?? '',
+          phone:       r.phone     ?? '',
+          company:     r.company   ?? '',
+          firstName:   r.first_name ?? '',
+          lastName:    r.last_name  ?? '',
+          contactType: (r.contact_type ?? 'other') as ContactRole,
         })));
       } finally {
         setSearching(false);
@@ -370,41 +364,112 @@ export default function StepDealContacts({ participants, onChange, transactionTy
     onChange([...participants, {
       tempId:      generateId(),
       contactId:   r.id,
+      company:     r.company,
       firstName:   r.firstName,
       lastName:    r.lastName,
       email:       r.email,
       phone:       r.phone,
-      role:        defaultRole(addingSide),
+      role:        contactTypeToRole(r.contactType, addingSide),
       side:        addingSide,
       isExtracted: false,
     }]);
     closeAddPanel();
   }, [participants, onChange, addingSide]);
 
-  const handleAddNew = useCallback(() => {
-    if (!newContact.firstName.trim() || !addingSide) return;
-    onChange([...participants, { ...newContact, side: addingSide, tempId: generateId(), isExtracted: false }]);
-    closeAddPanel();
-  }, [participants, onChange, newContact, addingSide]);
-
   const closeAddPanel = useCallback(() => {
     setAddingSide(null);
     setQuery('');
     setResults([]);
-    setNewContact(emptyNew('buyer'));
   }, []);
 
-  const handleNewContactChange = useCallback((patch: Partial<typeof newContact>) => {
-    setNewContact(prev => ({ ...prev, ...patch }));
+  // ── ContactModal callbacks ─────────────────────────────────────────────
+
+  /** Open ContactModal to edit an existing participant's contact details */
+  const openEditContact = useCallback((p: WizardParticipant) => {
+    setContactModalState({ mode: 'edit', participant: p });
   }, []);
 
-  const handleDone = useCallback(() => setEditingId(null), []);
+  /** Open ContactModal in add mode for a given side */
+  const openCreateContact = useCallback(() => {
+    setContactModalState({ mode: 'add', side: addingSide });
+  }, [addingSide]);
 
-  // ── Derived lists ──────────────────────────────────────────────────────
+  /** Called when ContactModal saves — update or add the WizardParticipant */
+  const handleContactSaved = useCallback((saved: SavedContact) => {
+    if (!contactModalState) return;
+
+    if (contactModalState.mode === 'edit') {
+      // Update existing participant with the saved contact data
+      onChange(participants.map(p =>
+        p.tempId === contactModalState.participant.tempId
+          ? {
+              ...p,
+              contactId: saved.id,
+              firstName: saved.firstName,
+              lastName:  saved.lastName,
+              company:   saved.company,
+              email:     saved.email,
+              phone:     saved.phone,
+            }
+          : p
+      ));
+    } else {
+      // Add new participant
+      const side = contactModalState.side ?? 'both';
+      onChange([...participants, {
+        tempId:      generateId(),
+        contactId:   saved.id,
+        company:     saved.company,
+        firstName:   saved.firstName,
+        lastName:    saved.lastName,
+        email:       saved.email,
+        phone:       saved.phone,
+        role:        contactTypeToRole(saved.contactType, side),
+        side,
+        isExtracted: false,
+      }]);
+      closeAddPanel();
+    }
+
+    setContactModalState(null);
+  }, [contactModalState, participants, onChange, closeAddPanel]);
+
+  // ── Derived data ───────────────────────────────────────────────────────
+
+  /** Get the ContactRecord for a participant (for ContactModal edit mode) */
+  function getContactRecord(p: WizardParticipant): ContactRecord | null {
+    if (!p.contactId) return null;
+    return allContacts.find(c => c.id === p.contactId) ?? null;
+  }
 
   const buyerSide  = participants.filter(p => p.side === 'buyer');
   const sellerSide = participants.filter(p => p.side === 'seller');
   const bothSide   = participants.filter(p => p.side === 'both');
+
+  // ── ContactModal props ─────────────────────────────────────────────────
+
+  const contactModalIsOpen = contactModalState !== null;
+  const contactModalContact: ContactRecord | null =
+    contactModalState?.mode === 'edit'
+      ? getContactRecord(contactModalState.participant)
+      : null;
+  const contactModalDefaultRole: ContactRole =
+    contactModalState?.mode === 'add'
+      ? defaultContactType(contactModalState.side ?? 'both')
+      : 'other';
+  // Pre-fill from participant when no linked contact record yet
+  const contactModalDefaultCompany =
+    contactModalState?.mode === 'edit' && !contactModalContact
+      ? contactModalState.participant.company
+      : '';
+  const contactModalDefaultFirstName =
+    contactModalState?.mode === 'edit' && !contactModalContact
+      ? contactModalState.participant.firstName
+      : '';
+  const contactModalDefaultLastName =
+    contactModalState?.mode === 'edit' && !contactModalContact
+      ? contactModalState.participant.lastName
+      : '';
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -413,7 +478,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
       <div>
         <h3 className="text-lg font-bold text-base-content">Deal Contacts</h3>
         <p className="text-sm text-base-content/50 mt-0.5">
-          Review all parties. Auto-filled contacts can be edited or removed. Add anyone missing.
+          Review all parties. Click ✎ on any card to edit full contact details. Add anyone missing.
         </p>
       </div>
 
@@ -423,22 +488,18 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           side="buyer"
           label="Buy Side"
           list={buyerSide}
-          editingId={editingId}
           transactionType={transactionType}
           addingSide={addingSide}
           query={query}
           results={results}
           searching={searching}
-          newContact={newContact}
-          onEdit={setEditingId}
-          onDone={handleDone}
+          onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
           onSetAdding={setAddingSide}
           onQueryChange={setQuery}
-          onNewContactChange={handleNewContactChange}
           onAddFromSearch={handleAddFromSearch}
-          onAddNew={handleAddNew}
+          onCreateNew={openCreateContact}
           onCloseAdd={closeAddPanel}
         />
         <div className="w-px bg-base-300 shrink-0" />
@@ -446,22 +507,18 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           side="seller"
           label="Sell Side"
           list={sellerSide}
-          editingId={editingId}
           transactionType={transactionType}
           addingSide={addingSide}
           query={query}
           results={results}
           searching={searching}
-          newContact={newContact}
-          onEdit={setEditingId}
-          onDone={handleDone}
+          onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
           onSetAdding={setAddingSide}
           onQueryChange={setQuery}
-          onNewContactChange={handleNewContactChange}
           onAddFromSearch={handleAddFromSearch}
-          onAddNew={handleAddNew}
+          onCreateNew={openCreateContact}
           onCloseAdd={closeAddPanel}
         />
       </div>
@@ -476,10 +533,8 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           <ContactCard
             key={p.tempId}
             p={p}
-            isEditing={editingId === p.tempId}
             isOurSide={false}
-            onEdit={setEditingId}
-            onDone={handleDone}
+            onOpenContact={openEditContact}
             onRemove={handleRemove}
             onUpdate={handleUpdate}
           />
@@ -490,11 +545,9 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           query={query}
           results={results}
           searching={searching}
-          newContact={newContact}
           onQueryChange={setQuery}
-          onNewContactChange={handleNewContactChange}
           onAddFromSearch={handleAddFromSearch}
-          onAddNew={handleAddNew}
+          onCreateNew={openCreateContact}
           onClose={closeAddPanel}
         />
         {addingSide !== 'both' && (
@@ -515,6 +568,19 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           </p>
         </div>
       )}
+
+      {/* Full contact modal — same UI as Contacts page */}
+      <ContactModal
+        isOpen={contactModalIsOpen}
+        contact={contactModalContact}
+        defaultRole={contactModalDefaultRole}
+        defaultCompany={contactModalDefaultCompany}
+        defaultFirstName={contactModalDefaultFirstName}
+        defaultLastName={contactModalDefaultLastName}
+        allContacts={allContacts}
+        onClose={() => setContactModalState(null)}
+        onSaved={handleContactSaved}
+      />
     </div>
   );
 }
