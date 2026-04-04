@@ -2567,17 +2567,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   )}
                 </div>
 
-                {/* ContactModal — create new title contact from Step 9 */}
-                <ContactModal
-                  isOpen={showTitleContactModal}
-                  contact={null}
-                  defaultRole="title_officer"
-                  allContacts={allContacts}
-                  onClose={() => setShowTitleContactModal(false)}
-                  onSaved={handleTitleContactModalSaved}
-                />
               );
             })()}
+
+            {/* ContactModal — create new title contact from Step 9 */}
+            <ContactModal
+              isOpen={showTitleContactModal}
+              contact={null}
+              defaultRole="title_officer"
+              allContacts={allContacts}
+              onClose={() => setShowTitleContactModal(false)}
+              onSaved={handleTitleContactModalSaved}
+            />
 
             {step === 10 && (
               <div className="space-y-4">
