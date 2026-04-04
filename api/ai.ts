@@ -389,28 +389,25 @@ const extractDealSchema = {
     state: { type: 'string' },
     zipCode: { type: 'string' },
     listPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    purchasePrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     mlsNumber: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     contractDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    inspectionDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    loanCommitmentDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    inspectionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    financeDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     possessionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyDueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerConcessions: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    commission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    commissionAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
     loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentPercent: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    buyerAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    additionalSellerCosts: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    emHeldWith: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     transactionType: { type: 'string', enum: ['buyer', 'seller'] },
     propertyType: { type: 'string', enum: ['single-family', 'multi-family', 'duplex', 'condo', 'townhouse', 'land', 'commercial'] },
@@ -419,18 +416,56 @@ const extractDealSchema = {
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    buyerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    sellerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    contractType: { type: 'string', enum: ['residential_sale_contract', 'loi', 'addendum', 'other'] },
+    listingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    // licenseeSectionRaw: raw two-column extraction for label-based role resolution in code
+    // GPT copies each column as-is — code finds 'listing'/'selling' label to assign roles
+    licenseeSectionRaw: {
+      anyOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            leftColumn: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name:        { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                email:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                phone:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                columnLabel: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              required: ['name', 'email', 'phone', 'columnLabel'],
+            },
+            rightColumn: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name:        { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                email:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                phone:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                columnLabel: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              required: ['name', 'email', 'phone', 'columnLabel'],
+            },
+          },
+          required: ['leftColumn', 'rightColumn'],
+        },
+        { type: 'null' },
+      ],
+    },
+    mlsBoardName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
-  required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'contractPrice', 'mlsNumber',
-    'contractDate', 'closingDate', 'inspectionDeadline', 'loanCommitmentDate', 'possessionDate',
-    'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commission', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'downPaymentPercent', 'sellerCredit', 'buyerAgentCommission', 'listingAgentCommission', 'additionalSellerCosts',
-    'buyerNames', 'sellerNames', 'titleCompany', 'loanOfficer',
+  required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'purchasePrice', 'mlsNumber',
+    'contractDate', 'closingDate', 'inspectionDate', 'financeDeadline', 'possessionDate',
+    'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commissionAmount', 'loanType', 'loanAmount',
+    'downPaymentAmount', 'downPaymentPercent', 'buyerNames', 'sellerNames', 'titleCompany', 'emHeldWith', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'buyerAgentName', 'sellerAgentName', 'confidence', 'extractedFields'],
+    'homeWarrantyCompany', 'legalDescription', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
+    'licenseeSectionRaw', 'mlsBoardName', 'confidence', 'extractedFields'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1026,16 +1061,19 @@ async function handleExtractDeal(apiKey: string, body: any) {
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
-For buyerAgentCommission and listingAgentCommission: extract each agent's commission as written on the contract. If shown as a percentage (e.g. "3%"), return the string "3%". If shown as a dollar amount (e.g. "$4,950"), return the numeric string "4950". If both are stated, return the percentage (e.g. "3%"). Return null if not found.
-For downPaymentPercent: extract or infer the down payment percentage. If explicitly stated (e.g. "5%", "20%"), use that. If not stated but LTV (loan-to-value) is present, calculate it as 100% minus LTV (e.g. LTV 97% → "3%"). Return the string including the % sign (e.g. "3%"). Return null only if neither down payment % nor LTV can be found.
-For sellerCredit: extract any explicit seller credit or seller contribution toward buyer closing costs as a numeric string without formatting (e.g. "5000" not "$5,000"). Return null if not found.
-For additionalSellerCosts: in the "Total Additional Seller Expenses" section (often labeled section f), extract the dollar amount from line 2 "Additional SELLER paid costs" — extra closing costs the seller agreed to pay beyond agent compensation. Return as a numeric string without formatting (e.g. "4380" not "$4,380"). Return null if not found.
-For buyerAgentName: find the exact label text "Name of Licensee assisting Buyer (Please Print)" anywhere in the document. The buyer agent's name is the handwritten or printed text that appears on the blank line IMMEDIATELY BEFORE (above) that label in the document's reading order. Do NOT use the line labeled "BUYER" — that is the buyer client's signature, not the agent. Do NOT use the BROKERAGE line. Return the agent's personal name only (not the brokerage/company name). Return null if the label is not found or the line above it is blank.
-For sellerAgentName: find the exact label text "Name of Licensee assisting Seller (Please Print)" anywhere in the document. The seller agent's name is the handwritten or printed text that appears on the blank line IMMEDIATELY BEFORE (above) that label in the document's reading order. Do NOT use the line labeled "SELLER" — that is the seller client's signature, not the agent. Do NOT use the BROKERAGE line. Return the agent's personal name only (not the brokerage/company name). Return null if the label is not found or the line above it is blank.
-For buyerNames: find the "BUYER:" or "BUYERS:" labeled line(s) near the TOP of the contract (typically in the first 1-2 pages). These are the people or entities PURCHASING the property. Their names appear on the blank lines immediately following the "BUYER:" label. If multiple buyers are listed (e.g., two spouses), join them with " & ". Strip any status designations that follow the name — such as AMC (Applying as Married Couple), ASP (Applying as Single Person), or similar abbreviations — from the returned value. Do NOT use agent names, brokerage names, TC names, or any name from the licensee/signature section. Return null if not found.
-For sellerNames: find the "SELLER:" or "SELLERS:" labeled line(s) near the TOP of the contract (typically in the first 1-2 pages). These are the people or entities SELLING the property. Their names appear on the blank lines immediately following the "SELLER:" label. If multiple sellers are listed, join them with " & ". Strip any status designations (AMC, ASP, etc.) from the returned value. Do NOT use agent names, brokerage names, TC names, or any name from the licensee/signature section at the end of the contract. Return null if not found.
-For titleCompany: extract the name of the title company or escrow company holding the earnest money. On Heartland MLS / Kansas City contracts, look in section 4.b (Earnest Money) for the line labeled "Deposited with:" — the company name filled in there is the earnest money holder / title company. Also check section 4.c for a second "Deposited with:" line. Return the company name only (e.g., "Security 1st Title"). Return null if not found.
+For contractType: identify the document type. Return "residential_sale_contract" for a standard purchase agreement or sale contract, "loi" for a Letter of Intent, "addendum" for an addendum or amendment to an existing contract, "other" for anything else.
+For listingLicenseeName: MECHANICAL COPY ONLY — do not interpret or reason about roles at all. Find the section or column on this document labeled exactly "Listing Licensee". Copy ONLY the personal name (first + last, NOT a brokerage or company name) that appears inside that labeled section. Do not use any name from a neighboring column or section. Return null if this exact label does not appear on the document.
+For sellingLicenseeName: MECHANICAL COPY ONLY — do not interpret or reason about roles at all. Find the section or column on this document labeled exactly "Selling Licensee". Copy ONLY the personal name (first + last, NOT a brokerage or company name) that appears inside that labeled section. Do not use any name from a neighboring column or section. Return null if this exact label does not appear on the document.
+HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — the LEFT column is labeled "Listing Licensee" and the RIGHT column is labeled "Selling Licensee". Each column contains its own separate name, phone, and email. You must copy the name strictly from WITHIN each labeled column — never borrow from the neighboring column. The role mapping (which side is buyer vs seller) is handled separately — your only job is to copy the name from the correct labeled box.
+For mlsBoardName: extract the MLS board or association name mentioned in the contract (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if not found.
+For licenseeSectionRaw: Find the agent/licensee block (typically the final section of a purchase agreement, showing two side-by-side agent columns). Extract it WITHOUT any role interpretation — just describe what is physically printed in each column:
+- leftColumn: everything in the LEFT/first column — the agent name, their email, their phone, and the column's printed label or header text (e.g., "Listing Licensee", "Selling Licensee", or similar). Set columnLabel to the label text you see printed for that column.
+- rightColumn: everything in the RIGHT/second column — same structure.
+Do NOT decide which column represents buyer or seller — just copy what is there. Return null for licenseeSectionRaw if no two-column agent section exists (e.g., the document is an LOI or addendum with no agent columns).
+For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330 "Principal Amount or LTV ___ ___". Return as a numeric percentage string (e.g., "3" for 3%). If written as a decimal less than 1 (e.g., ".03"), convert to percentage form (multiply by 100, return "3"). Return null if not found.
+For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), return the raw percentage string (e.g., "3%") and the app will calculate the dollar amount. If both $ and % are present, prefer the $ amount.
 For propertyType: infer from property description. Default to "single-family".
+For emHeldWith: find the "Deposited with:" field in the earnest money section (typically Para 5 or 5b, or a line labeled "Deposited with:", "Held by:", or "Escrow Holder:"). Extract the name of the entity holding the earnest money — this is often a title company, escrow company, or the listing broker. Return null if not found.
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
 Set extractedFields to an array of field names that had non-null values found.`;
@@ -1073,109 +1111,178 @@ Set extractedFields to an array of field names that had non-null values found.`;
   if (data.error) throw new Error(data.error.message || 'OpenAI API error');
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error('No content in OpenAI response');
-  return JSON.parse(content);
-}
+  const parsed = JSON.parse(content);
 
-// ── Classify Document ─────────────────────────────────────────────────────────
+  // ── Agent name mapping — done in code, never by AI ──────────────────────
+  //
+  // Step 1: If licenseeSectionRaw is present, use column labels to resolve names.
+  // This is the most reliable path — GPT just copied each physical column as-is,
+  // and code finds the column whose label contains "listing" or "selling" to assign roles.
+  // This bypasses GPT's visual two-column confusion entirely.
+  if (parsed.licenseeSectionRaw) {
+    const cols: Array<{ name: string | null; email: string | null; phone: string | null; columnLabel: string | null }> =
+      [parsed.licenseeSectionRaw.leftColumn, parsed.licenseeSectionRaw.rightColumn].filter(Boolean);
 
-const CLASSIFY_DOC_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    docType: {
-      type: 'string',
-      enum: ['purchase_contract', 'counter_offer', 'amendment', 'addendum', 'as_is', 'inspection_notice', 'unacceptable_conditions', 'other'],
-    },
-    addressExtracted: { type: 'string', description: 'Full property address as written in the document' },
-    addressMatch: {
-      type: 'string',
-      enum: ['match', 'partial', 'mismatch'],
-      description: 'How closely the document address matches the deal address',
-    },
-    confidence: { type: 'number', description: '0-1 confidence in classification' },
-    summary: { type: 'string', description: 'One or two sentence plain-English summary of what this document does' },
-    extractedFields: {
-      type: 'object',
-      description: 'Key financial/date fields if available',
-      properties: {
-        salesPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        optionFee: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        optionPeriodDays: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        financeAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-      },
-      additionalProperties: false,
-      required: ['salesPrice', 'closingDate', 'optionFee', 'optionPeriodDays', 'earnestMoney', 'financeAmount'],
-    },
-  },
-  required: ['docType', 'addressExtracted', 'addressMatch', 'confidence', 'summary', 'extractedFields'],
-};
+    const listingCol = cols.find(col => col.columnLabel?.toLowerCase().includes('listing'));
+    const sellingCol = cols.find(col => col.columnLabel?.toLowerCase().includes('selling'));
 
-async function handleClassifyDocument(apiKey: string, body: any) {
-  const { fileBase64, fileName, dealAddress, userSelectedType } = body;
-  if (!fileBase64) throw new Error('Missing fileBase64');
-
-  const systemPrompt = `You are a real estate document classifier. Given a document (PDF or image), you must:
-1. Identify the document type from: purchase_contract, counter_offer, amendment, addendum, as_is, inspection_notice, unacceptable_conditions, other
-2. Extract the property address exactly as written
-3. Compare it to the deal address and report: match (same address), partial (street matches but city/zip differ), or mismatch (different property)
-4. Extract key financial/date fields if present
-5. Write a 1-2 sentence plain-English summary
-
-Document types:
-- purchase_contract: Original purchase offer/contract
-- counter_offer: Seller's response with modified terms
-- amendment: Modifies an already-agreed term
-- addendum: Adds new terms not in original contract
-- as_is: As-is addendum (no repair obligations)
-- inspection_notice: Buyer's response to inspection
-- unacceptable_conditions: Buyer rejects inspection / may terminate
-- other: Anything else
-
-The user has pre-selected type: "${userSelectedType || 'not specified'}". Use this as a strong hint but override if clearly wrong.
-Deal address: "${dealAddress || 'not provided'}"`;
-
-  const mediaType = fileName?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mediaType};base64,${fileBase64}`, detail: 'high' },
-            },
-            { type: 'text', text: 'Classify this document and extract fields.' },
-          ],
-        },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'classify_document', strict: true, schema: CLASSIFY_DOC_SCHEMA },
-      },
-      max_tokens: 1000,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI error: ${err}`);
+    // Override the AI-assigned listingLicenseeName / sellingLicenseeName with label-resolved values
+    if (listingCol?.name) parsed.listingLicenseeName = listingCol.name;
+    if (sellingCol?.name) parsed.sellingLicenseeName = sellingCol.name;
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error('No content from OpenAI');
-  return JSON.parse(content);
+  // Step 2: Apply role mapping rules (locked — code only, never AI).
+  // Rules:
+  //   residential_sale_contract / addendum / other:
+  //     Listing Licensee  → sellerAgentName  (represents the seller)
+  //     Selling Licensee  → buyerAgentName   (represents the buyer — KC terminology)
+  //   loi:
+  //     Usually from buy side (wholesalers). Use whatever name was found, default to buyer.
+  const cType = (parsed.contractType as string) || 'other';
+  let sellerAgentName: string | null = null;
+  let buyerAgentName: string | null = null;
+
+  if (cType === 'loi') {
+    buyerAgentName = (parsed.sellingLicenseeName as string) || (parsed.listingLicenseeName as string) || null;
+    sellerAgentName = null;
+  } else {
+    // residential_sale_contract, addendum, other
+    sellerAgentName = (parsed.listingLicenseeName as string) || null;
+    buyerAgentName  = (parsed.sellingLicenseeName as string) || null;
+  }
+
+  return { ...parsed, buyerAgentName, sellerAgentName };
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
+
+
+// ── Portfolio Report Schema & Handler (Tier 3) ────────────────────────────
+
+const bottleneckSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    stage: { type: 'string' },
+    dealCount: { type: 'number' },
+    avgDaysStuck: { type: 'number' },
+    description: { type: 'string' },
+    recommendation: { type: 'string' },
+  },
+  required: ['stage', 'dealCount', 'avgDaysStuck', 'description', 'recommendation'],
+};
+
+const agentPerfSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    agentName: { type: 'string' },
+    activeDealCount: { type: 'number' },
+    avgDaysToClose: { type: 'number' },
+    taskCompletionRate: { type: 'number' },
+    riskLevel: { type: 'string' },
+    notes: { type: 'string' },
+  },
+  required: ['agentName', 'activeDealCount', 'avgDaysToClose', 'taskCompletionRate', 'riskLevel', 'notes'],
+};
+
+const closingForecastSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    period: { type: 'string' },
+    expectedClosings: { type: 'number' },
+    totalVolume: { type: 'number' },
+    confidence: { type: 'string' },
+  },
+  required: ['period', 'expectedClosings', 'totalVolume', 'confidence'],
+};
+
+const portfolioReportSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    executiveSummary: { type: 'string' },
+    bottlenecks: { type: 'array', items: bottleneckSchema },
+    agentPerformance: { type: 'array', items: agentPerfSchema },
+    complianceOverview: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        overallScore: { type: 'number' },
+        atRiskDeals: { type: 'number' },
+        commonGaps: { type: 'array', items: { type: 'string' } },
+        recommendation: { type: 'string' },
+      },
+      required: ['overallScore', 'atRiskDeals', 'commonGaps', 'recommendation'],
+    },
+    closingForecast: { type: 'array', items: closingForecastSchema },
+    actionItems: { type: 'array', items: { type: 'string' } },
+    generatedAt: { type: 'string' },
+  },
+  required: ['executiveSummary', 'bottlenecks', 'agentPerformance', 'complianceOverview', 'closingForecast', 'actionItems', 'generatedAt'],
+};
+
+async function handlePortfolioReport(apiKey: string, body: any) {
+  const { deals } = body;
+  if (!deals?.length) throw new Error('Missing deals data');
+
+  const systemPrompt = `You are a senior real estate transaction coordinator analyzing a portfolio of active deals. Provide a concise executive summary, identify bottlenecks, assess agent performance, give compliance overview, forecast closings, and list top action items. Base your analysis ONLY on the provided data. Today: ${new Date().toISOString().split('T')[0]}`;
+
+  const userContent = `PORTFOLIO DATA (${deals.length} deals):
+${JSON.stringify(deals, null, 2)}`;
+
+  const result = await callOpenAI(apiKey, systemPrompt, userContent, portfolioReportSchema, 'portfolio_report_response', 'gpt-4o');
+  result.generatedAt = new Date().toISOString();
+  return result;
+}
+
+// ── Evaluate Rules Schema & Handler (Tier 3) ────────────────────────────────
+
+const triggeredRuleItemSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    ruleId: { type: 'string' },
+    ruleName: { type: 'string' },
+    dealId: { type: 'string' },
+    dealAddress: { type: 'string' },
+    triggerReason: { type: 'string' },
+    suggestedAction: { type: 'string' },
+    actionType: { type: 'string' },
+    priority: { type: 'string' },
+    confidence: { type: 'number' },
+  },
+  required: ['ruleId', 'ruleName', 'dealId', 'dealAddress', 'triggerReason', 'suggestedAction', 'actionType', 'priority', 'confidence'],
+};
+
+const evaluateRulesSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    triggeredRules: { type: 'array', items: triggeredRuleItemSchema },
+    summary: { type: 'string' },
+    rulesChecked: { type: 'number' },
+    dealsScanned: { type: 'number' },
+  },
+  required: ['triggeredRules', 'summary', 'rulesChecked', 'dealsScanned'],
+};
+
+async function handleEvaluateRules(apiKey: string, body: any) {
+  const { deals, rules } = body;
+  if (!deals?.length) throw new Error('Missing deals data');
+  if (!rules?.length) return { triggeredRules: [], summary: 'No rules to evaluate.', rulesChecked: 0, dealsScanned: deals.length };
+
+  const systemPrompt = `You are evaluating automation rules against a set of real estate deals. For each rule that is triggered by the data, return a triggered rule entry with a specific reason and suggested action. Only flag rules that clearly match the deal data conditions. Today: ${new Date().toISOString().split('T')[0]}`;
+
+  const userContent = `RULES:
+${JSON.stringify(rules, null, 2)}
+
+DEALS (${deals.length}):
+${JSON.stringify(deals, null, 2)}`;
+
+  return callOpenAI(apiKey, systemPrompt, userContent, evaluateRulesSchema, 'evaluate_rules_response', 'gpt-4o');
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1237,8 +1344,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'extract-deal':
         result = await handleExtractDeal(apiKey, req.body);
         break;
-      case 'classify-document':
-        result = await handleClassifyDocument(apiKey, req.body);
+      case 'portfolio-report':
+        result = await handlePortfolioReport(apiKey, req.body);
+        break;
+      case 'evaluate-rules':
+        result = await handleEvaluateRules(apiKey, req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
