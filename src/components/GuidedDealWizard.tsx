@@ -68,7 +68,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 9;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -676,10 +676,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       case 3: return true; // Deal Contacts — always allow advance (contacts optional)
       case 4: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 5: return true;
-      case 6: return true;
-      case 7: return !!form.closingDate;
-      case 8: return !!form.agentClientId;
-      case 9: return true;
+      case 6: return !!form.closingDate;
+      case 7: return !!form.agentClientId;
+      case 8: return true;
       default: return true;
     }
   };
@@ -689,11 +688,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     if (!canAdvance()) {
       if (step === 1) setError('Address, city, and MLS Board are required.');
       if (step === 4) setError('Please select whether this duplex has 1 or 2 addresses.');
-      if (step === 7) setError('Closing date is required.');
-      if (step === 8) setError('Please select a client to continue.');
+      if (step === 6) setError('Closing date is required.');
+      if (step === 7) setError('Please select a client to continue.');
       return;
     }
-    if (step === 10) runAIReview();
+    if (step === 9) runAIReview();
     // When advancing from step 1: go to AI Review if extraction exists, else skip to Property Type
     if (step === 1) {
       setStep(extractedRawData ? 2 : 3);
@@ -1212,7 +1211,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(false);
   };
 
-  const stepTitles = ['', 'Property Address', 'AI Review', 'Deal Contacts', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'AI Review', 'Deal Contacts', 'Property Type', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -1373,6 +1372,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
             {step === 1 && (
               <div className="space-y-4">
+                {/* ── Transaction Side ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-2 block font-semibold uppercase tracking-wide">Which side are you on?</label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, transactionType: 'buyer' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'buyer'
+                          ? 'bg-blue-500 border-blue-500 text-white'
+                          : 'bg-blue-50 border-blue-200 text-blue-600 hover:border-blue-400'
+                      }`}
+                    >
+                      <ShoppingCart size={18} />
+                      Buyer Side
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, transactionType: 'seller' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'seller'
+                          ? 'bg-green-500 border-green-500 text-white'
+                          : 'bg-green-50 border-green-200 text-green-600 hover:border-green-400'
+                      }`}
+                    >
+                      <Tag size={18} />
+                      Seller Side
+                    </button>
+                  </div>
+                </div>
+
+                <div className="divider my-0"></div>
+
                 <div className="flex items-center gap-2 mb-3">
                   <MapPin size={18} className="text-primary" />
                   <h3 className="text-lg font-bold text-base-content">Where is the property?</h3>
@@ -1933,36 +1965,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {step === 5 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-base-content">Which side of the transaction?</h3>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setForm(p => ({ ...p, transactionType: 'buyer' }))}
-                    className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-semibold transition-all ${
-                      form.transactionType === 'buyer'
-                        ? 'bg-blue-500 border-blue-500 text-white'
-                        : 'bg-blue-50 border-blue-200 text-blue-600 hover:border-blue-400'
-                    }`}
-                  >
-                    <ShoppingCart size={28} />
-                    <span className="text-lg">Buyer Side</span>
-                  </button>
-                  <button
-                    onClick={() => setForm(p => ({ ...p, transactionType: 'seller' }))}
-                    className={`flex-1 flex flex-col items-center gap-3 p-6 rounded-xl border-2 font-semibold transition-all ${
-                      form.transactionType === 'seller'
-                        ? 'bg-green-500 border-green-500 text-white'
-                        : 'bg-green-50 border-green-200 text-green-600 hover:border-green-400'
-                    }`}
-                  >
-                    <Tag size={28} />
-                    <span className="text-lg">Seller Side</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {step === 6 && (
               <div style={form.isHeartlandMls ? {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',alignItems:'start'} : {}}>
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
@@ -2173,7 +2175,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 7 && (() => {
+            {step === 6 && (() => {
               const presetBtn = (label: string, field: keyof typeof form, days: number) => (
                 <button key={label} type="button"
                   className={`btn btn-xs ${form[field] === calcDate(form.contractDate, days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
@@ -2271,7 +2273,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               );
             })()}
 
-            {step === 8 && (
+            {step === 7 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -2366,8 +2368,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* ── Step 9: Title & Escrow ── */}
-            {step === 9 && (() => {
+            {/* ── Step 8: Title & Escrow ── */}
+            {step === 8 && (() => {
               const selectedTitleContact =
                 allContacts.find(c => c.id === form.titleContactId) ??
                 (form.titleContactEmail && titleParticipantFallback ? titleParticipantFallback as any : null);
@@ -2620,7 +2622,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               onSaved={handleTitleContactModalSaved}
             />
 
-            {step === 10 && (
+            {step === 9 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles size={18} className="text-primary" />
