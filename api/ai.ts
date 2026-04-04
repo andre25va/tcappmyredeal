@@ -406,6 +406,10 @@ const extractDealSchema = {
     downPaymentPercent: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerIsCompany: { type: 'boolean' },
+    sellerIsCompany: { type: 'boolean' },
+    buyerCompanyName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerCompanyName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     emHeldWith: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -462,7 +466,9 @@ const extractDealSchema = {
   required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'purchasePrice', 'mlsNumber',
     'contractDate', 'closingDate', 'inspectionDate', 'financeDeadline', 'possessionDate',
     'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commissionAmount', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'downPaymentPercent', 'buyerNames', 'sellerNames', 'titleCompany', 'emHeldWith', 'loanOfficer',
+    'downPaymentAmount', 'downPaymentPercent', 'buyerNames', 'sellerNames',
+    'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
+    'titleCompany', 'emHeldWith', 'loanOfficer',
     'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
     'homeWarrantyCompany', 'legalDescription', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
     'licenseeSectionRaw', 'mlsBoardName', 'confidence', 'extractedFields'],
@@ -1074,6 +1080,7 @@ For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down paym
 For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), return the raw percentage string (e.g., "3%") and the app will calculate the dollar amount. If both $ and % are present, prefer the $ amount.
 For propertyType: infer from property description. Default to "single-family".
 For emHeldWith: find the "Deposited with:" field in the earnest money section (typically Para 5 or 5b, or a line labeled "Deposited with:", "Held by:", or "Escrow Holder:"). Extract the name of the entity holding the earnest money — this is often a title company, escrow company, or the listing broker. Return null if not found.
+For buyerIsCompany / sellerIsCompany / buyerCompanyName / sellerCompanyName: If the buyer or seller field contains a business entity indicator (LLC, Inc., Corp., Ltd., L.L.C., LLP, LP, Co., Company, Trust, Holding, Holdings, Properties, Investments), set buyerIsCompany or sellerIsCompany=true and copy the FULL legal name into buyerCompanyName or sellerCompanyName. Set buyerNames/sellerNames to only the personal name if one appears alongside the company name (e.g., "John Smith / M&M LLC" → buyerNames="John Smith", buyerCompanyName="M&M LLC"). If only the company name appears with no person name, set buyerNames/sellerNames=null.
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
 Set extractedFields to an array of field names that had non-null values found.`;

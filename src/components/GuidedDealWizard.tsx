@@ -212,6 +212,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     homeWarranty: false, homeWarrantyCompany: '',
     inspectionDate: '', financeDeadline: '', titleDate: '', possessionDate: '', possessionAtClosing: false,
     buyerNames: '', sellerNames: '', titleCompany: '', loanOfficer: '',
+    buyerIsCompany: false, sellerIsCompany: false, buyerCompanyName: '', sellerCompanyName: '',
     buyerAgentName: '', sellerAgentName: '',
     commissionAmount: '', clientAgentCommissionPct: '', tcFee: '',
     titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
@@ -382,8 +383,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           parts.push({ tempId: generateId(), firstName: nameParts[0], lastName: nameParts.slice(1).join(' '), email: '', phone: '', role, side, isExtracted: true });
         });
       };
-      if (form.buyerNames)     parseNames(form.buyerNames, 'buyer', 'buyer');
-      if (form.sellerNames)    parseNames(form.sellerNames, 'seller', 'seller');
+      // Buyer — company-aware: don't split company names on '&'
+      if (form.buyerIsCompany && form.buyerCompanyName) {
+        const pocParts = (form.buyerNames || '').trim().split(' ');
+        parts.push({ tempId: generateId(), company: form.buyerCompanyName, firstName: pocParts[0] || '', lastName: pocParts.slice(1).join(' '), email: '', phone: '', role: 'buyer', side: 'buyer', isExtracted: true });
+      } else if (form.buyerNames) {
+        parseNames(form.buyerNames, 'buyer', 'buyer');
+      }
+      // Seller — company-aware
+      if (form.sellerIsCompany && form.sellerCompanyName) {
+        const pocParts = (form.sellerNames || '').trim().split(' ');
+        parts.push({ tempId: generateId(), company: form.sellerCompanyName, firstName: pocParts[0] || '', lastName: pocParts.slice(1).join(' '), email: '', phone: '', role: 'seller', side: 'seller', isExtracted: true });
+      } else if (form.sellerNames) {
+        parseNames(form.sellerNames, 'seller', 'seller');
+      }
       if (form.buyerAgentName) {
         const np = form.buyerAgentName.split(' ');
         parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'buyer', isExtracted: true });
@@ -776,6 +789,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           downPaymentAmount: d.downPaymentAmount || p.downPaymentAmount,
           buyerNames: d.buyerNames || p.buyerNames,
           sellerNames: d.sellerNames || p.sellerNames,
+          buyerIsCompany: !!(d.buyerIsCompany),
+          sellerIsCompany: !!(d.sellerIsCompany),
+          buyerCompanyName: d.buyerCompanyName || '',
+          sellerCompanyName: d.sellerCompanyName || '',
           titleCompany: d.titleCompany || p.titleCompany,
           emHeldWith: d.emHeldWith || p.emHeldWith,
           loanOfficer: d.loanOfficer || p.loanOfficer,
@@ -1029,8 +1046,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       homeWarrantyCompany: form.homeWarrantyCompany || undefined,
       possessionDate: form.possessionAtClosing ? (form.closingDate || undefined) : (form.possessionDate || undefined),
       titleDate: form.titleDate || undefined,
-      buyerName: form.buyerNames || undefined,
-      sellerName: form.sellerNames || undefined,
+      buyerName: (form.buyerIsCompany ? form.buyerCompanyName : form.buyerNames) || undefined,
+      sellerName: (form.sellerIsCompany ? form.sellerCompanyName : form.sellerNames) || undefined,
       titleCompanyName: form.titleCompany || undefined,
       titleCompanySide: (form.titleCompanySide === 'both' ? 'both' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'both',
       emHeldWith: form.emHeldWith || undefined,
@@ -2734,8 +2751,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     {selectedClient && (
                       <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}{selectedClient.company ? ` — ${selectedClient.company}` : ''}</span></>
                     )}
-                    {form.buyerNames && <><span className="text-base-content/50">Buyer(s):</span><span className="font-medium">{form.buyerNames}</span></>}
-                    {form.sellerNames && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerNames}</span></>}
+                    {(form.buyerIsCompany ? form.buyerCompanyName : form.buyerNames) && <><span className="text-base-content/50">Buyer(s):</span><span className="font-medium">{form.buyerIsCompany ? form.buyerCompanyName : form.buyerNames}</span></>}
+                    {(form.sellerIsCompany ? form.sellerCompanyName : form.sellerNames) && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerIsCompany ? form.sellerCompanyName : form.sellerNames}</span></>}
                     {form.loanType && <><span className="text-base-content/50">Loan Type:</span><span className="font-medium capitalize">{form.loanType}</span></>}
                     {form.earnestMoney && <><span className="text-base-content/50">Earnest Money:</span><span className="font-medium">${Number(form.earnestMoney).toLocaleString()}</span></>}
                     {form.earnestMoney && form.downPaymentAmount && form.isHeartlandMls && (() => {
