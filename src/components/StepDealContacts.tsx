@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { DealParticipantRole, ContactRole, ContactRecord } from '../types';
 import { generateId } from '../utils/helpers';
-import { Plus, Search, X, Pencil, AlertCircle, UserPlus } from 'lucide-react';
+import { Plus, Search, X, Pencil, AlertCircle, UserPlus, AlertTriangle } from 'lucide-react';
 import { ContactModal, SavedContact } from './ContactModal';
+import ContactMatchPopup from './ContactMatchPopup';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,46 @@ function defaultContactType(side: 'buyer' | 'seller' | 'both'): ContactRole {
   return side === 'both' ? 'title' : 'agent';
 }
 
+// ── Match scoring ─────────────────────────────────────────────────────────
+
+function normStr(s: string | undefined | null): string {
+  return (s ?? '').trim().toLowerCase();
+}
+
+function scoreMatch(p: WizardParticipant, c: ContactRecord): number {
+  let score = 0;
+  if (normStr(p.email) && normStr(p.email) === normStr(c.email)) score += 5;
+  const pPhone = (p.phone ?? '').replace(/\D/g, '');
+  const cPhone = (c.phone ?? '').replace(/\D/g, '');
+  if (pPhone && pPhone === cPhone) score += 4;
+  if (normStr(p.lastName) && normStr(p.lastName) === normStr(c.lastName)) score += 2;
+  if (normStr(p.firstName) && normStr(p.firstName) === normStr(c.firstName)) score += 2;
+  if (normStr(p.company) && normStr(c.company)) {
+    const pc = normStr(p.company);
+    const cc = normStr(c.company);
+    if (cc.includes(pc) || pc.includes(cc)) score += 1;
+  }
+  return score;
+}
+
+function findBestMatch(p: WizardParticipant, allContacts: ContactRecord[]): ContactRecord | null {
+  // Skip already-linked participants
+  if (p.contactId) return null;
+  // Skip if no identifying info
+  if (!p.firstName && !p.lastName && !p.email && !p.phone) return null;
+
+  let best: ContactRecord | null = null;
+  let bestScore = 0;
+  for (const c of allContacts) {
+    const score = scoreMatch(p, c);
+    if (score >= 3 && score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
 // ── Search Result type ─────────────────────────────────────────────────────
 
 interface SearchResult {
@@ -90,17 +131,20 @@ interface SearchResult {
 interface ContactCardProps {
   p: WizardParticipant;
   isOurSide: boolean;
+  match?: ContactRecord | null;
   onOpenContact: (p: WizardParticipant) => void;
   onRemove: (tempId: string) => void;
   onUpdate: (tempId: string, patch: Partial<WizardParticipant>) => void;
+  onMatchClick?: (p: WizardParticipant) => void;
 }
 
-function ContactCard({ p, isOurSide, onOpenContact, onRemove, onUpdate }: ContactCardProps) {
+function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, onMatchClick }: ContactCardProps) {
   const roles = roleOptions(p.side);
   const displayName = [p.firstName, p.lastName].filter(Boolean).join(' ');
+  const showMatchBadge = !!match && !p.contactId;
 
   return (
-    <div className="border border-base-300 rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors">
+    <div className={`border rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors ${showMatchBadge ? 'border-warning/60' : 'border-base-300'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {p.company && (
@@ -112,6 +156,7 @@ function ContactCard({ p, isOurSide, onOpenContact, onRemove, onUpdate }: Contac
             </span>
             {p.isExtracted && <span className="badge badge-sm badge-info badge-outline">Auto</span>}
             {isOurSide && <span className="badge badge-sm badge-success badge-outline">Our Side</span>}
+            {p.contactId && <span className="badge badge-sm badge-success">✓ Linked</span>}
           </div>
           {p.email && <p className="text-xs text-base-content/60 mt-0.5 truncate">{p.email}</p>}
           {p.phone && <p className="text-xs text-base-content/60 truncate">{p.phone}</p>}
@@ -119,6 +164,15 @@ function ContactCard({ p, isOurSide, onOpenContact, onRemove, onUpdate }: Contac
             <p className="text-xs text-warning/70 mt-0.5 flex items-center gap-1">
               <AlertCircle size={11} /> No contact info yet
             </p>
+          )}
+          {/* Possible match notice */}
+          {showMatchBadge && (
+            <button
+              className="mt-1.5 flex items-center gap-1 text-xs text-warning font-medium hover:underline"
+              onClick={() => onMatchClick?.(p)}
+            >
+              <AlertTriangle size={11} /> Possible match in contacts — review
+            </button>
           )}
         </div>
         <div className="flex gap-1 shrink-0">
@@ -239,6 +293,7 @@ interface SideColumnProps {
   query: string;
   results: SearchResult[];
   searching: boolean;
+  matchMap: Record<string, ContactRecord | null>;
   onOpenContact: (p: WizardParticipant) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, patch: Partial<WizardParticipant>) => void;
@@ -247,13 +302,16 @@ interface SideColumnProps {
   onAddFromSearch: (r: SearchResult) => void;
   onCreateNew: () => void;
   onCloseAdd: () => void;
+  onMatchClick: (p: WizardParticipant) => void;
 }
 
 function SideColumn({
   side, label, list, transactionType,
   addingSide, query, results, searching,
+  matchMap,
   onOpenContact, onRemove, onUpdate,
   onSetAdding, onQueryChange, onAddFromSearch, onCreateNew, onCloseAdd,
+  onMatchClick,
 }: SideColumnProps) {
   return (
     <div className="flex-1 min-w-0 space-y-2">
@@ -266,9 +324,11 @@ function SideColumn({
           key={p.tempId}
           p={p}
           isOurSide={transactionType === side}
+          match={matchMap[p.tempId]}
           onOpenContact={onOpenContact}
           onRemove={onRemove}
           onUpdate={onUpdate}
+          onMatchClick={onMatchClick}
         />
       ))}
       <AddPanel
@@ -319,6 +379,60 @@ export default function StepDealContacts({ participants, onChange, transactionTy
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const [contactModalState, setContactModalState] = useState<ContactModalState>(null);
+
+  // ── Match detection ───────────────────────────────────────────────────────
+
+  // Track dismissed matches (tempIds the TC said "keep as new" for)
+  const [dismissedMatches, setDismissedMatches] = useState<Set<string>>(new Set());
+
+  // Compute best match for every participant (re-runs when participants or allContacts change)
+  const matchMap = useMemo(() => {
+    const map: Record<string, ContactRecord | null> = {};
+    for (const p of participants) {
+      map[p.tempId] = dismissedMatches.has(p.tempId) ? null : findBestMatch(p, allContacts);
+    }
+    return map;
+  }, [participants, allContacts, dismissedMatches]);
+
+  // Match popup state
+  const [matchPopup, setMatchPopup] = useState<{ participant: WizardParticipant; match: ContactRecord } | null>(null);
+
+  const handleMatchClick = useCallback((p: WizardParticipant) => {
+    const match = matchMap[p.tempId];
+    if (match) setMatchPopup({ participant: p, match });
+  }, [matchMap]);
+
+  /** TC chose "Use System Contact" — link contactId, no DB change */
+  const handleMatchUseAsIs = useCallback((p: WizardParticipant, match: ContactRecord) => {
+    onChange(participants.map(part =>
+      part.tempId === p.tempId
+        ? { ...part, contactId: match.id, firstName: match.firstName, lastName: match.lastName,
+            company: match.company, email: match.email, phone: match.phone }
+        : part
+    ));
+    setMatchPopup(null);
+  }, [participants, onChange]);
+
+  /** TC chose "Use System Contact + Update" — DB already saved in popup, just link */
+  const handleMatchUseAndUpdate = useCallback((p: WizardParticipant, match: ContactRecord) => {
+    onChange(participants.map(part =>
+      part.tempId === p.tempId
+        ? { ...part, contactId: match.id,
+            firstName: p.firstName || match.firstName,
+            lastName:  p.lastName  || match.lastName,
+            company:   p.company   ?? match.company,
+            email:     p.email     || match.email,
+            phone:     p.phone     || match.phone }
+        : part
+    ));
+    setMatchPopup(null);
+  }, [participants, onChange]);
+
+  /** TC chose "Keep as New" — dismiss badge permanently for this participant */
+  const handleMatchKeepNew = useCallback((p: WizardParticipant) => {
+    setDismissedMatches(prev => new Set([...prev, p.tempId]));
+    setMatchPopup(null);
+  }, []);
 
   // debounced contact search
   useEffect(() => {
@@ -493,6 +607,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           query={query}
           results={results}
           searching={searching}
+          matchMap={matchMap}
           onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
@@ -501,6 +616,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           onAddFromSearch={handleAddFromSearch}
           onCreateNew={openCreateContact}
           onCloseAdd={closeAddPanel}
+          onMatchClick={handleMatchClick}
         />
         <div className="w-px bg-base-300 shrink-0" />
         <SideColumn
@@ -512,6 +628,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           query={query}
           results={results}
           searching={searching}
+          matchMap={matchMap}
           onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
@@ -520,6 +637,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           onAddFromSearch={handleAddFromSearch}
           onCreateNew={openCreateContact}
           onCloseAdd={closeAddPanel}
+          onMatchClick={handleMatchClick}
         />
       </div>
 
@@ -534,9 +652,11 @@ export default function StepDealContacts({ participants, onChange, transactionTy
             key={p.tempId}
             p={p}
             isOurSide={false}
+            match={matchMap[p.tempId]}
             onOpenContact={openEditContact}
             onRemove={handleRemove}
             onUpdate={handleUpdate}
+            onMatchClick={handleMatchClick}
           />
         ))}
         <AddPanel
@@ -580,6 +700,17 @@ export default function StepDealContacts({ participants, onChange, transactionTy
         allContacts={allContacts}
         onClose={() => setContactModalState(null)}
         onSaved={handleContactSaved}
+      />
+
+      {/* Contact match popup */}
+      <ContactMatchPopup
+        isOpen={matchPopup !== null}
+        participant={matchPopup?.participant ?? null}
+        match={matchPopup?.match ?? null}
+        onClose={() => setMatchPopup(null)}
+        onUseAsIs={handleMatchUseAsIs}
+        onUseAndUpdate={handleMatchUseAndUpdate}
+        onKeepNew={handleMatchKeepNew}
       />
     </div>
   );
