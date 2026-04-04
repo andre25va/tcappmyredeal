@@ -424,6 +424,7 @@ export interface Deal {
   titleCompanyName?: string;
   titleCompanySide?: 'buyer' | 'seller' | 'both';  // which side the title company represents
   loanOfficerName?: string;
+  emHeldWith?: string;             // "Deposited with:" entity from contract (title co, broker, or escrow)
   buyerAgentName?: string;         // Extracted from contract — buyer's agent full name
   sellerAgentName?: string;        // Extracted from contract — seller's/listing agent full name
 

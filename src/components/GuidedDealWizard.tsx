@@ -763,6 +763,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           buyerNames: d.buyerNames || p.buyerNames,
           sellerNames: d.sellerNames || p.sellerNames,
           titleCompany: d.titleCompany || p.titleCompany,
+          emHeldWith: d.emHeldWith || p.emHeldWith,
           loanOfficer: d.loanOfficer || p.loanOfficer,
           // buyerAgentCommission comes from AI extraction (e.g. "3%" or "4950").
           // Map it to the correct form fields based on whether it's % or dollar amount.
@@ -999,6 +1000,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerName: form.sellerNames || undefined,
       titleCompanyName: form.titleCompany || undefined,
       titleCompanySide: (form.titleCompanySide === 'both' ? 'both' : form.titleCompanySide === 'sell' ? 'seller' : 'buyer') as 'buyer' | 'seller' | 'both',
+      emHeldWith: form.emHeldWith || undefined,
       loanOfficerName: form.loanOfficer || undefined,
       buyerAgentName: form.buyerAgentName || undefined,
       sellerAgentName: form.sellerAgentName || undefined,
