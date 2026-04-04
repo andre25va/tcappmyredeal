@@ -396,8 +396,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         if (np[0]) parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lender', side: 'buyer', isExtracted: true });
       }
       if (form.titleCompany) {
-        // Title company from extraction — add as title_officer on both sides so TC can link the real contact
-        parts.push({ tempId: generateId(), firstName: form.titleCompany, lastName: '', email: '', phone: '', role: 'title_officer', side: 'both', isExtracted: true });
+        // titleCompany = EM holder extracted from contract → seller-side title by default.
+        // Respect titleCompanySide if TC already manually set it in Step 9.
+        const titleSide: WizardParticipant['side'] =
+          form.titleCompanySide === 'buy' ? 'buyer' :
+          form.titleCompanySide === 'both' ? 'both' :
+          'seller'; // default: EM holder is always seller-side
+        parts.push({ tempId: generateId(), firstName: form.titleCompany, lastName: '', email: '', phone: '', role: 'title_officer', side: titleSide, isExtracted: true });
       }
       if (parts.length > 0) setWizardParticipants(parts);
     }
