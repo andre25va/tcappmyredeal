@@ -2574,7 +2574,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             <ContactModal
               isOpen={showTitleContactModal}
               contact={null}
-              defaultRole="title_officer"
+              defaultRole="title"
               allContacts={allContacts}
               onClose={() => setShowTitleContactModal(false)}
               onSaved={handleTitleContactModalSaved}
