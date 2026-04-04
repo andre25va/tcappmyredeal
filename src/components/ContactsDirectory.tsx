@@ -330,7 +330,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <button className="btn btn-primary btn-sm gap-1" onClick={openAdd}>
+          <button className="btn btn-primary btn-sm gap-1" onClick={() => openAdd()}>
             <Plus size={14} /> Add Contact
           </button>
         </div>

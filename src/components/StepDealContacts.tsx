@@ -10,7 +10,7 @@ import { ContactModal, SavedContact } from './ContactModal';
 export interface WizardParticipant {
   tempId: string;
   contactId?: string;        // set if linked to an existing contacts row
-  company: string;           // company / organization name (e.g. "Alliance Title")
+  company?: string;          // company / organization name (e.g. "Alliance Title")
   firstName: string;
   lastName: string;
   email: string;
