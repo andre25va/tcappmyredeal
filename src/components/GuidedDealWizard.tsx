@@ -15,6 +15,7 @@ import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
 import StepDealContacts, { WizardParticipant } from './StepDealContacts';
+import { ContactModal, SavedContact } from './ContactModal';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
 
@@ -263,9 +264,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [allContacts, setAllContacts] = useState<ContactRecord[]>([]);
   const [titleContactsLoaded, setTitleContactsLoaded] = useState(false);
   const [wizardParticipants, setWizardParticipants] = useState<WizardParticipant[]>([]);
-  const [showCreateTitleContact, setShowCreateTitleContact] = useState(false);
-  const [newTitleContact, setNewTitleContact] = useState({ fullName: '', company: '', email: '', phone: '' });
-  const [savingTitleContact, setSavingTitleContact] = useState(false);
+  const [showTitleContactModal, setShowTitleContactModal] = useState(false);
+  const [titleParticipantFallback, setTitleParticipantFallback] = useState<{ fullName: string; company?: string; email?: string } | null>(null);
   const [sendingIntroEmail, setSendingIntroEmail] = useState(false);
   const [introEmailSent, setIntroEmailSent] = useState(false);
   // Pre-generate deal ID so Step 8 intro email can be linked to the deal before it's created
@@ -468,46 +468,24 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     return () => { if (contractObjectUrl) URL.revokeObjectURL(contractObjectUrl); };
   }, [contractObjectUrl]);
 
-  const handleCreateTitleContact = async () => {
-    if (!newTitleContact.fullName.trim()) return;
-    setSavingTitleContact(true);
-    try {
-      const id = crypto.randomUUID();
-      const { error } = await supabase.from('contacts').insert({
-        id,
-        full_name: newTitleContact.fullName.trim(),
-        company: newTitleContact.company.trim() || null,
-        email: newTitleContact.email.trim() || null,
-        phone: newTitleContact.phone.trim() || null,
-        contact_type: 'title',
-        org_id: primaryOrgId() ?? null,
-      });
-      if (error) throw error;
-      const created = {
-        id, fullName: newTitleContact.fullName.trim(),
-        company: newTitleContact.company.trim(),
-        email: newTitleContact.email.trim(),
-        phone: newTitleContact.phone.trim(),
-        role: 'title',
-      } as unknown as ContactRecord;
-      setAllContacts(prev => [...prev, created]);
-      setForm(p => ({ ...p, titleContactId: id, titleContactEmail: created.email || '' }));
-      const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
-      setForm(p => ({
-        ...p,
-        titleContactId: id,
-        titleContactEmail: created.email || '',
-        introEmailSubject: `${addr} – Introduction from TC Team`,
-        emHeldWith: created.company || form.emHeldWith || '',
-        introEmailBody: resolveIntroBody(`Hi ${created.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: created.company || form.emHeldWith || '', loanOfficer: form.loanOfficer }),
-      }));
-      setShowCreateTitleContact(false);
-      setNewTitleContact({ fullName: '', company: '', email: '', phone: '' });
-    } catch (err: any) {
-      alert('Error saving contact: ' + (err.message || err));
-    } finally {
-      setSavingTitleContact(false);
-    }
+  const handleTitleContactModalSaved = (saved: SavedContact) => {
+    const newContact = {
+      id: saved.id, fullName: saved.fullName,
+      company: saved.company || '', email: saved.email || '', phone: saved.phone || '',
+      role: 'title',
+    } as unknown as ContactRecord;
+    setAllContacts(prev => [...prev, newContact]);
+    const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+    setForm(p => ({
+      ...p,
+      titleContactId: saved.id,
+      titleContactEmail: saved.email || '',
+      introEmailSubject: `${addr} – Introduction from TC Team`,
+      emHeldWith: saved.company || p.emHeldWith || '',
+      introEmailBody: resolveIntroBody(`Hi ${saved.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: saved.company || form.emHeldWith || '', loanOfficer: form.loanOfficer }),
+    }));
+    setShowTitleContactModal(false);
+    setIntroEmailSent(false);
   };
 
   // Resolve merge tags eagerly so the textarea preview shows real values
@@ -2361,7 +2339,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
             {/* ── Step 9: Title & Escrow ── */}
             {step === 9 && (() => {
-              const selectedTitleContact = allContacts.find(c => c.id === form.titleContactId);
+              const selectedTitleContact =
+                allContacts.find(c => c.id === form.titleContactId) ??
+                (form.titleContactEmail && titleParticipantFallback ? titleParticipantFallback as any : null);
               const filteredContacts = allContacts.filter(c =>
                 !titleSearch.trim() ||
                 c.fullName.toLowerCase().includes(titleSearch.toLowerCase()) ||
@@ -2374,6 +2354,66 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <h3 className="text-lg font-bold text-base-content">Title &amp; Escrow</h3>
                   </div>
                   <p className="text-sm text-base-content/60">Select the title or escrow company for this deal. You can also send them an intro email right now.</p>
+
+                  {/* Title contacts added in Step 3 — shown as quick-select cards */}
+                  {(() => {
+                    const titleParts = wizardParticipants.filter(p => p.role === 'title_officer' && !selectedTitleContact);
+                    if (titleParts.length === 0) return null;
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs text-base-content/50 font-semibold uppercase tracking-wide">From Step 3</p>
+                        {titleParts.map(p => {
+                          const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ');
+                          const initials = fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                          const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
+                          return (
+                            <button
+                              key={p.tempId}
+                              type="button"
+                              className="w-full flex items-center gap-3 px-3 py-2.5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                              onClick={() => {
+                                const contactInDb = p.contactId ? allContacts.find(c => c.id === p.contactId) : null;
+                                if (contactInDb) {
+                                  setForm(prev => ({
+                                    ...prev,
+                                    titleContactId: p.contactId!,
+                                    titleContactEmail: contactInDb.email || '',
+                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    emHeldWith: contactInDb.company || prev.emHeldWith || '',
+                                    introEmailBody: resolveIntroBody(`Hi ${contactInDb.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: contactInDb.company || prev.emHeldWith || '', loanOfficer: prev.loanOfficer }),
+                                  }));
+                                } else {
+                                  // Participant not yet in allContacts (e.g. AI-extracted, no contactId)
+                                  setTitleParticipantFallback({ fullName, company: p.company, email: p.email });
+                                  setForm(prev => ({
+                                    ...prev,
+                                    titleContactId: '',
+                                    titleContactEmail: p.email || '',
+                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    emHeldWith: p.company || prev.emHeldWith || '',
+                                    introEmailBody: resolveIntroBody(`Hi ${fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: p.company || prev.emHeldWith || '', loanOfficer: prev.loanOfficer }),
+                                  }));
+                                }
+                                setIntroEmailSent(false);
+                              }}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-none">{initials}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-base-content truncate">{fullName}</p>
+                                {p.company && <p className="text-xs text-base-content/40 truncate">{p.company}</p>}
+                                {p.email && <p className="text-xs text-base-content/40 truncate">{p.email}</p>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                        <div className="flex items-center gap-2 pt-1">
+                          <div className="flex-1 border-t border-base-200" />
+                          <span className="text-xs text-base-content/30">or search all contacts</span>
+                          <div className="flex-1 border-t border-base-200" />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Side selector — auto-matches transaction side from step 3 */}
                   {(() => {
@@ -2411,7 +2451,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         {selectedTitleContact.company && <p className="text-xs text-base-content/50 truncate">{selectedTitleContact.company}</p>}
                         {selectedTitleContact.email && <p className="text-xs text-base-content/40 truncate">{selectedTitleContact.email}</p>}
                       </div>
-                      <Button variant="ghost" size="xs" square type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '' })); setIntroEmailSent(false); }}><X size={12} /></Button>
+                      <Button variant="ghost" size="xs" square type="button" onClick={() => { setForm(p => ({ ...p, titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '' })); setIntroEmailSent(false); setTitleParticipantFallback(null); }}><X size={12} /></Button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2465,45 +2505,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <button
                         type="button"
                         className="btn btn-outline btn-sm gap-1.5 w-full"
-                        onClick={() => { setShowCreateTitleContact(true); setTitleDropdownOpen(false); }}
+                        onClick={() => { setShowTitleContactModal(true); setTitleDropdownOpen(false); }}
                       >
                         <Plus size={13} /> Create New Contact
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Create new contact inline modal */}
-                  {showCreateTitleContact && (
-                    <div className="border border-base-300 rounded-xl p-4 bg-base-50 space-y-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-sm font-semibold text-base-content">New Contact</p>
-                        <Button variant="ghost" size="xs" square type="button" onClick={() => setShowCreateTitleContact(false)}><X size={12} /></Button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-base-content/50 mb-1 block">Full Name <span className="text-red-400">*</span></label>
-                          <input className="input input-bordered w-full input-sm" placeholder="Jane Smith" value={newTitleContact.fullName} onChange={e => setNewTitleContact(p => ({ ...p, fullName: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-base-content/50 mb-1 block">Company</label>
-                          <input className="input input-bordered w-full input-sm" placeholder="ABC Title Co." value={newTitleContact.company} onChange={e => setNewTitleContact(p => ({ ...p, company: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1"><Mail size={11} /> Email</label>
-                          <input className="input input-bordered w-full input-sm" placeholder="jane@abctitle.com" type="email" value={newTitleContact.email} onChange={e => setNewTitleContact(p => ({ ...p, email: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1"><Phone size={11} /> Phone</label>
-                          <input className="input input-bordered w-full input-sm" placeholder="(555) 123-4567" value={newTitleContact.phone} onChange={e => setNewTitleContact(p => ({ ...p, phone: e.target.value }))} />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm w-full"
-                        disabled={!newTitleContact.fullName.trim() || savingTitleContact}
-                        onClick={handleCreateTitleContact}
-                      >
-                        {savingTitleContact ? <><Loader2 size={13} className="animate-spin" /> Saving...</> : 'Save & Select Contact'}
                       </button>
                     </div>
                   )}
@@ -2562,8 +2566,19 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
+
               );
             })()}
+
+            {/* ContactModal — create new title contact from Step 9 */}
+            <ContactModal
+              isOpen={showTitleContactModal}
+              contact={null}
+              defaultRole="title"
+              allContacts={allContacts}
+              onClose={() => setShowTitleContactModal(false)}
+              onSaved={handleTitleContactModalSaved}
+            />
 
             {step === 10 && (
               <div className="space-y-4">
