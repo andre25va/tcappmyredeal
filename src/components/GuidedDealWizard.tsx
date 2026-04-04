@@ -2783,7 +2783,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             <button onClick={step === 1 ? onClose : handleBack} className="btn btn-ghost btn-sm gap-1">
               {step === 1 ? 'Cancel' : <><ChevronLeft size={14} /> Back</>}
             </button>
-            <span className="hidden sm:inline font-mono text-[9px] text-base-content/30 select-none tracking-wide">
+            <span className="hidden sm:inline font-mono text-[9px] text-base-content/30 select-all tracking-wide">
               {PAGE_IDS[`WIZARD_STEP_${step}` as keyof typeof PAGE_IDS] || `wizard-step-${step}`} · step {step} of 9
             </span>
             <div className="flex gap-2">
