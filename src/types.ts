@@ -70,7 +70,7 @@ export type ContactRole = 'agent' | 'client' | 'buyer' | 'seller' | 'lender' | '
 // ── New relational type aliases ──────────────────────────────────────────────
 export type ContactType = ContactRole; // alias for clarity during migration
 export type OrganizationType = 'team' | 'brokerage' | 'title_company' | 'lender_company' | 'builder' | 'vendor';
-export type DealSide = 'listing' | 'buyer' | 'seller' | 'vendor' | 'internal';
+export type DealSide = 'listing' | 'buyer' | 'seller' | 'vendor' | 'internal' | 'both';
 export type DealParticipantRole = 'lead_agent' | 'co_agent' | 'admin' | 'tc' | 'lender' | 'title_officer' | 'buyer' | 'seller' | 'inspector' | 'appraiser' | 'other';
 export type LicenseType = 'salesperson' | 'broker' | 'associate_broker';
 export type LicenseStatus = 'active' | 'inactive' | 'expired' | 'pending';

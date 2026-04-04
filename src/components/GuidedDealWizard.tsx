@@ -14,6 +14,7 @@ import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
+import StepDealContacts, { WizardParticipant } from './StepDealContacts';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
 
@@ -66,7 +67,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 10;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -261,6 +262,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [titleDropdownOpen, setTitleDropdownOpen] = useState(false);
   const [allContacts, setAllContacts] = useState<ContactRecord[]>([]);
   const [titleContactsLoaded, setTitleContactsLoaded] = useState(false);
+  const [wizardParticipants, setWizardParticipants] = useState<WizardParticipant[]>([]);
   const [showCreateTitleContact, setShowCreateTitleContact] = useState(false);
   const [newTitleContact, setNewTitleContact] = useState({ fullName: '', company: '', email: '', phone: '' });
   const [savingTitleContact, setSavingTitleContact] = useState(false);
@@ -367,9 +369,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Load all contacts when step 7 is reached
+  // Auto-populate wizard contacts when reaching step 3 (contacts hub)
   useEffect(() => {
-    if (step === 8 && !titleContactsLoaded) {
+    if (step === 3 && wizardParticipants.length === 0) {
+      const parts: WizardParticipant[] = [];
+      const parseNames = (str: string, role: WizardParticipant['role'], side: WizardParticipant['side']) => {
+        str.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean).forEach((name: string) => {
+          const nameParts = name.split(' ');
+          parts.push({ tempId: generateId(), firstName: nameParts[0], lastName: nameParts.slice(1).join(' '), email: '', phone: '', role, side, isExtracted: true });
+        });
+      };
+      if (form.buyerNames)     parseNames(form.buyerNames, 'buyer', 'buyer');
+      if (form.sellerNames)    parseNames(form.sellerNames, 'seller', 'seller');
+      if (form.buyerAgentName) {
+        const np = form.buyerAgentName.split(' ');
+        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'buyer', isExtracted: true });
+      }
+      if (form.sellerAgentName) {
+        const np = form.sellerAgentName.split(' ');
+        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'seller', isExtracted: true });
+      }
+      if (form.loanOfficer) {
+        // loanOfficer may be "Jane Smith – First Bank", extract just the name part
+        const namePart = form.loanOfficer.split(/[-–,]|\s+(at|of)\s+/i)[0].trim();
+        const np = namePart.split(' ');
+        if (np[0]) parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lender', side: 'buyer', isExtracted: true });
+      }
+      if (parts.length > 0) setWizardParticipants(parts);
+    }
+  }, [step]);
+
+  // Load all contacts when step 3 is reached (needed for title officer search in step 9)
+  useEffect(() => {
+    if (step === 3 && !titleContactsLoaded) {
       supabase
         .from('contacts')
         .select('*')
@@ -617,12 +649,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim() && form.mlsBoard);
       case 2: return true; // AI Review step — always allow advance
-      case 3: return isDuplex ? form.duplexAddressCount !== '' : true;
-      case 4: return true;
+      case 3: return true; // Deal Contacts — always allow advance (contacts optional)
+      case 4: return isDuplex ? form.duplexAddressCount !== '' : true;
       case 5: return true;
-      case 6: return !!form.closingDate;
-      case 7: return !!form.agentClientId;
-      case 8: return true;
+      case 6: return true;
+      case 7: return !!form.closingDate;
+      case 8: return !!form.agentClientId;
+      case 9: return true;
       default: return true;
     }
   };
@@ -631,12 +664,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (!canAdvance()) {
       if (step === 1) setError('Address, city, and MLS Board are required.');
-      if (step === 3) setError('Please select whether this duplex has 1 or 2 addresses.');
-      if (step === 6) setError('Closing date is required.');
-      if (step === 7) setError('Please select a client to continue.');
+      if (step === 4) setError('Please select whether this duplex has 1 or 2 addresses.');
+      if (step === 7) setError('Closing date is required.');
+      if (step === 8) setError('Please select a client to continue.');
       return;
     }
-    if (step === 9) runAIReview();
+    if (step === 10) runAIReview();
     // When advancing from step 1: go to AI Review if extraction exists, else skip to Property Type
     if (step === 1) {
       setStep(extractedRawData ? 2 : 3);
@@ -1095,7 +1128,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         });
       }
 
-      // Save title contact
+      // Save title contact from Step 9 (Title & Escrow) if set and not already in wizardParticipants
       if (form.titleContactId) {
         await safeAddParticipant({
           dealId: deal.id,
@@ -1107,42 +1140,43 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         });
       }
 
-      // Save buyer contacts (find-or-create to prevent duplicate contact records)
-      if (form.buyerNames) {
-        const buyerNameList = form.buyerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
-        for (const fullName of buyerNameList) {
-          const contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
-          if (contactId) {
-            await safeAddParticipant({
-              dealId: deal.id,
-              contactId,
-              side: 'buyer',
-              dealRole: 'buyer',
-              isPrimary: false,
-              isClientSide: form.transactionType === 'buyer',
-              isExtracted: true,
-            });
-          }
-        }
-      }
+      // Save all contacts confirmed in Step 3 (Deal Contacts hub)
+      for (const p of wizardParticipants) {
+        const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
+        if (!fullName) continue;
 
-      // Save seller contacts (find-or-create to prevent duplicate contact records)
-      if (form.sellerNames) {
-        const sellerNameList = form.sellerNames.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean);
-        for (const fullName of sellerNameList) {
-          const contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
-          if (contactId) {
-            await safeAddParticipant({
-              dealId: deal.id,
-              contactId,
-              side: 'seller',
-              dealRole: 'seller',
-              isPrimary: false,
-              isClientSide: form.transactionType === 'listing',
-              isExtracted: true,
-            });
+        // Get or create the contact record
+        let contactId = p.contactId ?? null;
+        if (!contactId) {
+          contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
+          // Update contact with email/phone if provided
+          if (contactId && (p.email || p.phone)) {
+            await supabase.from('contacts').update({
+              ...(p.email ? { email: p.email } : {}),
+              ...(p.phone ? { phone: p.phone } : {}),
+            }).eq('id', contactId).is('email', p.email ? null : undefined);
           }
         }
+        if (!contactId) continue;
+
+        // Map wizard side → DB side
+        const mapSide = (side: 'buyer' | 'seller' | 'both', role: typeof p.role): string => {
+          if (side === 'both') return 'both';
+          if (side === 'buyer') return 'buyer';
+          // Sell side: agent roles → 'listing', others → 'seller'
+          return (role === 'lead_agent' || role === 'co_agent') ? 'listing' : 'seller';
+        };
+
+        await safeAddParticipant({
+          dealId:       deal.id,
+          contactId,
+          side:         mapSide(p.side, p.role) as any,
+          dealRole:     p.role,
+          isPrimary:    false,
+          isClientSide: (form.transactionType === 'buyer' && p.side === 'buyer') ||
+                        (form.transactionType === 'seller' && p.side === 'seller'),
+          isExtracted:  p.isExtracted,
+        });
       }
     } catch (err) {
       console.error('[GuidedDealWizard] Failed to save deal participants:', err);
@@ -1152,7 +1186,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(false);
   };
 
-  const stepTitles = ['', 'Property Address', 'AI Review', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
+  const stepTitles = ['', 'Property Address', 'AI Review', 'Deal Contacts', 'Property Type', 'Transaction Side', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -1684,6 +1718,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {step === 3 && (
+              <StepDealContacts
+                participants={wizardParticipants}
+                onChange={setWizardParticipants}
+                transactionType={form.transactionType as 'buyer' | 'seller'}
+                orgId={undefined}
+              />
+            )}
+
+            {step === 4 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
                 {/* MLS Property Data Card */}
@@ -1848,7 +1891,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-base-content">Which side of the transaction?</h3>
                 <div className="flex gap-4">
@@ -1878,7 +1921,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 5 && (
+            {step === 6 && (
               <div style={form.isHeartlandMls ? {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',alignItems:'start'} : {}}>
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
@@ -2089,7 +2132,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {step === 6 && (() => {
+            {step === 7 && (() => {
               const presetBtn = (label: string, field: keyof typeof form, days: number) => (
                 <button key={label} type="button"
                   className={`btn btn-xs ${form[field] === calcDate(form.contractDate, days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
@@ -2187,7 +2230,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               );
             })()}
 
-            {step === 7 && (
+            {step === 8 && (
               <div className="space-y-5">
                 <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -2282,8 +2325,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               </div>
             )}
 
-            {/* ── Step 7: Title & Escrow ── */}
-            {step === 8 && (() => {
+            {/* ── Step 9: Title & Escrow ── */}
+            {step === 9 && (() => {
               const selectedTitleContact = allContacts.find(c => c.id === form.titleContactId);
               const filteredContacts = allContacts.filter(c =>
                 !titleSearch.trim() ||
@@ -2488,7 +2531,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               );
             })()}
 
-            {step === 9 && (
+            {step === 10 && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles size={18} className="text-primary" />
