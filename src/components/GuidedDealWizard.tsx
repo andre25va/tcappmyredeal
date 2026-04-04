@@ -2603,7 +2603,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             <ContactModal
               isOpen={showClientCreateModal}
               contact={null}
-              defaultRole="buyer"
+              defaultRole="agent"
+              initialIsClient={true}
               allContacts={allContacts}
               onClose={() => setShowClientCreateModal(false)}
               onSaved={handleClientCreateModalSaved}
