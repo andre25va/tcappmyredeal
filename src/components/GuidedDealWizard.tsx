@@ -1754,6 +1754,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 onChange={setWizardParticipants}
                 transactionType={form.transactionType as 'buyer' | 'seller'}
                 orgId={undefined}
+                allContacts={allContacts}
               />
             )}
 
