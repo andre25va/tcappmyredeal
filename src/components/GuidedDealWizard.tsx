@@ -784,7 +784,26 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             if (commAmt && price) return (calcCommissionPct(price, commAmt)).toFixed(2);
             return p.clientAgentCommissionPct;
           })(),
-          transactionType: (d.transactionType as any) || p.transactionType,
+          transactionType: (() => {
+            // Auto-detect side: compare selected agent client's last name against
+            // extracted buyer/seller agent names. This is more reliable than asking
+            // the AI to guess "which side is the TC on" from a purchase agreement,
+            // because all KC purchase agreements are "buyer" offers by document type.
+            if (p.agentClientId) {
+              const ac = allAgentClients.find(c => c.id === p.agentClientId);
+              if (ac?.fullName) {
+                const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                const lastName = norm((ac.fullName.trim().split(' ').pop() || ''));
+                if (lastName.length >= 3) {
+                  const sellerNorm = norm(updated.sellerAgentName);
+                  const buyerNorm  = norm(updated.buyerAgentName);
+                  if (sellerNorm.includes(lastName)) return 'seller';
+                  if (buyerNorm.includes(lastName))  return 'buyer';
+                }
+              }
+            }
+            return (d.transactionType as any) || p.transactionType;
+          })(),
           propertyType: (d.propertyType as any) || p.propertyType,
           asIsSale: d.asIsSale ?? p.asIsSale,
           inspectionWaived: d.inspectionWaived ?? p.inspectionWaived,
