@@ -543,7 +543,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       if (!res.ok) throw new Error('Send failed');
       setIntroEmailSent(true);
     } catch (err: any) {
-      alert('Email failed: ' + (err.message || err));
+      setError('Email failed: ' + (err.message || err));
     } finally {
       setSendingIntroEmail(false);
     }
@@ -1329,19 +1329,22 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 const s = i + 1;
                 const isCompleted = s < step;
                 const isCurrent = s === step;
+                // Steps 2 & 3 are skipped when no contract was uploaded
+                const isSkipped = !contractFile && (s === 2 || s === 3);
                 return (
                   <React.Fragment key={s}>
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors flex-none ${
+                        isSkipped ? 'bg-base-200 text-base-content/20 opacity-40' :
                         isCompleted ? 'bg-primary text-primary-content' :
                         isCurrent ? 'bg-primary/20 text-primary border-2 border-primary' :
                         'bg-base-300 text-base-content/40'
                       }`}
                     >
-                      {isCompleted ? <CheckCircle2 size={14} /> : s}
+                      {isCompleted && !isSkipped ? <CheckCircle2 size={14} /> : s}
                     </div>
                     {s < TOTAL_STEPS && (
-                      <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted ? 'bg-primary' : 'bg-base-300'}`} />
+                      <div className={`flex-1 h-0.5 mx-1 rounded ${isCompleted && !isSkipped ? 'bg-primary' : 'bg-base-300'}`} />
                     )}
                   </React.Fragment>
                 );
@@ -2312,7 +2315,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   ) : (
                     <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
-                      No agent client selected — go back to Step 1 to choose one.
+                      No agent client selected — go back to Deal Contacts (Step 3) to add a buyer or seller.
                     </div>
                   )}
                 </div>
