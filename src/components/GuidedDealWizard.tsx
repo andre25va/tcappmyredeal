@@ -395,6 +395,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         const np = namePart.split(' ');
         if (np[0]) parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lender', side: 'buyer', isExtracted: true });
       }
+      if (form.titleCompany) {
+        // Title company from extraction — add as title_officer on both sides so TC can link the real contact
+        parts.push({ tempId: generateId(), firstName: form.titleCompany, lastName: '', email: '', phone: '', role: 'title_officer', side: 'both', isExtracted: true });
+      }
       if (parts.length > 0) setWizardParticipants(parts);
     }
   }, [step]);
@@ -415,6 +419,28 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               email: c.email || '', phone: c.phone || '', role: c.contact_type || '',
             } as unknown as ContactRecord));
             setAllContacts(mapped);
+            // If a title contact is already linked (re-entering wizard), replace placeholder with real contact
+            if (form.titleContactId) {
+              const tc = data.find((c: any) => c.id === form.titleContactId);
+              if (tc) {
+                const nameParts = (tc.full_name || '').split(' ');
+                setWizardParticipants(prev => {
+                  // Remove any existing title_officer placeholder, add real contact
+                  const withoutTitle = prev.filter(p => p.role !== 'title_officer');
+                  return [...withoutTitle, {
+                    tempId: generateId(),
+                    firstName: nameParts[0] || tc.full_name || '',
+                    lastName: nameParts.slice(1).join(' '),
+                    email: tc.email || '',
+                    phone: tc.phone || '',
+                    role: 'title_officer',
+                    side: 'both',
+                    contactId: tc.id,
+                    isExtracted: true,
+                  }];
+                });
+              }
+            }
           }
           setTitleContactsLoaded(true);
         });
