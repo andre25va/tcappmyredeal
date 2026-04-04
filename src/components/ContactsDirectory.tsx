@@ -475,25 +475,28 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   async function sendOnboarding() {
     if (!sendOnboardingTarget) return;
     setOnboardSending(true);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     try {
       const c = sendOnboardingTarget;
       if (onboardChannel === 'sms' || onboardChannel === 'whatsapp') {
         const phone = c.phone.replace(/\D/g, '');
         const e164 = phone.length === 10 ? `+1${phone}` : `+${phone}`;
-        const res = await fetch('/api/sms/send', {
+        const res = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: e164, body: onboardMsg, channel: onboardChannel }),
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+          body: JSON.stringify({ to: e164, body: onboardMsg }),
         });
         if (!res.ok) throw new Error('Send failed');
       } else {
-        const res = await fetch('/api/email/send', {
+        const bodyHtml = onboardMsg.replace(/\n/g, '<br/>');
+        const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
           body: JSON.stringify({
-            to: c.email,
+            to: [c.email],
             subject: 'Welcome — Your Transaction Coordinator is Here',
-            body: onboardMsg,
+            bodyHtml,
           }),
         });
         if (!res.ok) throw new Error('Send failed');

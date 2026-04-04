@@ -28,7 +28,7 @@ import { supabase } from '../lib/supabase';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import {
   loadEmailSendLog,
-  logEmailSend,
+  // logEmailSend removed — send-email edge function logs on its own
   createScheduledEmail,
   getAgentTeamEmailsForCC,
 } from '../utils/supabaseDb';
@@ -584,18 +584,8 @@ export default function WorkspaceEmailCompose({
 
       const data = await res.json();
 
-      logEmailSend({
-        dealId: deal.id,
-        templateId: selectedTemplate?.id,
-        templateName: selectedTemplate?.name,
-        toAddresses, ccAddresses, subject, bodyHtml,
-        gmailMessageId: data.messageId,
-        gmailThreadId: data.threadId,
-        emailType: 'deal',
-        sentBy: currentUser,
-        // Custom tracing ID embedded in the email footer
-        emailTraceId: emailIdRef.current,
-      } as any).catch((err) => console.warn('Email log (non-critical):', err));
+      // Email logging is handled server-side by the send-email edge function.
+      // data.logId contains the email_send_log row id if needed.
 
       showToast('success', `Email sent! ID: ${emailIdRef.current}`);
       setJustSent(true);
