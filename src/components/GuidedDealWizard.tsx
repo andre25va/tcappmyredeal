@@ -811,8 +811,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
                 const lastName = norm((ac.fullName.trim().split(' ').pop() || ''));
                 if (lastName.length >= 3) {
-                  const sellerNorm = norm(updated.sellerAgentName);
-                  const buyerNorm  = norm(updated.buyerAgentName);
+                  const sellerNorm = norm((d.sellerAgentName as string) || p.sellerAgentName || '');
+                  const buyerNorm  = norm((d.buyerAgentName as string) || p.buyerAgentName || '');
                   if (sellerNorm.includes(lastName)) return 'seller';
                   if (buyerNorm.includes(lastName))  return 'buyer';
                 }
