@@ -15,7 +15,7 @@ import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
 import StepDealContacts, { WizardParticipant } from './StepDealContacts';
-import ContactModal, { SavedContact } from './ContactModal';
+import { ContactModal, SavedContact } from './ContactModal';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
 
