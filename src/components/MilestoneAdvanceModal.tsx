@@ -315,10 +315,13 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
             ? fillMergeTags(settings.smsBody, deal, r.name, userName)
             : `TC Update: ${deal.propertyAddress} has reached "${MILESTONE_LABELS[targetMilestone]}". Closing: ${deal.closingDate || 'TBD'}. — ${userName}`;
 
-          await fetch('/api/sms', {
+          await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: r.phone, body: smsText, dealId: deal.id }),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || supabaseKey}`,
+            },
+            body: JSON.stringify({ to: r.phone, body: smsText }),
           });
         }
       }
@@ -336,6 +339,8 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
       });
     } catch (err) {
       console.error('Error sending notifications:', err);
+      // Show user-visible warning — milestone still advances but notify of failure
+      alert('Milestone advanced, but one or more notifications failed to send. Please check the contact emails/phones on file.');
     } finally {
       setSending(false);
       onConfirm(targetMilestone);

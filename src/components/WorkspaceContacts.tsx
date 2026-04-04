@@ -231,10 +231,35 @@ const DealSheetEmailModal: React.FC<{
   const [subject, setSubject] = React.useState(defaultSubject);
   const [body, setBody] = React.useState(defaultBody);
 
-  const handleSend = () => {
-    const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(mailtoUrl, '_blank');
-    onClose();
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+
+  const handleSend = async () => {
+    if (!to.trim() || sending) return;
+    setSending(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const bodyHtml = body.replace(/\n/g, '<br/>');
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({
+          to: [to],
+          subject,
+          bodyHtml,
+          dealId: deal.id,
+          emailType: 'deal_sheet',
+        }),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      setSent(true);
+      setTimeout(() => { setSent(false); onClose(); }, 1500);
+    } catch {
+      // silent — modal stays open so user can retry
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -266,8 +291,8 @@ const DealSheetEmailModal: React.FC<{
         </div>
         <div className="px-5 pb-4 flex gap-2">
           <Button variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
-          <button onClick={handleSend} disabled={!to.trim()} className="btn btn-primary btn-sm flex-1 gap-1.5">
-            <Send size={13} /> Send Deal Sheet
+          <button onClick={handleSend} disabled={!to.trim() || sending} className="btn btn-primary btn-sm flex-1 gap-1.5">
+            {sending ? <Loader2 size={13} className="animate-spin" /> : sent ? '✓ Sent!' : <><Send size={13} /> Send Deal Sheet</>}
           </button>
         </div>
       </div>
