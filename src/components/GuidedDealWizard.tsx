@@ -273,6 +273,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [introEmailSkipped, setIntroEmailSkipped] = useState(false);
   const titleSearchRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
+  const [showClientCreateModal, setShowClientCreateModal] = useState(false);
+  const [localNewClients, setLocalNewClients] = useState<ContactRecord[]>([]);
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
     selectedMls: string;
@@ -468,6 +470,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     return () => { if (contractObjectUrl) URL.revokeObjectURL(contractObjectUrl); };
   }, [contractObjectUrl]);
 
+  const handleClientCreateModalSaved = (saved: SavedContact) => {
+    // Add to local list so it's findable without a prop refresh
+    const asRecord = saved as unknown as ContactRecord;
+    setLocalNewClients(prev => [...prev.filter(c => c.id !== saved.id), asRecord]);
+    // Auto-select the newly created contact as the agent client
+    setForm(p => ({ ...p, agentClientId: saved.id }));
+    setClientSearch('');
+    setShowClientCreateModal(false);
+  };
+
   const handleTitleContactModalSaved = (saved: SavedContact) => {
     const newContact = {
       id: saved.id, fullName: saved.fullName,
@@ -490,7 +502,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   // Resolve merge tags eagerly so the textarea preview shows real values
   const resolveIntroBody = (rawBody: string, overrides?: { emHeldWith?: string; loanOfficer?: string }): string => {
-    const ac = agentClients?.find(c => c.id === form.agentClientId);
+    const ac = allAgentClients.find(c => c.id === form.agentClientId);
     const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
     return rawBody
       .replace(/\{\{address\}\}/g, form.address || '')
@@ -512,7 +524,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       // Body is already resolved (resolveIntroBody called at selection time)
       // Re-resolve as safety net in case agent client was changed after contact picked
-      const ac = agentClients?.find(c => c.id === form.agentClientId);
+      const ac = allAgentClients.find(c => c.id === form.agentClientId);
       const tcTeamSig = ac?.fullName ? `TC Team for ${ac.fullName}` : 'TC Team';
       const resolvedBody = form.introEmailBody
         .replace(/\{\{address\}\}/g, form.address || '')
@@ -616,13 +628,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }
   };
 
+  // All agent clients — includes any newly created during this wizard session
+  const allAgentClients: ContactRecord[] = [...(agentClients || []), ...localNewClients];
+
   const selectAgentClient = (id: string) => {
     setClientDropdownOpen(false);
-    const chosen = agentClients?.find(c => c.id === id);
+    const chosen = allAgentClients.find(c => c.id === id);
     if (!chosen) return;
-    const sameName = agentClients?.filter(
+    const sameName = allAgentClients.filter(
       c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
-    ) ?? [];
+    );
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
@@ -634,11 +649,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const handleClientSelect = (selectedId: string) => {
     if (!selectedId) { setForm(p => ({ ...p, agentClientId: '' })); return; }
-    const chosen = agentClients?.find(c => c.id === selectedId);
+    const chosen = allAgentClients.find(c => c.id === selectedId);
     if (!chosen) return;
-    const sameName = agentClients?.filter(
+    const sameName = allAgentClients.filter(
       c => c.fullName.trim().toLowerCase() === chosen.fullName.trim().toLowerCase()
-    ) ?? [];
+    );
     if (sameName.length > 1) {
       setDisambigClientCandidates(sameName);
     } else {
@@ -888,7 +903,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     ];
 
     // Find the selected agent client to populate agent fields
-    const agentClient = agentClients?.find(c => c.id === form.agentClientId);
+    const agentClient = allAgentClients.find(c => c.id === form.agentClientId);
 
     const deal: Deal = {
       id: preDealId,
@@ -1205,7 +1220,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     error: { bg: 'bg-red-50 border-red-200', icon: <AlertTriangle size={16} className="text-red-500" />, text: 'text-red-700' },
   };
 
-  const selectedClient = agentClients?.find(c => c.id === form.agentClientId) ?? null;
+  const selectedClient = allAgentClients.find(c => c.id === form.agentClientId) ?? null;
 
   return (
     <>
@@ -1434,32 +1449,43 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       {clientDropdownOpen && (
                         <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
                           {(() => {
-                            const filtered = (agentClients || []).filter(c =>
+                            const filtered = allAgentClients.filter(c =>
                               !clientSearch.trim() ||
                               c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
                               (c.company || '').toLowerCase().includes(clientSearch.toLowerCase())
                             );
-                            if (filtered.length === 0) return (
-                              <div className="px-4 py-3 text-sm text-base-content/40 text-center">
-                                No agent clients found
-                              </div>
+                            return (
+                              <>
+                                {filtered.length === 0 ? (
+                                  <div className="px-4 py-3 text-sm text-base-content/40 text-center">
+                                    No agent clients found
+                                  </div>
+                                ) : filtered.map(c => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-primary/5 transition-colors text-left border-b border-base-200 last:border-0"
+                                    onClick={() => selectAgentClient(c.id)}
+                                  >
+                                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-none">
+                                      {c.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-base-content truncate">{c.fullName}</p>
+                                      {c.company && <p className="text-xs text-base-content/40 truncate">{c.company}</p>}
+                                    </div>
+                                  </button>
+                                ))}
+                                <button
+                                  type="button"
+                                  className="w-full flex items-center gap-2 px-3 py-2.5 text-primary hover:bg-primary/5 transition-colors text-left border-t border-base-200"
+                                  onClick={() => { setClientDropdownOpen(false); setShowClientCreateModal(true); }}
+                                >
+                                  <Plus size={14} />
+                                  <span className="text-sm font-medium">Create new contact</span>
+                                </button>
+                              </>
                             );
-                            return filtered.map(c => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-primary/5 transition-colors text-left border-b border-base-200 last:border-0"
-                                onClick={() => selectAgentClient(c.id)}
-                              >
-                                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-none">
-                                  {c.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-base-content truncate">{c.fullName}</p>
-                                  {c.company && <p className="text-xs text-base-content/40 truncate">{c.company}</p>}
-                                </div>
-                              </button>
-                            ));
                           })()}
                         </div>
                       )}
@@ -2572,6 +2598,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
               );
             })()}
+
+            {/* ContactModal — create new agent client from Step 1 */}
+            <ContactModal
+              isOpen={showClientCreateModal}
+              contact={null}
+              defaultRole="buyer"
+              allContacts={allContacts}
+              onClose={() => setShowClientCreateModal(false)}
+              onSaved={handleClientCreateModalSaved}
+            />
 
             {/* ContactModal — create new title contact from Step 9 */}
             <ContactModal
