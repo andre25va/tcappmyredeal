@@ -72,6 +72,7 @@ const DDTableRow: React.FC<{
 
   const overdue = item.dueDate && !item.completed && daysUntil(item.dueDate) < 0;
   const dueSoon = item.dueDate && !item.completed && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
+  const daysLeft = item.dueDate && !item.completed ? daysUntil(item.dueDate) : null;
 
   // Alternating row colours — override with status highlight if overdue/due-soon
   const rowBg = overdue
@@ -174,9 +175,14 @@ const DDTableRow: React.FC<{
 
       {/* Due Date column */}
       <div className="w-28 flex-none flex items-center px-2 border-l border-gray-200">
-        {item.dueDate ? (
-          <span className={`text-xs ${overdue ? 'text-red-600 font-semibold' : dueSoon ? 'text-yellow-600' : 'text-gray-500'}`}>
-            {overdue ? '⚠ ' : dueSoon ? '⏰ ' : ''}{formatDate(item.dueDate)}
+        {daysLeft !== null ? (
+          <span className={`text-xs font-medium ${
+            daysLeft < 0 ? 'text-red-600' :
+            daysLeft === 0 ? 'text-amber-600' :
+            daysLeft <= 7 ? 'text-yellow-600' :
+            'text-gray-500'
+          }`}>
+            {daysLeft < 0 ? `⚠ ${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? '⏰ Due today' : `${daysLeft}d left`}
           </span>
         ) : <span className="text-xs text-gray-300">—</span>}
       </div>
@@ -437,6 +443,7 @@ const ItemRow: React.FC<{
 
   const overdue  = item.dueDate && !item.completed && daysUntil(item.dueDate) < 0;
   const dueSoon  = item.dueDate && !item.completed && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
+  const daysLeft = item.dueDate && !item.completed ? daysUntil(item.dueDate) : null;
 
   return (
     <div
@@ -492,10 +499,14 @@ const ItemRow: React.FC<{
             </div>
           )}
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {item.dueDate && (
-              <span className={`text-xs ${overdue ? 'text-error font-semibold' : dueSoon ? 'text-warning' : 'text-base-content/40'}`}>
-                {overdue ? '⚠ Overdue · ' : dueSoon ? '⏰ Soon · ' : '📅 '}
-                {formatDate(item.dueDate)}
+            {daysLeft !== null && (
+              <span className={`text-xs font-medium ${
+                daysLeft < 0 ? 'text-error' :
+                daysLeft === 0 ? 'text-warning' :
+                daysLeft <= 7 ? 'text-warning/80' :
+                'text-base-content/40'
+              }`}>
+                {daysLeft < 0 ? `⚠ ${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? '⏰ Due today' : `📅 ${daysLeft}d left`}
               </span>
             )}
             {item.completedBy && <span className="text-xs text-success/70">✓ {item.completedBy}</span>}
@@ -1342,12 +1353,19 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
           onLoadTemplate={(tplId: string) => {
             const tpl = (complianceTemplates ?? []).find((t) => t.id === tplId);
             if (!tpl) return;
-            const loadedItems: ChecklistItem[] = tpl.items.map((i: { title: string; required?: boolean }) => ({
-              id: generateId(),
-              title: i.title,
-              completed: false,
-              required: i.required ?? false,
-            }));
+            const loadedItems: ChecklistItem[] = tpl.items.map((i: { title: string; required?: boolean; due_days_from_contract?: number; due_days_from_closing?: number }) => {
+              let dueDate: string | undefined;
+              if (i.due_days_from_contract && deal.contractDate) {
+                const d = new Date(deal.contractDate);
+                d.setDate(d.getDate() + i.due_days_from_contract);
+                dueDate = d.toISOString().split('T')[0];
+              } else if (i.due_days_from_closing != null && deal.closingDate) {
+                const d = new Date(deal.closingDate);
+                d.setDate(d.getDate() + i.due_days_from_closing);
+                dueDate = d.toISOString().split('T')[0];
+              }
+              return { id: generateId(), title: i.title, completed: false, required: i.required ?? false, dueDate };
+            });
             onUpdate({
               ...deal,
               complianceTemplateId: tplId,
