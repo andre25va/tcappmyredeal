@@ -9,6 +9,9 @@ import { generateId } from '../utils/helpers';
 import { MILESTONE_LABELS, MILESTONE_ORDER } from '../utils/taskTemplates';
 import { ConfirmModal } from './ConfirmModal';
 import { supabase } from '../lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
+import { useDealTasks, useInvalidateDealTasks } from '../hooks/useDealTasks';
+import { useCommTasks, useInvalidateCommTasks } from '../hooks/useCommTasks';
 
 // ── Comm task types (mirrors comm_tasks table) ──────────────────────────────
 
@@ -127,11 +130,13 @@ const PRIORITY_COLORS: Record<string, string> = {
 export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest }) => {
   const tasks = deal.tasks ?? [];
 
-  const [milestoneTasks, setMilestoneTasks] = useState<DBMilestoneTask[]>([]);
-  const [linkedRequests, setLinkedRequests] = useState<Record<string, LinkedRequest>>({});
+  const invalidateDealTasks = useInvalidateDealTasks();
+  const { data: dealTasksData } = useDealTasks(deal.id);
+  const milestoneTasks: DBMilestoneTask[] = dealTasksData?.tasks ?? [];
+  const linkedRequests: Record<string, LinkedRequest> = dealTasksData?.linkedRequests ?? {};
 
-  const [commTasks, setCommTasks]           = useState<CommTask[]>([]);
-  const [commLoading, setCommLoading]       = useState(false);
+  const invalidateCommTasks = useInvalidateCommTasks();
+  const { data: commTasks = [], isLoading: commLoading } = useCommTasks(deal.id);
   const [showCommDone, setShowCommDone]     = useState(false);
 
   const [showAdd, setShowAdd]               = useState(false);
@@ -146,51 +151,12 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
   const [deleteTaskId, setDeleteTaskId]     = useState<string | null>(null);
   const [taskMenuId, setTaskMenuId]         = useState<string | null>(null);
 
-  // ── Load DB milestone tasks + linked requests ─────────────────────────────
+  // ── DB milestone tasks + linked requests loaded via useDealTasks hook ────────
+
+  // ── Realtime subscription for comm_tasks (invalidates query) ─────────────
 
   useEffect(() => {
     if (!deal.id) return;
-    const load = async () => {
-      const { data: taskRows } = await supabase
-        .from('tasks')
-        .select('id, title, category, priority, due_date, status')
-        .eq('deal_id', deal.id)
-        .order('due_date', { ascending: true });
-      if (taskRows) setMilestoneTasks(taskRows as DBMilestoneTask[]);
-
-      const { data: reqs } = await supabase
-        .from('requests')
-        .select('id, task_id, status, request_type')
-        .eq('deal_id', deal.id)
-        .not('task_id', 'is', null);
-      if (reqs) {
-        const map: Record<string, LinkedRequest> = {};
-        reqs.forEach((r: any) => {
-          if (r.task_id) map[r.task_id] = { id: r.id, status: r.status, request_type: r.request_type };
-        });
-        setLinkedRequests(map);
-      }
-    };
-    load();
-  }, [deal.id]);
-
-  // ── Load comm_tasks for this deal ────────────────────────────────────────
-
-  useEffect(() => {
-    if (!deal.id) return;
-    const load = async () => {
-      setCommLoading(true);
-      const { data } = await supabase
-        .from('comm_tasks')
-        .select('*')
-        .eq('deal_id', deal.id)
-        .order('created_at', { ascending: false });
-      if (data) setCommTasks(data as CommTask[]);
-      setCommLoading(false);
-    };
-    load();
-
-    // Realtime subscription
     const channel = supabase
       .channel(`comm_tasks_deal_${deal.id}`)
       .on('postgres_changes', {
@@ -198,9 +164,8 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
         schema: 'public',
         table: 'comm_tasks',
         filter: `deal_id=eq.${deal.id}`,
-      }, () => load())
+      }, () => invalidateCommTasks(deal.id))
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [deal.id]);
 
@@ -211,7 +176,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
     const update: any = { status: newStatus };
     if (newStatus === 'done') update.completed_at = new Date().toISOString();
     await supabase.from('comm_tasks').update(update).eq('id', id);
-    setCommTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+    invalidateCommTasks(deal.id);
   };
 
   // ── Deal task CRUD ────────────────────────────────────────────────────────

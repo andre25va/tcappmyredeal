@@ -29,6 +29,8 @@ interface MilestoneStep {
 }
 
 import { Button } from "./ui/Button";
+import { useMlsEntries } from '../hooks/useMlsEntries';
+import { useDealParticipants } from '../hooks/useDealParticipants';
 
 interface CallStartedData {
   contactName: string;
@@ -277,7 +279,7 @@ const MilestoneStepper: React.FC<{
   const [milestoneDueDays, setMilestoneDueDays] = useState<Record<string, number>>({});
   const [mlsSteps, setMlsSteps] = useState<MilestoneStep[]>([]);
   const [mlsStepsLoading, setMlsStepsLoading] = useState(false);
-  const [allMlsEntries, setAllMlsEntries] = useState<Array<{id: string; name: string; state: string}>>([]);
+  const { data: allMlsEntries = [] } = useMlsEntries();
 
   useEffect(() => {
     supabase
@@ -327,11 +329,7 @@ const MilestoneStepper: React.FC<{
     }
   };
 
-  useEffect(() => {
-    supabase.from('mls_entries').select('id, name, state').then(({ data }) => {
-      if (data) setAllMlsEntries(data);
-    });
-  }, []);
+
 
   useEffect(() => {
     if ((deal as any).mlsId) {
@@ -740,20 +738,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   });
   const [fields, setFields] = useState(() => buildFields(deal));
   // ─── Deal participants (mini-panel) ───
-  const [participants, setParticipants] = useState<any[]>([]);
-  useEffect(() => {
-    if (!deal.id) return;
-    supabase
-      .from('deal_participants')
-      .select(`id, deal_role, side, is_extracted, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
-      .eq('deal_id', deal.id)
-      .then(({ data }) => {
-        if (data) setParticipants(data.map((p: any) => ({
-          ...p,
-          side: p.side === 'listing' ? 'seller' : p.side,
-        })));
-      });
-  }, [deal.id]);
+  const { data: participants = [] } = useDealParticipants(deal.id);
 
   const [buyerDraft, setBuyerDraft] = useState<AgentContact>(deal.buyerAgent ?? emptyAgent());
   const [sellerDraft, setSellerDraft] = useState<AgentContact>(deal.sellerAgent ?? emptyAgent());
