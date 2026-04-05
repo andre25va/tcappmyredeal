@@ -236,6 +236,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
   const [splitDone, setSplitDone] = useState(false);
+  const [duplicateDeal, setDuplicateDeal] = useState<{
+    id: string;
+    property_address: string;
+    mls_number: string | null;
+    status: string;
+    created_at: string;
+    buyer_name: string | null;
+    seller_name: string | null;
+  } | null>(null);
+  const [duplicateDealAction, setDuplicateDealAction] = useState<'pending' | 'archive_and_create' | 'create_anyway' | 'go_to_existing' | null>(null);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
   // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
@@ -957,7 +967,45 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (skipDupCheck = false) => {
+    setIsCreating(true);
+
+    // ── Duplicate deal check ─────────────────────────────────────────────────
+    if (!skipDupCheck) {
+      const orgId = primaryOrgId();
+      const mlsNum = form.mlsNumber.trim();
+      const addr = form.address.trim();
+      if (orgId && (mlsNum || addr)) {
+        try {
+          // Build OR filter: MLS number match (strongest) OR address match (fallback)
+          const orParts: string[] = [];
+          if (mlsNum) orParts.push(`mls_number.ilike.${mlsNum}`);
+          if (addr) orParts.push(`property_address.ilike.${addr}`);
+
+          const { data: dupDeals } = await supabase
+            .from('deals')
+            .select('id, property_address, mls_number, status, created_at, buyer_name, seller_name')
+            .eq('org_id', orgId)
+            .neq('status', 'archived')
+            .or(orParts.join(','))
+            .limit(1);
+
+          if (dupDeals && dupDeals.length > 0) {
+            setDuplicateDeal(dupDeals[0] as any);
+            setDuplicateDealAction('pending');
+            setIsCreating(false);
+            return; // Stop — wait for TC decision in modal
+          }
+        } catch (dupErr) {
+          console.warn('[GuidedDealWizard] Dup check failed (non-blocking):', dupErr);
+        }
+      }
+    }
+
+    await performCreate();
+  };
+
+  const performCreate = async () => {
     setIsCreating(true);
     const isMF = form.propertyType === 'multi-family';
 
@@ -1113,8 +1161,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       orgId: primaryOrgId() ?? undefined,
     };
     // ── Save deal to DB FIRST so FK constraints are satisfied ──────────────────
+    // Declared here (outside try) so participants block at line ~1326 can reference it
+    let importSessionId: string | null = null;
     try {
       await saveSingleDeal(deal, profile?.id);
+      // ── Create import session ─────────────────────────────────────────────
+      try {
+        const { data: sessionRow } = await supabase.from('import_sessions').insert({
+          deal_id: deal.id,
+          org_id: deal.orgId ?? null,
+          source: 'contract_upload',
+          session_number: 1,
+          created_by: profile?.id ?? null,
+        }).select('id').single();
+        importSessionId = sessionRow?.id ?? null;
+      } catch (sessErr) {
+        console.warn('[GuidedDealWizard] Failed to create import_session (non-blocking):', sessErr);
+      }
     } catch (saveErr: any) {
       console.error('[GuidedDealWizard] Failed to save deal to DB:', saveErr);
       setError(`Failed to create deal: ${saveErr.message}`);
@@ -1180,12 +1243,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Helper: find existing contact by name OR create new one (prevents duplicate contacts).
       // Uses .limit(1) instead of .maybeSingle() to gracefully handle pre-existing duplicates
       // (maybeSingle throws when multiple rows match, causing false misses and new contact creation).
-      const findOrCreateContact = async (fullName: string, orgId: string | null) => {
+      const findOrCreateContact = async (
+        fullName: string,
+        orgId: string | null,
+        isExtracted = false,
+        sessId: string | null = null,
+      ) => {
         const parts = fullName.trim().split(' ');
         const firstName = parts[0];
         const lastName = parts.slice(1).join(' ') || null;
-        // Check if contact already exists with this name (org-scoped, picks oldest match)
-        // Handle null last_name and null org_id correctly — .ilike('last_name', '') never matches IS NULL
         let q = supabase.from('contacts').select('id').ilike('first_name', firstName);
         if (lastName) {
           q = q.ilike('last_name', lastName);
@@ -1199,13 +1265,16 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         }
         const { data: existingList } = await q.order('created_at', { ascending: true }).limit(1);
         if (existingList && existingList.length > 0) return existingList[0].id;
-        // Create new contact
+        // Create new contact — tag as extracted if from contract
         const { data: created } = await supabase.from('contacts').insert({
           first_name: firstName,
           last_name: lastName,
           full_name: fullName.trim(),
           contact_type: 'client',
           org_id: orgId ?? null,
+          is_extracted: isExtracted,
+          created_from: isExtracted ? 'extracted' : 'manual',
+          import_session_id: isExtracted ? sessId : null,
         }).select('id').single();
         return created?.id ?? null;
       };
@@ -1255,7 +1324,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         // Get or create the contact record
         let contactId = p.contactId ?? null;
         if (!contactId) {
-          contactId = await findOrCreateContact(fullName, deal.orgId ?? null);
+          contactId = await findOrCreateContact(fullName, deal.orgId ?? null, p.isExtracted ?? false, importSessionId);
           // Update contact with email/phone if provided
           if (contactId && (p.email || p.phone)) {
             await supabase.from('contacts').update({
@@ -1312,6 +1381,102 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       `}</style>
 
       {/* Page ID Badge rendered inline in footer — see footer below */}
+
+      {/* ── Duplicate Deal Collision Modal ─────────────────────────────────── */}
+      {duplicateDeal && duplicateDealAction === 'pending' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-lg border border-base-300">
+            {/* Header */}
+            <div className="flex items-start gap-3 p-5 border-b border-base-300">
+              <div className="bg-warning/15 rounded-full p-2 flex-none mt-0.5">
+                <AlertTriangle size={18} className="text-warning" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base-content">We found an existing deal for this property</h3>
+                <p className="text-xs text-base-content/50 mt-0.5">
+                  {duplicateDeal.mls_number && `MLS #${duplicateDeal.mls_number} · `}
+                  {duplicateDeal.property_address}
+                </p>
+                {(duplicateDeal.buyer_name || duplicateDeal.seller_name) && (
+                  <p className="text-xs text-base-content/40 mt-0.5">
+                    {duplicateDeal.buyer_name && `Buyer: ${duplicateDeal.buyer_name}`}
+                    {duplicateDeal.buyer_name && duplicateDeal.seller_name && ' · '}
+                    {duplicateDeal.seller_name && `Seller: ${duplicateDeal.seller_name}`}
+                  </p>
+                )}
+                <p className="text-xs text-base-content/30 mt-0.5">
+                  Added {new Date(duplicateDeal.created_at).toLocaleDateString()} · Status: {duplicateDeal.status}
+                </p>
+              </div>
+            </div>
+            {/* Options */}
+            <div className="p-5 space-y-2.5">
+              {/* Archive old & start fresh */}
+              <button
+                className="w-full text-left border border-base-300 rounded-xl px-4 py-3 hover:border-warning hover:bg-warning/5 transition-colors group"
+                onClick={async () => {
+                  try {
+                    await supabase.from('deals').update({
+                      status: 'archived',
+                      archived_at: new Date().toISOString(),
+                      archived_by: profile?.id ?? null,
+                      archived_reason: 'new_transaction_same_property',
+                    }).eq('id', duplicateDeal.id);
+                  } catch (e) {
+                    console.error('[GuidedDealWizard] Failed to archive old deal:', e);
+                  }
+                  setDuplicateDeal(null);
+                  setDuplicateDealAction(null);
+                  await performCreate();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📦</span>
+                  <div>
+                    <p className="font-semibold text-sm text-base-content">Archive old deal &amp; start fresh</p>
+                    <p className="text-xs text-base-content/50 mt-0.5">Deal fell through — archive the old one and create this as a new transaction</p>
+                  </div>
+                </div>
+              </button>
+              {/* Go to existing */}
+              <button
+                className="w-full text-left border border-base-300 rounded-xl px-4 py-3 hover:border-primary hover:bg-primary/5 transition-colors group"
+                onClick={() => {
+                  setDuplicateDeal(null);
+                  setDuplicateDealAction(null);
+                  setIsCreating(false);
+                  onClose();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📂</span>
+                  <div>
+                    <p className="font-semibold text-sm text-base-content">Go to existing deal</p>
+                    <p className="text-xs text-base-content/50 mt-0.5">This was an accidental re-upload — close wizard and return to the existing deal</p>
+                  </div>
+                </div>
+              </button>
+              {/* Create new anyway */}
+              <button
+                className="w-full text-left border border-base-300 rounded-xl px-4 py-3 hover:border-success hover:bg-success/5 transition-colors group"
+                onClick={async () => {
+                  setDuplicateDeal(null);
+                  setDuplicateDealAction(null);
+                  await performCreate();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">➕</span>
+                  <div>
+                    <p className="font-semibold text-sm text-base-content">Create new deal anyway</p>
+                    <p className="text-xs text-base-content/50 mt-0.5">Keep both open — this is a separate transaction for the same property</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {disambigClientCandidates && (
         <DisambigModal
@@ -2834,7 +2999,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </button>
               )}
               {step === TOTAL_STEPS && (
-                <button onClick={handleCreate} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading || isCreating}>
+                <button onClick={() => handleCreate()} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading || isCreating}>
                   {isCreating ? <><span className="loading loading-spinner loading-xs"/>{contractFile ? 'Uploading contract…' : 'Creating…'}</> : <><Building2 size={13} /> Create Deal</>}
                 </button>
               )}
