@@ -454,7 +454,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           form.titleCompanySide === 'buy' ? 'buyer' :
           form.titleCompanySide === 'both' ? 'both' :
           'seller'; // default: EM holder is always seller-side
-        parts.push({ tempId: generateId(), firstName: titleName, lastName: '', email: '', phone: '', role: 'title_officer', side: titleSide, isExtracted: true });
+        parts.push({ tempId: generateId(), firstName: '', lastName: '', company: titleName, email: '', phone: '', role: 'title_officer', side: titleSide, isExtracted: true });
       }
       if (parts.length > 0) setWizardParticipants(parts);
     }
@@ -1305,12 +1305,42 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Save all contacts confirmed in Step 3 (Deal Contacts hub)
       for (const p of wizardParticipants) {
         const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
-        if (!fullName) continue;
+        const companyName = (p as any).company?.trim() || '';
+        // Skip only if there's truly nothing to identify this contact
+        if (!fullName && !companyName) continue;
 
         // Get or create the contact record
         let contactId = p.contactId ?? null;
         if (!contactId) {
-          contactId = await findOrCreateContact(fullName, deal.orgId ?? null, p.isExtracted ?? false, importSessionId);
+          if (companyName && !fullName) {
+            // Company-only contact (e.g. title company extracted from contract)
+            // Find by company name first, then create if not found
+            const { data: existingList } = await supabase
+              .from('contacts')
+              .select('id')
+              .ilike('company', companyName)
+              .eq('org_id', deal.orgId ?? null)
+              .order('created_at', { ascending: true })
+              .limit(1);
+            if (existingList && existingList.length > 0) {
+              contactId = existingList[0].id;
+            } else {
+              const { data: created } = await supabase.from('contacts').insert({
+                first_name: null,
+                last_name: null,
+                full_name: companyName,
+                company: companyName,
+                contact_type: p.role === 'title_officer' ? 'title' : 'other',
+                org_id: deal.orgId ?? null,
+                is_extracted: p.isExtracted ?? false,
+                created_from: p.isExtracted ? 'extracted' : 'manual',
+                import_session_id: p.isExtracted ? importSessionId : null,
+              }).select('id').single();
+              contactId = created?.id ?? null;
+            }
+          } else {
+            contactId = await findOrCreateContact(fullName, deal.orgId ?? null, p.isExtracted ?? false, importSessionId);
+          }
           // Update contact with email/phone if provided
           if (contactId && (p.email || p.phone)) {
             await supabase.from('contacts').update({
