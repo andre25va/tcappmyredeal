@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, Pencil, Phone, Mail, Building2, MapPin, Calendar, DollarSign, TrendingUp, Home, Loader2, AlertCircle } from 'lucide-react';
 import { ContactRecord } from '../types';
 import { formatPhoneLive, roleLabel } from '../utils/helpers';
@@ -97,15 +97,23 @@ function DealCard({ deal }: { deal: ContactDeal }) {
 
 // ── Main Panel ─────────────────────────────────────────────────────────────
 
+const INACTIVE_STATUSES = ['closed', 'cancelled', 'archived'];
+
 export function ContactProfilePanel({ contact, onClose, onEdit }: Props) {
   const { data: deals = [], isLoading, isError } = useContactDeals(contact.id);
+  const [showAll, setShowAll] = useState(false);
 
   const stats = useMemo(() => {
-    const active = deals.filter(d => d.status?.toLowerCase() !== 'closed' && d.status?.toLowerCase() !== 'cancelled');
+    const active = deals.filter(d => !INACTIVE_STATUSES.includes(d.status?.toLowerCase()));
     const buySide = deals.filter(d => d.side === 'buyer');
     const sellSide = deals.filter(d => d.side === 'seller');
     return { total: deals.length, active: active.length, buySide: buySide.length, sellSide: sellSide.length };
   }, [deals]);
+
+  const visibleDeals = useMemo(() => {
+    if (showAll) return deals;
+    return deals.filter(d => !INACTIVE_STATUSES.includes(d.status?.toLowerCase()));
+  }, [deals, showAll]);
 
   const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'Unknown';
 
@@ -185,9 +193,12 @@ export function ContactProfilePanel({ contact, onClose, onEdit }: Props) {
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Deals</h3>
-          {stats.active > 0 && (
-            <span className="text-xs text-green-400">{stats.active} active</span>
-          )}
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className="text-xs px-2 py-0.5 rounded-full border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-colors"
+          >
+            {showAll ? `Active only (${stats.active})` : `Show all (${stats.total})`}
+          </button>
         </div>
 
         {isLoading && (
@@ -204,14 +215,14 @@ export function ContactProfilePanel({ contact, onClose, onEdit }: Props) {
           </div>
         )}
 
-        {!isLoading && !isError && deals.length === 0 && (
+        {!isLoading && !isError && visibleDeals.length === 0 && (
           <div className="text-center py-10 text-gray-600">
             <TrendingUp size={28} className="mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No deals yet</p>
+            <p className="text-sm">{showAll ? 'No deals yet' : 'No active deals'}</p>
           </div>
         )}
 
-        {!isLoading && deals.map(deal => (
+        {!isLoading && visibleDeals.map(deal => (
           <DealCard key={deal.participantId} deal={deal} />
         ))}
       </div>
