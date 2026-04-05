@@ -687,7 +687,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
-        {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} onSendRequest={(taskId, requestType) => { setInternalTaskId(taskId); setInternalRequestType(requestType); setTab('requests'); }} />}
+        {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} onSendRequest={(taskId, requestType) => { setInternalTaskId(taskId); setInternalRequestType(requestType); setTab('requests'); }} onGoToRequests={() => setTab('requests')} />}
         {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}

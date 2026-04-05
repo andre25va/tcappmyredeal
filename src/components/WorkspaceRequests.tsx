@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardList, Plus, Send, CheckCircle, XCircle, Clock,
   FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink,
+  RefreshCw, Bell,
 } from 'lucide-react';
 import type {
   Deal, DealParticipant,
@@ -15,6 +16,7 @@ import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDealRequests, useInvalidateDealRequests } from '../hooks/useDealRequests';
+import { useInvalidateDealTasks } from '../hooks/useDealTasks';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -195,6 +197,7 @@ interface Props {
 export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId }) => {
   const { profile } = useAuth();
   const invalidateDealRequests = useInvalidateDealRequests();
+  const invalidateDealTasks = useInvalidateDealTasks();
   const { data: rawRequests = [], isLoading: loading } = useDealRequests(deal.id);
   const requests = rawRequests.map(mapRow);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -493,13 +496,59 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     invalidateDealRequests(deal.id);
   };
 
-  const handleReject = async (request: RequestRecord) => {
+  const handleReRequest = async (request: RequestRecord) => {
+    // Populate inline edit with email template pre-filled
+    const content = getDefaultEmailContent(
+      request.requestType,
+      request.requestedFromName || '',
+      deal.propertyAddress,
+      profile?.name || 'TC',
+      request.subjectToken || '',
+    );
+    setInlineEdits(prev => ({
+      ...prev,
+      [request.id]: {
+        to: request.requestedFromEmail || '',
+        subject: content.subject,
+        body: content.body,
+      },
+    }));
     await supabase.from('requests').update({
-      status: 'rejected', reviewed_by: profile?.name || 'Staff',
-      reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      status: 'needs_follow_up',
+      updated_at: new Date().toISOString(),
     }).eq('id', request.id);
-    await addEvent(request.id, 'rejected', `Rejected by ${profile?.name || 'Staff'}`);
+    await addEvent(request.id, 'status_changed', `Re-requested by ${profile?.name || 'Staff'}`);
     invalidateDealRequests(deal.id);
+    setExpandedId(request.id);
+  };
+
+  const handleSnooze = async (request: RequestRecord, days: number) => {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + days);
+    const dueDateStr = dueDate.toISOString().split('T')[0];
+    const typeLabel = getTypeLabel(request.requestType);
+    const recipName = request.requestedFromName || 'Contact';
+
+    const { data: task, error } = await supabase.from('tasks').insert({
+      deal_id: deal.id,
+      title: `Follow up: ${typeLabel} from ${recipName}`,
+      description: `Request follow-up (${days}d snooze)`,
+      category: 'request_follow_up',
+      status: 'pending',
+      priority: 'normal',
+      due_date: dueDateStr,
+    }).select().single();
+
+    if (error) { console.error('Failed to create snooze task:', error); return; }
+
+    await supabase.from('requests').update({
+      task_id: task.id,
+      updated_at: new Date().toISOString(),
+    }).eq('id', request.id);
+
+    await addEvent(request.id, 'status_changed', `Snoozed ${days} day${days !== 1 ? 's' : ''} — follow-up task created · ${profile?.name || 'Staff'}`);
+    invalidateDealRequests(deal.id);
+    invalidateDealTasks(deal.id);
   };
 
   const handleMarkReceived = async (request: RequestRecord) => {
@@ -554,7 +603,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       onToggle={() => handleToggle(req)}
       onMarkReceived={() => handleMarkReceived(req)}
       onAccept={() => handleAccept(req)}
-      onReject={() => handleReject(req)}
+      onReRequest={() => handleReRequest(req)}
+      onSnooze={(days) => handleSnooze(req, days)}
       onUpdateStatus={(s) => updateStatus(req.id, s)}
       onInlineSend={() => handleInlineSend(req)}
       inlineEdit={inlineEdits[req.id]}
@@ -701,7 +751,8 @@ interface RequestCardProps {
   onToggle: () => void;
   onMarkReceived: () => void;
   onAccept: () => void;
-  onReject: () => void;
+  onReRequest: () => void;
+  onSnooze: (days: number) => void;
   onUpdateStatus: (s: RequestStatus) => void;
   onInlineSend: () => void;
   inlineEdit?: { to: string; subject: string; body: string };
@@ -715,10 +766,11 @@ interface RequestCardProps {
 
 const RequestCard: React.FC<RequestCardProps> = ({
   request, expanded, onToggle, onMarkReceived,
-  onAccept, onReject, onInlineSend, inlineEdit,
+  onAccept, onReRequest, onSnooze, onInlineSend, inlineEdit,
   onInlineEditChange, sending, inboundMessages, loadingMessages,
   getTypeLabel, fmtDate,
 }) => {
+  const [snoozeOpen, setSnoozeOpen] = React.useState(false);
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
   const isDraft = request.status === 'draft';
@@ -874,15 +926,43 @@ const RequestCard: React.FC<RequestCardProps> = ({
             </div>
           )}
 
-          {/* Accept / Reject */}
-          {needsReview && !isClosed && (
-            <div className="mx-4 flex gap-2">
-              <button className="btn btn-sm btn-success gap-1.5" onClick={e => { e.stopPropagation(); onAccept(); }}>
-                <CheckCircle size={13} /> Accept
-              </button>
-              <button className="btn btn-sm btn-error btn-outline gap-1.5" onClick={e => { e.stopPropagation(); onReject(); }}>
-                <XCircle size={13} /> Reject
-              </button>
+          {/* Action buttons */}
+          {!isClosed && !isDraft && (
+            <div className="mx-4 flex gap-2 flex-wrap items-center">
+              {needsReview && (
+                <button className="btn btn-sm btn-success gap-1.5" onClick={e => { e.stopPropagation(); onAccept(); }}>
+                  <CheckCircle size={13} /> Accept
+                </button>
+              )}
+              {(needsReview || isWaiting || request.status === 'needs_follow_up') && (
+                <button className="btn btn-sm btn-outline gap-1.5" onClick={e => { e.stopPropagation(); onReRequest(); }}>
+                  <RefreshCw size={13} /> Re-request
+                </button>
+              )}
+              {(isWaiting || request.status === 'needs_follow_up') && (
+                <div className="relative" onClick={e => e.stopPropagation()}>
+                  <button
+                    className="btn btn-sm btn-ghost gap-1.5 text-amber-600 hover:bg-amber-50"
+                    onClick={() => setSnoozeOpen(v => !v)}
+                  >
+                    <Bell size={13} /> Snooze
+                  </button>
+                  {snoozeOpen && (
+                    <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-base-200 rounded-lg shadow-lg py-1 min-w-[140px]">
+                      <p className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Follow up in…</p>
+                      {[1, 2, 3, 5].map(d => (
+                        <button
+                          key={d}
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-100 text-base-content"
+                          onClick={() => { setSnoozeOpen(false); onSnooze(d); }}
+                        >
+                          {d} day{d !== 1 ? 's' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
