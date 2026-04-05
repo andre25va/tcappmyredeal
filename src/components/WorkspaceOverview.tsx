@@ -290,9 +290,32 @@ const MilestoneStepper: React.FC<{
     setAdvanceTarget(null);
   };
 
+  // ── Date countdown helpers ──
+  const today = new Date(); today.setHours(0,0,0,0);
+  function daysFromToday(dateStr?: string | null): number | null {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d.getTime() - today.getTime()) / 86400000);
+  }
+  function countdownBadge(label: string, dateStr?: string | null) {
+    const n = daysFromToday(dateStr);
+    if (n === null) return null;
+    const fmtDate = new Date(dateStr! + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let badge = '';
+    let cls = '';
+    if (n > 0)       { badge = `${n}d left`;  cls = n <= 7 ? 'text-red-600 bg-red-50 border-red-200' : n <= 14 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-green-700 bg-green-50 border-green-200'; }
+    else if (n === 0){ badge = 'Today';        cls = 'text-red-700 bg-red-50 border-red-300 font-bold'; }
+    else             { badge = `${Math.abs(n)}d ago`; cls = 'text-gray-500 bg-gray-50 border-gray-200'; }
+    return (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cls}`}>
+        {label}: {fmtDate} · {badge}
+      </span>
+    );
+  }
+
   return (
     <div className="bg-base-200 rounded-xl border border-base-300 p-4 mb-1">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-sm text-base-content flex items-center gap-2">
           <Clock size={14} className="text-primary opacity-70" />
           Milestone
@@ -301,6 +324,12 @@ const MilestoneStepper: React.FC<{
           {MILESTONE_LABELS[current]}
         </span>
       </div>
+      {(deal.contractDate || deal.closingDate) && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {countdownBadge('Contract', deal.contractDate)}
+          {countdownBadge('Closing', deal.closingDate)}
+        </div>
+      )}
 
       <div className="flex items-center gap-1 overflow-x-auto overflow-y-visible scrollbar-none pb-1 pt-8 -mt-8">
         {mainSteps.map((m, i) => {
