@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useDealParticipants, useInvalidateDealParticipants } from '../hooks/useDealParticipants';
 import {
   Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight,
   Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2,
@@ -1424,9 +1425,60 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
 
-  // DB-backed participants state
-  const [participants, setParticipants] = useState<DealParticipantRow[]>([]);
-  const [loadingParticipants, setLoadingParticipants] = useState(true);
+  // DB-backed participants via TanStack Query
+  const { data: rawParticipants = [], isLoading: loadingParticipants } = useDealParticipants(deal.id);
+  const invalidateParticipants = useInvalidateDealParticipants();
+
+  // Map raw hook data to DealParticipantRow + legacy fallback
+  const participants: DealParticipantRow[] = React.useMemo(() => {
+    if (rawParticipants.length > 0) {
+      return rawParticipants.map((dp: any) => {
+        const c = dp.contacts as any;
+        return {
+          dp_id: dp.id,
+          deal_role: dp.deal_role,
+          side: dp.side as 'buyer' | 'seller' | 'both',
+          is_primary: dp.is_primary ?? false,
+          is_client_side: dp.is_client_side ?? false,
+          is_extracted: dp.is_extracted ?? false,
+          dp_notes: dp.notes,
+          contact_id: c?.id,
+          first_name: c?.first_name,
+          last_name: c?.last_name,
+          email: c?.email,
+          phone: c?.phone,
+          company: c?.company,
+          contact_type: c?.contact_type,
+          full_name: c?.full_name,
+        };
+      });
+    }
+    // Fallback to deal.contacts if no DB participants
+    if (deal.contacts?.length > 0) {
+      return deal.contacts.map(c => {
+        const side = c.side === 'buy' ? 'buyer' : c.side === 'sell' ? 'seller' : 'both';
+        const deal_role = c.role === 'agent' ? 'lead_agent' : c.role as string;
+        return {
+          dp_id: c.id,
+          deal_role,
+          side: side as 'buyer' | 'seller' | 'both',
+          is_primary: false,
+          is_client_side: false,
+          is_extracted: false,
+          dp_notes: undefined,
+          contact_id: c.directoryId || c.id,
+          first_name: c.firstName || c.name.split(' ')[0],
+          last_name: c.lastName || c.name.split(' ').slice(1).join(' '),
+          email: c.email,
+          phone: c.phone,
+          company: c.company,
+          contact_type: c.role,
+          full_name: c.name,
+        };
+      });
+    }
+    return [];
+  }, [rawParticipants, deal.contacts]);
 
   // Popup state — keyed by dp_id for DB participants, or contact id for legacy
   const [popupDp, setPopupDp] = useState<DealParticipantRow | null>(null);
@@ -1447,92 +1499,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   // Normalize deal state
   const dealState = deal.state?.trim().toUpperCase().slice(0, 2) || undefined;
 
-  // Load participants from DB
-  const loadParticipants = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('deal_participants')
-        .select(`
-          id,
-          deal_role,
-          side,
-          is_primary,
-          is_client_side,
-          is_extracted,
-          notes,
-          contact:contact_id (
-            id,
-            first_name,
-            last_name,
-            email,
-            phone,
-            company,
-            contact_type,
-            full_name
-          )
-        `)
-        .eq('deal_id', deal.id);
-
-      if (error) throw error;
-
-      const rows: DealParticipantRow[] = (data || []).map((dp: any) => {
-        const c = dp.contact as any;
-        return {
-          dp_id: dp.id,
-          deal_role: dp.deal_role,
-          side: (dp.side === 'vendor' ? 'both' : dp.side === 'listing' ? 'seller' : dp.side) as 'buyer' | 'seller' | 'both',
-          is_primary: dp.is_primary ?? false,
-          is_client_side: dp.is_client_side ?? false,
-          is_extracted: dp.is_extracted ?? false,
-          dp_notes: dp.notes,
-          contact_id: c?.id,
-          first_name: c?.first_name,
-          last_name: c?.last_name,
-          email: c?.email,
-          phone: c?.phone,
-          company: c?.company,
-          contact_type: c?.contact_type,
-          full_name: c?.full_name,
-        };
-      });
-
-      // If no participants in DB, fall back to deal.contacts to map to participant rows
-      if (rows.length === 0 && deal.contacts?.length > 0) {
-        const fallback: DealParticipantRow[] = deal.contacts.map(c => {
-          const side = c.side === 'buy' ? 'buyer' : c.side === 'sell' ? 'seller' : 'both';
-          const deal_role = c.role === 'agent'
-            ? 'lead_agent'
-            : c.role as string;
-          return {
-            dp_id: c.id,
-            deal_role,
-            side: (side as 'buyer' | 'seller' | 'both'),
-            is_primary: false,
-            is_client_side: false,
-            is_extracted: false,
-            dp_notes: undefined,
-            contact_id: c.directoryId || c.id,
-            first_name: c.firstName || c.name.split(' ')[0],
-            last_name: c.lastName || c.name.split(' ').slice(1).join(' '),
-            email: c.email,
-            phone: c.phone,
-            company: c.company,
-            contact_type: c.role,
-            full_name: c.name,
-          };
-        });
-        setParticipants(fallback);
-      } else {
-        setParticipants(rows);
-      }
-    } catch (err) {
-      console.error('WorkspaceContacts: Failed to load participants', err);
-    } finally {
-      setLoadingParticipants(false);
-    }
-  }, [deal.id, deal.contacts]);
-
-  useEffect(() => { loadParticipants(); }, [loadParticipants]);
+  // (participants now loaded via useDealParticipants hook above)
 
   // Add participant from search modal
   const addParticipant = async (contactId: string, contactName: string, deal_role: string, side: 'buyer' | 'seller' | 'both') => {
@@ -1586,7 +1553,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         updatedAt: new Date().toISOString(),
       });
 
-      await loadParticipants();
+      invalidateParticipants(deal.id);
     } catch (err) {
       console.error('Failed to add participant:', err);
     }
@@ -1715,7 +1682,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       updatedAt: new Date().toISOString(),
     });
 
-    await loadParticipants();
+    invalidateParticipants(deal.id);
   };
 
   // Handle switch: update deal_participants.contact_id to matched contact
@@ -1726,7 +1693,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         .from('deal_participants')
         .update({ contact_id: switchPrompt.matchedContact.id })
         .eq('id', switchPrompt.dpId);
-      await loadParticipants();
+      invalidateParticipants(deal.id);
       setPopupDp(null);
     } catch (err) {
       console.error('Failed to switch contact:', err);
@@ -1747,7 +1714,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   const updateParticipantSide = async (dpId: string, side: 'buyer' | 'seller' | 'both') => {
     try {
       await supabase.from('deal_participants').update({ side: side === 'both' ? 'vendor' : side }).eq('id', dpId);
-      await loadParticipants();
+      invalidateParticipants(deal.id);
     } catch (err) {
       console.error('Failed to update participant side:', err);
     }
@@ -1781,7 +1748,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           updatedAt: new Date().toISOString(),
         });
       }
-      await loadParticipants();
+      invalidateParticipants(deal.id);
     } catch (err) {
       console.error('Failed to remove participant:', err);
     }
@@ -1885,7 +1852,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       updatedAt: new Date().toISOString(),
     });
 
-    await loadParticipants();
+    invalidateParticipants(deal.id);
   };
 
   // Notification list from deal.contacts

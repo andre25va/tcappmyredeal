@@ -8,12 +8,12 @@ export function useDealParticipants(dealId: string | undefined) {
       if (!dealId) return [];
       const { data, error } = await supabase
         .from('deal_participants')
-        .select(`id, deal_role, side, is_extracted, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type)`)
+        .select(`id, deal_role, side, is_primary, is_client_side, is_extracted, notes, contact_id, contacts(id, first_name, last_name, email, phone, company, contact_type, full_name)`)
         .eq('deal_id', dealId);
       if (error) throw error;
       return (data || []).map((p: any) => ({
         ...p,
-        side: p.side === 'listing' ? 'seller' : p.side,
+        side: p.side === 'listing' ? 'seller' : p.side === 'vendor' ? 'both' : p.side,
       }));
     },
     enabled: !!dealId,
