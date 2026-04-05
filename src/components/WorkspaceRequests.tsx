@@ -186,9 +186,11 @@ interface Props {
   deal: Deal;
   /** If set, auto-opens the new request modal with this type pre-selected on mount */
   autoOpenType?: RequestType;
+  /** If set, links the newly created request to this task ID */
+  taskId?: string;
 }
 
-export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType }) => {
+export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId }) => {
   const { profile } = useAuth();
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -376,6 +378,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType }) => {
         requires_review: true,
         expected_response_type: typeConfig.expectedResponseType,
         created_by: profile?.name || 'Staff',
+        task_id: taskId || null,
       }).select().single();
 
       if (error) throw error;
@@ -423,6 +426,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType }) => {
         requires_review: true,
         expected_response_type: typeConfig.expectedResponseType,
         created_by: profile?.name || 'Staff',
+        task_id: taskId || null,
       }).select().single();
 
       if (error) throw error;
@@ -491,6 +495,16 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType }) => {
       reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('id', request.id);
     await addEvent(request.id, 'accepted', `Accepted by ${profile?.name || 'Staff'}`);
+
+    // Auto-complete linked task if present
+    if (request.taskId) {
+      await supabase.from('tasks').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', request.taskId);
+    }
+
     await loadRequests();
   };
 

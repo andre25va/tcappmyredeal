@@ -132,6 +132,16 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
   const [activeRequestCount, setActiveRequestCount] = React.useState(0);
+  const [internalRequestType, setInternalRequestType] = useState<string | null>(null);
+  const [internalTaskId, setInternalTaskId] = useState<string | null>(null);
+
+  // Clear internal request state when leaving the requests tab
+  useEffect(() => {
+    if (tab !== 'requests') {
+      setInternalRequestType(null);
+      setInternalTaskId(null);
+    }
+  }, [tab]);
 
   // Fetch active request count for badge
   useEffect(() => {
@@ -624,7 +634,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
 
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
-        {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} />}
+        {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} onSendRequest={(taskId, requestType) => { setInternalTaskId(taskId); setInternalRequestType(requestType); setTab('requests'); }} />}
         {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
@@ -644,7 +654,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             )}
           </div>
         )}
-        {tab === 'requests'   && <WorkspaceRequests deal={deal} autoOpenType={initialRequestType as any} />}
+        {tab === 'requests'   && <WorkspaceRequests deal={deal} autoOpenType={(internalRequestType || initialRequestType) as any} taskId={internalTaskId || undefined} />}
         {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
         {tab === 'access' && <DealAccessPanel deal={deal} />}
         {tab === 'linked-emails' && (
