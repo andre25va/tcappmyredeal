@@ -446,14 +446,15 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         const np = namePart.split(' ');
         if (np[0]) parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lender', side: 'buyer', isExtracted: true });
       }
-      if (form.titleCompany) {
-        // titleCompany = EM holder extracted from contract → seller-side title by default.
+      const titleName = form.titleCompany || form.emHeldWith;
+      if (titleName) {
+        // titleCompany / emHeldWith = EM holder extracted from contract → seller-side by default.
         // Respect titleCompanySide if TC already manually set it in Step 9.
         const titleSide: WizardParticipant['side'] =
           form.titleCompanySide === 'buy' ? 'buyer' :
           form.titleCompanySide === 'both' ? 'both' :
           'seller'; // default: EM holder is always seller-side
-        parts.push({ tempId: generateId(), firstName: form.titleCompany, lastName: '', email: '', phone: '', role: 'title_officer', side: titleSide, isExtracted: true });
+        parts.push({ tempId: generateId(), firstName: titleName, lastName: '', email: '', phone: '', role: 'title_officer', side: titleSide, isExtracted: true });
       }
       if (parts.length > 0) setWizardParticipants(parts);
     }
@@ -811,8 +812,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           sellerIsCompany: !!(d.sellerIsCompany),
           buyerCompanyName: d.buyerCompanyName || '',
           sellerCompanyName: d.sellerCompanyName || '',
-          titleCompany: d.titleCompany || p.titleCompany,
-          emHeldWith: d.emHeldWith || p.emHeldWith,
+          titleCompany: d.titleCompany || d.emHeldWith || p.titleCompany,
+          emHeldWith: d.emHeldWith || d.titleCompany || p.emHeldWith,
           loanOfficer: d.loanOfficer || p.loanOfficer,
           // buyerAgentCommission comes from AI extraction (e.g. "3%" or "4950").
           // Map it to the correct form fields based on whether it's % or dollar amount.
