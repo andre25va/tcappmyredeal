@@ -147,17 +147,44 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
     <div className={`border rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors ${showMatchBadge ? 'border-warning/60' : 'border-base-300'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          {p.company && (
-            <p className="text-xs font-bold text-base-content/60 truncate mb-0.5">{p.company}</p>
+          {/* Pills row */}
+          {(p.isExtracted || isOurSide || p.contactId) && (
+            <div className="flex items-center gap-1 flex-wrap mb-2">
+              {p.isExtracted && (
+                <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Auto</span>
+              )}
+              {isOurSide && (
+                <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Our Side</span>
+              )}
+              {p.contactId && <span className="badge badge-sm badge-success">✓ Linked</span>}
+            </div>
           )}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold text-sm text-base-content">
-              {displayName || <span className="italic text-base-content/40">No name — click ✎</span>}
-            </span>
-            {p.isExtracted && <span className="badge badge-sm badge-info badge-outline">Auto</span>}
-            {isOurSide && <span className="badge badge-sm badge-success badge-outline">Our Side</span>}
-            {p.contactId && <span className="badge badge-sm badge-success">✓ Linked</span>}
+
+          {/* Company field */}
+          <input
+            className="input input-bordered input-xs w-full mb-1.5"
+            placeholder="Company"
+            value={(p as any).company ?? ''}
+            onChange={e => onUpdate(p.tempId, { company: e.target.value } as any)}
+          />
+
+          {/* First Name + Last Name */}
+          <div className="flex gap-1.5 mb-1">
+            <input
+              className={`input input-bordered input-xs flex-1 ${!p.firstName ? 'border-warning/50 placeholder-warning/60' : ''}`}
+              placeholder="FN needed"
+              value={p.firstName ?? ''}
+              onChange={e => onUpdate(p.tempId, { firstName: e.target.value } as any)}
+            />
+            <input
+              className={`input input-bordered input-xs flex-1 ${!p.lastName ? 'border-warning/50 placeholder-warning/60' : ''}`}
+              placeholder="LN needed"
+              value={p.lastName ?? ''}
+              onChange={e => onUpdate(p.tempId, { lastName: e.target.value } as any)}
+            />
           </div>
+
+          {/* Email / Phone */}
           {p.email && <p className="text-xs text-base-content/60 mt-0.5 truncate">{p.email}</p>}
           {p.phone && <p className="text-xs text-base-content/60 truncate">{p.phone}</p>}
           {!p.email && !p.phone && (
@@ -165,6 +192,7 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
               <AlertCircle size={11} /> No contact info yet
             </p>
           )}
+
           {/* Possible match notice */}
           {showMatchBadge && (
             <button
