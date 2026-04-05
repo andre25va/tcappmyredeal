@@ -421,12 +421,13 @@ export function ContactModal({
   useEffect(() => {
     if (!isOpen || !isEditing || !form.id) return;
     setDealHistoryLoading(true);
-    supabase
-      .from('deal_participants')
-      .select('deal_role, side, deals(id, property_address, status, created_at)')
-      .eq('contact_id', form.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('deal_participants')
+          .select('deal_role, side, deals(id, property_address, status, created_at)')
+          .eq('contact_id', form.id)
+          .order('created_at', { ascending: false });
         if (data) {
           setDealHistory(
             data
@@ -441,9 +442,10 @@ export function ContactModal({
               }))
           );
         }
+      } finally {
         setDealHistoryLoading(false);
-      })
-      .catch(() => setDealHistoryLoading(false));
+      }
+    })();
   }, [isOpen, isEditing, form.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Duplicate contact detection (email/phone)
