@@ -4,6 +4,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { supabase } from '../../lib/supabase';
 import { EmptyState } from '../ui/EmptyState';
 import { Button } from '../ui/Button';
+import { useAccessUsers, useInvalidateAccessUsers } from '../../hooks/useAccessUsers';
 
 interface AllowedUser {
   id: string;
@@ -144,9 +145,10 @@ function UserAccessForm({ user, onSave, onClose, saving }: UserAccessFormProps) 
 }
 
 export function AccessUsersTab() {
-  const [users, setUsers] = React.useState<AllowedUser[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const { data: users = [], isLoading: loading, error: fetchErrorObj } = useAccessUsers();
+  const fetchError = (fetchErrorObj as Error)?.message ?? null;
+  const invalidateUsers = useInvalidateAccessUsers();
+
   const [showForm, setShowForm] = React.useState(false);
   const [editUser, setEditUser] = React.useState<AllowedUser | undefined>();
   const [deleteTarget, setDeleteTarget] = React.useState<AllowedUser | null>(null);
@@ -157,19 +159,6 @@ export function AccessUsersTab() {
 
   // Use tc_session (the correct auth key)
   const token = localStorage.getItem('tc_session') || '';
-
-  const loadUsers = React.useCallback(async () => {
-    setLoading(true); setFetchError(null);
-    try {
-      const res = await fetch('/api/auth?action=list-users', { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to load users');
-      setUsers(data.users || []);
-    } catch (e: any) { setFetchError(e.message); }
-    finally { setLoading(false); }
-  }, [token]);
-
-  React.useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const copyUserId = (id: string) => {
     navigator.clipboard.writeText(id).catch(() => {});
@@ -207,7 +196,7 @@ export function AccessUsersTab() {
         });
       }
 
-      await loadUsers(); setShowForm(false); setEditUser(undefined);
+      invalidateUsers(); setShowForm(false); setEditUser(undefined);
     } catch (e: any) { setActionError(e.message); }
     finally { setSaving(false); }
   };
@@ -220,7 +209,7 @@ export function AccessUsersTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete');
-      await loadUsers();
+      invalidateUsers();
     } catch (e: any) { setActionError(e.message); }
     finally { setDeleteTarget(null); }
   };
@@ -233,20 +222,20 @@ export function AccessUsersTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update');
-      await loadUsers();
+      invalidateUsers();
     } catch (e: any) { setActionError(e.message); }
     finally { setRevokeTarget(null); }
   };
 
-  const activeCount  = users.filter(u => u.is_active && !u.is_demo).length;
-  const demoCount    = users.filter(u => u.is_demo).length;
-  const revokedCount = users.filter(u => !u.is_active).length;
+  const activeCount  = users.filter((u: any) => u.is_active && !u.is_demo).length;
+  const demoCount    = users.filter((u: any) => u.is_demo).length;
+  const revokedCount = users.filter((u: any) => !u.is_active).length;
 
   if (loading) return <div className="flex items-center justify-center py-24"><span className="loading loading-spinner loading-md text-primary" /></div>;
   if (fetchError) return (
     <div className="max-w-xl mx-auto mt-8 bg-error/10 border border-error/20 rounded-xl p-4 text-sm text-error flex items-center gap-2">
       <AlertCircle size={16} className="flex-none" /> {fetchError}
-      <Button variant="ghost" size="xs" className="ml-auto" onClick={loadUsers}>Retry</Button>
+      <Button variant="ghost" size="xs" className="ml-auto" onClick={() => invalidateUsers()}>Retry</Button>
     </div>
   );
 
@@ -284,7 +273,7 @@ export function AccessUsersTab() {
         />
       ) : (
         <div className="flex flex-col gap-2">
-          {users.map(u => {
+          {users.map((u: any) => {
             const ri = ACCESS_ROLE_INFO[u.role] || { label: u.role, color: 'badge-ghost' };
             const initials = u.name.split(' ').map((n: string) => n[0] || '').join('').slice(0, 2).toUpperCase() || '?';
             const isOnline = u.active_sessions > 0;

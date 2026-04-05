@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2, Users, Plus, Trash2, RefreshCw,
   Shield, UserCheck, User, AlertCircle, CheckCircle2, Clock, X
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  listOrgMembers, listAllOrgs, addOrgMember,
+  listAllOrgs, addOrgMember,
   updateOrgMemberRole, removeOrgMember, OrgMemberRecord
 } from '../../utils/supabaseDb';
 import { ConfirmModal } from '../ConfirmModal';
 import { EmptyState } from '../ui/EmptyState';
 import { Button } from '../ui/Button';
+import { useOrgMembers, useInvalidateOrgMembers } from '../../hooks/useOrgMembers';
 
 const ROLE_INFO: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   team_admin: { label: 'Team Admin', color: 'badge-error',   icon: <Shield size={11} /> },
@@ -185,8 +186,8 @@ export function OrgManagementTab() {
   const { profile, token, isMasterAdmin } = useAuth();
   const [orgs, setOrgs] = useState<{ id: string; name: string; orgCode: string; isActive: boolean; organizationType: string }[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [members, setMembers] = useState<OrgMemberRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: members = [], isLoading: loading } = useOrgMembers(token, selectedOrgId);
+  const invalidateMembers = useInvalidateOrgMembers();
   const [showAddModal, setShowAddModal] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<OrgMemberRecord | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
@@ -207,8 +208,8 @@ export function OrgManagementTab() {
         .catch(e => setError(e.message));
     } else {
       // Team admin: only their orgs where they are team_admin
-      const manageable = (profile?.orgMemberships ?? []).filter(m => m.roleInOrg === 'team_admin');
-      const orgList = manageable.map(m => ({
+      const manageable = (profile?.orgMemberships ?? []).filter((m: any) => m.roleInOrg === 'team_admin');
+      const orgList = manageable.map((m: any) => ({
         id: m.orgId,
         name: m.orgName,
         orgCode: m.orgCode,
@@ -220,30 +221,12 @@ export function OrgManagementTab() {
     }
   }, [token, isAdmin, profile]);
 
-  const loadMembers = useCallback(async () => {
-    if (!token || !selectedOrgId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const data = await listOrgMembers(token, selectedOrgId);
-      setMembers(data);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load members');
-    } finally {
-      setLoading(false);
-    }
-  }, [token, selectedOrgId]);
-
-  useEffect(() => {
-    if (selectedOrgId) loadMembers();
-  }, [selectedOrgId, loadMembers]);
-
   const handleRoleChange = async (membershipId: string, newRole: string) => {
     if (!token) return;
     setSavingRole(membershipId);
     try {
       await updateOrgMemberRole(token, membershipId, newRole);
-      await loadMembers();
+      invalidateMembers(selectedOrgId!);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -256,14 +239,14 @@ export function OrgManagementTab() {
     try {
       await removeOrgMember(token, member.membershipId);
       setConfirmRemove(null);
-      await loadMembers();
+      invalidateMembers(selectedOrgId!);
     } catch (e: any) {
       setError(e.message);
     }
   };
 
   const selectedOrg = orgs.find(o => o.id === selectedOrgId);
-  const existingUserIds = members.map(m => m.userId);
+  const existingUserIds = members.map((m: any) => m.userId);
 
   if (orgs.length === 0 && !loading) {
     return (
@@ -301,7 +284,7 @@ export function OrgManagementTab() {
         ) : null}
         <button
           className="btn btn-ghost btn-xs ml-auto"
-          onClick={loadMembers}
+          onClick={() => selectedOrgId && invalidateMembers(selectedOrgId)}
           disabled={loading}
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -345,7 +328,7 @@ export function OrgManagementTab() {
               </tr>
             </thead>
             <tbody>
-              {members.map(m => {
+              {members.map((m: any) => {
                 const _roleInfo = ROLE_INFO[m.roleInOrg] ?? { label: m.roleInOrg, color: 'badge-ghost', icon: null };
                 return (
                   <tr key={m.membershipId} className="hover">
@@ -403,7 +386,7 @@ export function OrgManagementTab() {
           orgId={selectedOrgId}
           token={token}
           existingUserIds={existingUserIds}
-          onAdded={() => { setShowAddModal(false); loadMembers(); }}
+          onAdded={() => { setShowAddModal(false); invalidateMembers(selectedOrgId); }}
           onClose={() => setShowAddModal(false)}
         />
       )}
