@@ -94,6 +94,7 @@ interface Props {
   onUpdate: (d: Deal) => void;
   users?: AppUser[];
   onSendRequest?: (taskId: string, requestType: string) => void;
+  onGoToRequests?: () => void;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest }) => {
+export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest, onGoToRequests }) => {
   const tasks = deal.tasks ?? [];
 
   const invalidateDealTasks = useInvalidateDealTasks();
@@ -556,9 +557,20 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {statusBadge ? (
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadge.color}`}>
-                        {statusBadge.label}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadge.color}`}>
+                          {statusBadge.label}
+                        </span>
+                        {onGoToRequests && !isDone && (
+                          <button
+                            onClick={() => onGoToRequests()}
+                            className="btn btn-xs btn-ghost text-[10px] text-primary gap-0.5"
+                            title="View request"
+                          >
+                            → View
+                          </button>
+                        )}
+                      </div>
                     ) : reqType && !isDone && onSendRequest ? (
                       <button
                         onClick={() => onSendRequest(task.id, reqType)}

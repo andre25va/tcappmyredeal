@@ -212,7 +212,7 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
                   <tr
                     key={req.id}
                     className="hover:bg-base-100 cursor-pointer transition-colors border-b border-base-100"
-                    onClick={() => onSelectDeal?.(req.dealId)}
+                    onClick={() => onSelectDealWithTab?.(req.dealId, 'requests')}
                   >
                     <td className="font-medium text-sm text-base-content">
                       {req.dealAddress}
