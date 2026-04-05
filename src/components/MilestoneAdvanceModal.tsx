@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Mail, MessageSquare, ChevronDown, ChevronUp, Loader2, Check, AlertTriangle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { Deal, DealMilestone, ContactRecord, MilestoneNotificationSetting } from '../types';
@@ -9,6 +9,7 @@ import { StatusBadge } from './ui/StatusBadge';
 import { PAGE_IDS } from '../utils/pageTracking';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Modal } from './ui/Modal';
+import { useMilestoneNotifSettings } from '../hooks/useMilestoneNotifSettings';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -54,8 +55,31 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
   onConfirm,
   onCancel,
 }) => {
-  const [settings, setSettings] = useState<MilestoneNotificationSetting | null>(null);
-  const [loadingSettings, setLoadingSettings] = useState(true);
+  const { data: allNotifSettings = [], isLoading: loadingSettings } = useMilestoneNotifSettings();
+
+  const settings = useMemo(() => {
+    const raw = allNotifSettings.find((d: any) => d.milestone === targetMilestone);
+    if (!raw) return null;
+    const data = raw as any;
+    return {
+      id: data.id,
+      milestone: data.milestone,
+      notifyBuyerAgent: data.notify_buyer_agent ?? true,
+      notifySellerAgent: data.notify_seller_agent ?? true,
+      notifyLender: data.notify_lender ?? false,
+      notifyTitle: data.notify_title ?? false,
+      notifyBuyer: data.notify_buyer ?? false,
+      notifySeller: data.notify_seller ?? false,
+      sendEmail: data.send_email ?? true,
+      sendSms: data.send_sms ?? false,
+      emailSubject: data.email_subject,
+      emailBody: data.email_body,
+      smsBody: data.sms_body,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    } as MilestoneNotificationSetting;
+  }, [allNotifSettings, targetMilestone]);
+
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewRecipientKey, setPreviewRecipientKey] = useState<string>('');
@@ -64,188 +88,157 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
 
   const tasksToGenerate = generateTasksForMilestone(targetMilestone);
 
+  // Build recipients when settings are loaded
   useEffect(() => {
-    const loadSettings = async () => {
-      setLoadingSettings(true);
-      const { data } = await supabase
-        .from('milestone_notification_settings')
-        .select('*')
-        .eq('milestone', targetMilestone)
-        .single();
+    if (loadingSettings) return;
 
-      const s: MilestoneNotificationSetting | null = data
-        ? {
-            id: data.id,
-            milestone: data.milestone,
-            notifyBuyerAgent: data.notify_buyer_agent ?? true,
-            notifySellerAgent: data.notify_seller_agent ?? true,
-            notifyLender: data.notify_lender ?? false,
-            notifyTitle: data.notify_title ?? false,
-            notifyBuyer: data.notify_buyer ?? false,
-            notifySeller: data.notify_seller ?? false,
-            sendEmail: data.send_email ?? true,
-            sendSms: data.send_sms ?? false,
-            emailSubject: data.email_subject,
-            emailBody: data.email_body,
-            smsBody: data.sms_body,
-            createdAt: data.created_at,
-            updatedAt: data.updated_at,
-          }
-        : null;
+    const s = settings;
+    const built: Recipient[] = [];
 
-      setSettings(s);
+    const defaultEmailEnabled = s?.sendEmail ?? true;
+    const defaultSmsEnabled = s?.sendSms ?? false;
 
-      // Build recipients list
-      const built: Recipient[] = [];
+    // Buyer Agent
+    if ((s?.notifyBuyerAgent ?? true) && deal.buyerAgent?.name) {
+      const ba = deal.buyerAgent;
+      built.push({
+        key: 'buyer-agent',
+        name: ba.name || 'Buyer Agent',
+        role: 'Buyer Agent',
+        email: ba.email || '',
+        phone: ba.phone || '',
+        emailEnabled: defaultEmailEnabled && !!ba.email,
+        smsEnabled: defaultSmsEnabled && !!ba.phone,
+      });
+    }
 
-      const defaultEmailEnabled = s?.sendEmail ?? true;
-      const defaultSmsEnabled = s?.sendSms ?? false;
+    // Seller Agent
+    if ((s?.notifySellerAgent ?? true) && deal.sellerAgent?.name) {
+      const sa = deal.sellerAgent;
+      built.push({
+        key: 'seller-agent',
+        name: sa.name || 'Seller Agent',
+        role: 'Seller Agent',
+        email: sa.email || '',
+        phone: sa.phone || '',
+        emailEnabled: defaultEmailEnabled && !!sa.email,
+        smsEnabled: defaultSmsEnabled && !!sa.phone,
+      });
+    }
 
-      // Buyer Agent
-      if ((s?.notifyBuyerAgent ?? true) && deal.buyerAgent?.name) {
-        const ba = deal.buyerAgent;
+    // Lender
+    if (s?.notifyLender ?? false) {
+      const lenderRecord = contactRecords.find(
+        c => c.contactType === 'lender' ||
+          (deal.loanOfficerName && c.fullName === deal.loanOfficerName)
+      );
+      if (lenderRecord) {
         built.push({
-          key: 'buyer-agent',
-          name: ba.name || 'Buyer Agent',
-          role: 'Buyer Agent',
-          email: ba.email || '',
-          phone: ba.phone || '',
-          emailEnabled: defaultEmailEnabled && !!ba.email,
-          smsEnabled: defaultSmsEnabled && !!ba.phone,
+          key: 'lender',
+          name: lenderRecord.fullName,
+          role: 'Lender',
+          email: lenderRecord.email || '',
+          phone: lenderRecord.phone || '',
+          emailEnabled: defaultEmailEnabled && !!lenderRecord.email,
+          smsEnabled: defaultSmsEnabled && !!lenderRecord.phone,
+        });
+      } else if (deal.loanOfficerName) {
+        built.push({
+          key: 'lender',
+          name: deal.loanOfficerName,
+          role: 'Lender',
+          email: '',
+          phone: '',
+          emailEnabled: false,
+          smsEnabled: false,
         });
       }
+    }
 
-      // Seller Agent
-      if ((s?.notifySellerAgent ?? true) && deal.sellerAgent?.name) {
-        const sa = deal.sellerAgent;
+    // Title
+    if (s?.notifyTitle ?? false) {
+      const titleRecord = contactRecords.find(
+        c => c.contactType === 'title' ||
+          (deal.titleCompanyName && c.company === deal.titleCompanyName)
+      );
+      if (titleRecord) {
         built.push({
-          key: 'seller-agent',
-          name: sa.name || 'Seller Agent',
-          role: 'Seller Agent',
-          email: sa.email || '',
-          phone: sa.phone || '',
-          emailEnabled: defaultEmailEnabled && !!sa.email,
-          smsEnabled: defaultSmsEnabled && !!sa.phone,
+          key: 'title',
+          name: titleRecord.fullName,
+          role: 'Title',
+          email: titleRecord.email || '',
+          phone: titleRecord.phone || '',
+          emailEnabled: defaultEmailEnabled && !!titleRecord.email,
+          smsEnabled: defaultSmsEnabled && !!titleRecord.phone,
+        });
+      } else if (deal.titleCompanyName) {
+        built.push({
+          key: 'title',
+          name: deal.titleCompanyName,
+          role: 'Title Company',
+          email: '',
+          phone: '',
+          emailEnabled: false,
+          smsEnabled: false,
         });
       }
+    }
 
-      // Lender
-      if (s?.notifyLender ?? false) {
-        const lenderRecord = contactRecords.find(
-          c => c.contactType === 'lender' ||
-            (deal.loanOfficerName && c.fullName === deal.loanOfficerName)
-        );
-        if (lenderRecord) {
-          built.push({
-            key: 'lender',
-            name: lenderRecord.fullName,
-            role: 'Lender',
-            email: lenderRecord.email || '',
-            phone: lenderRecord.phone || '',
-            emailEnabled: defaultEmailEnabled && !!lenderRecord.email,
-            smsEnabled: defaultSmsEnabled && !!lenderRecord.phone,
-          });
-        } else if (deal.loanOfficerName) {
-          built.push({
-            key: 'lender',
-            name: deal.loanOfficerName,
-            role: 'Lender',
-            email: '',
-            phone: '',
-            emailEnabled: false,
-            smsEnabled: false,
-          });
-        }
+    // Buyer
+    if (s?.notifyBuyer ?? false) {
+      const buyerContact = deal.contacts?.find(c => c.role === 'buyer');
+      if (buyerContact) {
+        built.push({
+          key: 'buyer',
+          name: buyerContact.name || deal.buyerName || 'Buyer',
+          role: 'Buyer',
+          email: buyerContact.email || '',
+          phone: buyerContact.phone || '',
+          emailEnabled: defaultEmailEnabled && !!buyerContact.email,
+          smsEnabled: defaultSmsEnabled && !!buyerContact.phone,
+        });
+      } else if (deal.buyerName) {
+        built.push({
+          key: 'buyer',
+          name: deal.buyerName,
+          role: 'Buyer',
+          email: '',
+          phone: '',
+          emailEnabled: false,
+          smsEnabled: false,
+        });
       }
+    }
 
-      // Title
-      if (s?.notifyTitle ?? false) {
-        const titleRecord = contactRecords.find(
-          c => c.contactType === 'title' ||
-            (deal.titleCompanyName && c.company === deal.titleCompanyName)
-        );
-        if (titleRecord) {
-          built.push({
-            key: 'title',
-            name: titleRecord.fullName,
-            role: 'Title',
-            email: titleRecord.email || '',
-            phone: titleRecord.phone || '',
-            emailEnabled: defaultEmailEnabled && !!titleRecord.email,
-            smsEnabled: defaultSmsEnabled && !!titleRecord.phone,
-          });
-        } else if (deal.titleCompanyName) {
-          built.push({
-            key: 'title',
-            name: deal.titleCompanyName,
-            role: 'Title Company',
-            email: '',
-            phone: '',
-            emailEnabled: false,
-            smsEnabled: false,
-          });
-        }
+    // Seller
+    if (s?.notifySeller ?? false) {
+      const sellerContact = deal.contacts?.find(c => c.role === 'seller');
+      if (sellerContact) {
+        built.push({
+          key: 'seller',
+          name: sellerContact.name || deal.sellerName || 'Seller',
+          role: 'Seller',
+          email: sellerContact.email || '',
+          phone: sellerContact.phone || '',
+          emailEnabled: defaultEmailEnabled && !!sellerContact.email,
+          smsEnabled: defaultSmsEnabled && !!sellerContact.phone,
+        });
+      } else if (deal.sellerName) {
+        built.push({
+          key: 'seller',
+          name: deal.sellerName,
+          role: 'Seller',
+          email: '',
+          phone: '',
+          emailEnabled: false,
+          smsEnabled: false,
+        });
       }
+    }
 
-      // Buyer
-      if (s?.notifyBuyer ?? false) {
-        const buyerContact = deal.contacts?.find(c => c.role === 'buyer');
-        if (buyerContact) {
-          built.push({
-            key: 'buyer',
-            name: buyerContact.name || deal.buyerName || 'Buyer',
-            role: 'Buyer',
-            email: buyerContact.email || '',
-            phone: buyerContact.phone || '',
-            emailEnabled: defaultEmailEnabled && !!buyerContact.email,
-            smsEnabled: defaultSmsEnabled && !!buyerContact.phone,
-          });
-        } else if (deal.buyerName) {
-          built.push({
-            key: 'buyer',
-            name: deal.buyerName,
-            role: 'Buyer',
-            email: '',
-            phone: '',
-            emailEnabled: false,
-            smsEnabled: false,
-          });
-        }
-      }
-
-      // Seller
-      if (s?.notifySeller ?? false) {
-        const sellerContact = deal.contacts?.find(c => c.role === 'seller');
-        if (sellerContact) {
-          built.push({
-            key: 'seller',
-            name: sellerContact.name || deal.sellerName || 'Seller',
-            role: 'Seller',
-            email: sellerContact.email || '',
-            phone: sellerContact.phone || '',
-            emailEnabled: defaultEmailEnabled && !!sellerContact.email,
-            smsEnabled: defaultSmsEnabled && !!sellerContact.phone,
-          });
-        } else if (deal.sellerName) {
-          built.push({
-            key: 'seller',
-            name: deal.sellerName,
-            role: 'Seller',
-            email: '',
-            phone: '',
-            emailEnabled: false,
-            smsEnabled: false,
-          });
-        }
-      }
-
-      setRecipients(built);
-      if (built.length > 0) setPreviewRecipientKey(built[0].key);
-      setLoadingSettings(false);
-    };
-
-    loadSettings();
-  }, [targetMilestone, deal, contactRecords]);
+    setRecipients(built);
+    if (built.length > 0) setPreviewRecipientKey(built[0].key);
+  }, [loadingSettings, settings, targetMilestone, deal, contactRecords]);
 
   const toggleEmail = (key: string) => {
     setRecipients(prev =>

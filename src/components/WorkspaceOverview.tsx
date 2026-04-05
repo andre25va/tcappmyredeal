@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
 import { initPageTracking, PAGE_IDS } from '../utils/pageTracking';
 import { PageIdBadge } from './PageIdBadge';
@@ -31,6 +31,8 @@ interface MilestoneStep {
 import { Button } from "./ui/Button";
 import { useMlsEntries } from '../hooks/useMlsEntries';
 import { useDealParticipants } from '../hooks/useDealParticipants';
+import { useMilestoneNotifSettings } from '../hooks/useMilestoneNotifSettings';
+import { useMlsMilestoneConfigWithTypes } from '../hooks/useMlsMilestoneConfig';
 
 interface CallStartedData {
   contactName: string;
@@ -276,68 +278,28 @@ const MilestoneStepper: React.FC<{
   const [showUnarchive, setShowUnarchive] = useState(false);
   const [unarchiveTo, setUnarchiveTo] = useState<DealMilestone>('contract-received');
   const [archiveReason, setArchiveReason] = useState('');
-  const [milestoneDueDays, setMilestoneDueDays] = useState<Record<string, number>>({});
-  const [mlsSteps, setMlsSteps] = useState<MilestoneStep[]>([]);
-  const [mlsStepsLoading, setMlsStepsLoading] = useState(false);
   const { data: allMlsEntries = [] } = useMlsEntries();
 
-  useEffect(() => {
-    supabase
-      .from('milestone_notification_settings')
-      .select('milestone, due_days_from_contract')
-      .then(({ data }) => {
-        if (data) {
-          const map: Record<string, number> = {};
-          data.forEach((d: { milestone: string; due_days_from_contract: number | null }) => {
-            if (d.due_days_from_contract != null) map[d.milestone] = d.due_days_from_contract;
-          });
-          setMilestoneDueDays(map);
-        }
-      });
-  }, []);
+  const { data: notifSettingsRaw = [] } = useMilestoneNotifSettings();
+  const milestoneDueDays = useMemo(() => {
+    const map: Record<string, number> = {};
+    notifSettingsRaw.forEach((d: any) => {
+      if (d.due_days_from_contract != null) map[d.milestone] = d.due_days_from_contract;
+    });
+    return map;
+  }, [notifSettingsRaw]);
 
-  const fetchMilestoneSteps = async (mlsId: string) => {
-    if (!mlsId) { setMlsSteps([]); return; }
-    setMlsStepsLoading(true);
-    try {
-      const { data } = await supabase
-        .from('mls_milestone_config')
-        .select(`
-          sort_order,
-          due_days_from_contract,
-          milestone_types!mls_milestone_config_milestone_type_id_fkey (
-            id, key, label, sort_order
-          )
-        `)
-        .eq('mls_id', mlsId)
-        .order('sort_order');
-
-      if (data && data.length > 0) {
-        const steps: MilestoneStep[] = data.map((row: any) => ({
-          id: row.milestone_types.id,
-          key: row.milestone_types.key,
-          label: row.milestone_types.label,
-          sort_order: row.sort_order,
-          due_days_from_contract: row.due_days_from_contract,
-        }));
-        setMlsSteps(steps);
-      } else {
-        setMlsSteps([]);
-      }
-    } finally {
-      setMlsStepsLoading(false);
-    }
-  };
-
-
-
-  useEffect(() => {
-    if ((deal as any).mlsId) {
-      fetchMilestoneSteps((deal as any).mlsId);
-    } else {
-      setMlsSteps([]);
-    }
-  }, [(deal as any).mlsId]);
+  const { data: mlsConfigRaw = [], isLoading: mlsStepsLoading } = useMlsMilestoneConfigWithTypes((deal as any).mlsId);
+  const mlsSteps = useMemo<MilestoneStep[]>(() => {
+    if (!mlsConfigRaw || mlsConfigRaw.length === 0) return [];
+    return mlsConfigRaw.map((row: any) => ({
+      id: row.milestone_types.id,
+      key: row.milestone_types.key,
+      label: row.milestone_types.label,
+      sort_order: row.sort_order,
+      due_days_from_contract: row.due_days_from_contract,
+    }));
+  }, [mlsConfigRaw]);
 
   const effectiveSteps: Array<{ key: string; label: string; dueDays: number | null }> =
     mlsSteps.length > 0
@@ -419,7 +381,6 @@ const MilestoneStepper: React.FC<{
             onChange={async (e) => {
               const newMlsId = e.target.value;
               await supabase.from('deals').update({ mls_id: newMlsId || null }).eq('id', deal.id);
-              fetchMilestoneSteps(newMlsId);
               onUpdate({ ...deal, mlsId: newMlsId || undefined } as any);
             }}
           >
