@@ -1682,7 +1682,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       updatedAt: new Date().toISOString(),
     });
 
-    await loadParticipants();
+    invalidateParticipants(deal.id);
   };
 
   // Handle switch: update deal_participants.contact_id to matched contact
@@ -1852,7 +1852,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
       updatedAt: new Date().toISOString(),
     });
 
-    await loadParticipants();
+    invalidateParticipants(deal.id);
   };
 
   // Notification list from deal.contacts
