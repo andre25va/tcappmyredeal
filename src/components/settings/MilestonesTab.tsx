@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 import { ContactRecord, DealMilestone, MilestoneNotificationSetting, CustomMilestone } from '../../types';
 import { MILESTONE_ORDER, MILESTONE_LABELS } from '../../utils/taskTemplates';
 import { useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
 import { useMilestoneNotifSettings, useInvalidateMilestoneNotifSettings } from '../../hooks/useMilestoneNotifSettings';
 import { useCustomMilestones, useInvalidateCustomMilestones } from '../../hooks/useCustomMilestones';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface Props {
   contactRecords: ContactRecord[];
