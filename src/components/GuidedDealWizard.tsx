@@ -18,6 +18,8 @@ import StepDealContacts, { WizardParticipant } from './StepDealContacts';
 import { ContactModal, SavedContact } from './ContactModal';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
+import { useMlsEntries } from '../hooks/useMlsEntries';
+import { useTitleEscrowContacts } from '../hooks/useTitleEscrowContacts';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -250,13 +252,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
   // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
   const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | null>(null);
-  const [mlsEntries, setMlsEntries] = useState<Array<{id: string; name: string; state: string}>>([]);
-
-  useEffect(() => {
-    supabase.from('mls_entries').select('id, name, state').then(({ data }) => {
-      if (data) setMlsEntries(data);
-    });
-  }, []);
+  const { data: mlsEntriesRaw } = useMlsEntries();
+  const mlsEntries = (mlsEntriesRaw ?? []).map(e => ({ id: e.id, name: e.name, state: e.state ?? '' }));
 
   const resolveMlsEntryId = (boardName: string, dealState?: string): string => {
     if (!boardName || !mlsEntries.length) return '';
@@ -295,8 +292,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   // Title & Escrow step state
   const [titleSearch, setTitleSearch] = useState('');
   const [titleDropdownOpen, setTitleDropdownOpen] = useState(false);
-  const [allContacts, setAllContacts] = useState<ContactRecord[]>([]);
-  const [titleContactsLoaded, setTitleContactsLoaded] = useState(false);
+  const { data: titleEscrowContactsRaw } = useTitleEscrowContacts();
+  const [localNewTitleContacts, setLocalNewTitleContacts] = useState<ContactRecord[]>([]);
+  const allContacts = [
+    ...((titleEscrowContactsRaw ?? []) as unknown as ContactRecord[]),
+    ...localNewTitleContacts,
+  ];
+  const titleContactsLoaded = !!titleEscrowContactsRaw;
   const [wizardParticipants, setWizardParticipants] = useState<WizardParticipant[]>([]);
   const [showTitleContactModal, setShowTitleContactModal] = useState(false);
   const [titleParticipantFallback, setTitleParticipantFallback] = useState<{ fullName: string; company?: string; email?: string } | null>(null);
@@ -457,49 +459,32 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     }
   }, [step]);
 
-  // Load all contacts when step 3 is reached (needed for title officer search in step 9)
+  // When title/escrow contacts load and we're on step 3+, update wizard participants
+  // with real contact data (replaces placeholder created from extraction)
+  const [titleParticipantsSynced, setTitleParticipantsSynced] = useState(false);
   useEffect(() => {
-    if (step === 3 && !titleContactsLoaded) {
-      supabase
-        .from('contacts')
-        .select('*')
-        .in('contact_type', ['title', 'escrow'])
-        .is('deleted_at', null)
-        .order('full_name')
-        .then(({ data }) => {
-          if (data) {
-            const mapped = data.map((c: any) => ({
-              id: c.id, fullName: c.full_name || '', company: c.company || '',
-              email: c.email || '', phone: c.phone || '', role: c.contact_type || '',
-            } as unknown as ContactRecord));
-            setAllContacts(mapped);
-            // If a title contact is already linked (re-entering wizard), replace placeholder with real contact
-            if (form.titleContactId) {
-              const tc = data.find((c: any) => c.id === form.titleContactId);
-              if (tc) {
-                const nameParts = (tc.full_name || '').split(' ');
-                setWizardParticipants(prev => {
-                  // Remove any existing title_officer placeholder, add real contact
-                  const withoutTitle = prev.filter(p => p.role !== 'title_officer');
-                  return [...withoutTitle, {
-                    tempId: generateId(),
-                    firstName: nameParts[0] || tc.full_name || '',
-                    lastName: nameParts.slice(1).join(' '),
-                    email: tc.email || '',
-                    phone: tc.phone || '',
-                    role: 'title_officer',
-                    side: 'both',
-                    contactId: tc.id,
-                    isExtracted: true,
-                  }];
-                });
-              }
-            }
-          }
-          setTitleContactsLoaded(true);
+    if (titleContactsLoaded && !titleParticipantsSynced && form.titleContactId) {
+      const tc = titleEscrowContactsRaw?.find((c: any) => c.id === form.titleContactId);
+      if (tc) {
+        const nameParts = ((tc as any).fullName || '').split(' ');
+        setWizardParticipants(prev => {
+          const withoutTitle = prev.filter(p => p.role !== 'title_officer');
+          return [...withoutTitle, {
+            tempId: generateId(),
+            firstName: nameParts[0] || (tc as any).fullName || '',
+            lastName: nameParts.slice(1).join(' '),
+            email: (tc as any).email || '',
+            phone: (tc as any).phone || '',
+            role: 'title_officer' as const,
+            side: 'both' as const,
+            contactId: (tc as any).id,
+            isExtracted: true,
+          }];
         });
+        setTitleParticipantsSynced(true);
+      }
     }
-  }, [step, titleContactsLoaded]);
+  }, [titleContactsLoaded, titleParticipantsSynced, form.titleContactId, titleEscrowContactsRaw]);
 
   // Close title dropdown on outside click
   useEffect(() => {
@@ -538,7 +523,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       company: saved.company || '', email: saved.email || '', phone: saved.phone || '',
       role: 'title',
     } as unknown as ContactRecord;
-    setAllContacts(prev => [...prev, newContact]);
+    setLocalNewTitleContacts(prev => [...prev, newContact]);
     const addr = [form.address, form.city, form.state].filter(Boolean).join(', ');
     setForm(p => ({
       ...p,
