@@ -157,10 +157,10 @@ function ContactCard({ p, isOurSide, isAgentClient, match, linkedContact, onOpen
           {(p.isExtracted || isOurSide || p.contactId || isAgentClient) && (
             <div className="flex items-center gap-1 flex-wrap mb-2">
               {p.isExtracted && (
-                <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Auto</span>
+                <span className="badge badge-sm" style={{ backgroundColor: '#e5e7eb', color: '#111827', borderColor: '#e5e7eb' }}>Auto</span>
               )}
               {isOurSide && (
-                <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Our Side</span>
+                <span className="badge badge-sm" style={{ backgroundColor: '#e5e7eb', color: '#111827', borderColor: '#e5e7eb' }}>Our Side</span>
               )}
               {isAgentClient && (
                 <span className="badge badge-sm" style={{ backgroundColor: '#4f46e5', color: '#ffffff', borderColor: '#4f46e5' }}>Client</span>
