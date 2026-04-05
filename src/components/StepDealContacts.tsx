@@ -131,6 +131,7 @@ interface SearchResult {
 interface ContactCardProps {
   p: WizardParticipant;
   isOurSide: boolean;
+  isAgentClient?: boolean;
   match?: ContactRecord | null;
   onOpenContact: (p: WizardParticipant) => void;
   onRemove: (tempId: string) => void;
@@ -138,7 +139,7 @@ interface ContactCardProps {
   onMatchClick?: (p: WizardParticipant) => void;
 }
 
-function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, onMatchClick }: ContactCardProps) {
+function ContactCard({ p, isOurSide, isAgentClient, match, onOpenContact, onRemove, onUpdate, onMatchClick }: ContactCardProps) {
   const roles = roleOptions(p.side);
   const displayName = [p.firstName, p.lastName].filter(Boolean).join(' ');
   const showMatchBadge = !!match && !p.contactId;
@@ -148,13 +149,16 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {/* Pills row */}
-          {(p.isExtracted || isOurSide || p.contactId) && (
+          {(p.isExtracted || isOurSide || p.contactId || isAgentClient) && (
             <div className="flex items-center gap-1 flex-wrap mb-2">
               {p.isExtracted && (
                 <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Auto</span>
               )}
               {isOurSide && (
                 <span className="badge badge-sm" style={{ backgroundColor: '#374151', color: '#f59e0b', borderColor: '#374151' }}>Our Side</span>
+              )}
+              {isAgentClient && (
+                <span className="badge badge-sm" style={{ backgroundColor: '#4f46e5', color: '#ffffff', borderColor: '#4f46e5' }}>Client</span>
               )}
               {p.contactId && <span className="badge badge-sm badge-success">✓ Linked</span>}
             </div>
@@ -317,6 +321,7 @@ interface SideColumnProps {
   label: string;
   list: WizardParticipant[];
   transactionType: 'buyer' | 'seller';
+  agentClientId?: string;
   addingSide: string | null;
   query: string;
   results: SearchResult[];
@@ -335,6 +340,7 @@ interface SideColumnProps {
 
 function SideColumn({
   side, label, list, transactionType,
+  agentClientId,
   addingSide, query, results, searching,
   matchMap,
   onOpenContact, onRemove, onUpdate,
@@ -352,6 +358,7 @@ function SideColumn({
           key={p.tempId}
           p={p}
           isOurSide={transactionType === side}
+          isAgentClient={!!agentClientId && !!p.contactId && p.contactId === agentClientId}
           match={matchMap[p.tempId]}
           onOpenContact={onOpenContact}
           onRemove={onRemove}
@@ -389,6 +396,7 @@ interface Props {
   transactionType: 'buyer' | 'seller';
   orgId?: string;
   allContacts: ContactRecord[];
+  agentClientId?: string;
 }
 
 type AddingSide = 'buyer' | 'seller' | 'both' | null;
@@ -399,7 +407,7 @@ type ContactModalState =
   | { mode: 'edit'; participant: WizardParticipant }
   | { mode: 'add'; side: AddingSide };
 
-export default function StepDealContacts({ participants, onChange, transactionType, orgId, allContacts }: Props) {
+export default function StepDealContacts({ participants, onChange, transactionType, orgId, allContacts, agentClientId }: Props) {
   const [addingSide, setAddingSide] = useState<AddingSide>(null);
   const [query,      setQuery]      = useState('');
   const [results,    setResults]    = useState<SearchResult[]>([]);
@@ -631,6 +639,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           label="Buy Side"
           list={buyerSide}
           transactionType={transactionType}
+          agentClientId={agentClientId}
           addingSide={addingSide}
           query={query}
           results={results}
@@ -652,6 +661,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           label="Sell Side"
           list={sellerSide}
           transactionType={transactionType}
+          agentClientId={agentClientId}
           addingSide={addingSide}
           query={query}
           results={results}

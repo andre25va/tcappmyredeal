@@ -434,11 +434,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       }
       if (form.buyerAgentName) {
         const np = form.buyerAgentName.split(' ');
-        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'buyer', isExtracted: true });
+        const isBuyerClient = form.transactionType === 'buyer' && !!form.agentClientId;
+        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'buyer', isExtracted: true, ...(isBuyerClient ? { contactId: form.agentClientId } : {}) });
       }
       if (form.sellerAgentName) {
         const np = form.sellerAgentName.split(' ');
-        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'seller', isExtracted: true });
+        const isSellerClient = form.transactionType === 'seller' && !!form.agentClientId;
+        parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'seller', isExtracted: true, ...(isSellerClient ? { contactId: form.agentClientId } : {}) });
       }
       if (form.loanOfficer) {
         // loanOfficer may be "Jane Smith – First Bank", extract just the name part
@@ -2055,6 +2057,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 transactionType={form.transactionType as 'buyer' | 'seller'}
                 orgId={undefined}
                 allContacts={allContacts}
+                agentClientId={form.agentClientId || undefined}
               />
             )}
 
