@@ -171,14 +171,14 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
           {/* First Name + Last Name */}
           <div className="flex gap-1.5 mb-1">
             <input
-              className="input input-bordered input-xs flex-1"
-              placeholder="First Name"
+              className={`input input-bordered input-xs flex-1 ${!p.firstName ? 'border-warning/50 placeholder-warning/60' : ''}`}
+              placeholder="First name needed"
               value={p.firstName ?? ''}
               onChange={e => onUpdate(p.tempId, { firstName: e.target.value } as any)}
             />
             <input
-              className="input input-bordered input-xs flex-1"
-              placeholder="Last Name"
+              className={`input input-bordered input-xs flex-1 ${!p.lastName ? 'border-warning/50 placeholder-warning/60' : ''}`}
+              placeholder="Last name needed"
               value={p.lastName ?? ''}
               onChange={e => onUpdate(p.tempId, { lastName: e.target.value } as any)}
             />
