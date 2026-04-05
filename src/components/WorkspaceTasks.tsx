@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   CheckSquare, Plus, Trash2, Check, ChevronDown, User, Calendar,
   MoreVertical, Smartphone, AtSign, MessageCircle, Phone, Loader2,
+  Send,
 } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, AppUser } from '../types';
 import { generateId } from '../utils/helpers';
@@ -51,12 +52,45 @@ const COMM_PRIORITY_COLORS: Record<CommPriority, string> = {
   urgent: 'text-red-600',
 };
 
+// ── DB Milestone Task types ──────────────────────────────────────────────────
+
+interface DBMilestoneTask {
+  id: string;
+  title: string;
+  category: string;
+  priority: string;
+  due_date: string;
+  status: 'pending' | 'completed';
+}
+
+interface LinkedRequest {
+  id: string;
+  status: string;
+  request_type: string;
+}
+
+const TASK_REQUEST_MAP: Record<string, string> = {
+  earnest_money: 'earnest_money_receipt',
+};
+
+const REQUEST_STATUS_BADGE: Record<string, { label: string; color: string }> = {
+  draft:             { label: 'Draft',      color: 'bg-gray-100 text-gray-500' },
+  sent:              { label: '📨 Sent',     color: 'bg-blue-50 text-blue-600' },
+  waiting:           { label: '⏳ Waiting',  color: 'bg-yellow-50 text-yellow-700' },
+  reply_received:    { label: '📩 Reply',    color: 'bg-orange-50 text-orange-700' },
+  document_received: { label: '📄 Received', color: 'bg-purple-50 text-purple-700' },
+  accepted:          { label: '✅ Accepted',  color: 'bg-green-50 text-green-700' },
+  completed:         { label: '✅ Done',      color: 'bg-green-50 text-green-700' },
+  rejected:          { label: '❌ Rejected',  color: 'bg-red-50 text-red-600' },
+};
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
   deal: Deal;
   onUpdate: (d: Deal) => void;
   users?: AppUser[];
+  onSendRequest?: (taskId: string, requestType: string) => void;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -90,8 +124,11 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) => {
+export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest }) => {
   const tasks = deal.tasks ?? [];
+
+  const [milestoneTasks, setMilestoneTasks] = useState<DBMilestoneTask[]>([]);
+  const [linkedRequests, setLinkedRequests] = useState<Record<string, LinkedRequest>>({});
 
   const [commTasks, setCommTasks]           = useState<CommTask[]>([]);
   const [commLoading, setCommLoading]       = useState(false);
@@ -108,6 +145,34 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
   const [completedDate, setCompletedDate]   = useState(today());
   const [deleteTaskId, setDeleteTaskId]     = useState<string | null>(null);
   const [taskMenuId, setTaskMenuId]         = useState<string | null>(null);
+
+  // ── Load DB milestone tasks + linked requests ─────────────────────────────
+
+  useEffect(() => {
+    if (!deal.id) return;
+    const load = async () => {
+      const { data: taskRows } = await supabase
+        .from('tasks')
+        .select('id, title, category, priority, due_date, status')
+        .eq('deal_id', deal.id)
+        .order('due_date', { ascending: true });
+      if (taskRows) setMilestoneTasks(taskRows as DBMilestoneTask[]);
+
+      const { data: reqs } = await supabase
+        .from('requests')
+        .select('id, task_id, status, request_type')
+        .eq('deal_id', deal.id)
+        .not('task_id', 'is', null);
+      if (reqs) {
+        const map: Record<string, LinkedRequest> = {};
+        reqs.forEach((r: any) => {
+          if (r.task_id) map[r.task_id] = { id: r.id, status: r.status, request_type: r.request_type };
+        });
+        setLinkedRequests(map);
+      }
+    };
+    load();
+  }, [deal.id]);
 
   // ── Load comm_tasks for this deal ────────────────────────────────────────
 
@@ -487,10 +552,61 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
       )}
 
       {/* Empty state */}
-      {tasks.length === 0 && commTasks.length === 0 && (
+      {tasks.length === 0 && commTasks.length === 0 && milestoneTasks.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-300 gap-3">
           <CheckSquare size={40} />
           <p className="text-sm">No tasks yet. Advance the milestone or add a task manually.</p>
+        </div>
+      )}
+
+      {/* ── Milestone Tasks (from DB tasks table) ─────────────────────────── */}
+      {milestoneTasks.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Milestone Tasks</h3>
+          <div className="space-y-2">
+            {milestoneTasks.map(task => {
+              const isDone = task.status === 'completed';
+              const linkedReq = linkedRequests[task.id];
+              const reqType = TASK_REQUEST_MAP[task.category];
+              const statusBadge = linkedReq ? REQUEST_STATUS_BADGE[linkedReq.status] : null;
+              const daysUntil = task.due_date ? Math.ceil((new Date(task.due_date).getTime() - Date.now()) / 86400000) : null;
+
+              return (
+                <div key={task.id} className={`flex items-center justify-between p-3 rounded-lg border text-sm ${isDone ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200'}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isDone ? 'bg-green-400' : task.priority === 'high' ? 'bg-red-500' : 'bg-gray-300'}`} />
+                    <div className="min-w-0">
+                      <p className={`font-medium ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</p>
+                      {task.due_date && (
+                        <p className="text-[11px] text-gray-400">
+                          {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {daysUntil !== null && !isDone && (
+                            <span className={`ml-1 ${daysUntil < 0 ? 'text-red-500' : daysUntil === 0 ? 'text-amber-500' : 'text-gray-400'}`}>
+                              ({daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'today' : `${daysUntil}d`})
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {statusBadge ? (
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadge.color}`}>
+                        {statusBadge.label}
+                      </span>
+                    ) : reqType && !isDone && onSendRequest ? (
+                      <button
+                        onClick={() => onSendRequest(task.id, reqType)}
+                        className="btn btn-xs btn-outline gap-1 text-[11px]"
+                      >
+                        <Send size={10} /> Send Request
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
