@@ -124,7 +124,7 @@ export function ContactProfilePanel({ contact, onClose, onEdit }: Props) {
               <p className="text-gray-400 text-xs truncate">{contact.company}</p>
             )}
             <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300 capitalize">
-              {roleLabel(contact.role as string) || contact.role}
+              {roleLabel(contact.contactType) || contact.contactType}
             </span>
           </div>
         </div>
