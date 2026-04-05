@@ -20,6 +20,7 @@ import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
 import { useMlsEntries } from '../hooks/useMlsEntries';
 import { useTitleEscrowContacts } from '../hooks/useTitleEscrowContacts';
+import { useOrgContacts } from '../hooks/useOrgContacts';
 
 interface Props {
   onAdd: (deal: Deal) => void;
@@ -293,6 +294,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [titleSearch, setTitleSearch] = useState('');
   const [titleDropdownOpen, setTitleDropdownOpen] = useState(false);
   const { data: titleEscrowContactsRaw } = useTitleEscrowContacts();
+  const { data: allOrgContacts } = useOrgContacts(orgId);
   const [localNewTitleContacts, setLocalNewTitleContacts] = useState<ContactRecord[]>([]);
   const allContacts = [
     ...((titleEscrowContactsRaw ?? []) as unknown as ContactRecord[]),
@@ -2056,7 +2058,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 onChange={setWizardParticipants}
                 transactionType={form.transactionType as 'buyer' | 'seller'}
                 orgId={undefined}
-                allContacts={allContacts}
+                allContacts={allOrgContacts ?? []}
                 agentClientId={form.agentClientId || undefined}
               />
             )}
@@ -2869,7 +2871,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               contact={null}
               defaultRole="agent"
               initialIsClient={true}
-              allContacts={allContacts}
+              allContacts={allOrgContacts ?? []}
               onClose={() => setShowClientCreateModal(false)}
               onSaved={handleClientCreateModalSaved}
             />
@@ -2879,7 +2881,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               isOpen={showTitleContactModal}
               contact={null}
               defaultRole="title"
-              allContacts={allContacts}
+              allContacts={allOrgContacts ?? []}
               onClose={() => setShowTitleContactModal(false)}
               onSaved={handleTitleContactModalSaved}
             />
