@@ -76,6 +76,8 @@ interface Props {
   onChangeStatus?: (dealId: string, status: import('../types').DealStatus) => void;
   /** If set, workspace opens to this tab instead of 'overview' when deal loads. */
   initialTab?: Tab;
+  /** If set, auto-opens the new request modal in the Requests tab. */
+  initialRequestType?: string;
 }
 
 /**
@@ -123,12 +125,27 @@ function getRepresentation(deal: Deal): { label: string; style: string; tooltip:
   return null;
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab, initialRequestType }) => {
   const { profile, isMasterAdmin } = useAuth();
   const isViewer = profile?.role === 'viewer';
   const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
     (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
+  const [activeRequestCount, setActiveRequestCount] = React.useState(0);
+
+  // Fetch active request count for badge
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('deal_id', deal.id)
+      .not('status', 'in', '(completed,cancelled,accepted,rejected)')
+      .then(({ count }) => {
+        if (!cancelled) setActiveRequestCount(count || 0);
+      });
+    return () => { cancelled = true; };
+  }, [deal.id]);
   const [copied, setCopied] = useState(false);
   const [wsMenuOpen, setWsMenuOpen]     = useState(false);
   const [wsArchiveOpen, setWsArchiveOpen] = useState(false);
@@ -250,7 +267,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'tasks',      label: 'Tasks',      icon: <ListChecks size={13} />, badge: overdueTasks > 0 ? overdueTasks : undefined },
     { id: 'contacts',   label: 'Contacts',   icon: <Users size={13} /> },
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
-    { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} /> },
+    { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} />, badge: activeRequestCount > 0 ? activeRequestCount : undefined },
     { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
@@ -627,7 +644,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             )}
           </div>
         )}
-        {tab === 'requests'   && <WorkspaceRequests deal={deal} />}
+        {tab === 'requests'   && <WorkspaceRequests deal={deal} autoOpenType={initialRequestType as any} />}
         {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
         {tab === 'access' && <DealAccessPanel deal={deal} />}
         {tab === 'linked-emails' && (

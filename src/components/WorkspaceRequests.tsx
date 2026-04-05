@@ -184,14 +184,24 @@ function mapRow(r: any): RequestRecord {
 // ── Main Component ─────────────────────────────────────────────────────────────
 interface Props {
   deal: Deal;
+  /** If set, auto-opens the new request modal with this type pre-selected on mount */
+  autoOpenType?: RequestType;
 }
 
-export const WorkspaceRequests: React.FC<Props> = ({ deal }) => {
+export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType }) => {
   const { profile } = useAuth();
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+
+  // Auto-open modal when autoOpenType is provided (e.g. from By Task "Send Request" button)
+  useEffect(() => {
+    if (autoOpenType) {
+      setNewType(autoOpenType);
+      setShowNewModal(true);
+    }
+  }, [autoOpenType]);
 
   // New request form state
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
