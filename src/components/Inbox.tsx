@@ -583,7 +583,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
           deal_id: selectedDeal?.id || null,
           recipients: selectedRecipients.map(c => ({
             contact_id: c.id,
-            name: `${c.first_name} ${c.last_name}`,
+            name: `${c.firstName} ${c.lastName}`,
             phone: c.phone!,
           })),
           body: composeBody,
@@ -648,7 +648,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const filteredContacts = composeContacts.filter(c => {
     if (!contactSearch) return true;
     const q = contactSearch.toLowerCase();
-    return `${c.first_name} ${c.last_name}`.toLowerCase().includes(q) ||
+    return `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
       c.company?.toLowerCase().includes(q) || (c.contact_type || '').toLowerCase().includes(q);
   });
 
@@ -1448,7 +1448,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {selectedRecipients.map(c => (
                   <span key={c.id} className="flex items-center gap-1 bg-primary/10 text-primary text-xs px-2.5 py-1 rounded-full font-medium">
-                    {c.first_name} {c.last_name}
+                    {c.firstName} {c.lastName}
                     <button onClick={() => setSelectedRecipients(prev => prev.filter(r => r.id !== c.id))}><X size={10} /></button>
                   </span>
                 ))}
@@ -1477,10 +1477,10 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-base-200 transition-colors border-b border-base-100 last:border-0 ${selected ? 'bg-primary/5' : ''}`}
                     >
                       <div className="w-7 h-7 bg-primary/10 rounded-full flex items-center justify-center text-xs font-bold text-primary flex-none">
-                        {c.first_name.charAt(0)}
+                        {c.firstName.charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium">{c.first_name} {c.last_name}</div>
+                        <div className="text-sm font-medium">{c.firstName} {c.lastName}</div>
                         <div className="text-xs text-base-content/50">{c.contact_type || 'contact'} · {c.phone}</div>
                       </div>
                       {selected && <CheckCheck size={14} className="text-primary flex-none" />}
@@ -1797,7 +1797,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         const phone = smsAddContactPhone;
         const updatedParticipants = selectedConv.participants.map(p =>
           p.phone === phone
-            ? { ...p, contact_id: saved.id, name: `${saved.first_name} ${saved.last_name}`.trim() }
+            ? { ...p, contact_id: saved.id, name: `${saved.firstName} ${saved.lastName}`.trim() }
             : p
         );
         try {
