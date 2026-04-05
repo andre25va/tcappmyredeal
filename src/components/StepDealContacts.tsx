@@ -160,6 +160,22 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
             </div>
           )}
 
+          {/* First Name + Last Name */}
+          <div className="flex gap-1.5 mb-1.5">
+            <input
+              className={`input input-bordered input-xs flex-1 ${!p.firstName ? 'border-info/50 placeholder-info/70' : ''}`}
+              placeholder="FN needed"
+              value={p.firstName ?? ''}
+              onChange={e => onUpdate(p.tempId, { firstName: e.target.value } as any)}
+            />
+            <input
+              className={`input input-bordered input-xs flex-1 ${!p.lastName ? 'border-info/50 placeholder-info/70' : ''}`}
+              placeholder="LN needed"
+              value={p.lastName ?? ''}
+              onChange={e => onUpdate(p.tempId, { lastName: e.target.value } as any)}
+            />
+          </div>
+
           {/* Company field */}
           <input
             className="input input-bordered input-xs w-full mb-1.5"
@@ -167,22 +183,6 @@ function ContactCard({ p, isOurSide, match, onOpenContact, onRemove, onUpdate, o
             value={(p as any).company ?? ''}
             onChange={e => onUpdate(p.tempId, { company: e.target.value } as any)}
           />
-
-          {/* First Name + Last Name */}
-          <div className="flex gap-1.5 mb-1">
-            <input
-              className={`input input-bordered input-xs flex-1 ${!p.firstName ? 'border-warning/50 placeholder-warning/60' : ''}`}
-              placeholder="FN needed"
-              value={p.firstName ?? ''}
-              onChange={e => onUpdate(p.tempId, { firstName: e.target.value } as any)}
-            />
-            <input
-              className={`input input-bordered input-xs flex-1 ${!p.lastName ? 'border-warning/50 placeholder-warning/60' : ''}`}
-              placeholder="LN needed"
-              value={p.lastName ?? ''}
-              onChange={e => onUpdate(p.tempId, { lastName: e.target.value } as any)}
-            />
-          </div>
 
           {/* Email / Phone */}
           {p.email && <p className="text-xs text-base-content/60 mt-0.5 truncate">{p.email}</p>}
