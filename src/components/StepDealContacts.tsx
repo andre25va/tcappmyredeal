@@ -226,15 +226,27 @@ function ContactCard({ p, isOurSide, isAgentClient, match, linkedContact, onOpen
         </div>
       </div>
 
-      {/* Role + side — always visible inline dropdowns */}
-      <div className="flex gap-2 mt-2">
-        <select
-          className="select select-bordered select-xs flex-1"
-          value={p.role}
-          onChange={e => onUpdate(p.tempId, { role: e.target.value as DealParticipantRole })}
-        >
-          {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-        </select>
+      {/* Role + side */}
+      <div className="flex gap-2 mt-2 items-center">
+        {(p.role === 'lead_agent' || p.role === 'co_agent') ? (
+          <label className="flex items-center gap-1.5 cursor-pointer flex-1">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-xs"
+              checked={p.role === 'co_agent'}
+              onChange={e => onUpdate(p.tempId, { role: e.target.checked ? 'co_agent' : 'lead_agent' })}
+            />
+            <span className="text-xs text-base-content/70">Co-Agent</span>
+          </label>
+        ) : (
+          <select
+            className="select select-bordered select-xs flex-1"
+            value={p.role}
+            onChange={e => onUpdate(p.tempId, { role: e.target.value as DealParticipantRole })}
+          >
+            {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+          </select>
+        )}
         <select
           className="select select-bordered select-xs w-28"
           value={p.side}
