@@ -949,6 +949,7 @@ export interface MilestoneNotificationSetting {
   emailSubject?: string;
   emailBody?: string;
   smsBody?: string;
+  dueDaysFromContract?: number;
   createdAt?: string;
   updatedAt?: string;
 }

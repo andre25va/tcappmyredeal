@@ -252,10 +252,12 @@ const MilestoneRow: React.FC<{
     setting ? settingToFields(setting) : defaultNotifFields()
   );
   const [saving, setSaving] = useState(false);
+  const [dueDays, setDueDays] = useState<number | ''>(() => setting?.dueDaysFromContract ?? '');
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setFields(setting ? settingToFields(setting) : defaultNotifFields());
+    setDueDays(setting?.dueDaysFromContract ?? '');
   }, [setting]);
 
   const handleSave = async () => {
@@ -274,6 +276,7 @@ const MilestoneRow: React.FC<{
       email_subject: fields.emailSubject || null,
       email_body: fields.emailBody || null,
       sms_body: fields.smsBody || null,
+      due_days_from_contract: dueDays === '' ? null : Number(dueDays),
       updated_at: new Date().toISOString(),
     };
 
@@ -300,6 +303,7 @@ const MilestoneRow: React.FC<{
         emailSubject: data.email_subject,
         emailBody: data.email_body,
         smsBody: data.sms_body,
+        dueDaysFromContract: data.due_days_from_contract ?? undefined,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       });
@@ -352,6 +356,12 @@ const MilestoneRow: React.FC<{
           )}
         </div>
 
+        {dueDays !== '' && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info/15 text-info border border-info/20 flex-none">
+            {dueDays}d
+          </span>
+        )}
+
         {expanded ? <ChevronUp size={14} className="flex-none text-base-content/40" /> : <ChevronDown size={14} className="flex-none text-base-content/40" />}
       </button>
 
@@ -359,6 +369,20 @@ const MilestoneRow: React.FC<{
       {expanded && (
         <div className="p-4 border-t border-base-300 bg-base-100">
           <NotifForm fields={fields} onChange={setFields} />
+
+          <div className="mt-4 flex items-center gap-3">
+            <label className="text-xs font-semibold text-base-content/70 whitespace-nowrap">Days from contract date</label>
+            <input
+              type="number"
+              min={0}
+              max={365}
+              placeholder="e.g. 3"
+              value={dueDays}
+              onChange={e => setDueDays(e.target.value === '' ? '' : Number(e.target.value))}
+              className="input input-xs input-bordered w-24"
+            />
+            <span className="text-[10px] text-base-content/40">Leave blank if not applicable</span>
+          </div>
 
           {saveError && (
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-error/10 border border-error/20">
@@ -446,6 +470,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
             emailSubject: d.email_subject,
             emailBody: d.email_body,
             smsBody: d.sms_body,
+            dueDaysFromContract: d.due_days_from_contract ?? undefined,
             createdAt: d.created_at,
             updatedAt: d.updated_at,
           }))
