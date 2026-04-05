@@ -20,6 +20,10 @@ import {
 } from '../utils/contractExtraction';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
+import { useDealDocuments, useInvalidateDealDocuments } from '../hooks/useDealDocuments';
+import { useDocumentLog, useInvalidateDocumentLog } from '../hooks/useDocumentLog';
+import { useChecklistDocLinks, useInvalidateChecklistDocLinks } from '../hooks/useChecklistDocLinks';
+import { useLinkedEmails } from '../hooks/useLinkedEmails';
 
 // ─── Timeline Fields ──────────────────────────────────────────────────────────
 const TIMELINE_FIELDS = [
@@ -1060,10 +1064,23 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
 
-  const [docs, setDocs] = useState<DealDocument[]>([]);
-  const [docLinks, setDocLinks] = useState<DocLink[]>([]);
-  const [linkedEmails, setLinkedEmails] = useState<LinkedEmailDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  // ── TanStack Query hooks ──
+  const { data: docs = [], isLoading: loading } = useDealDocuments(deal.id);
+  const invalidateDocs = useInvalidateDealDocuments();
+
+  const { data: rawDocLinks = [] } = useChecklistDocLinks(deal.id);
+  const docLinks = rawDocLinks as DocLink[];
+  const invalidateDocLinks = useInvalidateChecklistDocLinks();
+
+  const { threads: linkedEmailThreads } = useLinkedEmails(deal.id);
+  const linkedEmails: LinkedEmailDoc[] = linkedEmailThreads.map((t: any) => ({
+    thread_id: t.gmail_thread_id,
+    subject: t.thread_subject ?? '(No subject)',
+    from_address: t.thread_from ?? '',
+    thread_date: t.thread_date ?? '',
+    score: t.score ?? 0,
+    link_method: t.link_method ?? '',
+  }));
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['category']>('purchase_contract');
@@ -1073,8 +1090,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
   // Activity log state
   const [showActivityLog, setShowActivityLog] = useState(false);
-  const [activityLog, setActivityLog] = useState<any[]>([]);
-  const [loadingLog, setLoadingLog] = useState(false);
+  const { data: activityLog = [], isLoading: loadingLog } = useDocumentLog(deal.id, showActivityLog);
+  const invalidateLog = useInvalidateDocumentLog();
   const [showArchived, setShowArchived] = useState(false);
 
   // Address mismatch / classify state
@@ -1109,48 +1126,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadDocuments();
-    loadDocLinks();
-    loadLinkedEmails();
-  }, [deal.id]);
 
-  const loadDocuments = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('deal_documents')
-      .select('*')
-      .eq('deal_id', deal.id)
-      .order('created_at', { ascending: false });
-    if (!error && data) setDocs(data as DealDocument[]);
-    setLoading(false);
-  };
-
-  const loadDocLinks = async () => {
-    const { data, error } = await supabase
-      .from('checklist_document_links')
-      .select('*')
-      .eq('deal_id', deal.id);
-    if (!error && data) setDocLinks(data as DocLink[]);
-  };
-
-  const loadLinkedEmails = async () => {
-    const { data, error } = await supabase
-      .from('email_thread_links')
-      .select('gmail_thread_id, score, link_method, thread_subject, thread_from, thread_date')
-      .eq('deal_id', deal.id)
-      .order('created_at', { ascending: false });
-    if (!error && data) {
-      setLinkedEmails(data.map((r: any) => ({
-        thread_id: r.gmail_thread_id,
-        subject: r.thread_subject ?? '(No subject)',
-        from_address: r.thread_from ?? '',
-        thread_date: r.thread_date ?? '',
-        score: r.score ?? 0,
-        link_method: r.link_method ?? '',
-      })));
-    }
-  };
 
   // ─── Document Log ────────────────────────────────────────────────────────────
   const logDocumentAction = async (
@@ -1171,16 +1147,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     });
   };
 
-  const loadActivityLog = async () => {
-    setLoadingLog(true);
-    const { data } = await supabase
-      .from('document_log')
-      .select('*')
-      .eq('deal_id', deal.id)
-      .order('created_at', { ascending: false });
-    if (data) setActivityLog(data);
-    setLoadingLog(false);
-  };
+
 
   const formatLogDate = (iso: string) => {
     const d = new Date(iso);
@@ -1318,7 +1285,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       if (dbErr) throw dbErr;
 
       const newDoc = inserted as DealDocument;
-      setDocs(prev => [newDoc, ...prev]);
+      invalidateDocs(deal.id);
 
       // Log the upload
       await logDocumentAction(
@@ -1328,6 +1295,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         undefined,
         `${userName} uploaded ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType}`
       );
+      invalidateLog(deal.id);
 
       // Auto-create task for certain document types
       const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
@@ -1399,7 +1367,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     if (dbErr) throw dbErr;
 
     const newDoc = inserted as DealDocument;
-    setDocs(prev => [newDoc, ...prev]);
+    invalidateDocs(deal.id);
 
     // Log the upload
     await logDocumentAction(
@@ -1409,6 +1377,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       undefined,
       `${userName} uploaded ${DOC_TYPE_CONFIG[docType ?? 'other']?.label ?? docType}`
     );
+    invalidateLog(deal.id);
 
     // Auto-create task for certain document types
     const typeConfig = DOC_TYPE_CONFIG[docType ?? 'other'];
@@ -1521,7 +1490,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
     await supabase.storage.from('deal-documents').remove([doc.storage_path]);
     await supabase.from('deal_documents').delete().eq('id', doc.id);
-    setDocs(prev => prev.filter(d => d.id !== doc.id));
+    invalidateDocs(deal.id);
   };
 
   const handleArchive = async (doc: DealDocument) => {
@@ -1530,8 +1499,9 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       .from('deal_documents')
       .update({ archived: true, archived_at: new Date().toISOString(), archived_by: profile?.id })
       .eq('id', doc.id);
-    setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, archived: true } : d));
+    invalidateDocs(deal.id);
     await logDocumentAction(doc.doc_id, doc.id, 'archived', undefined, `Archived by ${userName}`);
+    invalidateLog(deal.id);
   };
 
   // ─── Extraction handlers ─────────────────────────────────────────────────
@@ -1540,7 +1510,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     onUpdate(updated);
     if (comparisonDoc) {
       await supabase.from('deal_documents').update({ extracted_at: new Date().toISOString() }).eq('id', comparisonDoc.id);
-      setDocs(prev => prev.map(d => d.id === comparisonDoc.id ? { ...d, extracted_at: new Date().toISOString() } : d));
+      invalidateDocs(deal.id);
     }
     setComparisonDoc(null);
   };
@@ -1550,7 +1520,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     onUpdate(updated);
     if (manualExtractDoc) {
       await supabase.from('deal_documents').update({ extracted_at: new Date().toISOString() }).eq('id', manualExtractDoc.id);
-      setDocs(prev => prev.map(d => d.id === manualExtractDoc.id ? { ...d, extracted_at: new Date().toISOString() } : d));
+      invalidateDocs(deal.id);
     }
     setManualExtractDoc(null);
   };
@@ -1570,13 +1540,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       .select()
       .single();
     if (!error && data) {
-      setDocLinks(prev => [...prev, data as DocLink]);
+      invalidateDocLinks(deal.id);
     }
   };
 
   const handleUnlink = async (linkId: string) => {
     await supabase.from('checklist_document_links').delete().eq('id', linkId);
-    setDocLinks(prev => prev.filter(l => l.id !== linkId));
+    invalidateDocLinks(deal.id);
   };
 
   // ─── Derived data ────────────────────────────────────────────────────────
@@ -1765,7 +1735,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowActivityLog(true); loadActivityLog(); }}
+            onClick={() => { setShowActivityLog(true); }}
             className="btn btn-sm btn-ghost gap-1"
           >
             <Clock size={13} /> Document Activity
