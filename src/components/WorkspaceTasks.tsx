@@ -244,7 +244,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
     const menuOpen     = taskMenuId === task.id;
 
     return (
-      <div className="rounded-lg border mb-2 overflow-hidden">
+      <div className="rounded-lg border mb-2 overflow-visible">
         <div className={`flex items-start gap-3 p-3 ${cfg.bg} group`}>
           <div className={`w-2 h-2 rounded-full flex-none mt-1.5 ${cfg.dot}`} />
           <div className="flex-1 min-w-0">
@@ -291,7 +291,7 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [] }) 
                 <MoreVertical size={13} />
               </button>
               {menuOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[160px] py-1">
+                <div className="absolute right-0 bottom-full mb-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[160px] py-1">
                   {!task.completedAt && (
                     <button
                       className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
