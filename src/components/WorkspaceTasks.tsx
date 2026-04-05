@@ -94,6 +94,7 @@ interface Props {
   onUpdate: (d: Deal) => void;
   users?: AppUser[];
   onSendRequest?: (taskId: string, requestType: string) => void;
+  onGoToRequests?: () => void;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
-export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest }) => {
+export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], onSendRequest, onGoToRequests }) => {
   const tasks = deal.tasks ?? [];
 
   const invalidateDealTasks = useInvalidateDealTasks();
