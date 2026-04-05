@@ -294,7 +294,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [titleSearch, setTitleSearch] = useState('');
   const [titleDropdownOpen, setTitleDropdownOpen] = useState(false);
   const { data: titleEscrowContactsRaw } = useTitleEscrowContacts();
-  const { data: allOrgContacts } = useOrgContacts(orgId);
+  const { data: allOrgContacts } = useOrgContacts(primaryOrgId());
   const [localNewTitleContacts, setLocalNewTitleContacts] = useState<ContactRecord[]>([]);
   const allContacts = [
     ...((titleEscrowContactsRaw ?? []) as unknown as ContactRecord[]),
