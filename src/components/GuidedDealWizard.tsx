@@ -1161,10 +1161,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       orgId: primaryOrgId() ?? undefined,
     };
     // ── Save deal to DB FIRST so FK constraints are satisfied ──────────────────
+    // Declared here (outside try) so participants block at line ~1326 can reference it
+    let importSessionId: string | null = null;
     try {
       await saveSingleDeal(deal, profile?.id);
       // ── Create import session ─────────────────────────────────────────────
-      let importSessionId: string | null = null;
       try {
         const { data: sessionRow } = await supabase.from('import_sessions').insert({
           deal_id: deal.id,
@@ -2998,7 +2999,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </button>
               )}
               {step === TOTAL_STEPS && (
-                <button onClick={handleCreate} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading || isCreating}>
+                <button onClick={() => handleCreate()} className="btn btn-primary btn-sm gap-1.5" disabled={aiLoading || isCreating}>
                   {isCreating ? <><span className="loading loading-spinner loading-xs"/>{contractFile ? 'Uploading contract…' : 'Creating…'}</> : <><Building2 size={13} /> Create Deal</>}
                 </button>
               )}
