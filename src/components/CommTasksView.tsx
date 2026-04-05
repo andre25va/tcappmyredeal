@@ -13,6 +13,7 @@ import { Button } from "./ui/Button";
 import { useAllCommTasks, useInvalidateAllCommTasks } from '../hooks/useAllCommTasks';
 import { useOrgContacts } from '../hooks/useOrgContacts';
 import { useOrgDeals } from '../hooks/useOrgDeals';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -560,8 +561,11 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
   const invalidateAllCommTasks = useInvalidateAllCommTasks();
 
   const { data: tasks = [], isLoading: tasksLoading } = useAllCommTasks();
-  const { data: rawContacts = [], isLoading: contactsLoading } = useOrgContacts();
-  const { data: rawDeals = [], isLoading: dealsLoading } = useOrgDeals();
+  const { primaryOrgId: primaryOrgIdFn } = useAuth();
+  const primaryOrgId = primaryOrgIdFn();
+
+  const { data: rawContacts = [], isLoading: contactsLoading } = useOrgContacts(primaryOrgId);
+  const { data: rawDeals = [], isLoading: dealsLoading } = useOrgDeals(primaryOrgId);
 
   const loading = tasksLoading || contactsLoading || dealsLoading;
 
