@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap, Paperclip, ExternalLink, UserPlus
+  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap, Paperclip, ExternalLink, UserPlus, Link2
 } from 'lucide-react';
 import { CallButton } from './CallButton';
 import type {
@@ -34,6 +34,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [smsAddContactPhone, setSmsAddContactPhone] = useState<string>('');
   const [smsAddContactModalOpen, setSmsAddContactModalOpen] = useState(false);
+  const [smsLinkModalOpen, setSmsLinkModalOpen] = useState(false);
+  const [smsLinkSearch, setSmsLinkSearch] = useState('');
+  const [smsLinkSaving, setSmsLinkSaving] = useState(false);
   const [allContactsForModal, setAllContactsForModal] = useState<ContactRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -1189,18 +1192,33 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                 {(p.name || p.phone || '?').charAt(0).toUpperCase()}
               </div>
               {!p.contact_id && p.phone && (
-                <button
-                  title={`Save ${p.phone} to contacts`}
-                  className="flex items-center gap-1 text-[10px] text-primary hover:text-primary-focus bg-primary/10 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
-                  onClick={() => {
-                    setSmsAddContactPhone(p.phone);
-                    setSmsAddContactModalOpen(true);
-                    loadAllContactsForModal();
-                  }}
-                >
-                  <UserPlus size={10} />
-                  <span>Save</span>
-                </button>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    title={`Save ${p.phone} as new contact`}
+                    className="flex items-center gap-1 text-[10px] text-primary hover:text-primary-focus bg-primary/10 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
+                    onClick={() => {
+                      setSmsAddContactPhone(p.phone);
+                      setSmsAddContactModalOpen(true);
+                      loadAllContactsForModal();
+                    }}
+                  >
+                    <UserPlus size={10} />
+                    <span>Save</span>
+                  </button>
+                  <button
+                    title={`Link ${p.phone} to an existing contact`}
+                    className="flex items-center gap-1 text-[10px] text-secondary hover:text-secondary-focus bg-secondary/10 hover:bg-secondary/20 rounded px-1.5 py-0.5 transition-colors"
+                    onClick={() => {
+                      setSmsAddContactPhone(p.phone);
+                      setSmsLinkSearch('');
+                      setSmsLinkModalOpen(true);
+                      loadAllContactsForModal();
+                    }}
+                  >
+                    <Link2 size={10} />
+                    <span>Link</span>
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -1781,6 +1799,116 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       {EmailComposeModal}
       {ExtractionModal}
     </div>
+
+  {/* SMS → Link to Existing Contact modal */}
+  {smsLinkModalOpen && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-md border border-base-300">
+
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-base-300">
+          <div>
+            <h3 className="font-bold text-base-content">Link to Existing Contact</h3>
+            <p className="text-xs text-base-content/50 mt-0.5">
+              Add <span className="font-mono text-primary">{smsAddContactPhone}</span> to an existing contact's record
+            </p>
+          </div>
+          <button
+            className="btn btn-ghost btn-xs btn-square"
+            onClick={() => { setSmsLinkModalOpen(false); setSmsAddContactPhone(''); }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="p-4 border-b border-base-200">
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full"
+            placeholder="Search by name, email, or phone…"
+            value={smsLinkSearch}
+            onChange={e => setSmsLinkSearch(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        {/* Contact list */}
+        <div className="max-h-72 overflow-y-auto divide-y divide-base-200">
+          {(() => {
+            const q = smsLinkSearch.toLowerCase();
+            const filtered = allContactsForModal.filter((c: any) => {
+              const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+              return !q || name.includes(q) || (c.email || '').toLowerCase().includes(q) || (c.phone || '').includes(q);
+            });
+            if (filtered.length === 0) {
+              return <div className="px-4 py-6 text-center text-sm text-base-content/40">No contacts found</div>;
+            }
+            return filtered.map((c: any) => (
+              <button
+                key={c.id}
+                className="w-full text-left px-4 py-2.5 hover:bg-base-200 transition-colors flex items-center gap-3 disabled:opacity-50"
+                disabled={smsLinkSaving}
+                onClick={async () => {
+                  setSmsLinkSaving(true);
+                  try {
+                    const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+                    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                    // Add phone to existing contact
+                    await fetch(`${sbUrl}/rest/v1/contacts?id=eq.${c.id}`, {
+                      method: 'PATCH',
+                      headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+                      body: JSON.stringify({ phone: smsAddContactPhone }),
+                    });
+                    // Link conversation participant to this contact
+                    if (selectedConv) {
+                      const updatedParticipants = selectedConv.participants.map((p: any) =>
+                        p.phone === smsAddContactPhone
+                          ? { ...p, contact_id: c.id, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() }
+                          : p
+                      );
+                      await fetch(`${sbUrl}/rest/v1/conversations?id=eq.${selectedConv.id}`, {
+                        method: 'PATCH',
+                        headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+                        body: JSON.stringify({ participants: updatedParticipants }),
+                      });
+                      setSelectedConv(prev => prev ? { ...prev, participants: updatedParticipants } : prev);
+                    }
+                    setSmsLinkModalOpen(false);
+                    setSmsAddContactPhone('');
+                  } catch (e) {
+                    console.error('Failed to link contact:', e);
+                  } finally {
+                    setSmsLinkSaving(false);
+                  }
+                }}
+              >
+                <div className="w-8 h-8 rounded-full bg-secondary/15 flex items-center justify-center text-xs font-bold text-secondary shrink-0">
+                  {(c.first_name || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-base-content truncate">
+                    {[c.first_name, c.last_name].filter(Boolean).join(' ') || '—'}
+                  </div>
+                  <div className="text-xs text-base-content/50 truncate">
+                    {c.phone ? `📱 ${c.phone}` : '📱 No phone'}
+                    {c.email ? ` · ${c.email}` : ''}
+                  </div>
+                </div>
+                {c.phone && c.phone !== smsAddContactPhone && (
+                  <span className="text-[10px] text-warning bg-warning/10 rounded px-1.5 py-0.5 shrink-0 whitespace-nowrap">
+                    will overwrite
+                  </span>
+                )}
+                {smsLinkSaving && <span className="loading loading-spinner loading-xs ml-2 shrink-0" />}
+              </button>
+            ));
+          })()}
+        </div>
+
+      </div>
+    </div>
+  )}
 
   {/* SMS → Add to Contacts modal */}
   {smsAddContactModalOpen && (
