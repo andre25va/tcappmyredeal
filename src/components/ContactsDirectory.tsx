@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from "./ui/Button";
 import { useOrgContacts, useInvalidateOrgContacts } from '../hooks/useOrgContacts';
+import { ContactProfilePanel } from './ContactProfilePanel';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -153,6 +154,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
+  const [profileContact, setProfileContact] = useState<ContactRecord | null>(null);
 
   // Onboarding wizard
   const [onboardingContact, setOnboardingContact] = useState<ContactRecord | null>(null);
@@ -364,7 +366,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                 <tr
                   key={c.id}
                   className="hover:bg-base-200 cursor-pointer"
-                  onClick={() => openEdit(c)}
+                  onClick={() => setProfileContact(c)}
                 >
                   <td>
                     <div className="flex items-center gap-2">
@@ -438,6 +440,15 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
         <div className="mt-2">
           <p className="text-xs text-base-content/40 mb-2">Click a category above to view contacts, or use search.</p>
         </div>
+      )}
+
+      {/* Contact profile panel */}
+      {profileContact && (
+        <ContactProfilePanel
+          contact={profileContact}
+          onClose={() => setProfileContact(null)}
+          onEdit={(c) => { setProfileContact(null); openEdit(c); }}
+        />
       )}
 
       {/* Contact modal — shared with contacts page */}
