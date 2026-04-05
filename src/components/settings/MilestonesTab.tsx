@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Plus, Pencil, Trash2, Check, X, Loader2, AlertC
 import { createClient } from '@supabase/supabase-js';
 import { ContactRecord, DealMilestone, MilestoneNotificationSetting, CustomMilestone } from '../../types';
 import { MILESTONE_ORDER, MILESTONE_LABELS } from '../../utils/taskTemplates';
+import { useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -448,7 +449,6 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // ─── Milestone Catalog state ────────────────────────────────────────────
-  const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
   const [addingType, setAddingType] = useState(false);
   const [newTypeLabel, setNewTypeLabel] = useState('');
   const [savingNewType, setSavingNewType] = useState(false);
@@ -462,18 +462,21 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
 
   const agentClients = contactRecords.filter(c => c.isClient);
 
+  // ── Shared TanStack Query hooks ──────────────────────────────────────────
+  const { data: milestoneTypes = [] } = useMilestoneTypes();
+  const invalidateMilestoneTypes = useInvalidateMilestoneTypes();
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setLoadError(null);
 
-      const [settingsRes, customRes, catalogRes] = await Promise.all([
+      const [settingsRes, customRes] = await Promise.all([
         supabase.from('milestone_notification_settings').select('*').order('created_at'),
         supabase
           .from('custom_milestones')
           .select('*, contacts(id, first_name, last_name)')
           .order('created_at'),
-        supabase.from('milestone_types').select('*').order('sort_order'),
       ]);
 
       if (settingsRes.error) {
@@ -533,12 +536,6 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
             };
           })
         );
-      }
-
-      if (catalogRes.error) {
-        console.error('Error loading milestone types:', catalogRes.error.message);
-      } else {
-        setMilestoneTypes(catalogRes.data || []);
       }
 
       setLoading(false);
@@ -727,7 +724,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     if (error) {
       setCatalogError(error.message);
     } else if (data) {
-      setMilestoneTypes(prev => [...prev, data as MilestoneType]);
+      invalidateMilestoneTypes();
       setNewTypeLabel('');
       setAddingType(false);
     }
@@ -746,7 +743,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     if (error) {
       setCatalogError(error.message);
     } else {
-      setMilestoneTypes(prev => prev.map(mt => mt.id === id ? { ...mt, label } : mt));
+      invalidateMilestoneTypes();
       setEditingTypeId(null);
     }
     setSavingEditType(false);
@@ -775,7 +772,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     if (error) {
       setDeleteTypeError(error.message);
     } else {
-      setMilestoneTypes(prev => prev.filter(mt => mt.id !== id));
+      invalidateMilestoneTypes();
       setDeleteTypeId(null);
     }
     setDeletingType(false);

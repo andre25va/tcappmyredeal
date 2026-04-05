@@ -310,7 +310,7 @@ export const SettingsView: React.FC<Props> = ({
         )}
         {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'milestones' && <MilestonesTab contactRecords={contactRecords} />}
-        {tab === 'mls-templates' && <MlsTemplatesTab mlsEntries={mlsEntries} />}
+        {tab === 'mls-templates' && <MlsTemplatesTab />}
         {tab === 'client-portal' && <ClientPortalTab />}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
