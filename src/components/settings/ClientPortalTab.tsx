@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import {
   Globe,
@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { usePortalSettings, useInvalidatePortalSettings } from '../../hooks/usePortalSettings';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PortalSettings {
@@ -41,15 +42,6 @@ const ALL_ROLES: { value: string; label: string }[] = [
   { value: 'appraiser', label: 'Appraiser' },
 ];
 
-const SETTINGS_KEYS = [
-  'portal_show_status',
-  'portal_show_closing_date',
-  'portal_show_next_item',
-  'portal_welcome_message',
-  'portal_request_types',
-  'portal_allowed_roles',
-] as const;
-
 const DEFAULT_SETTINGS: PortalSettings = {
   portal_show_status: true,
   portal_show_closing_date: true,
@@ -60,16 +52,9 @@ const DEFAULT_SETTINGS: PortalSettings = {
 };
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
-async function loadPortalSettings(): Promise<PortalSettings> {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('key, value')
-    .in('key', [...SETTINGS_KEYS]);
-
-  if (error) throw error;
-
+function mapRawToSettings(raw: { key: string; value: unknown }[]): PortalSettings {
   const map: Record<string, unknown> = {};
-  for (const row of data ?? []) map[row.key] = row.value;
+  for (const row of raw) map[row.key] = row.value;
 
   return {
     portal_show_status:
@@ -114,20 +99,26 @@ async function savePortalSettings(settings: PortalSettings): Promise<void> {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function ClientPortalTab() {
+  const { data: rawSettings, isLoading } = usePortalSettings();
+  const invalidatePortalSettings = useInvalidatePortalSettings();
+
+  const loadedSettings = useMemo(
+    () => mapRawToSettings(rawSettings ?? []),
+    [rawSettings],
+  );
+
   const [settings, setSettings] = useState<PortalSettings>(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
+  // Sync local state when hook data loads/refreshes
   useEffect(() => {
-    loadPortalSettings()
-      .then((s) => setSettings(s))
-      .catch(() =>
-        setToast({ type: 'error', msg: 'Failed to load portal settings.' }),
-      )
-      .finally(() => setLoading(false));
-  }, []);
+    if (!isLoading && rawSettings) {
+      setSettings(loadedSettings);
+      setDirty(false);
+    }
+  }, [isLoading, rawSettings, loadedSettings]);
 
   const showToast = (type: 'success' | 'error', msg: string) => {
     setToast({ type, msg });
@@ -161,6 +152,7 @@ export function ClientPortalTab() {
     try {
       await savePortalSettings(settings);
       setDirty(false);
+      invalidatePortalSettings();
       showToast('success', 'Portal settings saved!');
     } catch {
       showToast('error', 'Failed to save settings. Please try again.');
@@ -169,19 +161,12 @@ export function ClientPortalTab() {
     }
   };
 
-  const handleReset = async () => {
-    setLoading(true);
-    try {
-      const fresh = await loadPortalSettings();
-      setSettings(fresh);
-      setDirty(false);
-    } finally {
-      setLoading(false);
-    }
+  const handleReset = () => {
+    invalidatePortalSettings();
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  if (loading) {
+  if (isLoading) {
     return (
       <LoadingSpinner label="Loading portal settings…" />
     );

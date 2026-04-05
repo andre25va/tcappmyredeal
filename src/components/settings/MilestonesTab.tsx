@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { ContactRecord, DealMilestone, MilestoneNotificationSetting, CustomMilestone } from '../../types';
 import { MILESTONE_ORDER, MILESTONE_LABELS } from '../../utils/taskTemplates';
 import { useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
+import { useMilestoneNotifSettings, useInvalidateMilestoneNotifSettings } from '../../hooks/useMilestoneNotifSettings';
+import { useCustomMilestones, useInvalidateCustomMilestones } from '../../hooks/useCustomMilestones';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -436,10 +438,67 @@ const emptyCustomForm = (): CustomMilestoneFormData => ({
 
 /* ─── Main Component ─── */
 export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
-  const [settings, setSettings] = useState<MilestoneNotificationSetting[]>([]);
-  const [customMilestones, setCustomMilestones] = useState<CustomMilestone[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: notifSettingsRaw = [], isLoading: loadingNotif, error: notifError } = useMilestoneNotifSettings();
+  const invalidateNotifSettings = useInvalidateMilestoneNotifSettings();
+  const { data: customMilestonesRaw = [], isLoading: loadingCustom, error: customError } = useCustomMilestones();
+  const invalidateCustomMilestones = useInvalidateCustomMilestones();
+
+  const loading = loadingNotif || loadingCustom;
+  const loadError = notifError ? (notifError as Error).message : null;
+
+  const settings = useMemo<MilestoneNotificationSetting[]>(
+    () =>
+      notifSettingsRaw.map((d: any) => ({
+        id: d.id,
+        milestone: d.milestone,
+        notifyBuyerAgent: d.notify_buyer_agent,
+        notifySellerAgent: d.notify_seller_agent,
+        notifyLender: d.notify_lender,
+        notifyTitle: d.notify_title,
+        notifyBuyer: d.notify_buyer,
+        notifySeller: d.notify_seller,
+        sendEmail: d.send_email,
+        sendSms: d.send_sms,
+        emailSubject: d.email_subject,
+        emailBody: d.email_body,
+        smsBody: d.sms_body,
+        dueDaysFromContract: d.due_days_from_contract ?? undefined,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      })),
+    [notifSettingsRaw],
+  );
+
+  const customMilestones = useMemo<CustomMilestone[]>(
+    () =>
+      customMilestonesRaw.map((d: any) => {
+        const contact = d.contacts as { id: string; first_name: string; last_name: string } | null;
+        return {
+          id: d.id,
+          agentContactId: d.agent_contact_id,
+          name: d.name,
+          description: d.description,
+          insertAfter: d.insert_after,
+          notifyBuyerAgent: d.notify_buyer_agent,
+          notifySellerAgent: d.notify_seller_agent,
+          notifyLender: d.notify_lender,
+          notifyTitle: d.notify_title,
+          notifyBuyer: d.notify_buyer,
+          notifySeller: d.notify_seller,
+          sendEmail: d.send_email,
+          sendSms: d.send_sms,
+          emailSubject: d.email_subject,
+          emailBody: d.email_body,
+          smsBody: d.sms_body,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+          agentName: contact
+            ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+            : undefined,
+        };
+      }),
+    [customMilestonesRaw],
+  );
 
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
@@ -466,94 +525,8 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const { data: milestoneTypes = [] } = useMilestoneTypes();
   const invalidateMilestoneTypes = useInvalidateMilestoneTypes();
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setLoadError(null);
-
-      const [settingsRes, customRes] = await Promise.all([
-        supabase.from('milestone_notification_settings').select('*').order('created_at'),
-        supabase
-          .from('custom_milestones')
-          .select('*, contacts(id, first_name, last_name)')
-          .order('created_at'),
-      ]);
-
-      if (settingsRes.error) {
-        setLoadError(settingsRes.error.message);
-      } else {
-        setSettings(
-          (settingsRes.data || []).map(d => ({
-            id: d.id,
-            milestone: d.milestone,
-            notifyBuyerAgent: d.notify_buyer_agent,
-            notifySellerAgent: d.notify_seller_agent,
-            notifyLender: d.notify_lender,
-            notifyTitle: d.notify_title,
-            notifyBuyer: d.notify_buyer,
-            notifySeller: d.notify_seller,
-            sendEmail: d.send_email,
-            sendSms: d.send_sms,
-            emailSubject: d.email_subject,
-            emailBody: d.email_body,
-            smsBody: d.sms_body,
-            dueDaysFromContract: d.due_days_from_contract ?? undefined,
-            createdAt: d.created_at,
-            updatedAt: d.updated_at,
-          }))
-        );
-      }
-
-      if (customRes.error) {
-        // Non-fatal; custom milestones may be empty
-        console.error('Error loading custom milestones:', customRes.error.message);
-      } else {
-        setCustomMilestones(
-          (customRes.data || []).map(d => {
-            const contact = d.contacts as { id: string; first_name: string; last_name: string } | null;
-            return {
-              id: d.id,
-              agentContactId: d.agent_contact_id,
-              name: d.name,
-              description: d.description,
-              insertAfter: d.insert_after,
-              notifyBuyerAgent: d.notify_buyer_agent,
-              notifySellerAgent: d.notify_seller_agent,
-              notifyLender: d.notify_lender,
-              notifyTitle: d.notify_title,
-              notifyBuyer: d.notify_buyer,
-              notifySeller: d.notify_seller,
-              sendEmail: d.send_email,
-              sendSms: d.send_sms,
-              emailSubject: d.email_subject,
-              emailBody: d.email_body,
-              smsBody: d.sms_body,
-              createdAt: d.created_at,
-              updatedAt: d.updated_at,
-              agentName: contact
-                ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
-                : undefined,
-            };
-          })
-        );
-      }
-
-      setLoading(false);
-    };
-
-    load();
-  }, []);
-
-  const handleSettingSaved = (updated: MilestoneNotificationSetting) => {
-    setSettings(prev => {
-      const idx = prev.findIndex(s => s.milestone === updated.milestone);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = updated;
-        return next;
-      }
-      return [...prev, updated];
-    });
+  const handleSettingSaved = (_updated: MilestoneNotificationSetting) => {
+    invalidateNotifSettings();
   };
 
   const openAddCustom = () => {
@@ -626,33 +599,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
       if (error) {
         setCustomSaveError(error.message);
       } else if (data) {
-        const agentRecord = contactRecords.find(c => c.id === data.agent_contact_id);
-        setCustomMilestones(prev =>
-          prev.map(cm =>
-            cm.id === editingCustomId
-              ? {
-                  ...cm,
-                  name: data.name,
-                  description: data.description,
-                  insertAfter: data.insert_after,
-                  agentContactId: data.agent_contact_id,
-                  notifyBuyerAgent: data.notify_buyer_agent,
-                  notifySellerAgent: data.notify_seller_agent,
-                  notifyLender: data.notify_lender,
-                  notifyTitle: data.notify_title,
-                  notifyBuyer: data.notify_buyer,
-                  notifySeller: data.notify_seller,
-                  sendEmail: data.send_email,
-                  sendSms: data.send_sms,
-                  emailSubject: data.email_subject,
-                  emailBody: data.email_body,
-                  smsBody: data.sms_body,
-                  updatedAt: data.updated_at,
-                  agentName: agentRecord?.fullName,
-                }
-              : cm
-          )
-        );
+        invalidateCustomMilestones();
         setShowCustomForm(false);
         setEditingCustomId(null);
       }
@@ -666,31 +613,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
       if (error) {
         setCustomSaveError(error.message);
       } else if (data) {
-        const agentRecord = contactRecords.find(c => c.id === data.agent_contact_id);
-        setCustomMilestones(prev => [
-          ...prev,
-          {
-            id: data.id,
-            agentContactId: data.agent_contact_id,
-            name: data.name,
-            description: data.description,
-            insertAfter: data.insert_after,
-            notifyBuyerAgent: data.notify_buyer_agent,
-            notifySellerAgent: data.notify_seller_agent,
-            notifyLender: data.notify_lender,
-            notifyTitle: data.notify_title,
-            notifyBuyer: data.notify_buyer,
-            notifySeller: data.notify_seller,
-            sendEmail: data.send_email,
-            sendSms: data.send_sms,
-            emailSubject: data.email_subject,
-            emailBody: data.email_body,
-            smsBody: data.sms_body,
-            createdAt: data.created_at,
-            updatedAt: data.updated_at,
-            agentName: agentRecord?.fullName,
-          },
-        ]);
+        invalidateCustomMilestones();
         setShowCustomForm(false);
       }
     }
@@ -700,7 +623,7 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const handleDeleteCustom = async (id: string) => {
     const { error } = await supabase.from('custom_milestones').delete().eq('id', id);
     if (!error) {
-      setCustomMilestones(prev => prev.filter(cm => cm.id !== id));
+      invalidateCustomMilestones();
     }
     setDeleteConfirmId(null);
   };

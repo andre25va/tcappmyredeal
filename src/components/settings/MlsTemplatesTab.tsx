@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Trash2, Check, X, Loader2, AlertCircle, LayoutTemplate,
   ChevronRight, Save, ToggleLeft, ToggleRight,
@@ -6,6 +6,9 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { useMilestoneTypes } from '../../hooks/useMilestoneTypes';
 import { useMlsEntries } from '../../hooks/useMlsEntries';
+import { useChecklistTemplates, useInvalidateChecklistTemplates } from '../../hooks/useChecklistTemplates';
+import { useChecklistTemplateItems, useInvalidateChecklistTemplateItems } from '../../hooks/useChecklistTemplateItems';
+import { useMlsMilestoneConfig, useInvalidateMlsMilestoneConfig } from '../../hooks/useMlsMilestoneConfig';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -78,9 +81,7 @@ const emptyItem = (templateId: string, sortOrder: number): Omit<TemplateItem, 'i
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function MlsTemplatesTab() {
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -97,94 +98,51 @@ export function MlsTemplatesTab() {
   // ── Shared TanStack Query hooks ──────────────────────────────────────────
   const { data: mlsEntries = [] } = useMlsEntries();
   const { data: milestoneTypes = [] } = useMilestoneTypes();
-  const [loadingMilestoneConfig, setLoadingMilestoneConfig] = useState(false);
+  const { data: checklistTemplatesRaw = [], isLoading: loadingTemplates } = useChecklistTemplates();
+  const { data: checklistItemsRaw = [], isLoading: loadingItems } = useChecklistTemplateItems();
+  const invalidateChecklistTemplates = useInvalidateChecklistTemplates();
+  const invalidateChecklistTemplateItems = useInvalidateChecklistTemplateItems();
+
+  const loading = loadingTemplates || loadingItems;
+
+  const templates = useMemo<Template[]>(
+    () =>
+      (checklistTemplatesRaw as any[]).map((t: any) => ({
+        ...t,
+        items: (checklistItemsRaw as any[]).filter((i: any) => i.template_id === t.id),
+      })),
+    [checklistTemplatesRaw, checklistItemsRaw],
+  );
+
+  // ── Milestone config via hook ──────────────────────────────────────────
+  const { data: milestoneConfigRaw = [], isLoading: loadingMilestoneConfig } = useMlsMilestoneConfig(draftMlsId || undefined);
+  const invalidateMilestoneConfig = useInvalidateMlsMilestoneConfig();
   const [savingMilestone, setSavingMilestone] = useState(false);
   const [milestoneSaved, setMilestoneSaved] = useState(false);
   const [milestoneError, setMilestoneError] = useState<string | null>(null);
-
-  // ── Load templates ──────────────────────────────────────────────────────
-  const loadTemplates = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [tplRes, itemsRes] = await Promise.all([
-        supabase
-          .from('checklist_templates')
-          .select('*')
-          .eq('checklist_type', 'milestone')
-          .order('name'),
-        supabase
-          .from('checklist_template_items')
-          .select('*')
-          .order('sort_order'),
-      ]);
-
-      if (tplRes.error) throw tplRes.error;
-      if (itemsRes.error) throw itemsRes.error;
-
-      const mapped: Template[] = (tplRes.data ?? []).map((t: any) => ({
-        ...t,
-        items: (itemsRes.data ?? []).filter((i: any) => i.template_id === t.id),
-      }));
-      setTemplates(mapped);
-
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load templates');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadTemplates(); }, [loadTemplates]);
-
-  // ── Load milestone config for a given MLS ──────────────────────────────
-  const loadMilestoneConfig = useCallback(async (mlsId: string, types: MilestoneType[]) => {
-    if (!mlsId) {
-      // No MLS selected — show all types unchecked
-      setMilestoneRows(types.map((mt, i) => ({
+  // Derive milestone rows from hook data + milestone types
+  const derivedMilestoneRows = useMemo<MilestoneDraftRow[]>(() => {
+    if (milestoneTypes.length === 0) return [];
+    const configMap = new Map<string, any>((milestoneConfigRaw as any[]).map((row: any) => [row.milestone_type_id, row]));
+    return milestoneTypes.map((mt: any, i: number) => {
+      const existing = configMap.get(mt.id);
+      return {
         milestone_type_id: mt.id,
         label: mt.label,
-        active: false,
-        due_days_from_contract: null,
-        sort_order: i + 1,
-        days_before_notification: 1,
-        notify_agent: true,
-        notify_client: false,
-      })));
-      return;
-    }
+        active: !!existing,
+        due_days_from_contract: existing?.due_days_from_contract ?? null,
+        sort_order: existing?.sort_order ?? i + 1,
+        days_before_notification: existing?.days_before_notification ?? 1,
+        notify_agent: existing?.notify_agent ?? true,
+        notify_client: existing?.notify_client ?? false,
+      };
+    });
+  }, [milestoneConfigRaw, milestoneTypes]);
 
-    setLoadingMilestoneConfig(true);
-    setMilestoneError(null);
-    try {
-      const { data, error } = await supabase
-        .from('mls_milestone_config')
-        .select('*')
-        .eq('mls_id', mlsId);
-
-      if (error) throw error;
-
-      const configMap = new Map<string, any>((data ?? []).map((row: any) => [row.milestone_type_id, row]));
-
-      setMilestoneRows(types.map((mt, i) => {
-        const existing = configMap.get(mt.id);
-        return {
-          milestone_type_id: mt.id,
-          label: mt.label,
-          active: !!existing,
-          due_days_from_contract: existing?.due_days_from_contract ?? null,
-          sort_order: existing?.sort_order ?? i + 1,
-          days_before_notification: existing?.days_before_notification ?? 1,
-          notify_agent: existing?.notify_agent ?? true,
-          notify_client: existing?.notify_client ?? false,
-        };
-      }));
-    } catch (e: any) {
-      setMilestoneError(e.message ?? 'Failed to load milestone config');
-    } finally {
-      setLoadingMilestoneConfig(false);
-    }
-  }, []);
+  // Use override if user has edited, otherwise use derived
+  useEffect(() => {
+    setMilestoneRows(derivedMilestoneRows);
+  }, [derivedMilestoneRows]);
 
   // ── Select template ─────────────────────────────────────────────────────
   const selectTemplate = useCallback((tpl: Template) => {
@@ -196,19 +154,7 @@ export function MlsTemplatesTab() {
     setSaved(false);
     setMilestoneSaved(false);
     setMilestoneError(null);
-    loadMilestoneConfig(tpl.mls_id ?? '', milestoneTypes);
-  }, [milestoneTypes, loadMilestoneConfig]);
-
-  // Re-load milestone config when milestoneTypes are loaded (if a template is already selected)
-  useEffect(() => {
-    if (selectedId && milestoneTypes.length > 0) {
-      const tpl = templates.find(t => t.id === selectedId);
-      if (tpl) {
-        loadMilestoneConfig(tpl.mls_id ?? '', milestoneTypes);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [milestoneTypes]);
+  }, []);
 
   // ── Create new template ─────────────────────────────────────────────────
   const createTemplate = async () => {
@@ -228,7 +174,7 @@ export function MlsTemplatesTab() {
         .single();
       if (err) throw err;
       const newTpl: Template = { ...data, items: [] };
-      setTemplates(prev => [...prev, newTpl]);
+      invalidateChecklistTemplates();
       selectTemplate(newTpl);
     } catch (e: any) {
       setError(e.message ?? 'Failed to create template');
@@ -244,7 +190,8 @@ export function MlsTemplatesTab() {
     try {
       await supabase.from('checklist_template_items').delete().eq('template_id', id);
       await supabase.from('checklist_templates').delete().eq('id', id);
-      setTemplates(prev => prev.filter(t => t.id !== id));
+      invalidateChecklistTemplates();
+      invalidateChecklistTemplateItems();
       if (selectedId === id) {
         setSelectedId(null);
         setDraftItems([]);
@@ -297,18 +244,8 @@ export function MlsTemplatesTab() {
         if (iErr) throw iErr;
       }
 
-      // Update local state
-      setTemplates(prev => prev.map(t =>
-        t.id === selectedId
-          ? {
-              ...t,
-              name: draftName.trim() || 'Untitled Template',
-              mls_id: draftMlsId || null,
-              deal_type: draftDealType,
-              items: validItems,
-            }
-          : t
-      ));
+      invalidateChecklistTemplates();
+      invalidateChecklistTemplateItems();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
@@ -357,6 +294,7 @@ export function MlsTemplatesTab() {
         if (dErr) throw dErr;
       }
 
+      invalidateMilestoneConfig(draftMlsId);
       setMilestoneSaved(true);
       setTimeout(() => setMilestoneSaved(false), 2500);
     } catch (e: any) {
@@ -519,7 +457,6 @@ export function MlsTemplatesTab() {
                   value={draftMlsId}
                   onChange={e => {
                     setDraftMlsId(e.target.value);
-                    loadMilestoneConfig(e.target.value, milestoneTypes);
                   }}
                 >
                   <option value="">— None —</option>

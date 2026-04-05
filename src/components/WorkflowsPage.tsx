@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Zap, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Clock, AlertTriangle, RefreshCw,
@@ -7,6 +7,8 @@ import {
 import { supabase } from '../lib/supabase';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
+import { useWorkflowRules, useInvalidateWorkflowRules } from '../hooks/useWorkflowRules';
+import { useWorkflowExecutions, useInvalidateWorkflowExecutions } from '../hooks/useWorkflowExecutions';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface WorkflowRule {
@@ -258,9 +260,13 @@ function CreateWorkflowModal({ onClose, onSaved }: CreateModalProps) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export function WorkflowsPage() {
-  const [rules, setRules] = useState<WorkflowRule[]>([]);
-  const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rules = [] as WorkflowRule[], isLoading: loadingRules } = useWorkflowRules();
+  const { data: executions = [] as WorkflowExecution[], isLoading: loadingExecs } = useWorkflowExecutions();
+  const invalidateRules = useInvalidateWorkflowRules();
+  const invalidateExecutions = useInvalidateWorkflowExecutions();
+
+  const loading = loadingRules || loadingExecs;
+
   const [tab, setTab] = useState<'rules' | 'log'>('rules');
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -268,25 +274,9 @@ export function WorkflowsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    const [{ data: rulesData }, { data: execData }] = await Promise.all([
-      supabase.from('workflow_rules').select('*').order('created_at'),
-      supabase
-        .from('workflow_executions')
-        .select('*')
-        .order('executed_at', { ascending: false })
-        .limit(100),
-    ]);
-    setRules(rulesData || []);
-    setExecutions(execData || []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await Promise.all([invalidateRules(), invalidateExecutions()]);
     setRefreshing(false);
   };
 
@@ -296,7 +286,7 @@ export function WorkflowsPage() {
       .from('workflow_rules')
       .update({ is_active: !rule.is_active })
       .eq('id', rule.id);
-    await loadData();
+    await invalidateRules();
     setToggling(null);
   };
 
@@ -304,18 +294,23 @@ export function WorkflowsPage() {
     if (!confirm('Delete this workflow? This cannot be undone.')) return;
     setDeleting(id);
     await supabase.from('workflow_rules').delete().eq('id', id);
-    await loadData();
+    await invalidateRules();
     setDeleting(null);
   };
 
-  const activeCount = rules.filter(r => r.is_active).length;
+  const handleWorkflowSaved = () => {
+    invalidateRules();
+    invalidateExecutions();
+  };
+
+  const activeCount = (rules as WorkflowRule[]).filter(r => r.is_active).length;
   const todayStr = new Date().toDateString();
-  const todayCount = executions.filter(e =>
+  const todayCount = (executions as WorkflowExecution[]).filter(e =>
     new Date(e.executed_at).toDateString() === todayStr
   ).length;
 
   // Executions grouped by rule for the rules tab
-  const execByRule = executions.reduce<Record<string, WorkflowExecution[]>>((acc, e) => {
+  const execByRule = (executions as WorkflowExecution[]).reduce<Record<string, WorkflowExecution[]>>((acc, e) => {
     if (e.rule_id) { acc[e.rule_id] = [...(acc[e.rule_id] || []), e]; }
     return acc;
   }, {});
@@ -331,7 +326,7 @@ export function WorkflowsPage() {
       {showCreate && (
         <CreateWorkflowModal
           onClose={() => setShowCreate(false)}
-          onSaved={loadData}
+          onSaved={handleWorkflowSaved}
         />
       )}
 
@@ -374,7 +369,7 @@ export function WorkflowsPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-gray-300" />
-            <span className="text-xs text-gray-500">{rules.length - activeCount} paused</span>
+            <span className="text-xs text-gray-500">{(rules as WorkflowRule[]).length - activeCount} paused</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Zap size={11} className="text-violet-400" />
@@ -394,7 +389,7 @@ export function WorkflowsPage() {
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
-              {t === 'rules' ? `Rules (${rules.length})` : `Execution Log (${executions.length})`}
+              {t === 'rules' ? `Rules (${(rules as WorkflowRule[]).length})` : `Execution Log (${(executions as WorkflowExecution[]).length})`}
             </button>
           ))}
         </div>
@@ -404,7 +399,7 @@ export function WorkflowsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {tab === 'rules' && (
           <div className="flex flex-col gap-3">
-            {rules.length === 0 && (
+            {(rules as WorkflowRule[]).length === 0 && (
               <div className="text-center py-16">
                 <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Zap size={24} className="text-violet-300" />
@@ -413,7 +408,7 @@ export function WorkflowsPage() {
                 <p className="text-sm text-gray-400 mt-1">Create your first automation above</p>
               </div>
             )}
-            {rules.map(rule => {
+            {(rules as WorkflowRule[]).map(rule => {
               const ruleExecs = execByRule[rule.id] || [];
               const isExpanded = expandedRule === rule.id;
               const lastRun = ruleExecs[0];
@@ -544,13 +539,13 @@ export function WorkflowsPage() {
 
         {tab === 'log' && (
           <div className="flex flex-col gap-2">
-            {executions.length === 0 && (
+            {(executions as WorkflowExecution[]).length === 0 && (
               <div className="text-center py-16">
                 <Clock size={28} className="text-gray-200 mx-auto mb-3" />
                 <p className="text-gray-400 text-sm">No executions yet</p>
               </div>
             )}
-            {executions.map(e => (
+            {(executions as WorkflowExecution[]).map(e => (
               <div key={e.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex items-start gap-3">
                 <div className="mt-0.5 flex-none">{STATUS_ICONS[e.status]}</div>
                 <div className="flex-1 min-w-0">
