@@ -362,50 +362,12 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                   </span>
                 </div>
               )}
-              {/* ── Contract & Closing dates ── */}
-              {(deal.contractDate || deal.closingDate) && (() => {
-                const today = new Date();
-                today.setHours(0,0,0,0);
-                const closingDateObj = deal.closingDate ? new Date(deal.closingDate + 'T00:00:00') : null;
-                const daysToClose = closingDateObj ? Math.ceil((closingDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                const closingColor =
-                  daysToClose === null ? 'text-black/50' :
-                  daysToClose < 0 ? 'text-black/40' :
-                  daysToClose <= 7 ? 'text-red-600 font-semibold' :
-                  daysToClose <= 14 ? 'text-amber-600 font-semibold' :
-                  'text-emerald-700';
-                const fmt = (d?: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-                return (
-                  <div className="mt-1.5 ml-[22px] flex items-center gap-3 flex-wrap">
-                    {deal.contractDate && (
-                      <span className="flex items-center gap-1 text-xs text-black/50">
-                        <span className="font-semibold text-black/40">Contract</span>
-                        <span>{fmt(deal.contractDate)}</span>
-                      </span>
-                    )}
-                    {deal.contractDate && deal.closingDate && (
-                      <span className="text-black/20 text-xs">·</span>
-                    )}
-                    {deal.closingDate && (
-                      <span className={`flex items-center gap-1 text-xs ${closingColor}`}>
-                        <span className="font-semibold opacity-70">Closing</span>
-                        <span>{fmt(deal.closingDate)}</span>
-                        {daysToClose !== null && daysToClose >= 0 && (
-                          <span className="ml-0.5 opacity-80">({daysToClose}d)</span>
-                        )}
-                        {daysToClose !== null && daysToClose < 0 && (
-                          <span className="ml-0.5 text-black/40">(closed)</span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
           </div>
 
           {/* Right: Focus View + Sheet + Edit Deal (hidden for viewers) */}
-          <div className="flex items-center gap-2 flex-none mt-0.5">
+          <div className="flex flex-col items-end gap-1.5 flex-none mt-0.5">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowFocusView(true)}
               title="Focus View"
@@ -485,7 +447,48 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
                 </div>
               )}
             </div>
-          </div>
+          </div>{/* end buttons row */}
+
+          {/* ── Contract & Closing dates under buttons ── */}
+          {(deal.contractDate || deal.closingDate) && (() => {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const closingDateObj = deal.closingDate ? new Date(deal.closingDate + 'T00:00:00') : null;
+            const daysToClose = closingDateObj ? Math.ceil((closingDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+            const closingColor =
+              daysToClose === null ? 'text-black/50' :
+              daysToClose < 0 ? 'text-black/40' :
+              daysToClose <= 7 ? 'text-red-600 font-semibold' :
+              daysToClose <= 14 ? 'text-amber-600 font-semibold' :
+              'text-emerald-700';
+            const fmt = (d?: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+            return (
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {deal.contractDate && (
+                  <span className="flex items-center gap-1 text-xs text-black/50">
+                    <span className="font-medium text-black/40">Contract</span>
+                    <span>{fmt(deal.contractDate)}</span>
+                  </span>
+                )}
+                {deal.contractDate && deal.closingDate && (
+                  <span className="text-black/20 text-xs">·</span>
+                )}
+                {deal.closingDate && (
+                  <span className={`flex items-center gap-1 text-xs ${closingColor}`}>
+                    <span className="font-medium opacity-70">Closing</span>
+                    <span>{fmt(deal.closingDate)}</span>
+                    {daysToClose !== null && daysToClose >= 0 && (
+                      <span className="ml-0.5 opacity-75">({daysToClose}d)</span>
+                    )}
+                    {daysToClose !== null && daysToClose < 0 && (
+                      <span className="ml-0.5 text-black/35">(closed)</span>
+                    )}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+          </div>{/* end right col flex-col */}
         </div>
       </div>
 
