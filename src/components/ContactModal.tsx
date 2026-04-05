@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  X, Save, Plus, Trash2, Mail, Phone, Star, Bell, UserPlus, Loader2, ExternalLink,
+  X, Save, Plus, Trash2, Mail, Phone, Star, Bell, UserPlus, Loader2, ExternalLink, Briefcase,
 } from 'lucide-react';
 import { ContactRecord, ContactRole, AgentTeamMember, Organization } from '../types';
 import {
@@ -346,6 +346,17 @@ export function ContactModal({
   const licenseUrlCacheRef = useRef<Record<string, string>>({});
   const [licenseUrls, setLicenseUrls] = useState<Record<string, string>>({});
 
+  // Deal history
+  const [dealHistory, setDealHistory] = useState<Array<{
+    id: string;
+    propertyAddress: string;
+    status: string;
+    dealRole: string;
+    side: string;
+    createdAt: string;
+  }>>([]);
+  const [dealHistoryLoading, setDealHistoryLoading] = useState(false);
+
   // ── Reset on open ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
@@ -403,6 +414,35 @@ export function ContactModal({
   useEffect(() => {
     form.licenses.forEach(l => { if (l.stateCode) fetchLicenseUrl(l.stateCode); });
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load deal history for existing contacts
+  useEffect(() => {
+    if (!isOpen || !isEditing || !form.id) return;
+    setDealHistoryLoading(true);
+    supabase
+      .from('deal_participants')
+      .select('deal_role, side, deals(id, property_address, status, created_at)')
+      .eq('contact_id', form.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) {
+          setDealHistory(
+            data
+              .filter((row: any) => row.deals)
+              .map((row: any) => ({
+                id: row.deals.id,
+                propertyAddress: row.deals.property_address || 'Unknown Address',
+                status: row.deals.status || 'unknown',
+                dealRole: row.deal_role || '',
+                side: row.side || '',
+                createdAt: row.deals.created_at,
+              }))
+          );
+        }
+        setDealHistoryLoading(false);
+      })
+      .catch(() => setDealHistoryLoading(false));
+  }, [isOpen, isEditing, form.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Duplicate contact detection (email/phone)
   useEffect(() => {
@@ -1152,6 +1192,50 @@ export function ContactModal({
                   <p className="text-xs text-base-content/40 text-center py-3">No MLS memberships added yet</p>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Deal History (read-only, edit mode only) */}
+          {isEditing && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Briefcase size={13} className="text-base-content/50" />
+                <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">Deal History</span>
+                {dealHistory.length > 0 && (
+                  <span className="badge badge-xs badge-primary">{dealHistory.length}</span>
+                )}
+              </div>
+              {dealHistoryLoading ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-base-content/40">
+                  <Loader2 size={12} className="animate-spin" /> Loading deals...
+                </div>
+              ) : dealHistory.length === 0 ? (
+                <p className="text-xs text-base-content/40 italic px-1">Not linked to any deals yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {dealHistory.map(d => {
+                    const statusColors: Record<string, string> = {
+                      active: 'badge-success',
+                      pending: 'badge-warning',
+                      closed: 'badge-ghost',
+                      cancelled: 'badge-error',
+                      withdrawn: 'badge-error',
+                    };
+                    const badgeClass = statusColors[d.status?.toLowerCase()] ?? 'badge-ghost';
+                    return (
+                      <div key={d.id} className="flex items-center justify-between border border-base-300 rounded-lg px-3 py-2 bg-base-50">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">{d.propertyAddress}</p>
+                          <p className="text-[10px] text-base-content/50 capitalize">
+                            {d.dealRole}{d.side ? ` · ${d.side} side` : ''}
+                          </p>
+                        </div>
+                        <span className={`badge badge-xs ml-2 capitalize ${badgeClass}`}>{d.status}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
