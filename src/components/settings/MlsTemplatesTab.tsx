@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Check, X, Loader2, AlertCircle, LayoutTemplate,
   ChevronRight, Save, ToggleLeft, ToggleRight,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { useMilestoneTypes } from '../../hooks/useMilestoneTypes';
 import { useMlsEntries } from '../../hooks/useMlsEntries';
 import { useChecklistTemplates, useInvalidateChecklistTemplates } from '../../hooks/useChecklistTemplates';

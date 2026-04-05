@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { ContactRecord, DealMilestone, MilestoneNotificationSetting, CustomMilestone } from '../../types';
 import { MILESTONE_ORDER, MILESTONE_LABELS } from '../../utils/taskTemplates';
 import { useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
