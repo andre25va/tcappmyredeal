@@ -3,6 +3,7 @@ import {
   Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight,
   Search, X, Building2, User, UserCheck, UserPlus, Edit2, Save, Loader2,
   ExternalLink, FileText, Send, AlertCircle, CheckCircle2, Info,
+  AlertTriangle, ArrowLeftRight,
 } from 'lucide-react';
 import { Deal, Contact, ContactRole, ContactRecord, AdditionalPerson, DealParticipantRole } from '../types';
 import { saveDealParticipant, deleteDealParticipant } from '../utils/supabaseDb';
@@ -1330,6 +1331,88 @@ const RoleSlotColumn: React.FC<{
   );
 };
 
+// ── ContactSwitchPopup ────────────────────────────────────────────────────────
+const ContactSwitchPopup: React.FC<{
+  matchedContact: { id: string; name: string; phone?: string | null; email?: string | null; created_at?: string | null };
+  matchField: 'phone' | 'email';
+  currentName: string;
+  onSwitch: () => void;
+  onKeep: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}> = ({ matchedContact, matchField, currentName, onSwitch, onKeep, onCancel, loading }) => {
+  const fieldLabel = matchField === 'phone' ? 'phone number' : 'email address';
+  const addedDate = matchedContact.created_at
+    ? new Date(matchedContact.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-amber-50 border-b border-amber-100 px-5 py-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-none mt-0.5">
+            <AlertTriangle size={16} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="font-bold text-black text-sm leading-tight">This {fieldLabel} is already linked</p>
+            <p className="text-xs text-gray-500 mt-0.5">Found on an existing contact in your org</p>
+          </div>
+        </div>
+
+        {/* Matched contact card */}
+        <div className="px-5 py-4">
+          <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 flex-none">
+                {matchedContact.name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-black text-sm">{matchedContact.name}</p>
+                {matchedContact.phone && <p className="text-xs text-gray-500">{matchedContact.phone}</p>}
+                {matchedContact.email && <p className="text-xs text-gray-500">{matchedContact.email}</p>}
+                {addedDate && <p className="text-xs text-gray-400 mt-0.5">Added {addedDate}</p>}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mb-4">
+            Would you like to switch <span className="font-semibold text-black">{currentName}</span> on this deal to <span className="font-semibold text-black">{matchedContact.name}</span>, or keep them as a separate contact?
+          </p>
+
+          <div className="space-y-2">
+            <button
+              onClick={onSwitch}
+              disabled={loading}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
+            >
+              <ArrowLeftRight size={15} className="flex-none" />
+              <div className="text-left">
+                <p className="font-semibold">Switch to {matchedContact.name}</p>
+                <p className="text-xs font-normal opacity-80">Use the existing contact on this deal</p>
+              </div>
+            </button>
+            <button
+              onClick={onKeep}
+              disabled={loading}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-black rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
+            >
+              <UserCheck size={15} className="flex-none" />
+              <div className="text-left">
+                <p className="font-semibold">Keep as separate contact</p>
+                <p className="text-xs font-normal text-gray-500">Save {fieldLabel} to {currentName} anyway</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onCallStarted }) => {
   const { profile, primaryOrgId } = useAuth();
@@ -1350,6 +1433,16 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
 
   // Contact search modal
   const [searchSlot, setSearchSlot] = useState<{ slot: RoleSlot; side: 'buyer' | 'seller' } | null>(null);
+
+  // Switch prompt state — shown when phone/email matches an existing contact
+  const [switchPrompt, setSwitchPrompt] = useState<{
+    contactId: string;
+    dpId: string;
+    matchedContact: { id: string; name: string; phone?: string | null; email?: string | null; created_at?: string | null };
+    pendingUpdates: { name: string; phone: string; email: string; company: string; notes: string };
+    matchField: 'phone' | 'email';
+    dpContactName: string;
+  } | null>(null);
 
   // Normalize deal state
   const dealState = deal.state?.trim().toUpperCase().slice(0, 2) || undefined;
@@ -1502,10 +1595,72 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
   // Edit contact in master contacts table + log to contact_change_log
   const editParticipantContact = async (
     contactId: string,
+    dpId: string,
     dpContactName: string,
-    updates: { name: string; phone: string; email: string; company: string; notes: string }
+    updates: { name: string; phone: string; email: string; company: string; notes: string },
+    skipDedupCheck = false
   ) => {
     const orgId = primaryOrgId?.() ?? null;
+    // ── Phone/email dedup check ─────────────────────────────────────────
+    if (!skipDedupCheck && orgId) {
+      const origContact = deal.contacts.find(c => c.directoryId === contactId || c.id === contactId);
+      const phoneChanged = updates.phone && updates.phone !== (origContact?.phone || '');
+      const emailChanged = updates.email && updates.email !== (origContact?.email || '');
+
+      if (phoneChanged || emailChanged) {
+        // Check phone first, then email
+        let matchField: 'phone' | 'email' | null = null;
+        let matchedContact: { id: string; name: string; phone?: string | null; email?: string | null; created_at?: string | null } | null = null;
+
+        if (phoneChanged) {
+          const { data } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, phone, email, created_at')
+            .eq('org_id', orgId)
+            .eq('phone', updates.phone)
+            .neq('id', contactId)
+            .limit(1)
+            .single();
+          if (data) {
+            matchField = 'phone';
+            matchedContact = {
+              id: data.id,
+              name: [data.first_name, data.last_name].filter(Boolean).join(' ') || 'Unknown',
+              phone: data.phone,
+              email: data.email,
+              created_at: data.created_at,
+            };
+          }
+        }
+
+        if (!matchedContact && emailChanged) {
+          const { data } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, phone, email, created_at')
+            .eq('org_id', orgId)
+            .eq('email', updates.email)
+            .neq('id', contactId)
+            .limit(1)
+            .single();
+          if (data) {
+            matchField = 'email';
+            matchedContact = {
+              id: data.id,
+              name: [data.first_name, data.last_name].filter(Boolean).join(' ') || 'Unknown',
+              phone: data.phone,
+              email: data.email,
+              created_at: data.created_at,
+            };
+          }
+        }
+
+        if (matchedContact && matchField) {
+          setSwitchPrompt({ contactId, dpId, matchedContact, pendingUpdates: updates, matchField, dpContactName });
+          return; // Stop here — wait for TC decision
+        }
+      }
+    }
+    // ── End dedup check ─────────────────────────────────────────────────
     // Compute diff (called from ContactPopup's onEdit handler)
     const origContact = deal.contacts.find(c => c.directoryId === contactId || c.id === contactId);
     const diffs: ChangeDiff[] = [];
@@ -1561,6 +1716,31 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
     });
 
     await loadParticipants();
+  };
+
+  // Handle switch: update deal_participants.contact_id to matched contact
+  const handleContactSwitch = async () => {
+    if (!switchPrompt) return;
+    try {
+      await supabase
+        .from('deal_participants')
+        .update({ contact_id: switchPrompt.matchedContact.id })
+        .eq('id', switchPrompt.dpId);
+      await loadParticipants();
+      setPopupDp(null);
+    } catch (err) {
+      console.error('Failed to switch contact:', err);
+    } finally {
+      setSwitchPrompt(null);
+    }
+  };
+
+  // Handle keep: save updates anyway, bypassing dedup check
+  const handleContactKeepSeparate = async () => {
+    if (!switchPrompt) return;
+    const { contactId, dpId, dpContactName, pendingUpdates } = switchPrompt;
+    setSwitchPrompt(null);
+    await editParticipantContact(contactId, dpId, dpContactName, pendingUpdates, true);
   };
 
   // Update side for a deal_participant
@@ -1803,7 +1983,7 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
           dpId={popupDp.dp_id}
           onCallStarted={onCallStarted}
           onEdit={async (updates) => {
-            await editParticipantContact(popupDp.contact_id, popupContact.name, updates);
+            await editParticipantContact(popupDp.contact_id, popupDp.dp_id, popupContact.name, updates);
           }}
           onUpdateContact={(updated) => {
             onUpdate({
@@ -1839,6 +2019,18 @@ export const WorkspaceContacts: React.FC<Props> = ({ deal, onUpdate, contactReco
         onConfirm={() => { if (removeId) { removeId && removeParticipant(removeId); setRemoveId(null); } }}
         onCancel={() => setRemoveId(null)}
       />
+
+      {/* Contact switch popup */}
+      {switchPrompt && (
+        <ContactSwitchPopup
+          matchedContact={switchPrompt.matchedContact}
+          matchField={switchPrompt.matchField}
+          currentName={switchPrompt.dpContactName}
+          onSwitch={handleContactSwitch}
+          onKeep={handleContactKeepSeparate}
+          onCancel={() => setSwitchPrompt(null)}
+        />
+      )}
     </div>
   );
 };
