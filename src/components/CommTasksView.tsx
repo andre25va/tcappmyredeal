@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   CheckSquare, Plus, X, Check,
   Clock, AlertTriangle, Search, RefreshCw,
@@ -10,6 +10,9 @@ import { CallButton } from './CallButton';
 import { EmptyState } from './ui/EmptyState';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from "./ui/Button";
+import { useAllCommTasks, useInvalidateAllCommTasks } from '../hooks/useAllCommTasks';
+import { useOrgContacts } from '../hooks/useOrgContacts';
+import { useOrgDeals } from '../hooks/useOrgDeals';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -546,10 +549,6 @@ function TaskCard({ task, onStatusChange, onDelete, onSend, onSelectDeal, onCall
 // ─── Main View ───────────────────────────────────────────────────────────────
 
 export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: CommTasksViewProps) {
-  const [tasks, setTasks] = useState<CommTask[]>([]);
-  const [contacts, setContacts] = useState<ContactInfo[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [channelFilter, setChannelFilter] = useState<Channel | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<Status | 'active'>('active');
   const [searchQuery, setSearchQuery] = useState('');
@@ -558,58 +557,39 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
-  const loadTasks = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('comm_tasks')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) setTasks(data as CommTask[]);
-  }, []);
+  const invalidateAllCommTasks = useInvalidateAllCommTasks();
 
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      try {
-        // Load tasks
-        await loadTasks();
-        // Load contacts
-        const { data: contactData } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name, contact_type, email, phone, company')
-          .order('first_name');
-        if (contactData) setContacts(contactData.map((c: any) => ({
-          id: c.id,
-          name: [c.first_name, c.last_name].filter(Boolean).join(' '),
-          phone: c.phone,
-          email: c.email,
-          role: c.contact_type,
-        })) as ContactInfo[]);
-        // Load deals
-        const { data: dealData } = await supabase
-          .from('deals')
-          .select('id, property_address')
-          .order('created_at', { ascending: false });
-        if (dealData) setDeals(dealData.map(d => ({
-          id: d.id,
-          propertyAddress: d.property_address,
-        })));
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, [loadTasks]);
+  const { data: tasks = [], isLoading: tasksLoading } = useAllCommTasks();
+  const { data: rawContacts = [], isLoading: contactsLoading } = useOrgContacts();
+  const { data: rawDeals = [], isLoading: dealsLoading } = useOrgDeals();
+
+  const loading = tasksLoading || contactsLoading || dealsLoading;
+
+  // Transform contacts to match the local ContactInfo shape
+  const contacts: ContactInfo[] = rawContacts.map((c: any) => ({
+    id: c.id,
+    name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+    phone: c.phone,
+    email: c.email,
+    role: c.contact_type,
+  }));
+
+  // Transform deals to match the local deal shape
+  const deals = rawDeals.map((d: any) => ({
+    id: d.id,
+    propertyAddress: d.property_address,
+  }));
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   const createTask = async (taskData: Partial<CommTask>) => {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('comm_tasks')
       .insert([taskData])
       .select()
       .single();
-    if (!error && data) {
-      setTasks(prev => [data as CommTask, ...prev]);
+    if (!error) {
+      invalidateAllCommTasks();
     }
   };
 
@@ -618,14 +598,14 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
     if (status === 'done') update.completed_at = new Date().toISOString();
     const { error } = await supabase.from('comm_tasks').update(update).eq('id', id);
     if (!error) {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status, ...update } : t));
+      invalidateAllCommTasks();
     }
   };
 
   const deleteTask = async (id: string) => {
     const { error } = await supabase.from('comm_tasks').delete().eq('id', id);
     if (!error) {
-      setTasks(prev => prev.filter(t => t.id !== id));
+      invalidateAllCommTasks();
     }
   };
 
@@ -696,7 +676,7 @@ export function CommTasksView({ onOpenInbox, onSelectDeal, onCallStarted }: Comm
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => loadTasks()}
+              onClick={() => invalidateAllCommTasks()}
               className="btn btn-ghost btn-sm btn-square"
               title="Refresh"
             >

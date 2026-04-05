@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, Play, ChevronDown, ChevronUp, ExternalLink, Link2, X } from 'lucide-react';
 import { StatusBadge } from './ui/StatusBadge';
 import { EmptyState } from './ui/EmptyState';
 import { CallButton } from './CallButton';
 import { Button } from "./ui/Button";
+import { useCommConsoleData, useInvalidateCommConsoleData } from '../hooks/useCommConsoleData';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -38,14 +39,7 @@ interface CommunicationsConsoleProps {
 export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ onSelectDeal, onCallStarted }) => {
   const [activeTab, setActiveTab] = useState<TabId>('voice');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('7d');
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Data
-  const [voiceUpdates, setVoiceUpdates] = useState<any[]>([]);
-  const [callbacks, setCallbacks] = useState<any[]>([]);
-  const [changeReqs, setChangeReqs] = useState<any[]>([]);
-  const [unidentified, setUnidentified] = useState<any[]>([]);
 
   // UI
   const [expandedSummary, setExpandedSummary] = useState<Record<string, boolean>>({});
@@ -54,82 +48,27 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
-  const timeFilterCutoff = useCallback(() => {
+  const timeFilterCutoff = () => {
     if (timeFilter === 'all') return null;
     const now = new Date();
     if (timeFilter === '24h') now.setHours(now.getHours() - 24);
     else if (timeFilter === '7d') now.setDate(now.getDate() - 7);
     else if (timeFilter === '30d') now.setDate(now.getDate() - 30);
     return now.toISOString();
-  }, [timeFilter]);
+  };
 
-  const loadData = useCallback(async () => {
-    try {
-      const sb = supabase;
-      const cutoff = timeFilterCutoff();
+  const invalidateCommConsoleData = useInvalidateCommConsoleData();
 
-      // Voice Updates
-      let vq = sb
-        .from('voice_deal_updates')
-        .select('*, deals(id, property_address, city, state), caller_contact:caller_contact_id(id, first_name, last_name, phone)')
-        .eq('review_status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (cutoff) vq = vq.gte('created_at', cutoff);
-      const { data: vData } = await vq;
-      setVoiceUpdates(vData || []);
+  const { data: consoleData, isLoading } = useCommConsoleData(timeFilterCutoff());
 
-      // Callbacks
-      let cq = sb
-        .from('callback_requests')
-        .select('*, deals(id, property_address), contact:contact_id(id, first_name, last_name, phone)')
-        .eq('status', 'open')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (cutoff) cq = cq.gte('created_at', cutoff);
-      const { data: cData } = await cq;
-      setCallbacks(cData || []);
-
-      // Change Requests
-      let crq = sb
-        .from('change_requests')
-        .select('*, deals:deal_id(id, property_address), contact:requested_by_contact_id(id, first_name, last_name)')
-        .eq('status', 'pending_review')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (cutoff) crq = crq.gte('created_at', cutoff);
-      const { data: crData } = await crq;
-      setChangeReqs(crData || []);
-
-      // Unidentified Calls
-      let uq = sb
-        .from('call_log')
-        .select('*')
-        .is('caller_contact_id', null)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (cutoff) uq = uq.gte('created_at', cutoff);
-      const { data: uData } = await uq;
-      setUnidentified(uData || []);
-
-    } catch (err) {
-      console.error('CommunicationsConsole load error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [timeFilterCutoff]);
-
-  useEffect(() => {
-    setLoading(true);
-    loadData();
-    const interval = setInterval(loadData, 30000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+  const voiceUpdates = consoleData?.voiceUpdates ?? [];
+  const callbacks = consoleData?.callbacks ?? [];
+  const changeReqs = consoleData?.changeReqs ?? [];
+  const unidentified = consoleData?.unidentified ?? [];
+  const loading = isLoading;
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
+    invalidateCommConsoleData();
   };
 
   /* ── Action handlers ─────────────────────────────────────────────── */
@@ -138,7 +77,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
     try {
       const sb = supabase;
       await sb.from('voice_deal_updates').update({ review_status: status }).eq('id', id);
-      loadData();
+      invalidateCommConsoleData();
     } catch (err) { console.error('updateVoiceReview error:', err); }
   };
 
@@ -148,7 +87,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
       const updates: Record<string, unknown> = { status };
       if (status === 'completed') updates.completed_at = new Date().toISOString();
       await sb.from('callback_requests').update(updates).eq('id', id);
-      loadData();
+      invalidateCommConsoleData();
     } catch (err) { console.error('updateCallbackStatus error:', err); }
   };
 
@@ -158,7 +97,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
       const updates: Record<string, unknown> = { status };
       if (status === 'approved' || status === 'rejected') updates.reviewed_at = new Date().toISOString();
       await sb.from('change_requests').update(updates).eq('id', id);
-      loadData();
+      invalidateCommConsoleData();
     } catch (err) { console.error('updateChangeRequest error:', err); }
   };
 
@@ -176,7 +115,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
       await sb.from('call_log').update({ caller_contact_id: contactId }).eq('id', callId);
       setLinkingCallId(null);
       setContactSearch('');
-      loadData();
+      invalidateCommConsoleData();
     } catch (err) { console.error('linkCallToContact error:', err); }
   };
 
@@ -184,7 +123,7 @@ export const CommunicationsConsole: React.FC<CommunicationsConsoleProps> = ({ on
     try {
       const sb = supabase;
       await sb.from('call_log').update({ caller_contact_id: 'dismissed' }).eq('id', callId);
-      loadData();
+      invalidateCommConsoleData();
     } catch (err) { console.error('dismissCall error:', err); }
   };
 

@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, ChevronDown, ChevronUp, Phone } from 'lucide-react';
 import { CallButton } from './CallButton';
 import { Deal } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from "./ui/Button";
+import { useChangeRequests, useInvalidateChangeRequests } from '../hooks/useChangeRequests';
+import { useVoiceDealUpdates, useInvalidateVoiceDealUpdates } from '../hooks/useVoiceDealUpdates';
+import { useCommunicationEvents, useInvalidateCommunicationEvents } from '../hooks/useCommunicationEvents';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -30,55 +33,23 @@ interface DealCommTimelineProps {
 
 export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCallStarted }) => {
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [events, setEvents] = useState<any[]>([]);
-  const [changeReqs, setChangeReqs] = useState<any[]>([]);
-  const [voiceUpdates, setVoiceUpdates] = useState<any[]>([]);
   const [expandedTranscript, setExpandedTranscript] = useState<Record<string, boolean>>({});
 
-  const loadData = useCallback(async () => {
-    try {
-      const sb = supabase;
+  const invalidateChangeRequests = useInvalidateChangeRequests();
+  const invalidateVoiceDealUpdates = useInvalidateVoiceDealUpdates();
+  const invalidateCommunicationEvents = useInvalidateCommunicationEvents();
 
-      const [evRes, crRes, vuRes] = await Promise.all([
-        sb.from('communication_events')
-          .select('*, contact:contact_id(id, first_name, last_name)')
-          .eq('deal_id', deal.id)
-          .order('created_at', { ascending: false })
-          .limit(100),
-        sb.from('change_requests')
-          .select('*, contact:requested_by_contact_id(id, first_name, last_name)')
-          .eq('deal_id', deal.id)
-          .eq('status', 'pending_review')
-          .order('created_at', { ascending: false })
-          .limit(20),
-        sb.from('voice_deal_updates')
-          .select('*, caller_contact:caller_contact_id(id, first_name, last_name)')
-          .eq('deal_id', deal.id)
-          .order('created_at', { ascending: false })
-          .limit(50),
-      ]);
+  const { data: events = [], isLoading: evLoading } = useCommunicationEvents(deal.id);
+  const { data: changeReqs = [], isLoading: crLoading } = useChangeRequests(deal.id);
+  const { data: voiceUpdates = [], isLoading: vuLoading } = useVoiceDealUpdates(deal.id);
 
-      setEvents(evRes.data || []);
-      setChangeReqs(crRes.data || []);
-      setVoiceUpdates(vuRes.data || []);
-    } catch (err) {
-      console.error('DealCommTimeline load error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [deal.id]);
-
-  useEffect(() => {
-    setLoading(true);
-    loadData();
-  }, [loadData]);
+  const loading = evLoading || crLoading || vuLoading;
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
+    invalidateChangeRequests(deal.id);
+    invalidateVoiceDealUpdates(deal.id);
+    invalidateCommunicationEvents(deal.id);
   };
 
   const updateChangeRequest = async (id: string, status: string) => {
@@ -87,7 +58,7 @@ export const DealCommTimeline: React.FC<DealCommTimelineProps> = ({ deal, onCall
       const updates: Record<string, unknown> = { status };
       if (status === 'approved' || status === 'rejected') updates.reviewed_at = new Date().toISOString();
       await sb.from('change_requests').update(updates).eq('id', id);
-      loadData();
+      invalidateChangeRequests(deal.id);
     } catch (err) { console.error('updateChangeRequest error:', err); }
   };
 
