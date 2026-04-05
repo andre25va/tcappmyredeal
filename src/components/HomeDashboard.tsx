@@ -1,10 +1,11 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import {
   Building2, TrendingUp, AlertTriangle, CheckSquare, Calendar,
   MapPin, Users, Clock, FileText, Activity, Home, DollarSign,
   ChevronRight, Flame, Target, BarChart2, Zap, XCircle,
   Mail, Phone, ClipboardList, Sparkles,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Deal, DealStatus, DealMilestone } from '../types';
 import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
@@ -73,20 +74,19 @@ interface LiveActivityItem {
   timestamp: string;
 }
 
+interface RawActivityData {
+  emails: any[];
+  calls: any[];
+  requests: any[];
+}
+
 export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeals, onGoToAlerts }) => {
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const thisYearStart  = new Date(now.getFullYear(), 0, 1);
 
-  // ── Live DB stats ──────────────────────────────────────────────────────────
-  const [liveStats, setLiveStats] = useState<LiveStats>({
-    emailsThisWeek: 0,
-    callsThisWeek: 0,
-    openRequests: 0,
-    aiSummaries: 0,
-  });
-  const [liveActivity, setLiveActivity] = useState<LiveActivityItem[]>([]);
-  const [liveLoaded, setLiveLoaded] = useState(false);
+  // weekAgo is stable for the component lifecycle (only recalculated on remount)
+  const weekAgo = useMemo(() => new Date(Date.now() - 7 * 86400000).toISOString(), []);
 
   // Build a deal address lookup from props so we can enrich DB rows client-side
   const dealAddressMap = useMemo(() => {
@@ -95,76 +95,126 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     return m;
   }, [deals]);
 
-  useEffect(() => {
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  // ── Live DB stats — individual queries ────────────────────────────────────
+  const { data: emailCount = 0 } = useQuery({
+    queryKey: ['home-stats-emails', weekAgo],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('email_send_log')
+        .select('id', { count: 'exact', head: true })
+        .gte('sent_at', weekAgo);
+      return count ?? 0;
+    },
+    staleTime: 5 * 60_000,
+  });
 
-    // ── Fetch counts ──
-    Promise.all([
-      supabase.from('email_send_log').select('id', { count: 'exact', head: true }).gte('sent_at', weekAgo),
-      supabase.from('call_logs').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
-      supabase.from('requests').select('id', { count: 'exact', head: true }).in('status', ['pending', 'sent', 'pending_review', 'document_received']),
-      supabase.from('call_logs').select('id', { count: 'exact', head: true }).not('ai_summary', 'is', null),
-    ]).then(([emails, calls, requests, summaries]) => {
-      setLiveStats({
-        emailsThisWeek: emails.count ?? 0,
-        callsThisWeek: calls.count ?? 0,
-        openRequests: requests.count ?? 0,
-        aiSummaries: summaries.count ?? 0,
-      });
-    }).catch(() => {/* silent — stats just stay 0 */});
+  const { data: callCount = 0 } = useQuery({
+    queryKey: ['home-stats-calls', weekAgo],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('call_logs')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', weekAgo);
+      return count ?? 0;
+    },
+    staleTime: 5 * 60_000,
+  });
 
-    // ── Fetch recent activity ──
-    Promise.all([
-      supabase.from('email_send_log')
-        .select('id, subject, template_name, sent_at, deal_id')
-        .order('sent_at', { ascending: false })
-        .limit(6),
-      supabase.from('call_logs')
-        .select('id, direction, status, duration, created_at, deal_id')
-        .order('created_at', { ascending: false })
-        .limit(6),
-      supabase.from('requests')
-        .select('id, request_type, status, created_at, deal_id')
-        .order('created_at', { ascending: false })
-        .limit(6),
-    ]).then(([emailRes, callRes, reqRes]) => {
-      const items: LiveActivityItem[] = [
-        ...(emailRes.data ?? []).map((e: any): LiveActivityItem => ({
-          id: `email-${e.id}`,
-          type: 'email',
-          icon: '📧',
-          action: e.subject || e.template_name || 'Email sent',
-          dealId: e.deal_id ?? null,
-          dealAddress: e.deal_id ? (dealAddressMap[e.deal_id] ?? null) : null,
-          timestamp: e.sent_at,
-        })),
-        ...(callRes.data ?? []).map((c: any): LiveActivityItem => ({
-          id: `call-${c.id}`,
-          type: 'call',
-          icon: '📞',
-          action: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call${c.duration ? ` · ${c.duration}s` : ''}${c.status ? ` · ${c.status}` : ''}`,
-          dealId: c.deal_id ?? null,
-          dealAddress: c.deal_id ? (dealAddressMap[c.deal_id] ?? null) : null,
-          timestamp: c.created_at,
-        })),
-        ...(reqRes.data ?? []).map((r: any): LiveActivityItem => ({
-          id: `req-${r.id}`,
-          type: 'request',
-          icon: '📋',
-          action: `${r.request_type || 'Request'} · ${r.status}`,
-          dealId: r.deal_id ?? null,
-          dealAddress: r.deal_id ? (dealAddressMap[r.deal_id] ?? null) : null,
-          timestamp: r.created_at,
-        })),
-      ]
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, 10);
+  const { data: requestCount = 0 } = useQuery({
+    queryKey: ['home-stats-requests'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('requests')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending', 'sent', 'pending_review', 'document_received']);
+      return count ?? 0;
+    },
+    staleTime: 5 * 60_000,
+  });
 
-      setLiveActivity(items);
-      setLiveLoaded(true);
-    }).catch(() => { setLiveLoaded(true); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: aiSummaryCount = 0 } = useQuery({
+    queryKey: ['home-stats-ai-summaries'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('call_logs')
+        .select('id', { count: 'exact', head: true })
+        .not('ai_summary', 'is', null);
+      return count ?? 0;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Reconstruct liveStats object so render code doesn't need to change
+  const liveStats: LiveStats = {
+    emailsThisWeek: emailCount,
+    callsThisWeek: callCount,
+    openRequests: requestCount,
+    aiSummaries: aiSummaryCount,
+  };
+
+  // ── Live recent activity ──────────────────────────────────────────────────
+  const { data: rawActivityData, isSuccess: liveLoaded } = useQuery<RawActivityData>({
+    queryKey: ['home-live-activity'],
+    queryFn: async () => {
+      const [emailRes, callRes, reqRes] = await Promise.all([
+        supabase.from('email_send_log')
+          .select('id, subject, template_name, sent_at, deal_id')
+          .order('sent_at', { ascending: false })
+          .limit(6),
+        supabase.from('call_logs')
+          .select('id, direction, status, duration, created_at, deal_id')
+          .order('created_at', { ascending: false })
+          .limit(6),
+        supabase.from('requests')
+          .select('id, request_type, status, created_at, deal_id')
+          .order('created_at', { ascending: false })
+          .limit(6),
+      ]);
+      return {
+        emails: emailRes.data ?? [],
+        calls: callRes.data ?? [],
+        requests: reqRes.data ?? [],
+      };
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Enrich raw activity with deal addresses (client-side join using dealAddressMap)
+  const liveActivity = useMemo<LiveActivityItem[]>(() => {
+    if (!rawActivityData) return [];
+    const items: LiveActivityItem[] = [
+      ...rawActivityData.emails.map((e: any): LiveActivityItem => ({
+        id: `email-${e.id}`,
+        type: 'email',
+        icon: '📧',
+        action: e.subject || e.template_name || 'Email sent',
+        dealId: e.deal_id ?? null,
+        dealAddress: e.deal_id ? (dealAddressMap[e.deal_id] ?? null) : null,
+        timestamp: e.sent_at,
+      })),
+      ...rawActivityData.calls.map((c: any): LiveActivityItem => ({
+        id: `call-${c.id}`,
+        type: 'call',
+        icon: '📞',
+        action: `${c.direction === 'inbound' ? 'Inbound' : 'Outbound'} call${c.duration ? ` · ${c.duration}s` : ''}${c.status ? ` · ${c.status}` : ''}`,
+        dealId: c.deal_id ?? null,
+        dealAddress: c.deal_id ? (dealAddressMap[c.deal_id] ?? null) : null,
+        timestamp: c.created_at,
+      })),
+      ...rawActivityData.requests.map((r: any): LiveActivityItem => ({
+        id: `req-${r.id}`,
+        type: 'request',
+        icon: '📋',
+        action: `${r.request_type || 'Request'} · ${r.status}`,
+        dealId: r.deal_id ?? null,
+        dealAddress: r.deal_id ? (dealAddressMap[r.deal_id] ?? null) : null,
+        timestamp: r.created_at,
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 10);
+    return items;
+  }, [rawActivityData, dealAddressMap]);
 
   const stats = useMemo(() => {
     const active = deals.filter(d => d.status !== 'closed' && d.status !== 'terminated' && d.milestone !== 'archived');

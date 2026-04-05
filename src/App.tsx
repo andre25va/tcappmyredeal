@@ -3,8 +3,7 @@ import { Eye } from 'lucide-react';
 
 import { Deal, DealStatus, DealMilestone, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import {
-  loadDeals, saveDeals, saveSingleDeal,
-  loadContactsFull,
+  saveDeals, saveSingleDeal,
   loadMls, saveMls,
   loadCompliance, saveCompliance,
   loadUsers, saveUsers,
@@ -41,6 +40,10 @@ import { RequestCenterView } from './components/RequestCenterView';
 import { PageIdBadge } from './components/PageIdBadge';
 import { PAGE_IDS } from './utils/pageTracking';
 import { Button } from './components/ui/Button';
+import { useQueryClient } from '@tanstack/react-query';
+import { useOrgDeals, useSetOrgDealsData, useInvalidateOrgDeals } from './hooks/useOrgDeals';
+import { useOrgContacts, useInvalidateOrgContacts } from './hooks/useOrgContacts';
+import { useMlsEntries } from './hooks/useMlsEntries';
 
 // View → Page ID mapping for the floating badge
 const VIEW_PAGE_IDS: Record<string, string> = {
@@ -70,13 +73,13 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 function AppInner() {
   const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
   const { logAction } = useAudit();
+  const qc = useQueryClient();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
   const [listMode, setListMode]             = useState<'deals' | 'agents' | 'tasks'>('agents');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
-  const [deals, setDeals]                   = useState<Deal[]>([]);
   const [selectedId, setSelectedId]         = useState<string | null>(null);
   const [txPanel, setTxPanel]               = useState<'list' | 'workspace'>('list');
   const [txContainerWide, setTxContainerWide] = useState(false);
@@ -86,7 +89,6 @@ function AppInner() {
   });
   const lastWidthRef = useRef<number>(360);
   const [showAdd, setShowAdd]               = useState(false);
-  const [loading, setLoading]               = useState(true);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent' | 'contact' | null>(null);
@@ -103,8 +105,6 @@ function AppInner() {
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
-  const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
-  const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
   const [complianceTemplates, setComplianceTemplates] = useState<ComplianceTemplate[]>([]);
   const [users, setUsers]                       = useState<AppUser[]>([]);
   const [emailTemplates, setEmailTemplates]     = useState<EmailTemplate[]>([]);
@@ -114,24 +114,33 @@ function AppInner() {
   const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
   const [pendingWorkspaceRequestType, setPendingWorkspaceRequestType] = useState<string | null>(null);
 
-  // ── Load deals ──────────────────────────────────────────────────────────────
+  // ── TanStack Query: deals, contacts, mls ─────────────────────────────────────
+  const orgId = primaryOrgId() ?? null;
+  const { data: deals = [], isLoading: dealsLoading, error: dealsError } = useOrgDeals(orgId);
+  const setOrgDealsData = useSetOrgDealsData();
+  const invalidateOrgDeals = useInvalidateOrgDeals();
+  const { data: contactRecords = [] } = useOrgContacts(orgId);
+  const invalidateOrgContacts = useInvalidateOrgContacts();
+  const { data: mlsEntriesData = [] } = useMlsEntries();
+  const mlsEntries = mlsEntriesData as unknown as MlsEntry[];
+
+  // Map dealsLoading/dealsError to the legacy loading/loadError pattern
+  const loading = dealsLoading;
   useEffect(() => {
-    if (!profile) return;
-    const init = async () => {
-      try {
-        const data = await loadDeals(primaryOrgId() ?? undefined);
-        setDeals(data);
-        const isMobile = window.innerWidth < 768;
-        if (!isMobile && data.length > 0) setSelectedId(data[0].id);
-      } catch (err) {
-        console.error('Failed to load deals:', err);
-        setLoadError('Unable to connect to database. Please check your connection and refresh.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, [profile]);
+    if (dealsError) {
+      setLoadError('Unable to connect to database. Please check your connection and refresh.');
+    }
+  }, [dealsError]);
+
+  // Auto-select first deal on initial load (desktop only), replaces setSelectedId inside old useEffect
+  const hasAutoSelected = useRef(false);
+  useEffect(() => {
+    if (!dealsLoading && deals.length > 0 && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
+      const isMobile = window.innerWidth < 768;
+      if (!isMobile) setSelectedId(deals[0].id);
+    }
+  }, [dealsLoading, deals]);
 
   // Track actual width of transactions container for split-panel logic
   useEffect(() => {
@@ -144,22 +153,6 @@ function AppInner() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [view]);
-
-  // ── Load contact records ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!profile) return;
-    loadContactsFull()
-      .then(data => setContactRecords(data))
-      .catch(err => { console.error('Failed to load contacts:', err); setContactRecords([]); });
-  }, [profile]);
-
-  // ── Load MLS ─────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!profile) return;
-    loadMls()
-      .then(data => setMlsEntries(data))
-      .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });
-  }, [profile]);
 
   // ── Load compliance templates ─────────────────────────────────────────────────
   useEffect(() => {
@@ -318,7 +311,7 @@ function AppInner() {
 
   // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistMls = (updated: MlsEntry[]) => {
-    setMlsEntries(updated);
+    qc.setQueryData(['mls_entries'], updated);
     saveMls(updated).catch(console.error);
   };
 
@@ -372,7 +365,7 @@ function AppInner() {
 
   // ── Agent name cascade ─────────────────────────────────────────────────────
   const handleContactUpdated = (contactId: string, fullName: string, phone: string, email: string) => {
-    setDeals(prev => {
+    setOrgDealsData(orgId, prev => {
       const updated = prev.map(deal => {
         if (deal.agentId !== contactId) return deal;
         const updatedDeal: Deal = {
@@ -392,7 +385,7 @@ function AppInner() {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
-    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
     // Deselect the deal so the workspace doesn't keep showing an archived deal
     if (selectedId === dealId) {
@@ -405,7 +398,7 @@ function AppInner() {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'contract-received' as DealMilestone, archiveReason: undefined };
-    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
   };
 
@@ -413,18 +406,18 @@ function AppInner() {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, status };
-    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
   };
 
   const handleUpdate = (deal: Deal) => {
-    setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
+    setOrgDealsData(orgId, prev => prev.map(d => d.id === deal.id ? deal : d));
     saveSingleDeal(deal, profile?.id).catch(console.error);
     logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
   const handleAdd = async (deal: Deal) => {
-    setDeals(prev => [deal, ...prev]);
+    setOrgDealsData(orgId, prev => [deal, ...prev]);
     try {
       await saveSingleDeal(deal, profile?.id);
       setSelectedId(deal.id);
@@ -434,7 +427,7 @@ function AppInner() {
       logAction('create', 'deal', deal.id, deal.propertyAddress);
     } catch (err: any) {
       // Remove from UI if save failed
-      setDeals(prev => prev.filter(d => d.id !== deal.id));
+      setOrgDealsData(orgId, prev => prev.filter(d => d.id !== deal.id));
       alert('❌ Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
       console.error('[App.tsx] saveSingleDeal error:', err);
     }
@@ -711,7 +704,7 @@ function AppInner() {
                 triggerAdd={quickAddRole}
                 onTriggerHandled={() => setQuickAddRole(null)}
                 onDirectoryChanged={() => {
-                  loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
+                  invalidateOrgContacts(orgId);
                 }}
                 onContactUpdated={handleContactUpdated}
               />
@@ -816,7 +809,7 @@ function AppInner() {
       {showAdd && (
         <GuidedDealWizard
           onAdd={handleAdd}
-          onClose={() => { setShowAdd(false); loadContactsFull().then(data => setContactRecords(data)).catch(console.error); }}
+          onClose={() => { setShowAdd(false); invalidateOrgContacts(orgId); }}
           complianceTemplates={complianceTemplates}
           agentClients={agentClients}
           ddMasterItems={ddMasterItems}

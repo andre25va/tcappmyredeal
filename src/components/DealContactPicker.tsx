@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { MRDChip } from './ui/MRDChip';
 
@@ -77,14 +78,11 @@ export function DealContactPicker({
   mode = 'any',
   className,
 }: Props) {
-  const [contacts, setContacts] = useState<DealContact[]>([]);
-  const [loading, setLoading] = useState(true);
   const [notifiersOpen, setNotifiersOpen] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-
+  const { data: contacts = [], isLoading: loading } = useQuery<DealContact[]>({
+    queryKey: ['deal-participants', dealId, mode],
+    queryFn: async () => {
       // ── Pass 1: deal_participants table (canonical source) ────────────────
       const { data: dpData, error: dpError } = await supabase
         .from('deal_participants')
@@ -123,9 +121,7 @@ export function DealContactPicker({
           })
           .filter(Boolean) as DealContact[];
 
-        setContacts(applyModeFilter(mapped, mode));
-        setLoading(false);
-        return;
+        return applyModeFilter(mapped, mode);
       }
 
       // ── Pass 2: fallback to deal FK columns ────────────────────────────
@@ -171,19 +167,16 @@ export function DealContactPicker({
               })
               .filter(Boolean) as DealContact[];
 
-            setContacts(applyModeFilter(mapped, mode));
-            setLoading(false);
-            return;
+            return applyModeFilter(mapped, mode);
           }
         }
       }
 
-      setContacts([]);
-      setLoading(false);
-    }
-
-    load();
-  }, [dealId, mode]);
+      return [];
+    },
+    enabled: !!dealId,
+    staleTime: 30_000,
+  });
 
   if (loading) {
     return (
