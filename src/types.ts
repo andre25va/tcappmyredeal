@@ -404,6 +404,7 @@ export interface Deal {
   legalDescription?: string;
   mlsNumber: string;
   isHeartlandMls?: boolean;
+  mlsId?: string;
   listPrice: number;
   contractPrice: number;
   propertyType: PropertyType;
