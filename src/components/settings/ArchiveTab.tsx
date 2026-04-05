@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { RotateCcw, Loader2, AlertCircle, Building2, Users, Inbox, Trash2 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/Button';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../../lib/supabase';
+import { useArchivedDeals, useInvalidateArchivedDeals } from '../../hooks/useArchivedDeals';
+import { useArchivedContacts, useInvalidateArchivedContacts } from '../../hooks/useArchivedContacts';
+import { useDeletedContacts, useInvalidateDeletedContacts } from '../../hooks/useDeletedContacts';
 
 type ArchiveSection = 'deals' | 'contacts' | 'deleted';
 
@@ -70,26 +69,11 @@ const ConfirmRow: React.FC<ConfirmRowProps> = ({ label, onConfirm, onCancel, loa
 // ── Deals section ──────────────────────────────────────────────────────────
 
 const DealsSection: React.FC = () => {
-  const [deals, setDeals] = useState<ArchivedDeal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: deals = [], isLoading: loading, error: queryError } = useArchivedDeals();
+  const invalidateArchivedDeals = useInvalidateArchivedDeals();
   const [error, setError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true); setError(null);
-      const { data, error: err } = await supabase
-        .from('deals')
-        .select('id, property_address, deal_type, transaction_type, closing_date, pipeline_stage, created_at')
-        .eq('pipeline_stage', 'archived')
-        .order('created_at', { ascending: false });
-      if (err) setError(err.message);
-      else setDeals(data || []);
-      setLoading(false);
-    };
-    load();
-  }, []);
 
   const handleUnarchive = async (id: string) => {
     setActionLoading(id);
@@ -100,7 +84,7 @@ const DealsSection: React.FC = () => {
     if (err) {
       setError(err.message);
     } else {
-      setDeals(prev => prev.filter(d => d.id !== id));
+      invalidateArchivedDeals();
     }
     setActionLoading(null);
     setConfirmId(null);
@@ -112,10 +96,11 @@ const DealsSection: React.FC = () => {
     </div>
   );
 
-  if (error) return (
+  const displayError = error || (queryError as Error)?.message || null;
+  if (displayError) return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-error/10 border border-error/20">
       <AlertCircle size={14} className="text-error flex-none" />
-      <p className="text-xs text-error">{error}</p>
+      <p className="text-xs text-error">{displayError}</p>
     </div>
   );
 
@@ -140,7 +125,7 @@ const DealsSection: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-base-300">
-          {deals.map(deal => (
+          {deals.map((deal: any) => (
             <React.Fragment key={deal.id}>
               <tr className="bg-base-100 hover:bg-base-200/40 transition-colors">
                 <td className="px-4 py-3">
@@ -186,26 +171,11 @@ const DealsSection: React.FC = () => {
 // ── Contacts section ───────────────────────────────────────────────────────
 
 const ContactsSection: React.FC = () => {
-  const [contacts, setContacts] = useState<ArchivedContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: contacts = [], isLoading: loading, error: queryError } = useArchivedContacts();
+  const invalidateArchivedContacts = useInvalidateArchivedContacts();
   const [error, setError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true); setError(null);
-      const { data, error: err } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name, email, phone, contact_type, company, created_at')
-        .eq('is_active', false)
-        .order('created_at', { ascending: false });
-      if (err) setError(err.message);
-      else setContacts(data || []);
-      setLoading(false);
-    };
-    load();
-  }, []);
 
   const handleUnarchive = async (id: string) => {
     setActionLoading(id);
@@ -216,13 +186,13 @@ const ContactsSection: React.FC = () => {
     if (err) {
       setError(err.message);
     } else {
-      setContacts(prev => prev.filter(c => c.id !== id));
+      invalidateArchivedContacts();
     }
     setActionLoading(null);
     setConfirmId(null);
   };
 
-  const fullName = (c: ArchivedContact) => [c.first_name, c.last_name].filter(Boolean).join(' ') || '—';
+  const fullName = (c: any) => [c.first_name, c.last_name].filter(Boolean).join(' ') || '—';
 
   if (loading) return (
     <div className="flex flex-col gap-2">
@@ -230,10 +200,11 @@ const ContactsSection: React.FC = () => {
     </div>
   );
 
-  if (error) return (
+  const displayError = error || (queryError as Error)?.message || null;
+  if (displayError) return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-error/10 border border-error/20">
       <AlertCircle size={14} className="text-error flex-none" />
-      <p className="text-xs text-error">{error}</p>
+      <p className="text-xs text-error">{displayError}</p>
     </div>
   );
 
@@ -258,7 +229,7 @@ const ContactsSection: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-base-300">
-          {contacts.map(contact => (
+          {contacts.map((contact: any) => (
             <React.Fragment key={contact.id}>
               <tr className="bg-base-100 hover:bg-base-200/40 transition-colors">
                 <td className="px-4 py-3">
@@ -318,26 +289,11 @@ interface DeletedContact {
 
 const DeletedContactsSection: React.FC = () => {
   const { profile } = useAuth();
-  const [contacts, setContacts] = useState<DeletedContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: contacts = [], isLoading: loading, error: queryError } = useDeletedContacts();
+  const invalidateDeletedContacts = useInvalidateDeletedContacts();
   const [error, setError] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true); setError(null);
-      const { data, error: err } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name, email, phone, contact_type, company, deleted_at, deleted_by')
-        .not('deleted_at', 'is', null)
-        .order('deleted_at', { ascending: false });
-      if (err) setError(err.message);
-      else setContacts(data || []);
-      setLoading(false);
-    };
-    load();
-  }, []);
 
   const handleRestore = async (id: string) => {
     setActionLoading(id);
@@ -353,7 +309,7 @@ const DeletedContactsSection: React.FC = () => {
         description: `Contact restored by ${profile?.name ?? 'Unknown'}`,
         performed_by: profile?.name ?? 'Unknown',
       });
-      setContacts(prev => prev.filter(c => c.id !== id));
+      invalidateDeletedContacts();
     } else {
       setError(err.message);
     }
@@ -361,7 +317,7 @@ const DeletedContactsSection: React.FC = () => {
     setConfirmId(null);
   };
 
-  const fullName = (c: DeletedContact) => [c.first_name, c.last_name].filter(Boolean).join(' ') || '—';
+  const fullName = (c: any) => [c.first_name, c.last_name].filter(Boolean).join(' ') || '—';
 
   if (loading) return (
     <div className="flex flex-col gap-2">
@@ -369,10 +325,11 @@ const DeletedContactsSection: React.FC = () => {
     </div>
   );
 
-  if (error) return (
+  const displayError = error || (queryError as Error)?.message || null;
+  if (displayError) return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-error/10 border border-error/20">
       <AlertCircle size={14} className="text-error flex-none" />
-      <p className="text-xs text-error">{error}</p>
+      <p className="text-xs text-error">{displayError}</p>
     </div>
   );
 
@@ -397,7 +354,7 @@ const DeletedContactsSection: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-base-300">
-          {contacts.map(contact => (
+          {contacts.map((contact: any) => (
             <React.Fragment key={contact.id}>
               <tr className="bg-base-100 hover:bg-base-200/40 transition-colors">
                 <td className="px-4 py-3">

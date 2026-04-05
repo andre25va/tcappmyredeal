@@ -1,6 +1,6 @@
 import { formatDate, formatDateTime } from '../utils/helpers';
 import { LoadingSpinner } from './ui/LoadingSpinner';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Deal } from '../types';
@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { NudgeTaskStatus, NudgeTemplate, NudgeLogEntry } from './nudge-types';
 import { DealContactPicker, DealContact } from './DealContactPicker';
+import { useNudgeTasks, useInvalidateNudgeTasks } from '../hooks/useNudgeTasks';
+import { useNudgeTemplates } from '../hooks/useNudgeTemplates';
+import { useNudgeLog, useInvalidateNudgeLog } from '../hooks/useNudgeLog';
 
 interface WorkspaceNudgeProps {
   deal: Deal;
@@ -81,12 +84,13 @@ function resolveMergeTags(
 export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
   const { profile } = useAuth();
 
-  // --- Data state ---
-  const [tasks, setTasks] = useState<NudgeTaskStatus[]>([]);
-  const [templates, setTemplates] = useState<NudgeTemplate[]>([]);
-  const [nudgeLog, setNudgeLog] = useState<NudgeLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [logLoading, setLogLoading] = useState(true);
+  // --- TanStack Query hooks ---
+  const { data: tasks = [], isLoading: loading } = useNudgeTasks(deal.id);
+  const { data: templates = [] } = useNudgeTemplates(deal.orgId);
+  const { data: nudgeLog = [], isLoading: logLoading } = useNudgeLog(deal.id);
+  const invalidateNudgeTasks = useInvalidateNudgeTasks();
+  const invalidateNudgeLog = useInvalidateNudgeLog();
+
   const [sending, setSending] = useState(false);
 
   // --- Compose state ---
@@ -102,78 +106,6 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // --- Fetch tasks + templates ---
-  const fetchData = useCallback(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const [tasksRes, templatesRes] = await Promise.all([
-          supabase
-            .from('task_nudge_status')
-            .select('*')
-            .eq('deal_id', deal.id)
-            .order('due_date', { ascending: true }),
-          supabase
-            .from('nudge_templates')
-            .select('*')
-            .or(`org_id.eq.${deal.orgId},org_id.is.null`)
-            .eq('is_active', true)
-            .order('name'),
-        ]);
-
-        if (tasksRes.error) {
-          console.error('Error fetching nudge tasks:', tasksRes.error);
-        } else {
-          setTasks(tasksRes.data as NudgeTaskStatus[]);
-        }
-
-        if (templatesRes.error) {
-          console.error('Error fetching nudge templates:', templatesRes.error);
-        } else {
-          setTemplates(templatesRes.data as NudgeTemplate[]);
-        }
-      } catch (err) {
-        console.error('Unexpected error fetching nudge data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [deal.id, deal.orgId]);
-
-  // --- Fetch nudge log ---
-  const fetchLog = useCallback(() => {
-    async function load() {
-      setLogLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('nudge_log')
-          .select('*')
-          .eq('deal_id', deal.id)
-          .order('sent_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching nudge log:', error);
-        } else {
-          setNudgeLog(data as NudgeLogEntry[]);
-        }
-      } catch (err) {
-        console.error('Unexpected error fetching nudge log:', err);
-      } finally {
-        setLogLoading(false);
-      }
-    }
-    load();
-  }, [deal.id]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    fetchLog();
-  }, [fetchLog]);
-
   // --- Template selection handler ---
   function handleTemplateChange(templateId: string) {
     setSelectedTemplateId(templateId);
@@ -182,7 +114,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
       setBody('');
       return;
     }
-    const tpl = templates.find((t) => t.id === templateId);
+    const tpl = templates.find((t: any) => t.id === templateId);
     if (!tpl) return;
 
     // Auto-set channel if template specifies one
@@ -197,7 +129,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
   // --- Re-resolve merge tags when selected task changes ---
   useEffect(() => {
     if (!selectedTemplateId) return;
-    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    const tpl = templates.find((t: any) => t.id === selectedTemplateId);
     if (!tpl) return;
     setSubject(resolveMergeTags(tpl.subject ?? '', selectedTask, deal));
     setBody(resolveMergeTags(tpl.body, selectedTask, deal));
@@ -355,8 +287,8 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
       setRecipientContacts([]);
       setSubject('');
       setBody('');
-      fetchData();
-      fetchLog();
+      invalidateNudgeTasks(deal.id);
+      invalidateNudgeLog(deal.id);
     } catch (err) {
       console.error('Unexpected error sending nudge:', err);
       setToast('An unexpected error occurred.');
@@ -400,7 +332,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
               </h3>
               <button
                 className="btn btn-ghost btn-xs"
-                onClick={fetchData}
+                onClick={() => invalidateNudgeTasks(deal.id)}
                 title="Refresh"
               >
                 <RefreshCw size={13} />
@@ -415,8 +347,8 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
               </div>
             ) : (
               <div className="overflow-y-auto flex-1 -mx-1 px-1 space-y-1">
-                {tasks.map((task) => {
-                  const cfg = URGENCY_CONFIG[task.urgency] ?? URGENCY_CONFIG.on_track;
+                {tasks.map((task: any) => {
+                  const cfg = URGENCY_CONFIG[task.urgency as keyof typeof URGENCY_CONFIG] ?? URGENCY_CONFIG.on_track;
                   const isSelected = selectedTask?.task_id === task.task_id;
 
                   return (
@@ -501,7 +433,7 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                     onChange={(e) => handleTemplateChange(e.target.value)}
                   >
                     <option value="">— No template (compose manually) —</option>
-                    {templates.map((tpl) => (
+                    {templates.map((tpl: any) => (
                       <option key={tpl.id} value={tpl.id}>
                         {tpl.name} ({tpl.channel})
                       </option>
@@ -650,9 +582,9 @@ export function WorkspaceNudge({ deal }: WorkspaceNudgeProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {nudgeLog.map((entry) => {
+                      {nudgeLog.map((entry: any) => {
                         const taskMatch = tasks.find(
-                          (t) => t.task_id === entry.task_id
+                          (t: any) => t.task_id === entry.task_id
                         );
                         return (
                           <tr key={entry.id}>
