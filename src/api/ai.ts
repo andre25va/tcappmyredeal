@@ -1023,6 +1023,15 @@ async function handleExtractDeal(apiKey: string, body: any) {
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
+For sellerNames: MECHANICAL EXTRACTION ONLY — do not reason, just locate and copy the party name.
+  Step 1: Find the line in the contract labeled "SELLER:" (typically near the top of the first page, after the preamble). Copy exactly what appears after "SELLER:" on that line.
+  Step 2: If multiple sellers, include all names joined by " and ".
+  RULE: This is the SELLER party (person or company who owns the property). It may be a company name (LLC, Inc, Corp, Trust, etc.) or a personal name. Do NOT confuse with the listing agent/licensee — those go in sellerAgentName. Return null if not found.
+For buyerNames: MECHANICAL EXTRACTION ONLY — do not reason, just locate and copy the party name.
+  Step 1: Find the line in the contract labeled "BUYER:" (typically near the top of the first page). Copy exactly what appears after "BUYER:" on that line.
+  Step 2: Strip professional designations appended after the name (e.g., ASP, GRI, ABR, REALTOR) — keep only the person's name.
+  Step 3: If multiple buyers, include all names joined by " and ".
+  RULE: This is the BUYER party (person purchasing the property). Do NOT confuse with the buyer's agent/licensee — those go in buyerAgentName. Return null if not found.
 For buyerAgentName: MECHANICAL EXTRACTION ONLY — do not reason about roles, just locate and copy.
   Step 1: Find the section or column on this contract labeled "Selling Licensee". Copy the personal name (first + last, not a brokerage or company) that appears inside that labeled section. Stop here if found.
   Step 2: If no "Selling Licensee" section, find "Licensee assisting Buyer" or "Buyer's Agent" and copy that name.
