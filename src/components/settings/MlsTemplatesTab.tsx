@@ -33,6 +33,24 @@ interface Template {
   items: TemplateItem[];
 }
 
+interface MilestoneType {
+  id: string;
+  key: string;
+  label: string;
+  sort_order: number;
+}
+
+interface MilestoneDraftRow {
+  milestone_type_id: string;
+  label: string;
+  active: boolean;
+  due_days_from_contract: number | null;
+  sort_order: number;
+  days_before_notification: number;
+  notify_agent: boolean;
+  notify_client: boolean;
+}
+
 interface Props {
   mlsEntries: MlsEntry[];
 }
@@ -74,29 +92,47 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
   const [draftDealType, setDraftDealType] = useState<string>('buyer');
   const [draftItems, setDraftItems] = useState<TemplateItem[]>([]);
 
+  // ─── Milestone Template state ─────────────────────────────────────────────
+  const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
+  const [milestoneRows, setMilestoneRows] = useState<MilestoneDraftRow[]>([]);
+  const [loadingMilestoneConfig, setLoadingMilestoneConfig] = useState(false);
+  const [savingMilestone, setSavingMilestone] = useState(false);
+  const [milestoneSaved, setMilestoneSaved] = useState(false);
+  const [milestoneError, setMilestoneError] = useState<string | null>(null);
+
   // ── Load templates ──────────────────────────────────────────────────────
   const loadTemplates = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data: tpls, error: tErr } = await supabase
-        .from('checklist_templates')
-        .select('*')
-        .eq('checklist_type', 'milestone')
-        .order('name');
-      if (tErr) throw tErr;
+      const [tplRes, itemsRes, typesRes] = await Promise.all([
+        supabase
+          .from('checklist_templates')
+          .select('*')
+          .eq('checklist_type', 'milestone')
+          .order('name'),
+        supabase
+          .from('checklist_template_items')
+          .select('*')
+          .order('sort_order'),
+        supabase
+          .from('milestone_types')
+          .select('*')
+          .order('sort_order'),
+      ]);
 
-      const { data: items, error: iErr } = await supabase
-        .from('checklist_template_items')
-        .select('*')
-        .order('sort_order');
-      if (iErr) throw iErr;
+      if (tplRes.error) throw tplRes.error;
+      if (itemsRes.error) throw itemsRes.error;
 
-      const mapped: Template[] = (tpls ?? []).map((t: any) => ({
+      const mapped: Template[] = (tplRes.data ?? []).map((t: any) => ({
         ...t,
-        items: (items ?? []).filter((i: any) => i.template_id === t.id),
+        items: (itemsRes.data ?? []).filter((i: any) => i.template_id === t.id),
       }));
       setTemplates(mapped);
+
+      if (!typesRes.error) {
+        setMilestoneTypes(typesRes.data ?? []);
+      }
     } catch (e: any) {
       setError(e.message ?? 'Failed to load templates');
     } finally {
@@ -106,15 +142,78 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
+  // ── Load milestone config for a given MLS ──────────────────────────────
+  const loadMilestoneConfig = useCallback(async (mlsId: string, types: MilestoneType[]) => {
+    if (!mlsId) {
+      // No MLS selected — show all types unchecked
+      setMilestoneRows(types.map((mt, i) => ({
+        milestone_type_id: mt.id,
+        label: mt.label,
+        active: false,
+        due_days_from_contract: null,
+        sort_order: i + 1,
+        days_before_notification: 1,
+        notify_agent: true,
+        notify_client: false,
+      })));
+      return;
+    }
+
+    setLoadingMilestoneConfig(true);
+    setMilestoneError(null);
+    try {
+      const { data, error } = await supabase
+        .from('mls_milestone_config')
+        .select('*')
+        .eq('mls_id', mlsId);
+
+      if (error) throw error;
+
+      const configMap = new Map<string, any>((data ?? []).map((row: any) => [row.milestone_type_id, row]));
+
+      setMilestoneRows(types.map((mt, i) => {
+        const existing = configMap.get(mt.id);
+        return {
+          milestone_type_id: mt.id,
+          label: mt.label,
+          active: !!existing,
+          due_days_from_contract: existing?.due_days_from_contract ?? null,
+          sort_order: existing?.sort_order ?? i + 1,
+          days_before_notification: existing?.days_before_notification ?? 1,
+          notify_agent: existing?.notify_agent ?? true,
+          notify_client: existing?.notify_client ?? false,
+        };
+      }));
+    } catch (e: any) {
+      setMilestoneError(e.message ?? 'Failed to load milestone config');
+    } finally {
+      setLoadingMilestoneConfig(false);
+    }
+  }, []);
+
   // ── Select template ─────────────────────────────────────────────────────
-  const selectTemplate = (tpl: Template) => {
+  const selectTemplate = useCallback((tpl: Template) => {
     setSelectedId(tpl.id);
     setDraftName(tpl.name);
     setDraftMlsId(tpl.mls_id ?? '');
     setDraftDealType(tpl.deal_type ?? 'buyer');
     setDraftItems(tpl.items.map(i => ({ ...i })));
     setSaved(false);
-  };
+    setMilestoneSaved(false);
+    setMilestoneError(null);
+    loadMilestoneConfig(tpl.mls_id ?? '', milestoneTypes);
+  }, [milestoneTypes, loadMilestoneConfig]);
+
+  // Re-load milestone config when milestoneTypes are loaded (if a template is already selected)
+  useEffect(() => {
+    if (selectedId && milestoneTypes.length > 0) {
+      const tpl = templates.find(t => t.id === selectedId);
+      if (tpl) {
+        loadMilestoneConfig(tpl.mls_id ?? '', milestoneTypes);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [milestoneTypes]);
 
   // ── Create new template ─────────────────────────────────────────────────
   const createTemplate = async () => {
@@ -154,6 +253,7 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
       if (selectedId === id) {
         setSelectedId(null);
         setDraftItems([]);
+        setMilestoneRows([]);
       }
     } catch (e: any) {
       setError(e.message ?? 'Failed to delete template');
@@ -223,6 +323,54 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
     }
   };
 
+  // ── Save Milestone Template ─────────────────────────────────────────────
+  const saveMilestoneTemplate = async () => {
+    if (!draftMlsId) {
+      setMilestoneError('Please select an MLS board for this template before saving the milestone configuration.');
+      return;
+    }
+    setSavingMilestone(true);
+    setMilestoneError(null);
+    try {
+      const activeRows = milestoneRows.filter(r => r.active);
+      const inactiveIds = milestoneRows.filter(r => !r.active).map(r => r.milestone_type_id);
+
+      if (activeRows.length > 0) {
+        const { error: uErr } = await supabase
+          .from('mls_milestone_config')
+          .upsert(
+            activeRows.map((r, i) => ({
+              mls_id: draftMlsId,
+              milestone_type_id: r.milestone_type_id,
+              due_days_from_contract: r.due_days_from_contract,
+              sort_order: i + 1,
+              days_before_notification: r.days_before_notification,
+              notify_agent: r.notify_agent,
+              notify_client: r.notify_client,
+            })),
+            { onConflict: 'mls_id,milestone_type_id' }
+          );
+        if (uErr) throw uErr;
+      }
+
+      if (inactiveIds.length > 0) {
+        const { error: dErr } = await supabase
+          .from('mls_milestone_config')
+          .delete()
+          .eq('mls_id', draftMlsId)
+          .in('milestone_type_id', inactiveIds);
+        if (dErr) throw dErr;
+      }
+
+      setMilestoneSaved(true);
+      setTimeout(() => setMilestoneSaved(false), 2500);
+    } catch (e: any) {
+      setMilestoneError(e.message ?? 'Failed to save milestone template');
+    } finally {
+      setSavingMilestone(false);
+    }
+  };
+
   // ── Item helpers ────────────────────────────────────────────────────────
   const addItem = () => {
     if (!selectedId) return;
@@ -241,7 +389,15 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
     setDraftItems(prev => prev.filter(i => i.id !== id));
   };
 
+  // ── Milestone row helpers ───────────────────────────────────────────────
+  const updateMilestoneRow = (milestone_type_id: string, field: keyof MilestoneDraftRow, value: any) => {
+    setMilestoneRows(prev => prev.map(r =>
+      r.milestone_type_id === milestone_type_id ? { ...r, [field]: value } : r
+    ));
+  };
+
   const selected = templates.find(t => t.id === selectedId) ?? null;
+  const selectedMlsName = mlsEntries.find(m => m.id === draftMlsId)?.name ?? null;
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -360,7 +516,10 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
                 <select
                   className="select select-bordered select-sm w-full"
                   value={draftMlsId}
-                  onChange={e => setDraftMlsId(e.target.value)}
+                  onChange={e => {
+                    setDraftMlsId(e.target.value);
+                    loadMilestoneConfig(e.target.value, milestoneTypes);
+                  }}
                 >
                   <option value="">— None —</option>
                   {mlsEntries.map(m => (
@@ -524,6 +683,153 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
                 💡 Days can be negative (before the date). E.g. <code>-3</code> from Closing = 3 days before closing.
               </p>
             </div>
+
+            {/* ── Milestone Template Section ── */}
+            <div className="mt-2">
+              <h3 className="font-semibold text-base text-base-content mb-1">Milestone Template</h3>
+              <p className="text-xs text-base-content/50 mb-4">
+                Configure which milestones apply to{selectedMlsName ? ` ${selectedMlsName}` : ' this MLS'} deals and when they're due.
+              </p>
+
+              {loadingMilestoneConfig ? (
+                <div className="flex items-center gap-2 text-base-content/50 text-sm py-4">
+                  <span className="loading loading-spinner loading-xs" />
+                  Loading milestone config…
+                </div>
+              ) : milestoneTypes.length === 0 ? (
+                <div className="rounded-xl border border-base-300 bg-base-200 p-6 text-center">
+                  <p className="text-sm text-base-content/50">No milestone types defined.</p>
+                  <p className="text-xs text-base-content/40 mt-1">
+                    Add milestone types in the Milestones tab first.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="border border-base-300 rounded-xl overflow-hidden">
+                    <table className="table table-sm w-full">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-base-300 text-xs">
+                          <th className="w-8 px-3 py-2 text-center text-base-content/40">On</th>
+                          <th className="px-3 py-2 text-left text-base-content/50 font-semibold">Milestone</th>
+                          <th className="w-36 px-3 py-2 text-center text-base-content/50 font-semibold">Days from Contract</th>
+                          <th className="w-28 px-3 py-2 text-center text-base-content/50 font-semibold">Notify</th>
+                          <th className="w-32 px-3 py-2 text-center text-base-content/50 font-semibold">Days Before Alert</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {milestoneRows.map((row, idx) => (
+                          <tr
+                            key={row.milestone_type_id}
+                            className={`border-b border-base-300 last:border-0 text-xs ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${!row.active ? 'opacity-50' : ''}`}
+                          >
+                            {/* Active checkbox */}
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm checkbox-primary"
+                                checked={row.active}
+                                onChange={e => updateMilestoneRow(row.milestone_type_id, 'active', e.target.checked)}
+                              />
+                            </td>
+
+                            {/* Label */}
+                            <td className="px-3 py-2 font-medium text-base-content">
+                              {row.label}
+                            </td>
+
+                            {/* Days from contract */}
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={365}
+                                className="input input-bordered input-xs w-20 text-center"
+                                value={row.due_days_from_contract ?? ''}
+                                disabled={!row.active}
+                                placeholder="—"
+                                onChange={e => updateMilestoneRow(
+                                  row.milestone_type_id,
+                                  'due_days_from_contract',
+                                  e.target.value === '' ? null : parseInt(e.target.value)
+                                )}
+                              />
+                            </td>
+
+                            {/* Notify agent / client */}
+                            <td className="px-3 py-2">
+                              <div className="flex items-center justify-center gap-3">
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="checkbox checkbox-xs checkbox-primary"
+                                    checked={row.notify_agent}
+                                    disabled={!row.active}
+                                    onChange={e => updateMilestoneRow(row.milestone_type_id, 'notify_agent', e.target.checked)}
+                                  />
+                                  <span className="text-[10px] text-base-content/70">Agent</span>
+                                </label>
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="checkbox checkbox-xs checkbox-secondary"
+                                    checked={row.notify_client}
+                                    disabled={!row.active}
+                                    onChange={e => updateMilestoneRow(row.milestone_type_id, 'notify_client', e.target.checked)}
+                                  />
+                                  <span className="text-[10px] text-base-content/70">Client</span>
+                                </label>
+                              </div>
+                            </td>
+
+                            {/* Days before notification */}
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={30}
+                                className="input input-bordered input-xs w-16 text-center"
+                                value={row.days_before_notification}
+                                disabled={!row.active}
+                                onChange={e => updateMilestoneRow(
+                                  row.milestone_type_id,
+                                  'days_before_notification',
+                                  parseInt(e.target.value) || 1
+                                )}
+                              />
+                              <span className="text-[10px] text-base-content/40 ml-1">d</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {milestoneError && (
+                    <div className="flex items-center gap-2 mt-3 bg-error/10 border border-error/30 rounded-lg px-3 py-2">
+                      <AlertCircle size={13} className="text-error shrink-0" />
+                      <span className="text-xs text-error">{milestoneError}</span>
+                      <button className="ml-auto" onClick={() => setMilestoneError(null)}><X size={12} /></button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end mt-3">
+                    <button
+                      className={`btn btn-sm gap-1.5 ${milestoneSaved ? 'btn-success' : 'btn-primary'}`}
+                      onClick={saveMilestoneTemplate}
+                      disabled={savingMilestone}
+                    >
+                      {savingMilestone
+                        ? <span className="loading loading-spinner loading-xs" />
+                        : milestoneSaved
+                        ? <Check size={13} />
+                        : <Save size={13} />}
+                      {milestoneSaved ? 'Saved!' : 'Save Milestone Template'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
           </div>
         )}
       </div>
