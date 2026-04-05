@@ -1,3 +1,4 @@
+// Phase 4 — TanStack Query migration
 import React, { useState } from 'react';
 import {
   CheckSquare, Plus, X, Check,
