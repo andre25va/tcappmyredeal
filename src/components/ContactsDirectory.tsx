@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Star,
@@ -17,6 +17,7 @@ import { CallButton } from './CallButton';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from "./ui/Button";
+import { useOrgContacts, useInvalidateOrgContacts } from '../hooks/useOrgContacts';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -134,8 +135,6 @@ interface Props {
 
 
 export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryChanged, onCallStarted, onContactUpdated }: Props) {
-  const [contacts, setContacts] = useState<ContactRecord[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryKey | null>(null);
 
@@ -147,6 +146,10 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const { isMasterAdmin: isMasterAdminFn, primaryOrgId: primaryOrgIdFn } = useAuth();
   const isMasterAdmin = isMasterAdminFn();
   const primaryOrgId = primaryOrgIdFn();
+
+  // ── TanStack Query: contacts ─────────────────────────────────────────────────
+  const { data: contacts = [], isLoading: loading } = useOrgContacts(primaryOrgId);
+  const invalidateOrgContacts = useInvalidateOrgContacts();
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ContactRecord | null>(null);
@@ -207,20 +210,6 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     }
   }
 
-
-  // ── Load data ────────────────────────────────────────────────────────────────
-  const refresh = useCallback(async () => {
-    try {
-      const data = await loadContactsFull();
-      setContacts(data);
-    } catch (err) {
-      console.error('Failed to load contacts:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
 
   // ── Handle triggerAdd ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -283,7 +272,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
     if (!deleteTarget) return;
     try {
       await deleteContactRecord(deleteTarget.id, 'TC');
-      await refresh();
+      invalidateOrgContacts(primaryOrgId);
       onDirectoryChanged?.();
     } catch (err) {
       console.error('Delete failed:', err);
@@ -460,8 +449,9 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
           allContacts={contacts}
           onClose={() => setContactModal(null)}
           onSaved={async (saved: SavedContact) => {
-            await refresh();
+            invalidateOrgContacts(primaryOrgId);
             if (saved.isNewClient) {
+              // Fetch fresh data to find the newly created contact for onboarding flow
               const all = await loadContactsFull();
               const c = all.find((x) => x.id === saved.id);
               if (c) setOnboardingContact(c);
