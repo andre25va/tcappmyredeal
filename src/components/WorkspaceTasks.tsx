@@ -557,20 +557,9 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {statusBadge ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadge.color}`}>
-                          {statusBadge.label}
-                        </span>
-                        {onGoToRequests && !isDone && (
-                          <button
-                            onClick={() => onGoToRequests()}
-                            className="btn btn-xs btn-ghost text-[10px] text-primary gap-0.5"
-                            title="View request"
-                          >
-                            → View
-                          </button>
-                        )}
-                      </div>
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadge.color}`}>
+                        {statusBadge.label}
+                      </span>
                     ) : reqType && !isDone && onSendRequest ? (
                       <button
                         onClick={() => onSendRequest(task.id, reqType)}

@@ -43,7 +43,7 @@ interface CallStartedData {
   startedAt: string;
 }
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; onGoToRequests?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];

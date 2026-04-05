@@ -8,7 +8,7 @@ export function useDealRequests(dealId: string | undefined) {
       if (!dealId) return [];
       const { data, error } = await supabase
         .from('requests')
-        .select('*, request_events(*), request_documents(*)')
+        .select('*, request_events(*), request_documents(*), request_recipients(*)')
         .eq('deal_id', dealId)
         .order('created_at', { ascending: false });
       if (error) throw error;

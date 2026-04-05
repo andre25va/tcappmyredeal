@@ -855,6 +855,24 @@ export type RequestDocumentStatus =
 
 export type ExpectedResponseType = 'document_or_reply' | 'email_reply';
 
+
+export type RequestRecipientStatus = 'pending' | 'replied' | 'accepted' | 'snoozed' | 'needs_follow_up';
+
+export interface RequestRecipient {
+  id: string;
+  requestId: string;
+  contactId?: string;
+  name?: string;
+  email: string;
+  status: RequestRecipientStatus;
+  snoozedUntil?: string;
+  taskId?: string;
+  lastReplyAt?: string;
+  lastReplySnippet?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RequestRecord {
   id: string;
   dealId: string;
@@ -878,6 +896,7 @@ export interface RequestRecord {
   dealAddress?: string;
   events?: RequestEvent[];
   documents?: RequestDocument[];
+  recipients?: RequestRecipient[];
 }
 
 export interface RequestEvent {
