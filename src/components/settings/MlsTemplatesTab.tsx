@@ -4,7 +4,8 @@ import {
   ChevronRight, Save, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { MlsEntry } from '../../types';
+import { useMilestoneTypes } from '../../hooks/useMilestoneTypes';
+import { useMlsEntries } from '../../hooks/useMlsEntries';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -51,9 +52,7 @@ interface MilestoneDraftRow {
   notify_client: boolean;
 }
 
-interface Props {
-  mlsEntries: MlsEntry[];
-}
+interface Props {}
 
 const DEAL_TYPES = [
   { value: 'buyer', label: 'Buyer Side' },
@@ -78,7 +77,7 @@ const emptyItem = (templateId: string, sortOrder: number): Omit<TemplateItem, 'i
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function MlsTemplatesTab({ mlsEntries }: Props) {
+export function MlsTemplatesTab() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,8 +92,11 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
   const [draftItems, setDraftItems] = useState<TemplateItem[]>([]);
 
   // ─── Milestone Template state ─────────────────────────────────────────────
-  const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
   const [milestoneRows, setMilestoneRows] = useState<MilestoneDraftRow[]>([]);
+
+  // ── Shared TanStack Query hooks ──────────────────────────────────────────
+  const { data: mlsEntries = [] } = useMlsEntries();
+  const { data: milestoneTypes = [] } = useMilestoneTypes();
   const [loadingMilestoneConfig, setLoadingMilestoneConfig] = useState(false);
   const [savingMilestone, setSavingMilestone] = useState(false);
   const [milestoneSaved, setMilestoneSaved] = useState(false);
@@ -105,7 +107,7 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [tplRes, itemsRes, typesRes] = await Promise.all([
+      const [tplRes, itemsRes] = await Promise.all([
         supabase
           .from('checklist_templates')
           .select('*')
@@ -113,10 +115,6 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
           .order('name'),
         supabase
           .from('checklist_template_items')
-          .select('*')
-          .order('sort_order'),
-        supabase
-          .from('milestone_types')
           .select('*')
           .order('sort_order'),
       ]);
@@ -130,9 +128,6 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
       }));
       setTemplates(mapped);
 
-      if (!typesRes.error) {
-        setMilestoneTypes(typesRes.data ?? []);
-      }
     } catch (e: any) {
       setError(e.message ?? 'Failed to load templates');
     } finally {
