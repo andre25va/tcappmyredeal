@@ -145,7 +145,7 @@ function ContactCard({ p, isOurSide, isAgentClient, match, onOpenContact, onRemo
   const showMatchBadge = !!match && !p.contactId;
 
   return (
-    <div className={`border rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors ${showMatchBadge ? 'border-warning/60' : 'border-base-300'}`}>
+    <div className={`border rounded-xl p-3 bg-base-100 hover:border-base-400 transition-colors overflow-hidden ${showMatchBadge ? 'border-warning/60' : 'border-base-300'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           {/* Pills row */}
@@ -165,15 +165,15 @@ function ContactCard({ p, isOurSide, isAgentClient, match, onOpenContact, onRemo
           )}
 
           {/* First Name + Last Name */}
-          <div className="flex gap-1.5 mb-1.5">
+          <div className="flex gap-1.5 mb-1.5 min-w-0">
             <input
-              className={`input input-bordered input-xs flex-1 ${!p.firstName ? 'border-info/50 placeholder-info/70' : ''}`}
+              className={`input input-bordered input-xs flex-1 min-w-0 ${!p.firstName ? 'border-info/50 placeholder-info/70' : ''}`}
               placeholder="FN needed"
               value={p.firstName ?? ''}
               onChange={e => onUpdate(p.tempId, { firstName: e.target.value } as any)}
             />
             <input
-              className={`input input-bordered input-xs flex-1 ${!p.lastName ? 'border-info/50 placeholder-info/70' : ''}`}
+              className={`input input-bordered input-xs flex-1 min-w-0 ${!p.lastName ? 'border-info/50 placeholder-info/70' : ''}`}
               placeholder="LN needed"
               value={p.lastName ?? ''}
               onChange={e => onUpdate(p.tempId, { lastName: e.target.value } as any)}
