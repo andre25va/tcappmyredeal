@@ -13,6 +13,8 @@ import { supabase } from '../lib/supabase';
 import { DealContactPicker, DealContact } from './DealContactPicker';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
+import { useQueryClient } from '@tanstack/react-query';
+import { useDealRequests, useInvalidateDealRequests } from '../hooks/useDealRequests';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -192,8 +194,9 @@ interface Props {
 
 export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId }) => {
   const { profile } = useAuth();
-  const [requests, setRequests] = useState<RequestRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidateDealRequests = useInvalidateDealRequests();
+  const { data: rawRequests = [], isLoading: loading } = useDealRequests(deal.id);
+  const requests = rawRequests.map(mapRow);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
 
@@ -235,25 +238,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     });
   }
 
-  // ── Load requests ────────────────────────────────────────────────────────────
-  const loadRequests = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('requests')
-        .select('*, request_events(*), request_documents(*)')
-        .eq('deal_id', deal.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setRequests((data || []).map(mapRow));
-    } catch (err) {
-      console.error('Failed to load requests:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [deal.id]);
 
-  useEffect(() => { loadRequests(); }, [loadRequests]);
 
   // ── Load inbound messages for a request ─────────────────────────────────────
   const loadInboundMessages = useCallback(async (requestId: string) => {
@@ -323,7 +308,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', requestId);
     await addEvent(requestId, 'status_changed', eventDesc || `Status changed to ${status}`);
-    await loadRequests();
+    invalidateDealRequests(deal.id);
   };
 
   // ── Toggle expansion + fetch inbound messages for review cards ──────────────
@@ -393,7 +378,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
 
       setShowNewModal(false);
       resetNewForm();
-      await loadRequests();
+      invalidateDealRequests(deal.id);
       setExpandedId(data.id);
     } catch (err) {
       console.error('Failed to create request:', err);
@@ -433,7 +418,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
       setShowNewModal(false);
       resetNewForm();
-      await loadRequests();
+      invalidateDealRequests(deal.id);
       await sendEmail(data.id, draftTo, realSubject, realBody);
     } catch (err) {
       console.error('Failed to create and send request:', err);
@@ -475,7 +460,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       }).eq('id', requestId);
 
       await addEvent(requestId, 'sent', `Email sent to ${to} by ${profile?.name || 'Staff'}`);
-      await loadRequests();
+      invalidateDealRequests(deal.id);
     } catch (err) {
       console.error('Send email error:', err);
     } finally {
@@ -505,7 +490,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       }).eq('id', request.taskId);
     }
 
-    await loadRequests();
+    invalidateDealRequests(deal.id);
   };
 
   const handleReject = async (request: RequestRecord) => {
@@ -514,7 +499,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }).eq('id', request.id);
     await addEvent(request.id, 'rejected', `Rejected by ${profile?.name || 'Staff'}`);
-    await loadRequests();
+    invalidateDealRequests(deal.id);
   };
 
   const handleMarkReceived = async (request: RequestRecord) => {
@@ -528,7 +513,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       request.expectedResponseType === 'email_reply' ? 'reply_received' : 'document_received',
       `Marked received by ${profile?.name || 'Staff'}`
     );
-    await loadRequests();
+    invalidateDealRequests(deal.id);
   };
 
   const resetNewForm = () => {
