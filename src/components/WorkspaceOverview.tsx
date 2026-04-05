@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
+import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy, ClipboardList } from 'lucide-react';
 import { initPageTracking, PAGE_IDS } from '../utils/pageTracking';
 import { PageIdBadge } from './PageIdBadge';
 import { DealHealthCard } from './DealHealthCard';
@@ -43,7 +43,7 @@ interface CallStartedData {
   startedAt: string;
 }
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; onGoToRequests?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -626,7 +626,7 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, onGoToRequests, allDeals = [], onCallStarted }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
@@ -634,6 +634,20 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [activeRequestCount, setActiveRequestCount] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('deal_id', deal.id)
+      .not('status', 'in', '(completed,cancelled,accepted,rejected)')
+      .then(({ count }) => {
+        if (!cancelled) setActiveRequestCount(count || 0);
+      });
+    return () => { cancelled = true; };
+  }, [deal.id]);
 
   useEffect(() => {
     initPageTracking(PAGE_IDS.DEAL_OVERVIEW);
@@ -1152,6 +1166,33 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
             onClick={() => setShowAddReminder(true)}
           >
             <Plus size={11} /> Add reminder
+          </button>
+        )}
+      </div>
+
+      {/* ─── Requests Quick-Link ─── */}
+      <div className="bg-base-200 rounded-xl border border-base-300 p-3">
+        <button
+          className="font-semibold text-sm text-black flex items-center gap-2 mb-1 hover:text-primary transition-colors w-full text-left"
+          onClick={onGoToRequests}
+        >
+          <ClipboardList size={14} className="opacity-60" /> Requests
+          {activeRequestCount > 0 && (
+            <span className="ml-auto badge badge-warning badge-sm font-bold">{activeRequestCount} pending</span>
+          )}
+          {activeRequestCount === 0 && (
+            <span className="ml-auto badge badge-ghost badge-sm">0 active</span>
+          )}
+        </button>
+        <p className="text-xs text-base-content/50 ml-[22px]">
+          Track earnest money receipts, inspections, repair confirmations, and seller credit changes.
+        </p>
+        {onGoToRequests && (
+          <button
+            className="btn btn-xs btn-ghost gap-1 mt-2 text-primary hover:bg-primary/10"
+            onClick={onGoToRequests}
+          >
+            <ClipboardList size={11} /> View Requests →
           </button>
         )}
       </div>

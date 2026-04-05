@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ClipboardList, Plus, Send, CheckCircle, XCircle, Clock,
+  ClipboardList, Plus, Send, CheckCircle, Clock,
   FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink,
+  RefreshCw, Bell,
 } from 'lucide-react';
 import type {
   Deal, DealParticipant,
   RequestRecord, RequestEvent, RequestDocument,
   RequestType, RequestStatus, RequestEventType,
+  RequestRecipient, RequestRecipientStatus,
 } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -15,6 +17,7 @@ import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDealRequests, useInvalidateDealRequests } from '../hooks/useDealRequests';
+import { useInvalidateDealTasks } from '../hooks/useDealTasks';
 
 // ── Local types ────────────────────────────────────────────────────────────────
 interface InboundMessage {
@@ -180,6 +183,20 @@ function mapRow(r: any): RequestRecord {
       createdAt: d.created_at,
       updatedAt: d.updated_at,
     })),
+    recipients: (r.request_recipients || []).map((rec: any): RequestRecipient => ({
+      id: rec.id,
+      requestId: rec.request_id,
+      contactId: rec.contact_id,
+      name: rec.name,
+      email: rec.email,
+      status: rec.status as RequestRecipientStatus,
+      snoozedUntil: rec.snoozed_until,
+      taskId: rec.task_id,
+      lastReplyAt: rec.last_reply_at,
+      lastReplySnippet: rec.last_reply_snippet,
+      createdAt: rec.created_at,
+      updatedAt: rec.updated_at,
+    })),
   };
 }
 
@@ -195,6 +212,7 @@ interface Props {
 export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId }) => {
   const { profile } = useAuth();
   const invalidateDealRequests = useInvalidateDealRequests();
+  const invalidateDealTasks = useInvalidateDealTasks();
   const { data: rawRequests = [], isLoading: loading } = useDealRequests(deal.id);
   const requests = rawRequests.map(mapRow);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -227,6 +245,13 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   // Inbound messages per request (for review cards)
   const [inboundMessages, setInboundMessages] = useState<Record<string, InboundMessage[]>>({});
   const [loadingMessages, setLoadingMessages] = useState<Record<string, boolean>>({});
+
+  // Re-request modal state
+  const [reRequestModal, setReRequestModal] = useState<{ request: RequestRecord; recipient: RequestRecipient } | null>(null);
+  const [reRequestTo, setReRequestTo] = useState('');
+  const [reRequestSubject, setReRequestSubject] = useState('');
+  const [reRequestBody, setReRequestBody] = useState('');
+  const [sendingReRequest, setSendingReRequest] = useState(false);
 
   const participants = deal.participants ?? [];
 
@@ -369,6 +394,20 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       if (error) throw error;
       await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
 
+      // Insert one request_recipients row per selected contact
+      if (selectedContacts.length > 0) {
+        const { error: recError } = await supabase.from('request_recipients').insert(
+          selectedContacts.map(c => ({
+            request_id: data.id,
+            contact_id: c.contactId || null,
+            name: c.name || null,
+            email: c.email || '',
+            status: 'pending',
+          }))
+        );
+        if (recError) console.error('Failed to insert request_recipients:', recError);
+      }
+
       const realSubject = draftSubject.replace('[REQ-NEW]', token);
       const realBody = draftBody.replace('[REQ-NEW]', token);
       setInlineEdits(prev => ({
@@ -416,6 +455,21 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
 
       if (error) throw error;
       await addEvent(data.id, 'created', `Request created by ${profile?.name || 'Staff'}`);
+
+      // Insert one request_recipients row per selected contact
+      if (selectedContacts.length > 0) {
+        const { error: recError } = await supabase.from('request_recipients').insert(
+          selectedContacts.map(c => ({
+            request_id: data.id,
+            contact_id: c.contactId || null,
+            name: c.name || null,
+            email: c.email || '',
+            status: 'pending',
+          }))
+        );
+        if (recError) console.error('Failed to insert request_recipients:', recError);
+      }
+
       setShowNewModal(false);
       resetNewForm();
       invalidateDealRequests(deal.id);
@@ -493,13 +547,130 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     invalidateDealRequests(deal.id);
   };
 
-  const handleReject = async (request: RequestRecord) => {
+  // ── Per-recipient accept ──────────────────────────────────────────────────────
+  const handleAcceptRecipient = async (request: RequestRecord, recipientId: string) => {
+    // Mark this recipient as accepted
+    await supabase.from('request_recipients')
+      .update({ status: 'accepted', updated_at: new Date().toISOString() })
+      .eq('id', recipientId);
+
+    // Mark overall request as accepted
     await supabase.from('requests').update({
-      status: 'rejected', reviewed_by: profile?.name || 'Staff',
-      reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      status: 'accepted',
+      reviewed_by: profile?.name || 'Staff',
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }).eq('id', request.id);
-    await addEvent(request.id, 'rejected', `Rejected by ${profile?.name || 'Staff'}`);
+
+    await addEvent(request.id, 'accepted', `Accepted by ${profile?.name || 'Staff'}`);
+
+    // Auto-complete linked task if present
+    if (request.taskId) {
+      await supabase.from('tasks').update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', request.taskId);
+    }
+
     invalidateDealRequests(deal.id);
+  };
+
+  // ── Per-recipient snooze ──────────────────────────────────────────────────────
+  const handleSnoozeRecipient = async (request: RequestRecord, recipient: RequestRecipient, days: number) => {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + days);
+    const dueDateStr = dueDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Insert a follow-up task
+    const { data: taskData } = await supabase.from('tasks').insert({
+      deal_id: deal.id,
+      title: `Follow up: ${getTypeLabel(request.requestType)} from ${recipient.name || recipient.email}`,
+      due_date: dueDateStr,
+      status: 'pending',
+      category: 'Request Follow-Up',
+      priority: 'medium',
+      notes: `Request ID: ${request.id}`,
+      created_by: profile?.name || 'Staff',
+    }).select().single();
+
+    const taskId = taskData?.id || null;
+
+    // Update recipient
+    await supabase.from('request_recipients').update({
+      status: 'snoozed',
+      snoozed_until: dueDate.toISOString(),
+      task_id: taskId,
+      updated_at: new Date().toISOString(),
+    }).eq('id', recipient.id);
+
+    await addEvent(request.id, 'status_changed', `Snoozed follow-up for ${recipient.name || recipient.email} — ${days} day(s) by ${profile?.name || 'Staff'}`);
+    invalidateDealRequests(deal.id);
+    invalidateDealTasks(deal.id);
+  };
+
+  // ── Old request-level snooze (fallback for requests without recipients) ────────
+  const handleSnooze = async (request: RequestRecord, days: number) => {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + days);
+    const dueDateStr = dueDate.toISOString().split('T')[0];
+    const typeLabel = getTypeLabel(request.requestType);
+    const recipName = request.requestedFromName || 'Contact';
+
+    const { data: task, error } = await supabase.from('tasks').insert({
+      deal_id: deal.id,
+      title: `Follow up: ${typeLabel} from ${recipName}`,
+      description: `Request follow-up (${days}d snooze)`,
+      category: 'request_follow_up',
+      status: 'pending',
+      priority: 'normal',
+      due_date: dueDateStr,
+    }).select().single();
+
+    if (error) { console.error('Failed to create snooze task:', error); return; }
+
+    await supabase.from('requests').update({
+      task_id: task.id,
+      updated_at: new Date().toISOString(),
+    }).eq('id', request.id);
+
+    await addEvent(request.id, 'status_changed', `Snoozed ${days} day${days !== 1 ? 's' : ''} — follow-up task created · ${profile?.name || 'Staff'}`);
+    invalidateDealRequests(deal.id);
+    invalidateDealTasks(deal.id);
+  };
+
+  // ── Open re-request modal for a specific recipient ────────────────────────────
+  const handleOpenReRequest = (request: RequestRecord, recipient: RequestRecipient) => {
+    const content = getDefaultEmailContent(
+      request.requestType,
+      recipient.name || '',
+      deal.propertyAddress,
+      profile?.name || 'TC',
+      request.subjectToken || '',
+    );
+    setReRequestTo(recipient.email);
+    setReRequestSubject(content.subject);
+    setReRequestBody(content.body);
+    setReRequestModal({ request, recipient });
+  };
+
+  // ── Send re-request email ─────────────────────────────────────────────────────
+  const handleSendReRequest = async () => {
+    if (!reRequestModal) return;
+    setSendingReRequest(true);
+    try {
+      await sendEmail(reRequestModal.request.id, reRequestTo, reRequestSubject, reRequestBody);
+      // Reset recipient status to needs_follow_up
+      await supabase.from('request_recipients').update({
+        status: 'needs_follow_up',
+        updated_at: new Date().toISOString(),
+      }).eq('id', reRequestModal.recipient.id);
+      await addEvent(reRequestModal.request.id, 'follow_up_sent', `Re-request sent to ${reRequestTo} by ${profile?.name || 'Staff'}`);
+      setReRequestModal(null);
+      invalidateDealRequests(deal.id);
+    } finally {
+      setSendingReRequest(false);
+    }
   };
 
   const handleMarkReceived = async (request: RequestRecord) => {
@@ -554,7 +725,10 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       onToggle={() => handleToggle(req)}
       onMarkReceived={() => handleMarkReceived(req)}
       onAccept={() => handleAccept(req)}
-      onReject={() => handleReject(req)}
+      onAcceptRecipient={(recipientId) => handleAcceptRecipient(req, recipientId)}
+      onSnooze={(days) => handleSnooze(req, days)}
+      onSnoozeRecipient={(recipient, days) => handleSnoozeRecipient(req, recipient, days)}
+      onReRequest={(recipient) => handleOpenReRequest(req, recipient)}
       onUpdateStatus={(s) => updateStatus(req.id, s)}
       onInlineSend={() => handleInlineSend(req)}
       inlineEdit={inlineEdits[req.id]}
@@ -690,6 +864,53 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
           </div>
         </div>
       )}
+
+      {/* Re-request Modal */}
+      {reRequestModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setReRequestModal(null)}>
+          <div className="bg-base-100 rounded-xl shadow-xl w-full max-w-xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+            <div className="p-5 pb-3 border-b border-base-200">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <RotateCcw size={16} className="text-primary" /> Re-Request
+              </h3>
+              <p className="text-xs text-base-content/50 mt-0.5">
+                Sending follow-up to <span className="font-medium">{reRequestModal.recipient.name || reRequestModal.recipient.email}</span>
+              </p>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <div className="border border-base-300 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-base-200/60 border-b border-base-300">
+                  <Mail size={13} className="text-primary" />
+                  <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Follow-Up Email</span>
+                  <Edit3 size={11} className="text-base-content/30 ml-auto" />
+                  <span className="text-xs text-base-content/30">Editable</span>
+                </div>
+                <div className="p-3 space-y-2.5 bg-white">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium">To</span>
+                    <input type="text" className="input input-bordered input-xs flex-1 font-mono" value={reRequestTo} onChange={e => setReRequestTo(e.target.value)} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium">Subject</span>
+                    <input type="text" className="input input-bordered input-xs flex-1" value={reRequestSubject} onChange={e => setReRequestSubject(e.target.value)} />
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-xs text-base-content/40 w-12 flex-none font-medium pt-1">Body</span>
+                    <textarea className="textarea textarea-bordered textarea-xs flex-1 font-mono text-xs leading-relaxed" rows={8} value={reRequestBody} onChange={e => setReRequestBody(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-base-200 flex gap-2 justify-end">
+              <button className="btn btn-sm btn-ghost" onClick={() => setReRequestModal(null)}>Cancel</button>
+              <button className="btn btn-sm btn-primary gap-1.5" onClick={handleSendReRequest} disabled={sendingReRequest || !reRequestTo.trim()}>
+                {sendingReRequest ? <span className="loading loading-spinner loading-xs" /> : <Send size={13} />}
+                Send Follow-Up
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -701,7 +922,10 @@ interface RequestCardProps {
   onToggle: () => void;
   onMarkReceived: () => void;
   onAccept: () => void;
-  onReject: () => void;
+  onAcceptRecipient: (recipientId: string) => void;
+  onSnooze: (days: number) => void;
+  onSnoozeRecipient: (recipient: RequestRecipient, days: number) => void;
+  onReRequest: (recipient: RequestRecipient) => void;
   onUpdateStatus: (s: RequestStatus) => void;
   onInlineSend: () => void;
   inlineEdit?: { to: string; subject: string; body: string };
@@ -715,10 +939,11 @@ interface RequestCardProps {
 
 const RequestCard: React.FC<RequestCardProps> = ({
   request, expanded, onToggle, onMarkReceived,
-  onAccept, onReject, onInlineSend, inlineEdit,
+  onAccept, onAcceptRecipient, onSnooze, onSnoozeRecipient, onReRequest, onInlineSend, inlineEdit,
   onInlineEditChange, sending, inboundMessages, loadingMessages,
   getTypeLabel, fmtDate,
 }) => {
+  const [snoozeOpen, setSnoozeOpen] = React.useState(false);
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
   const isDraft = request.status === 'draft';
@@ -874,15 +1099,107 @@ const RequestCard: React.FC<RequestCardProps> = ({
             </div>
           )}
 
-          {/* Accept / Reject */}
-          {needsReview && !isClosed && (
+          {/* Per-recipient rows */}
+          {(request.recipients && request.recipients.length > 0) && (
+            <div className="mx-4 mt-3">
+              <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <User size={11} /> Recipients ({request.recipients.length})
+              </p>
+              <div className="space-y-2">
+                {request.recipients.map(rec => {
+                  const recStatus = rec.status;
+                  const recBadge =
+                    recStatus === 'accepted' ? 'bg-green-50 text-green-700 border-green-200' :
+                    recStatus === 'replied' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                    recStatus === 'snoozed' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    recStatus === 'needs_follow_up' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    'bg-gray-100 text-gray-500 border-gray-200';
+                  const recLabel =
+                    recStatus === 'accepted' ? 'Accepted' :
+                    recStatus === 'replied' ? 'Replied' :
+                    recStatus === 'snoozed' ? `Snoozed${rec.snoozedUntil ? ` until ${new Date(rec.snoozedUntil).toLocaleDateString('en-US', {month:'short',day:'numeric'})}` : ''}` :
+                    recStatus === 'needs_follow_up' ? 'Follow-Up Sent' :
+                    'Pending';
+                  return (
+                    <div key={rec.id} className="flex items-center gap-2 px-3 py-2 bg-white border border-base-200 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-base-content truncate">{rec.name || rec.email}</p>
+                        {rec.name && <p className="text-[11px] text-base-content/40 truncate">{rec.email}</p>}
+                      </div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium flex-none ${recBadge}`}>
+                        {recLabel}
+                      </span>
+                      {recStatus !== 'accepted' && !isClosed && (
+                        <div className="flex items-center gap-1 flex-none">
+                          <button
+                            className="btn btn-xs btn-success gap-1"
+                            onClick={e => { e.stopPropagation(); onAcceptRecipient(rec.id); }}
+                          >
+                            <CheckCircle size={10} /> Accept
+                          </button>
+                          <button
+                            className="btn btn-xs btn-outline gap-1"
+                            onClick={e => { e.stopPropagation(); onReRequest(rec); }}
+                          >
+                            <RotateCcw size={10} /> Re-request
+                          </button>
+                          <div className="dropdown dropdown-end">
+                            <button tabIndex={0} className="btn btn-xs btn-ghost gap-1" onClick={e => e.stopPropagation()}>
+                              <Clock size={10} /> Snooze
+                            </button>
+                            <ul tabIndex={0} className="dropdown-content menu menu-xs bg-base-100 rounded-box shadow border border-base-200 z-10 w-32">
+                              {[1, 2, 3, 5].map(d => (
+                                <li key={d}>
+                                  <button onClick={e => { e.stopPropagation(); onSnoozeRecipient(rec, d); }}>
+                                    {d} day{d > 1 ? 's' : ''}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Fallback: if no recipients yet (old requests), show the old accept button */}
+          {(!request.recipients || request.recipients.length === 0) && needsReview && !isClosed && (
             <div className="mx-4 flex gap-2">
               <button className="btn btn-sm btn-success gap-1.5" onClick={e => { e.stopPropagation(); onAccept(); }}>
                 <CheckCircle size={13} /> Accept
               </button>
-              <button className="btn btn-sm btn-error btn-outline gap-1.5" onClick={e => { e.stopPropagation(); onReject(); }}>
-                <XCircle size={13} /> Reject
-              </button>
+            </div>
+          )}
+
+          {/* Fallback snooze for old requests (no recipients) */}
+          {(!request.recipients || request.recipients.length === 0) && !isClosed && !isDraft && (isWaiting || request.status === 'needs_follow_up') && (
+            <div className="mx-4 flex gap-2 flex-wrap items-center">
+              <div className="relative" onClick={e => e.stopPropagation()}>
+                <button
+                  className="btn btn-sm btn-ghost gap-1.5 text-amber-600 hover:bg-amber-50"
+                  onClick={() => setSnoozeOpen(v => !v)}
+                >
+                  <Bell size={13} /> Snooze
+                </button>
+                {snoozeOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-base-200 rounded-lg shadow-lg py-1 min-w-[140px]">
+                    <p className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Follow up in…</p>
+                    {[1, 2, 3, 5].map(d => (
+                      <button
+                        key={d}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-100 text-base-content"
+                        onClick={() => { setSnoozeOpen(false); onSnooze(d); }}
+                      >
+                        {d} day{d !== 1 ? 's' : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
