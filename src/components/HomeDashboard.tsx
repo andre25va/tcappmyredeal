@@ -102,7 +102,7 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
     Promise.all([
       supabase.from('email_send_log').select('id', { count: 'exact', head: true }).gte('sent_at', weekAgo),
       supabase.from('call_logs').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
-      supabase.from('requests').select('id', { count: 'exact', head: true }).in('status', ['pending', 'sent', 'pending_review']),
+      supabase.from('requests').select('id', { count: 'exact', head: true }).in('status', ['pending', 'sent', 'pending_review', 'document_received']),
       supabase.from('call_logs').select('id', { count: 'exact', head: true }).not('ai_summary', 'is', null),
     ]).then(([emails, calls, requests, summaries]) => {
       setLiveStats({
