@@ -683,7 +683,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       </div>
 
       {/* Tab Content */}
-      <div className={`flex-1 min-h-0 flex flex-col ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      <div className={`flex-1 min-h-0 flex flex-col ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' || tab === 'checklists' || tab === 'tasks' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
 
         {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
