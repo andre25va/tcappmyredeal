@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   RefreshCw, ChevronDown, ChevronUp, Phone, CheckCircle,
@@ -9,6 +9,10 @@ import { Deal } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from "./ui/Button";
+import { useCallLogs, useInvalidateCallLogs } from '../hooks/useCallLogs';
+import { useVoiceDealUpdates, useInvalidateVoiceDealUpdates } from '../hooks/useVoiceDealUpdates';
+import { useCommunicationEvents } from '../hooks/useCommunicationEvents';
+import { useChangeRequests, useInvalidateChangeRequests } from '../hooks/useChangeRequests';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -49,76 +53,27 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
   const { profile } = useAuth();
   const [activeSection, setActiveSection] = useState<Section>('calls');
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Data
-  const [callLogs, setCallLogs] = useState<any[]>([]);
-  const [voiceUpdates, setVoiceUpdates] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
-  const [changeReqs, setChangeReqs] = useState<any[]>([]);
 
   // UI state
   const [expandedTranscript, setExpandedTranscript] = useState<Record<string, boolean>>({});
   const [markingReviewed, setMarkingReviewed] = useState<Record<string, boolean>>({});
 
-  const loadData = useCallback(async () => {
-    try {
-      const [clRes, vuRes, evRes, crRes] = await Promise.all([
-        // call_logs for this deal
-        supabase
-          .from('call_logs')
-          .select('*, contact:contact_id(id, first_name, last_name, phone)')
-          .eq('deal_id', deal.id)
-          .order('started_at', { ascending: false })
-          .limit(50),
+  const invalidateCallLogs = useInvalidateCallLogs();
+  const invalidateVoiceDealUpdates = useInvalidateVoiceDealUpdates();
+  const invalidateChangeRequests = useInvalidateChangeRequests();
 
-        // voice_deal_updates for this deal
-        supabase
-          .from('voice_deal_updates')
-          .select('*, caller_contact:caller_contact_id(id, first_name, last_name)')
-          .eq('deal_id', deal.id)
-          .order('created_at', { ascending: false })
-          .limit(50),
+  const { data: callLogs = [], isLoading: clLoading } = useCallLogs(deal.id);
+  const { data: voiceUpdates = [], isLoading: vuLoading } = useVoiceDealUpdates(deal.id);
+  const { data: events = [], isLoading: evLoading } = useCommunicationEvents(deal.id);
+  const { data: changeReqs = [], isLoading: crLoading } = useChangeRequests(deal.id);
 
-        // communication_events for timeline
-        supabase
-          .from('communication_events')
-          .select('*, contact:contact_id(id, first_name, last_name, phone)')
-          .eq('deal_id', deal.id)
-          .order('created_at', { ascending: false })
-          .limit(100),
-
-        // pending change requests
-        supabase
-          .from('change_requests')
-          .select('*, contact:requested_by_contact_id(id, first_name, last_name)')
-          .eq('deal_id', deal.id)
-          .eq('status', 'pending_review')
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ]);
-
-      setCallLogs(clRes.data || []);
-      setVoiceUpdates(vuRes.data || []);
-      setEvents(evRes.data || []);
-      setChangeReqs(crRes.data || []);
-    } catch (err) {
-      console.error('WorkspaceVoice load error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [deal.id]);
-
-  useEffect(() => {
-    setLoading(true);
-    loadData();
-  }, [loadData]);
+  const loading = clLoading || vuLoading || evLoading || crLoading;
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
+    invalidateCallLogs(deal.id);
+    invalidateVoiceDealUpdates(deal.id);
+    invalidateChangeRequests(deal.id);
   };
 
   const markReviewed = async (vuId: string) => {
@@ -132,7 +87,7 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
           reviewed_at: new Date().toISOString(),
         })
         .eq('id', vuId);
-      await loadData();
+      invalidateVoiceDealUpdates(deal.id);
     } catch (err) {
       console.error('markReviewed error:', err);
     } finally {
@@ -145,7 +100,7 @@ const WorkspaceVoice: React.FC<WorkspaceVoiceProps> = ({ deal, onCallStarted }) 
       const updates: Record<string, unknown> = { status };
       if (status === 'approved' || status === 'rejected') updates.reviewed_at = new Date().toISOString();
       await supabase.from('change_requests').update(updates).eq('id', id);
-      loadData();
+      invalidateChangeRequests(deal.id);
     } catch (err) { console.error('updateChangeRequest error:', err); }
   };
 
