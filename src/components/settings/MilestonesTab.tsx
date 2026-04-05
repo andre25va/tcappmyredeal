@@ -12,6 +12,16 @@ interface Props {
   contactRecords: ContactRecord[];
 }
 
+// ─── Milestone Catalog Types ───────────────────────────────────────────────
+
+interface MilestoneType {
+  id: string;
+  key: string;
+  label: string;
+  sort_order: number;
+  created_at: string;
+}
+
 const MERGE_TAGS = ['{{recipient_name}}', '{{property_address}}', '{{closing_date}}', '{{tc_name}}'];
 
 const ROLE_KEYS = [
@@ -437,6 +447,19 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const [customSaveError, setCustomSaveError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // ─── Milestone Catalog state ────────────────────────────────────────────
+  const [milestoneTypes, setMilestoneTypes] = useState<MilestoneType[]>([]);
+  const [addingType, setAddingType] = useState(false);
+  const [newTypeLabel, setNewTypeLabel] = useState('');
+  const [savingNewType, setSavingNewType] = useState(false);
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editingTypeLabel, setEditingTypeLabel] = useState('');
+  const [savingEditType, setSavingEditType] = useState(false);
+  const [deleteTypeId, setDeleteTypeId] = useState<string | null>(null);
+  const [deleteTypeError, setDeleteTypeError] = useState<string | null>(null);
+  const [deletingType, setDeletingType] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
   const agentClients = contactRecords.filter(c => c.isClient);
 
   useEffect(() => {
@@ -444,12 +467,13 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
       setLoading(true);
       setLoadError(null);
 
-      const [settingsRes, customRes] = await Promise.all([
+      const [settingsRes, customRes, catalogRes] = await Promise.all([
         supabase.from('milestone_notification_settings').select('*').order('created_at'),
         supabase
           .from('custom_milestones')
           .select('*, contacts(id, first_name, last_name)')
           .order('created_at'),
+        supabase.from('milestone_types').select('*').order('sort_order'),
       ]);
 
       if (settingsRes.error) {
@@ -509,6 +533,12 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
             };
           })
         );
+      }
+
+      if (catalogRes.error) {
+        console.error('Error loading milestone types:', catalogRes.error.message);
+      } else {
+        setMilestoneTypes(catalogRes.data || []);
       }
 
       setLoading(false);
@@ -678,6 +708,79 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     setDeleteConfirmId(null);
   };
 
+  // ─── Milestone Catalog handlers ─────────────────────────────────────────
+
+  const handleAddType = async () => {
+    const label = newTypeLabel.trim();
+    if (!label) return;
+    setSavingNewType(true);
+    setCatalogError(null);
+    const key = label.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const maxSortOrder = milestoneTypes.length > 0
+      ? Math.max(...milestoneTypes.map(mt => mt.sort_order))
+      : 0;
+    const { data, error } = await supabase
+      .from('milestone_types')
+      .insert({ key, label, sort_order: maxSortOrder + 1 })
+      .select()
+      .single();
+    if (error) {
+      setCatalogError(error.message);
+    } else if (data) {
+      setMilestoneTypes(prev => [...prev, data as MilestoneType]);
+      setNewTypeLabel('');
+      setAddingType(false);
+    }
+    setSavingNewType(false);
+  };
+
+  const handleEditType = async (id: string) => {
+    const label = editingTypeLabel.trim();
+    if (!label) return;
+    setSavingEditType(true);
+    setCatalogError(null);
+    const { error } = await supabase
+      .from('milestone_types')
+      .update({ label })
+      .eq('id', id);
+    if (error) {
+      setCatalogError(error.message);
+    } else {
+      setMilestoneTypes(prev => prev.map(mt => mt.id === id ? { ...mt, label } : mt));
+      setEditingTypeId(null);
+    }
+    setSavingEditType(false);
+  };
+
+  const handleDeleteType = async (id: string) => {
+    setDeletingType(true);
+    setDeleteTypeError(null);
+    // Check if in use
+    const { data: usages, error: checkError } = await supabase
+      .from('mls_milestone_config')
+      .select('id')
+      .eq('milestone_type_id', id)
+      .limit(1);
+    if (checkError) {
+      setDeleteTypeError(checkError.message);
+      setDeletingType(false);
+      return;
+    }
+    if (usages && usages.length > 0) {
+      setDeleteTypeError('This milestone is used by MLS templates and cannot be deleted.');
+      setDeletingType(false);
+      return;
+    }
+    const { error } = await supabase.from('milestone_types').delete().eq('id', id);
+    if (error) {
+      setDeleteTypeError(error.message);
+    } else {
+      setMilestoneTypes(prev => prev.filter(mt => mt.id !== id));
+      setDeleteTypeId(null);
+    }
+    setDeletingType(false);
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col gap-3 max-w-3xl mx-auto">
@@ -699,6 +802,178 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
+
+      {/* ── Section 0: Milestone Catalog ── */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-bold text-base-content">Milestone Catalog</h2>
+            <p className="text-xs text-base-content/50 mt-0.5">
+              Define the global list of milestone steps.
+            </p>
+          </div>
+          <button
+            onClick={() => { setAddingType(true); setNewTypeLabel(''); setCatalogError(null); }}
+            className="btn btn-sm btn-primary gap-1.5"
+          >
+            <Plus size={13} /> Add Milestone
+          </button>
+        </div>
+
+        <div className="border border-base-300 rounded-xl overflow-hidden">
+          {milestoneTypes.length === 0 && !addingType && (
+            <div className="p-6 text-center">
+              <p className="text-sm text-base-content/50">No milestone types defined yet.</p>
+              <p className="text-xs text-base-content/40 mt-1">Click "Add Milestone" to create your first step.</p>
+            </div>
+          )}
+
+          <div className="divide-y divide-base-300">
+            {milestoneTypes.map(mt => (
+              <div key={mt.id}>
+                <div className="flex items-center gap-3 px-4 py-3 bg-base-100 hover:bg-base-200/40 transition-colors">
+                  <span className="text-base-content/30 text-sm select-none">⠿</span>
+
+                  {editingTypeId === mt.id ? (
+                    <input
+                      className="input input-bordered input-sm flex-1"
+                      value={editingTypeLabel}
+                      onChange={e => setEditingTypeLabel(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleEditType(mt.id);
+                        if (e.key === 'Escape') setEditingTypeId(null);
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="flex-1 text-sm font-medium text-base-content">{mt.label}</span>
+                  )}
+
+                  {editingTypeId === mt.id ? (
+                    <div className="flex gap-1 flex-none">
+                      <button
+                        onClick={() => handleEditType(mt.id)}
+                        disabled={savingEditType}
+                        className="btn btn-xs btn-primary gap-1"
+                      >
+                        {savingEditType ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingTypeId(null)}
+                        className="btn btn-xs btn-ghost"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-1 flex-none">
+                      <button
+                        onClick={() => {
+                          setEditingTypeId(mt.id);
+                          setEditingTypeLabel(mt.label);
+                          setCatalogError(null);
+                          setDeleteTypeId(null);
+                        }}
+                        className="btn btn-ghost btn-xs btn-square"
+                        title="Edit"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteTypeId(mt.id);
+                          setDeleteTypeError(null);
+                          setEditingTypeId(null);
+                        }}
+                        className="btn btn-ghost btn-xs btn-square text-error"
+                        title="Delete"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Delete confirm */}
+                {deleteTypeId === mt.id && (
+                  <div className="mx-4 mb-3 mt-1 p-3 rounded-lg bg-error/10 border border-error/20">
+                    <p className="text-xs font-semibold text-error mb-2">
+                      Delete "{mt.label}"? This cannot be undone.
+                    </p>
+                    {deleteTypeError && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle size={12} className="text-error flex-none" />
+                        <p className="text-xs text-error">{deleteTypeError}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDeleteType(mt.id)}
+                        disabled={deletingType}
+                        className="btn btn-xs btn-error gap-1"
+                      >
+                        {deletingType ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                        Yes, Delete
+                      </button>
+                      <button
+                        onClick={() => { setDeleteTypeId(null); setDeleteTypeError(null); }}
+                        className="btn btn-xs btn-ghost"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Add new row */}
+            {addingType && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-primary/5 border-t border-primary/20">
+                <span className="text-base-content/30 text-sm select-none">⠿</span>
+                <input
+                  className="input input-bordered input-sm flex-1"
+                  placeholder="e.g. HOA Approval"
+                  value={newTypeLabel}
+                  onChange={e => setNewTypeLabel(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAddType();
+                    if (e.key === 'Escape') setAddingType(false);
+                  }}
+                  autoFocus
+                />
+                <div className="flex gap-1 flex-none">
+                  <button
+                    onClick={handleAddType}
+                    disabled={savingNewType || !newTypeLabel.trim()}
+                    className="btn btn-xs btn-primary gap-1"
+                  >
+                    {savingNewType ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setAddingType(false); setNewTypeLabel(''); }}
+                    className="btn btn-xs btn-ghost"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {catalogError && (
+          <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-error/10 border border-error/20">
+            <AlertCircle size={13} className="text-error flex-none" />
+            <p className="text-xs text-error">{catalogError}</p>
+          </div>
+        )}
+      </section>
+
+      <div className="divider" />
+
       {/* ── Section 1: Standard Milestones ── */}
       <section>
         <div className="mb-4">
