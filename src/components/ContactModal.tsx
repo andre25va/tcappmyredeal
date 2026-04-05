@@ -97,14 +97,14 @@ export interface EditMls {
   stateCode: string;
 }
 
-export function blankForm(role: ContactRole = 'agent'): EditForm {
+export function blankForm(role: ContactRole = 'agent', prefillPhone = ''): EditForm {
   return {
     id: crypto.randomUUID(),
     firstName: '',
     lastName: '',
     contactType: role,
     email: '',
-    phone: '',
+    phone: prefillPhone,
     company: '',
     timezone: '',
     notes: '',
@@ -291,6 +291,8 @@ export interface ContactModalProps {
   defaultLastName?: string;
   /** Pre-check the "Client Agent" toggle when creating a new contact */
   initialIsClient?: boolean;
+  /** Pre-fill the phone field (e.g. when adding a contact from an SMS thread) */
+  defaultPhone?: string;
   /** All contacts — used for duplicate detection */
   allContacts: ContactRecord[];
   onClose: () => void;
@@ -307,6 +309,7 @@ export function ContactModal({
   defaultFirstName = '',
   defaultLastName = '',
   initialIsClient = false,
+  defaultPhone = '',
   allContacts,
   onClose,
   onSaved,
@@ -368,7 +371,7 @@ export function ContactModal({
       setForm(contactToForm(contact));
     } else {
       setActiveContact(null);
-      const f = blankForm(defaultRole);
+      const f = blankForm(defaultRole, defaultPhone);
       f.company = defaultCompany;
       f.firstName = defaultFirstName;
       f.lastName = defaultLastName;

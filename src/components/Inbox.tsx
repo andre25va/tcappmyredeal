@@ -3,7 +3,7 @@ import {
   MessageSquare, Send, Plus, Search, X, Users,
   ChevronLeft, Clock, CheckCheck, AlertCircle, RefreshCw,
   Briefcase, MessageCircle, Mail, Loader2, Hash, Info,
-  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap, Paperclip, ExternalLink
+  Reply, ReplyAll, Forward, Inbox as InboxIcon, Zap, Paperclip, ExternalLink, UserPlus
 } from 'lucide-react';
 import { CallButton } from './CallButton';
 import type {
@@ -21,6 +21,8 @@ import {
 } from './inbox/InboxAtoms';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from "./ui/Button";
+import { ContactModal } from './ContactModal';
+import type { ContactRecord } from '../types';
 
 const TC_LABEL_LINKED = 'Label_29';
 const TC_LABEL_NEEDS_REVIEW = 'Label_30';
@@ -30,6 +32,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   // SMS / WhatsApp state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
+  const [smsAddContactPhone, setSmsAddContactPhone] = useState<string>('');
+  const [smsAddContactModalOpen, setSmsAddContactModalOpen] = useState(false);
+  const [allContactsForModal, setAllContactsForModal] = useState<ContactRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -417,6 +422,18 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       delete next[threadId];
       return next;
     });
+  };
+
+  const loadAllContactsForModal = async () => {
+    try {
+      const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+      const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const resp = await fetch(
+        `${sbUrl}/rest/v1/contacts?select=id,first_name,last_name,phone,email,contact_type,company,notes,is_active,created_at,updated_at&order=first_name`,
+        { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }
+      );
+      if (resp.ok) setAllContactsForModal(await resp.json());
+    } catch (e) { console.error('Failed to load contacts for modal:', e); }
   };
 
   const loadComposeData = async () => {
@@ -1167,8 +1184,24 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         </div>
         <div className="flex items-center gap-1">
           {selectedConv.participants.map((p, i) => (
-            <div key={i} title={p.name} className="w-7 h-7 bg-base-300 rounded-full flex items-center justify-center text-[10px] font-bold text-base-content/60">
-              {p.name.charAt(0).toUpperCase()}
+            <div key={i} className="flex items-center gap-1">
+              <div title={p.name || p.phone} className="w-7 h-7 bg-base-300 rounded-full flex items-center justify-center text-[10px] font-bold text-base-content/60">
+                {(p.name || p.phone || '?').charAt(0).toUpperCase()}
+              </div>
+              {!p.contact_id && p.phone && (
+                <button
+                  title={`Save ${p.phone} to contacts`}
+                  className="flex items-center gap-1 text-[10px] text-primary hover:text-primary-focus bg-primary/10 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
+                  onClick={() => {
+                    setSmsAddContactPhone(p.phone);
+                    setSmsAddContactModalOpen(true);
+                    loadAllContactsForModal();
+                  }}
+                >
+                  <UserPlus size={10} />
+                  <span>Save</span>
+                </button>
+              )}
             </div>
           ))}
           {selectedConv.participants.length > 0 && selectedConv.participants[0].phone && (
@@ -1739,6 +1772,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   ) : null;
 
   return (
+    <>
     <div className="flex h-full min-h-0 overflow-hidden bg-base-100">
       {ConversationList}
       {ThreadPanel}
@@ -1747,5 +1781,39 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       {EmailComposeModal}
       {ExtractionModal}
     </div>
+
+  {/* SMS → Add to Contacts modal */}
+  {smsAddContactModalOpen && (
+    <ContactModal
+      isOpen={smsAddContactModalOpen}
+      defaultPhone={smsAddContactPhone}
+      defaultRole="other"
+      allContacts={allContactsForModal}
+      onClose={() => { setSmsAddContactModalOpen(false); setSmsAddContactPhone(''); }}
+      onSaved={async (saved) => {
+        setSmsAddContactModalOpen(false);
+        setSmsAddContactPhone('');
+        if (!selectedConv) return;
+        const phone = smsAddContactPhone;
+        const updatedParticipants = selectedConv.participants.map(p =>
+          p.phone === phone
+            ? { ...p, contact_id: saved.id, name: `${saved.first_name} ${saved.last_name}`.trim() }
+            : p
+        );
+        try {
+          const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+          const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          await fetch(`${sbUrl}/rest/v1/conversations?id=eq.${selectedConv.id}`, {
+            method: 'PATCH',
+            headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify({ participants: updatedParticipants })
+          });
+          setSelectedConv(prev => prev ? { ...prev, participants: updatedParticipants } : prev);
+          setConversations(prev => prev.map(c => c.id === selectedConv.id ? { ...c, participants: updatedParticipants } : c));
+        } catch (e) { console.error('Failed to update conversation participant:', e); }
+      }}
+    />
+  )}
+    </>
   );
 };
