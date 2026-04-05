@@ -3,16 +3,12 @@ import {
   Plus, Trash2, Check, X, Loader2, AlertCircle, LayoutTemplate,
   ChevronRight, Save, ToggleLeft, ToggleRight,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 import { useMilestoneTypes } from '../../hooks/useMilestoneTypes';
 import { useMlsEntries } from '../../hooks/useMlsEntries';
 import { useChecklistTemplates, useInvalidateChecklistTemplates } from '../../hooks/useChecklistTemplates';
 import { useChecklistTemplateItems, useInvalidateChecklistTemplateItems } from '../../hooks/useChecklistTemplateItems';
 import { useMlsMilestoneConfig, useInvalidateMlsMilestoneConfig } from '../../hooks/useMlsMilestoneConfig';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Mail, MessageSquare, ChevronDown, ChevronUp, Loader2, Check, AlertTriangle } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { Deal, DealMilestone, ContactRecord, MilestoneNotificationSetting } from '../types';
 import { MILESTONE_LABELS, generateTasksForMilestone } from '../utils/taskTemplates';
 import { generateId } from '../utils/helpers';
@@ -13,7 +13,6 @@ import { useMilestoneNotifSettings } from '../hooks/useMilestoneNotifSettings';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface Props {
   deal: Deal;
