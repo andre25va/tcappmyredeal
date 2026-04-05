@@ -19,6 +19,15 @@ import {
   closingCountdown, generateId
 } from '../utils/helpers';
 import { MilestoneAdvanceModal } from './MilestoneAdvanceModal';
+
+interface MilestoneStep {
+  id: string;
+  key: string;
+  label: string;
+  sort_order: number;
+  due_days_from_contract: number | null;
+}
+
 import { Button } from "./ui/Button";
 
 interface CallStartedData {
@@ -259,7 +268,6 @@ const MilestoneStepper: React.FC<{
   contactRecords?: ContactRecord[];
 }> = ({ deal, onUpdate, userName = 'TC Staff', contactRecords = [] }) => {
   const current = deal.milestone ?? 'contract-received';
-  const currentIdx = MILESTONE_ORDER.indexOf(current);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [advanceTarget, setAdvanceTarget] = useState<DealMilestone | null>(null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
@@ -267,6 +275,9 @@ const MilestoneStepper: React.FC<{
   const [unarchiveTo, setUnarchiveTo] = useState<DealMilestone>('contract-received');
   const [archiveReason, setArchiveReason] = useState('');
   const [milestoneDueDays, setMilestoneDueDays] = useState<Record<string, number>>({});
+  const [mlsSteps, setMlsSteps] = useState<MilestoneStep[]>([]);
+  const [mlsStepsLoading, setMlsStepsLoading] = useState(false);
+  const [allMlsEntries, setAllMlsEntries] = useState<Array<{id: string; name: string; state: string}>>([]);
 
   useEffect(() => {
     supabase
@@ -283,7 +294,68 @@ const MilestoneStepper: React.FC<{
       });
   }, []);
 
-  const mainSteps = MILESTONE_ORDER.filter(m => m !== 'archived');
+  const fetchMilestoneSteps = async (mlsId: string) => {
+    if (!mlsId) { setMlsSteps([]); return; }
+    setMlsStepsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('mls_milestone_config')
+        .select(`
+          sort_order,
+          due_days_from_contract,
+          milestone_types!mls_milestone_config_milestone_type_id_fkey (
+            id, key, label, sort_order
+          )
+        `)
+        .eq('mls_id', mlsId)
+        .order('sort_order');
+
+      if (data && data.length > 0) {
+        const steps: MilestoneStep[] = data.map((row: any) => ({
+          id: row.milestone_types.id,
+          key: row.milestone_types.key,
+          label: row.milestone_types.label,
+          sort_order: row.sort_order,
+          due_days_from_contract: row.due_days_from_contract,
+        }));
+        setMlsSteps(steps);
+      } else {
+        setMlsSteps([]);
+      }
+    } finally {
+      setMlsStepsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    supabase.from('mls_entries').select('id, name, state').then(({ data }) => {
+      if (data) setAllMlsEntries(data);
+    });
+  }, []);
+
+  useEffect(() => {
+    if ((deal as any).mlsId) {
+      fetchMilestoneSteps((deal as any).mlsId);
+    } else {
+      setMlsSteps([]);
+    }
+  }, [(deal as any).mlsId]);
+
+  const effectiveSteps: Array<{ key: string; label: string; dueDays: number | null }> =
+    mlsSteps.length > 0
+      ? mlsSteps.map(s => ({
+          key: s.key,
+          label: s.label,
+          dueDays: s.due_days_from_contract,
+        }))
+      : MILESTONE_ORDER.map(key => ({
+          key,
+          label: MILESTONE_LABELS[key] || key,
+          dueDays: milestoneDueDays[key] ?? null,
+        }));
+
+  const mainSteps = effectiveSteps.filter(s => s.key !== 'archived');
+  const currentIdx = mainSteps.findIndex(s => s.key === current);
   const isArchived = current === 'archived';
 
   const handleAdvance = (targetMilestone: DealMilestone) => {
@@ -292,7 +364,7 @@ const MilestoneStepper: React.FC<{
       id: generateId(),
       timestamp: new Date().toISOString(),
       action: 'Milestone advanced',
-      detail: `Deal moved to "${MILESTONE_LABELS[targetMilestone]}" — ${newTasks.length} task(s) auto-generated.`,
+      detail: `Deal moved to "${effectiveSteps.find(s => s.key === targetMilestone)?.label ?? MILESTONE_LABELS[targetMilestone] ?? targetMilestone}" — ${newTasks.length} task(s) auto-generated.`,
       user: userName,
       type: 'status_change' as const,
     };
@@ -337,9 +409,33 @@ const MilestoneStepper: React.FC<{
           Milestone
         </h3>
         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${MILESTONE_COLORS[current]}`}>
-          {MILESTONE_LABELS[current]}
+          {effectiveSteps.find(s => s.key === current)?.label ?? MILESTONE_LABELS[current] ?? current}
         </span>
       </div>
+      {allMlsEntries.length > 0 && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-base-content/50">MLS Board:</span>
+          <select
+            className="select select-xs select-bordered"
+            value={(deal as any).mlsId || ''}
+            onChange={async (e) => {
+              const newMlsId = e.target.value;
+              await supabase.from('deals').update({ mls_id: newMlsId || null }).eq('id', deal.id);
+              fetchMilestoneSteps(newMlsId);
+              onUpdate({ ...deal, mlsId: newMlsId || undefined } as any);
+            }}
+          >
+            <option value="">— No MLS —</option>
+            {allMlsEntries.map(e => (
+              <option key={e.id} value={e.id}>{e.name} ({e.state})</option>
+            ))}
+          </select>
+          {mlsStepsLoading && <span className="loading loading-spinner loading-xs" />}
+        </div>
+      )}
+      {!(deal as any).mlsId && mlsSteps.length === 0 && (
+        <p className="text-[10px] text-base-content/40 italic mb-2">Set MLS board to load milestone template</p>
+      )}
       {(deal.contractDate || deal.closingDate) && (
         <div className="flex flex-wrap gap-1.5 mb-3">
           {countdownBadge('Contract', deal.contractDate)}
@@ -348,25 +444,25 @@ const MilestoneStepper: React.FC<{
       )}
 
       <div className="flex items-center gap-1 overflow-x-auto overflow-y-visible scrollbar-none pb-6 pt-8 -mt-8">
-        {mainSteps.map((m, i) => {
+        {mainSteps.map((step, i) => {
           const isDone = i < currentIdx && !isArchived;
-          const isCurrent = m === current;
+          const isCurrent = step.key === current;
           const isFuture = i > currentIdx;
           const isNext = i === currentIdx + 1;
 
           return (
-            <React.Fragment key={m}>
+            <React.Fragment key={step.key}>
               {i > 0 && (
                 <div className={`h-0.5 flex-1 min-w-2 rounded transition-colors ${isDone || isCurrent ? 'bg-primary/60' : 'bg-base-300'}`} />
               )}
               <div className="relative flex-none">
                 <button
                   onClick={() => {
-                    if (isFuture) setAdvanceTarget(m);
+                    if (isFuture) setAdvanceTarget(step.key as DealMilestone);
                   }}
                   onMouseEnter={() => setHoveredIdx(i)}
                   onMouseLeave={() => setHoveredIdx(null)}
-                  title={MILESTONE_LABELS[m]}
+                  title={step.label}
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all
                     ${isDone ? 'bg-primary border-primary text-primary-content' : ''}
                     ${isCurrent ? 'bg-primary border-primary text-primary-content ring-2 ring-primary/30 ring-offset-1 scale-110' : ''}
@@ -386,12 +482,12 @@ const MilestoneStepper: React.FC<{
                     }}
                   >
                     <div className="bg-gray-800 text-white text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap shadow-xl">
-                      {i + 1}. {MILESTONE_LABELS[m]}
+                      {i + 1}. {step.label}
                     </div>
                   </div>
                 )}
                 {(() => {
-                  const days = milestoneDueDays[m];
+                  const days = step.dueDays;
                   if (days == null || !deal.contractDate) return null;
                   const contractDate = new Date(deal.contractDate + 'T00:00:00');
                   const dueDate = new Date(contractDate);
