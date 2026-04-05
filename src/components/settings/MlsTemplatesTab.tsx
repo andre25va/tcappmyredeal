@@ -397,7 +397,10 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
   };
 
   const selected = templates.find(t => t.id === selectedId) ?? null;
-  const selectedMlsName = mlsEntries.find(m => m.id === draftMlsId)?.name ?? null;
+  const selectedMlsEntry = mlsEntries.find(m => m.id === draftMlsId) ?? null;
+  const selectedMlsName = selectedMlsEntry
+    ? `${selectedMlsEntry.name}${selectedMlsEntry.state ? ` (${selectedMlsEntry.state})` : ''}`
+    : null;
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -431,7 +434,10 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
             </div>
           )}
           {templates.map(tpl => {
-            const mlsName = mlsEntries.find(m => m.id === tpl.mls_id)?.name ?? 'No MLS';
+            const mlsEntry = mlsEntries.find(m => m.id === tpl.mls_id);
+            const mlsName = mlsEntry
+              ? `${mlsEntry.name}${mlsEntry.state ? ` (${mlsEntry.state})` : ''}`
+              : 'No MLS';
             const dealLabel = DEAL_TYPES.find(d => d.value === tpl.deal_type)?.label ?? tpl.deal_type;
             return (
               <button
@@ -523,7 +529,7 @@ export function MlsTemplatesTab({ mlsEntries }: Props) {
                 >
                   <option value="">— None —</option>
                   {mlsEntries.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
+                    <option key={m.id} value={m.id}>{m.name}{m.state ? ` (${m.state})` : ''}</option>
                   ))}
                 </select>
               </div>
