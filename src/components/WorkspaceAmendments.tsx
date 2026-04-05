@@ -1,5 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useDealAmendments, useInvalidateDealAmendments } from '../hooks/useDealAmendments';
 import {
   Plus, X, FileText, Edit3, ChevronDown, ChevronRight,
   Loader2, CheckCircle2, AlertTriangle, Save, Calendar,
@@ -320,40 +321,20 @@ function AmendmentCard({ amendment, onEdit, onDelete }: CardProps) {
 export function WorkspaceAmendments({ deal, onUpdate }: Props) {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
-  const [amendments, setAmendments] = useState<Amendment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: amendments = [], isLoading: loading } = useDealAmendments(deal.id);
+  const invalidateDealAmendments = useInvalidateDealAmendments();
   const [showForm, setShowForm] = useState(false);
   const [editingAmendment, setEditingAmendment] = useState<Amendment | undefined>();
 
-  useEffect(() => {
-    loadAmendments();
-  }, [deal.id]);
-
-  const loadAmendments = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('deal_amendments')
-      .select('*')
-      .eq('deal_id', deal.id)
-      .order('amendment_number', { ascending: true });
-
-    if (!error && data) setAmendments(data as Amendment[]);
-    setLoading(false);
-  };
-
-  const handleSave = (a: Amendment) => {
-    setAmendments(prev => {
-      const exists = prev.find(x => x.id === a.id);
-      if (exists) return prev.map(x => x.id === a.id ? a : x);
-      return [...prev, a].sort((x, y) => x.amendment_number - y.amendment_number);
-    });
+  const handleSave = (_a: Amendment) => {
+    invalidateDealAmendments(deal.id);
   };
 
   const handleDelete = async (amendment: Amendment) => {
     if (!confirm(`Delete Amendment #${amendment.amendment_number}? This cannot be undone.`)) return;
     const { error } = await supabase.from('deal_amendments').delete().eq('id', amendment.id);
     if (error) { alert('Delete failed: ' + error.message); return; }
-    setAmendments(prev => prev.filter(a => a.id !== amendment.id));
+    invalidateDealAmendments(deal.id);
   };
 
   const nextNumber = (amendments.length > 0 ? Math.max(...amendments.map(a => a.amendment_number)) : 0) + 1;

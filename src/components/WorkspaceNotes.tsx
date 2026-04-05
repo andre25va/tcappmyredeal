@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
+import { useDealNotes, useInvalidateDealNotes } from '../hooks/useDealNotes';
 import {
   Pin,
   Trash2,
@@ -65,31 +66,11 @@ function relativeTime(iso: string): string {
 
 export default function WorkspaceNotes({ deal }: Props) {
   const { profile } = useAuth();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: notes = [], isLoading: loading } = useDealNotes(deal.id);
+  const invalidateDealNotes = useInvalidateDealNotes();
   const [error, setError] = useState<string | null>(null);
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
-
-  /* ---- Fetch ---- */
-  const fetchNotes = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from('deal_notes')
-      .select('*, profiles:author_id(name)')
-      .eq('deal_id', deal.id)
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (err) {
-      setError(err.message);
-    } else {
-      setNotes(data as Note[]);
-    }
-    setLoading(false);
-  }, [deal.id]);
-
-  useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
 
   /* ---- Add note ---- */
   const addNote = async () => {
@@ -106,7 +87,7 @@ export default function WorkspaceNotes({ deal }: Props) {
       setError(err.message);
     } else {
       setContent('');
-      await fetchNotes();
+      await invalidateDealNotes(deal.id);
     }
     setSaving(false);
   };
@@ -118,7 +99,7 @@ export default function WorkspaceNotes({ deal }: Props) {
       .update({ is_pinned: !note.is_pinned })
       .eq('id', note.id);
     if (err) setError(err.message);
-    else await fetchNotes();
+    else await invalidateDealNotes(deal.id);
   };
 
   /* ---- Delete ---- */
@@ -126,7 +107,7 @@ export default function WorkspaceNotes({ deal }: Props) {
     if (!window.confirm('Delete this note?')) return;
     const { error: err } = await supabase.from('deal_notes').delete().eq('id', note.id);
     if (err) setError(err.message);
-    else await fetchNotes();
+    else await invalidateDealNotes(deal.id);
   };
 
   /* ---- Render ---- */

@@ -12,6 +12,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { SmartChecklistSuggestions } from './SmartChecklistSuggestions';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/Button';
+import { useChecklistDocLinks } from '../hooks/useChecklistDocLinks';
 
 interface ChecklistDocLink { id: string; checklist_item_id: string; document_id: string; file_name?: string; }
 
@@ -816,28 +817,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
     setConfirmInput('');
   };
   // ── Checklist ↔ Document links ─────────────────────────────────────────────
-  const [docLinks, setDocLinks] = useState<ChecklistDocLink[]>([]);
-  useEffect(() => {
-    supabase
-      .from('checklist_document_links')
-      .select('id, checklist_item_id, document_id')
-      .eq('deal_id', deal.id)
-      .then(({ data }) => {
-        if (!data) return;
-        // Fetch file names for linked docs
-        const docIds = [...new Set(data.map((l: any) => l.document_id))];
-        if (docIds.length === 0) { setDocLinks(data as ChecklistDocLink[]); return; }
-        supabase
-          .from('deal_documents')
-          .select('id, file_name')
-          .in('id', docIds)
-          .then(({ data: docs }) => {
-            const nameMap: Record<string, string> = {};
-            (docs ?? []).forEach((d: any) => { nameMap[d.id] = d.file_name; });
-            setDocLinks(data.map((l: any) => ({ ...l, file_name: nameMap[l.document_id] ?? '' })));
-          });
-      });
-  }, [deal.id]);
+  const { data: docLinks = [] } = useChecklistDocLinks(deal.id);
 
   const [activeTab, setActiveTab]               = useState<'dd' | 'compliance'>('dd');
   const [showCompleted, setShowCompleted]       = useState(true);

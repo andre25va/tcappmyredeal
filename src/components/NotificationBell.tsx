@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNotifications, useInvalidateNotifications } from '../hooks/useNotifications';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Bell, MessageSquare, Mail, X, Phone } from 'lucide-react';
@@ -104,9 +105,10 @@ function NotificationToast({
 
 // ── Main bell component ───────────────────────────────────────────────────────
 export function NotificationBell({ onNavigate }: NotificationBellProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { data: notifications = [] } = useNotifications();
+  const invalidateNotifications = useInvalidateNotifications();
+  const unreadCount = notifications.filter((n: any) => !n.is_read).length;
   const [open, setOpen]                   = useState(false);
-  const [unreadCount, setUnreadCount]     = useState(0);
   const [toasts, setToasts]               = useState<ToastItem[]>([]);
   const panelRef    = useRef<HTMLDivElement>(null);
   const knownIds    = useRef<Set<string>>(new Set());
@@ -150,33 +152,15 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toastId)), 300);
   }, []);
 
-  // ── fetch + hydrate known IDs (no toasts on initial load) ────────────────────
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (!data) return;
-
-      // On initial load, seed known IDs silently
-      if (knownIds.current.size === 0) {
-        data.forEach((n: Notification) => knownIds.current.add(n.id));
-      }
-
-      setNotifications(data);
-      setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
-    } catch { /* silent */ }
-  }, []);
+  // ── Seed known IDs from hook data (no toasts on initial load) ─────────────────
+  useEffect(() => {
+    if (knownIds.current.size === 0 && notifications.length > 0) {
+      notifications.forEach((n: Notification) => knownIds.current.add(n.id));
+    }
+  }, [notifications]);
 
   // ── realtime subscription ─────────────────────────────────────────────────────
   useEffect(() => {
-    fetchNotifications();
-
-    // fallback poll every 30s (handles missed realtime events)
-    const poll = setInterval(fetchNotifications, 30000);
-
     // realtime: instant toast on new notification
     const channel = supabase
       .channel('notifications-realtime')
@@ -190,9 +174,8 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
           if (knownIds.current.has(n.id)) return;
           knownIds.current.add(n.id);
 
-          // Add to list + bump badge
-          setNotifications(prev => [n, ...prev].slice(0, 50));
-          setUnreadCount(prev => prev + 1);
+          // Invalidate TanStack query to refetch
+          invalidateNotifications();
 
           // Show toast
           pushToast(n);
@@ -201,11 +184,10 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
       .subscribe();
 
     return () => {
-      clearInterval(poll);
       supabase.removeChannel(channel);
       toastTimers.current.forEach(t => clearTimeout(t));
     };
-  }, [fetchNotifications, pushToast]);
+  }, [pushToast, invalidateNotifications]);
 
   // ── close dropdown on outside click ──────────────────────────────────────────
   useEffect(() => {
@@ -222,20 +204,15 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   const deleteNotification = async (id: string) => {
     try {
       await supabase.from('notifications').delete().eq('id', id);
-      setNotifications(prev => prev.filter(n => n.id !== id));
-      setUnreadCount(prev => {
-        const wasUnread = notifications.find(n => n.id === id && !n.is_read);
-        return wasUnread ? Math.max(0, prev - 1) : prev;
-      });
+      invalidateNotifications();
     } catch { /* silent */ }
   };
 
   const clearAll = async () => {
     try {
-      const ids = notifications.map(n => n.id);
+      const ids = notifications.map((n: any) => n.id);
       if (ids.length) await supabase.from('notifications').delete().in('id', ids);
-      setNotifications([]);
-      setUnreadCount(0);
+      invalidateNotifications();
     } catch { /* silent */ }
   };
 
@@ -266,7 +243,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
       <div ref={panelRef} className="relative">
         <div className="relative inline-flex">
           <button
-            onClick={() => { setOpen(!open); if (!open) fetchNotifications(); }}
+            onClick={() => { setOpen(!open); if (!open) invalidateNotifications(); }}
             className="btn btn-ghost btn-sm btn-square"
             title="Notifications"
           >

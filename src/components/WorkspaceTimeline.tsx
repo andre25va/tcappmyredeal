@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useDealTimeline, useInvalidateDealTimeline } from '../hooks/useDealTimeline';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import {
   Clock,
@@ -149,8 +150,8 @@ const PRESET_MILESTONES = [
 
 export default function WorkspaceTimeline({ deal }: Props) {
   const { profile } = useAuth();
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: milestones = [], isLoading: loading } = useDealTimeline(deal.id);
+  const invalidateDealTimeline = useInvalidateDealTimeline();
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
 
@@ -169,26 +170,6 @@ export default function WorkspaceTimeline({ deal }: Props) {
   const [editNotes, setEditNotes] = useState('');
   const [extendingId, setExtendingId] = useState<string | null>(null);
   const [extendDate, setExtendDate] = useState('');
-
-  /* ---- Fetch ---- */
-  const fetchMilestones = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from('deal_timeline')
-      .select('*')
-      .eq('deal_id', deal.id)
-      .order('sort_order', { ascending: true })
-      .order('due_date', { ascending: true });
-    if (err) {
-      setError(err.message);
-    } else {
-      setMilestones(data as Milestone[]);
-    }
-    setLoading(false);
-  }, [deal.id]);
-
-  useEffect(() => {
-    fetchMilestones();
-  }, [fetchMilestones]);
 
   /* ---- Seed from deal dates ---- */
   const seedMilestones = async () => {
@@ -228,7 +209,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
     if (err) {
       setError(err.message);
     } else {
-      await fetchMilestones();
+      await invalidateDealTimeline(deal.id);
     }
     setSeeding(false);
   };
@@ -240,7 +221,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
       .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: profile?.id })
       .eq('id', m.id);
     if (err) setError(err.message);
-    else await fetchMilestones();
+    else await invalidateDealTimeline(deal.id);
     setMenuOpen(null);
   };
 
@@ -250,7 +231,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
       .update({ status: 'waived' })
       .eq('id', m.id);
     if (err) setError(err.message);
-    else await fetchMilestones();
+    else await invalidateDealTimeline(deal.id);
     setMenuOpen(null);
   };
 
@@ -261,7 +242,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
       .update({ status: 'extended', extended_to: extendDate })
       .eq('id', m.id);
     if (err) setError(err.message);
-    else await fetchMilestones();
+    else await invalidateDealTimeline(deal.id);
     setExtendingId(null);
     setExtendDate('');
     setMenuOpen(null);
@@ -281,7 +262,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
       .update({ label: editLabel, due_date: editDate || null, notes: editNotes || null })
       .eq('id', m.id);
     if (err) setError(err.message);
-    else await fetchMilestones();
+    else await invalidateDealTimeline(deal.id);
     setEditingId(null);
   };
 
@@ -289,7 +270,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
     if (!window.confirm(`Delete milestone "${m.label}"?`)) return;
     const { error: err } = await supabase.from('deal_timeline').delete().eq('id', m.id);
     if (err) setError(err.message);
-    else await fetchMilestones();
+    else await invalidateDealTimeline(deal.id);
     setMenuOpen(null);
   };
 
@@ -311,7 +292,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
     });
     if (err) setError(err.message);
     else {
-      await fetchMilestones();
+      await invalidateDealTimeline(deal.id);
       setShowAdd(false);
       setAddPreset(null);
       setAddLabel('');
