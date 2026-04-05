@@ -112,6 +112,7 @@ function AppInner() {
   const [ddMasterItems, setDdMasterItems]               = useState<DDMasterItem[]>([]);
   const [requestsPending, setRequestsPending] = useState(0);
   const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
+  const [pendingWorkspaceRequestType, setPendingWorkspaceRequestType] = useState<string | null>(null);
 
   // ── Load deals ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -441,6 +442,7 @@ function AppInner() {
 
   const handleSelectDeal = (id: string) => {
     setPendingWorkspaceTab(null);
+    setPendingWorkspaceRequestType(null);
     setSelectedId(id);
     setTxPanel('workspace');
     setView('transactions');
@@ -448,7 +450,16 @@ function AppInner() {
 
   const handleSelectDealWithTab = (id: string, tab: string) => {
     setPendingWorkspaceTab(tab);
+    setPendingWorkspaceRequestType(null);
     setSelectedId(id);
+  };
+
+  const handleSendRequest = (dealId: string, requestType: string) => {
+    setPendingWorkspaceTab('requests');
+    setPendingWorkspaceRequestType(requestType);
+    setSelectedId(dealId);
+    setTxPanel('workspace');
+    setView('transactions');
   };
 
   const handleSetView = (v: View) => {
@@ -647,10 +658,12 @@ function AppInner() {
                     <ByTaskView
                       deals={deals}
                       onSelectDeal={(id) => {
+                        setPendingWorkspaceRequestType(null);
                         setSelectedId(id);
                         setTxPanel('workspace');
                         setPendingWorkspaceTab('tasks');
                       }}
+                      onSendRequest={handleSendRequest}
                     />
                   )}
                 </div>
@@ -678,7 +691,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={(pendingWorkspaceTab ?? undefined) as any} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={(pendingWorkspaceTab ?? undefined) as any} initialRequestType={pendingWorkspaceRequestType ?? undefined} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>

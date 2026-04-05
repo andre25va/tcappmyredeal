@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckSquare, AlertTriangle } from 'lucide-react';
+import { CheckSquare, AlertTriangle, Send } from 'lucide-react';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -31,7 +31,15 @@ interface TaskGroup {
 interface Props {
   deals: Deal[];
   onSelectDeal: (dealId: string) => void;
+  onSendRequest?: (dealId: string, requestType: string) => void;
 }
+
+// ── Task category → request type mapping ─────────────────────────────────────
+
+const TASK_REQUEST_MAP: Record<string, { type: string; label: string }> = {
+  emd_due:    { type: 'earnest_money_receipt', label: 'Request EMD Receipt' },
+  inspection: { type: 'inspection_complete',   label: 'Request Inspection Confirm' },
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,7 +96,7 @@ const UPCOMING_GROUPS = [
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal }) => {
+export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal, onSendRequest }) => {
   const [tasks, setTasks]     = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,7 +105,6 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal }) => {
       setLoading(true);
 
       const today     = startOfDay(new Date());
-      const todayStr  = today.toISOString().split('T')[0];
       // Look back 90 days for overdue + ahead 60 days for upcoming
       const pastDate  = new Date(today);
       pastDate.setDate(pastDate.getDate() - 90);
@@ -141,7 +148,7 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal }) => {
   const today   = startOfDay(new Date());
 
   // Split overdue vs upcoming
-  const overdueTasks  = tasks.filter(t => t.daysUntil < 0).sort((a, b) => b.daysUntil - a.daysUntil); // most recent overdue first
+  const overdueTasks  = tasks.filter(t => t.daysUntil < 0).sort((a, b) => b.daysUntil - a.daysUntil);
   const upcomingTasks = tasks.filter(t => t.daysUntil >= 0);
 
   // Build groups: overdue first, then priority groups
@@ -222,62 +229,84 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal }) => {
 
             {/* Tasks in this group */}
             {group.tasks.map(task => {
-              const deal  = dealMap.get(task.deal_id);
-              const addr  = deal ? [deal.propertyAddress, deal.city].filter(Boolean).join(', ') : '—';
+              const deal       = dealMap.get(task.deal_id);
+              const addr       = deal ? [deal.propertyAddress, deal.city].filter(Boolean).join(', ') : '—';
               const { label: dueLbl, urgent, overdue } = formatDueDate(task.daysUntil, task.effectiveDate);
+              const requestCfg = task.category ? TASK_REQUEST_MAP[task.category] : undefined;
 
               return (
-                <button
+                <div
                   key={task.id}
-                  onClick={() => onSelectDeal(task.deal_id)}
-                  className="w-full text-left px-3 py-2.5 border-b border-base-200 hover:bg-primary/5 active:bg-primary/10 transition-colors group"
+                  className="w-full border-b border-base-200 hover:bg-primary/5 transition-colors group"
                 >
-                  <div className="flex items-start gap-2.5">
-                    {/* Priority dot */}
-                    <span className={`mt-1.5 w-2 h-2 rounded-full flex-none ${group.dotCls}`} />
+                  {/* Main clickable row — opens deal workspace */}
+                  <div
+                    className="text-left px-3 py-2.5 cursor-pointer"
+                    onClick={() => onSelectDeal(task.deal_id)}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {/* Priority dot */}
+                      <span className={`mt-1.5 w-2 h-2 rounded-full flex-none ${group.dotCls}`} />
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {/* Title + date badge */}
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-base-content leading-snug truncate">
-                          {task.title}
-                        </p>
-                        <span className={`text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded whitespace-nowrap ${
-                          overdue
-                            ? 'bg-red-100 text-red-700'
-                            : urgent
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-base-200 text-base-content/50'
-                        }`}>
-                          {dueLbl}
-                        </span>
-                      </div>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Title + date badge */}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-base-content leading-snug truncate">
+                            {task.title}
+                          </p>
+                          <span className={`text-[10px] font-semibold shrink-0 px-1.5 py-0.5 rounded whitespace-nowrap ${
+                            overdue
+                              ? 'bg-red-100 text-red-700'
+                              : urgent
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-base-200 text-base-content/50'
+                          }`}>
+                            {dueLbl}
+                          </span>
+                        </div>
 
-                      {/* Deal info */}
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {deal?.dealRef && (
-                          <span className="text-[10px] font-mono bg-base-200 text-base-content/50 px-1.5 py-0.5 rounded shrink-0">
-                            {deal.dealRef}
+                        {/* Deal info */}
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {deal?.dealRef && (
+                            <span className="text-[10px] font-mono bg-base-200 text-base-content/50 px-1.5 py-0.5 rounded shrink-0">
+                              {deal.dealRef}
+                            </span>
+                          )}
+                          <span className="text-xs text-base-content/50 truncate">{addr}</span>
+                        </div>
+
+                        {/* Tags */}
+                        {task.wasWeekend && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mt-1 inline-block">
+                            ↩ moved from weekend
                           </span>
                         )}
-                        <span className="text-xs text-base-content/50 truncate">{addr}</span>
                       </div>
 
-                      {/* Tags */}
-                      {task.wasWeekend && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full mt-1 inline-block">
-                          ↩ moved from weekend
-                        </span>
-                      )}
+                      {/* Arrow hint */}
+                      <span className="text-[10px] text-base-content/30 group-hover:text-primary transition-colors mt-1 flex-none font-medium">
+                        Open →
+                      </span>
                     </div>
-
-                    {/* Arrow hint */}
-                    <span className="text-[10px] text-base-content/30 group-hover:text-primary transition-colors mt-1 flex-none font-medium">
-                      Open →
-                    </span>
                   </div>
-                </button>
+
+                  {/* Send Request action — only for actionable task categories */}
+                  {requestCfg && onSendRequest && (
+                    <div className="px-3 pb-2 flex items-center gap-1.5">
+                      <button
+                        className="btn btn-xs btn-outline btn-primary gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSendRequest(task.deal_id, requestCfg.type);
+                        }}
+                      >
+                        <Send size={10} />
+                        {requestCfg.label}
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
