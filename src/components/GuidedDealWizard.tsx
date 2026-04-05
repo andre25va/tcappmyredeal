@@ -201,7 +201,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
-    mlsNumber: '', mlsBoard: '', isHeartlandMls: false, listPrice: '', purchasePrice: '',
+    mlsNumber: '', mlsBoard: '', isHeartlandMls: false, mlsEntryId: '', listPrice: '', purchasePrice: '',
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
@@ -240,6 +240,29 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
   // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
   const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | null>(null);
+  const [mlsEntries, setMlsEntries] = useState<Array<{id: string; name: string; state: string}>>([]);
+
+  useEffect(() => {
+    supabase.from('mls_entries').select('id, name, state').then(({ data }) => {
+      if (data) setMlsEntries(data);
+    });
+  }, []);
+
+  const resolveMlsEntryId = (boardName: string, dealState?: string): string => {
+    if (!boardName || !mlsEntries.length) return '';
+    const nameLower = boardName.toLowerCase().trim();
+    // Try name + state match first
+    if (dealState) {
+      const stateUpper = dealState.toUpperCase();
+      const stateMatch = mlsEntries.find(e =>
+        e.name.toLowerCase().trim() === nameLower && e.state?.toUpperCase() === stateUpper
+      );
+      if (stateMatch) return stateMatch.id;
+    }
+    // Fall back to name-only match
+    const nameMatch = mlsEntries.find(e => e.name.toLowerCase().trim() === nameLower);
+    return nameMatch?.id ?? '';
+  };
   const [mlsPropertyData, setMlsPropertyData] = useState<{
     mlsNumber?: string;
     mlsBoardName?: string;
@@ -614,7 +637,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             return bl.includes(fetchedBoard) || fetchedBoard.includes(bl.split(' ')[0]);
           });
           if (matched) {
-            setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched) }));
+            setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched), mlsEntryId: resolveMlsEntryId(matched, p.state) }));
             setMlsBoardDetectedSource('mls');
           }
         }
@@ -887,7 +910,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           return bl.includes(extractedBoard) || extractedBoard.includes(bl.split(' ')[0]);
         }) || boardsForState.find(b => b.toLowerCase().includes('heartland') && extractedBoard.includes('heartland'));
         if (matched) {
-          setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched) }));
+          setForm(p => ({ ...p, mlsBoard: matched, isHeartlandMls: /heartland/i.test(matched), mlsEntryId: resolveMlsEntryId(matched, p.state) }));
           setMlsBoardDetectedSource('pdf');
         }
       }
@@ -971,6 +994,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       zipCode: form.zipCode.trim(),
       mlsNumber: form.mlsNumber.trim(),
       isHeartlandMls: form.isHeartlandMls,
+      mlsId: form.mlsEntryId || undefined,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType,
@@ -1706,7 +1730,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         value={form.mlsBoard}
                         onChange={e => {
                           const val = e.target.value;
-                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val) }));
+                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val), mlsEntryId: resolveMlsEntryId(val, p.state) }));
                           setMlsBoardDetectedSource(null); // TC overrode manually
                           if (form.agentClientId) checkMlsMismatch(form.agentClientId, val);
                         }}
@@ -1723,7 +1747,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         value={form.mlsBoard}
                         onChange={e => {
                           const val = e.target.value;
-                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val) }));
+                          setForm(p => ({ ...p, mlsBoard: val, isHeartlandMls: /heartland/i.test(val), mlsEntryId: resolveMlsEntryId(val, p.state) }));
                           if (form.agentClientId && val.length > 3) checkMlsMismatch(form.agentClientId, val);
                         }}
                         placeholder="Enter MLS board name"

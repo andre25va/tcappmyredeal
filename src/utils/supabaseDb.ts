@@ -172,7 +172,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
       home_warranty_paid_by, home_warranty_company, commission_paid_by,
-      org_id, deal_ref
+      org_id, deal_ref, mls_id
     `)
     .order('created_at', { ascending: false });
 
@@ -205,6 +205,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       state: row.state || (dd.state as string) || '',
       zipCode: row.zip || (dd.zipCode as string) || '',
       mlsNumber: row.mls_number || (dd.mlsNumber as string) || '',
+      mlsId: row.mls_id || undefined,
       listPrice: row.list_price ?? (dd.listPrice as number) ?? 0,
       contractPrice: row.purchase_price ?? (dd.contractPrice as number) ?? 0,
       propertyType: (row.property_type || (dd.propertyType as string) || 'single-family') as PropertyType,
@@ -368,6 +369,7 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       state: deal.state ?? null,
       zip: deal.zipCode ?? null,
       mls_number: deal.mlsNumber ?? null,
+      mls_id: (deal as any).mlsId ?? null,
       status: deal.status ?? 'contract',
       pipeline_stage: deal.milestone ?? 'contract-received',
       contract_date: deal.contractDate || null,
