@@ -133,13 +133,18 @@ interface ContactCardProps {
   isOurSide: boolean;
   isAgentClient?: boolean;
   match?: ContactRecord | null;
+  linkedContact?: ContactRecord | null;
   onOpenContact: (p: WizardParticipant) => void;
   onRemove: (tempId: string) => void;
   onUpdate: (tempId: string, patch: Partial<WizardParticipant>) => void;
   onMatchClick?: (p: WizardParticipant) => void;
 }
 
-function ContactCard({ p, isOurSide, isAgentClient, match, onOpenContact, onRemove, onUpdate, onMatchClick }: ContactCardProps) {
+function ContactCard({ p, isOurSide, isAgentClient, match, linkedContact, onOpenContact, onRemove, onUpdate, onMatchClick }: ContactCardProps) {
+  // Use live contact record data when available, fall back to wizard form state
+  const displayEmail   = linkedContact?.email   || p.email;
+  const displayPhone   = linkedContact?.phone   || p.phone;
+  const displayCompany = linkedContact?.company || (p as any).company;
   const roles = roleOptions(p.side);
   const displayName = [p.firstName, p.lastName].filter(Boolean).join(' ');
   const showMatchBadge = !!match && !p.contactId;
@@ -184,16 +189,16 @@ function ContactCard({ p, isOurSide, isAgentClient, match, onOpenContact, onRemo
           <input
             className="input input-bordered input-xs w-full mb-1.5"
             placeholder="Company"
-            value={(p as any).company ?? ''}
+            value={displayCompany ?? ''}
             onChange={e => onUpdate(p.tempId, { company: e.target.value } as any)}
           />
 
-          {/* Email / Phone */}
-          {p.email && <p className="text-xs text-base-content/60 mt-0.5 truncate">{p.email}</p>}
-          {p.phone && <p className="text-xs text-base-content/60 truncate">{p.phone}</p>}
-          {!p.email && !p.phone && (
+          {/* Email / Phone — live from linked contact if available */}
+          {displayEmail && <p className="text-xs text-base-content/60 mt-0.5 truncate">{displayEmail}</p>}
+          {displayPhone && <p className="text-xs text-base-content/60 truncate">{displayPhone}</p>}
+          {!displayEmail && !displayPhone && (
             <p className="text-xs text-warning/70 mt-0.5 flex items-center gap-1">
-              <AlertCircle size={11} /> No contact info yet
+              <AlertCircle size={11} /> {p.contactId ? 'No contact info on file' : 'No contact info yet'}
             </p>
           )}
 
@@ -327,6 +332,7 @@ interface SideColumnProps {
   results: SearchResult[];
   searching: boolean;
   matchMap: Record<string, ContactRecord | null>;
+  linkedContactMap: Record<string, ContactRecord | null>;
   onOpenContact: (p: WizardParticipant) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, patch: Partial<WizardParticipant>) => void;
@@ -342,7 +348,7 @@ function SideColumn({
   side, label, list, transactionType,
   agentClientId,
   addingSide, query, results, searching,
-  matchMap,
+  matchMap, linkedContactMap,
   onOpenContact, onRemove, onUpdate,
   onSetAdding, onQueryChange, onAddFromSearch, onCreateNew, onCloseAdd,
   onMatchClick,
@@ -360,6 +366,7 @@ function SideColumn({
           isOurSide={transactionType === side}
           isAgentClient={!!agentClientId && !!p.contactId && p.contactId === agentClientId}
           match={matchMap[p.tempId]}
+          linkedContact={linkedContactMap[p.tempId]}
           onOpenContact={onOpenContact}
           onRemove={onRemove}
           onUpdate={onUpdate}
@@ -415,6 +422,16 @@ export default function StepDealContacts({ participants, onChange, transactionTy
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const [contactModalState, setContactModalState] = useState<ContactModalState>(null);
+
+  // ── Linked contact map — live data for linked participants ────────────────
+
+  const linkedContactMap = useMemo(() => {
+    const map: Record<string, ContactRecord | null> = {};
+    for (const p of participants) {
+      map[p.tempId] = p.contactId ? (allContacts.find(c => c.id === p.contactId) ?? null) : null;
+    }
+    return map;
+  }, [participants, allContacts]);
 
   // ── Match detection ───────────────────────────────────────────────────────
 
@@ -645,6 +662,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           results={results}
           searching={searching}
           matchMap={matchMap}
+          linkedContactMap={linkedContactMap}
           onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
@@ -667,6 +685,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
           results={results}
           searching={searching}
           matchMap={matchMap}
+          linkedContactMap={linkedContactMap}
           onOpenContact={openEditContact}
           onRemove={handleRemove}
           onUpdate={handleUpdate}
@@ -691,6 +710,7 @@ export default function StepDealContacts({ participants, onChange, transactionTy
             p={p}
             isOurSide={false}
             match={matchMap[p.tempId]}
+            linkedContact={linkedContactMap[p.tempId]}
             onOpenContact={openEditContact}
             onRemove={handleRemove}
             onUpdate={handleUpdate}
