@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail,
   X, Star,
   Home, DollarSign, Scale, ClipboardCheck,
-  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles,
+  ArrowLeft, Shield, FileText, SendHorizontal, Loader2, Sparkles, Database,
 } from 'lucide-react';
 import { ContactRecord, ContactRole } from '../types';
 import {
@@ -40,7 +40,7 @@ const TIMEZONES = [
   { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
 ];
 
-type CategoryKey = 'agent' | 'lender' | 'title' | 'attorney' | 'inspector' | 'buyer_seller' | 'tc' | 'other';
+type CategoryKey = 'agent' | 'lender' | 'title' | 'attorney' | 'inspector' | 'buyer_seller' | 'tc' | 'online_database' | 'other';
 
 interface CategoryDef {
   key: CategoryKey;
@@ -60,6 +60,7 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'inspector', label: 'Inspectors', roles: ['inspector'], icon: <ClipboardCheck size={22} />, bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-600' },
   { key: 'buyer_seller', label: 'Clients', roles: ['client', 'buyer', 'seller'], icon: <Home size={22} />, bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600' },
   { key: 'tc', label: 'TCs', roles: ['tc'], icon: <Shield size={22} />, bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600' },
+  { key: 'online_database', label: 'Online Database', roles: ['online_database'], icon: <Database size={22} />, bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600' },
   { key: 'other', label: 'Other', roles: ['appraiser', 'other'], icon: <Users size={22} />, bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600' },
 ];
 
@@ -72,6 +73,7 @@ const ROLE_OPTIONS: { value: ContactRole; label: string }[] = [
   { value: 'inspector', label: 'Inspector' },
   { value: 'appraiser', label: 'Appraiser' },
   { value: 'tc', label: 'TC' },
+  { value: 'online_database', label: 'Online Database' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -226,7 +228,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const categoryCounts = useMemo(() => {
     const counts: Record<CategoryKey, number> = {
       agent: 0, lender: 0, title: 0, attorney: 0,
-      inspector: 0, buyer_seller: 0, tc: 0, other: 0,
+      inspector: 0, buyer_seller: 0, tc: 0, online_database: 0, other: 0,
     };
     for (const c of contacts) {
       if (c.contactType === 'staff') continue; // Staff managed in Settings

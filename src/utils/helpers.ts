@@ -94,6 +94,7 @@ export const roleLabel = (r: ContactRole): string => ({
   'inspector': 'Inspector',
   'appraiser': 'Appraiser',
   'tc': 'TC',
+  'online_database': 'Online Database',
   'other': 'Other',
   'staff': 'Staff',
 }[r] ?? r);
@@ -110,6 +111,7 @@ export const roleBadge = (r: ContactRole): string => ({
   'inspector': 'badge-neutral',
   'appraiser': 'badge-ghost',
   'tc': 'badge-primary',
+  'online_database': 'badge-secondary',
   'other': 'badge-ghost',
   'staff': 'badge-neutral',
 }[r] ?? 'badge-ghost');
@@ -129,9 +131,10 @@ export const roleAvatarBg = (r: ContactRole): string => ({
   'attorney':    'bg-gray-600 text-white',
   'inspector':   'bg-yellow-500 text-white',
   'appraiser':   'bg-gray-500 text-white',
-  'tc':          'bg-blue-600 text-white',
-  'other':       'bg-gray-500 text-white',
-  'staff':       'bg-slate-600 text-white',
+  'tc':              'bg-blue-600 text-white',
+  'online_database': 'bg-purple-600 text-white',
+  'other':           'bg-gray-500 text-white',
+  'staff':           'bg-slate-600 text-white',
 }[r] ?? 'bg-gray-500 text-white');
 
 /** Solid filled chip color for selected state in MRDChip */
@@ -146,9 +149,10 @@ export const roleChipSolid = (r: ContactRole): string => ({
   'attorney':    'bg-error border-error text-error-content',
   'inspector':   'bg-gray-500 border-gray-500 text-white',
   'appraiser':   'bg-gray-400 border-gray-400 text-white',
-  'tc':          'bg-primary border-primary text-primary-content',
-  'other':       'bg-gray-400 border-gray-400 text-white',
-  'staff':       'bg-slate-600 border-slate-600 text-white',
+  'tc':              'bg-primary border-primary text-primary-content',
+  'online_database': 'bg-purple-600 border-purple-600 text-white',
+  'other':           'bg-gray-400 border-gray-400 text-white',
+  'staff':           'bg-slate-600 border-slate-600 text-white',
 }[r] ?? 'bg-gray-400 border-gray-400 text-white');
 
 export const docTypeConfig: Record<DocRequestType, { label: string; description: string; urgency: 'high' | 'medium' | 'low' }> = {

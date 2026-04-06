@@ -46,6 +46,7 @@ export const CONTACT_ROLE_OPTIONS: { value: ContactRole; label: string }[] = [
   { value: 'inspector', label: 'Inspector' },
   { value: 'appraiser', label: 'Appraiser' },
   { value: 'tc', label: 'TC' },
+  { value: 'online_database', label: 'Online Database' },
   { value: 'other', label: 'Other' },
 ];
 
