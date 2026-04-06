@@ -329,12 +329,35 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const [deleteTypeError, setDeleteTypeError] = useState<string | null>(null);
   const [deletingType, setDeletingType] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
   // ── Shared TanStack Query hooks ──────────────────────────────────────────
   const { data: milestoneTypes = [] } = useMilestoneTypes();
   const invalidateMilestoneTypes = useInvalidateMilestoneTypes();
 
   // ─── Milestone Catalog handlers ─────────────────────────────────────────
+
+  const handleReorder = async (dragId: string, overId: string) => {
+    if (dragId === overId) return;
+    const items = [...milestoneTypes];
+    const fromIdx = items.findIndex(m => m.id === dragId);
+    const toIdx = items.findIndex(m => m.id === overId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const reordered = [...items];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    // Update sort_order for each row that changed
+    const updates = reordered
+      .map((m, i) => ({ id: m.id, sort_order: i + 1 }))
+      .filter((u, i) => u.sort_order !== items[i]?.sort_order || u.id !== items[i]?.id);
+    await Promise.all(
+      reordered.map((m, i) =>
+        supabase.from('milestone_types').update({ sort_order: i + 1 }).eq('id', m.id)
+      )
+    );
+    invalidateMilestoneTypes();
+  };
 
   const handleAddType = async () => {
     const label = newTypeLabel.trim();
@@ -437,8 +460,17 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
           <div className="divide-y divide-base-300">
             {milestoneTypes.map(mt => (
               <div key={mt.id}>
-                <div className="flex items-center gap-3 px-4 py-3 bg-base-100 hover:bg-base-200/40 transition-colors">
-                  <span className="text-base-content/30 text-sm select-none">⠿</span>
+                <div
+                  className={`flex items-center gap-3 px-4 py-3 bg-base-100 hover:bg-base-200/40 transition-colors${dragOverItemId === mt.id && dragItemId !== mt.id ? ' ring-2 ring-primary ring-inset' : ''}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverItemId(mt.id); }}
+                  onDrop={() => { if (dragItemId) handleReorder(dragItemId, mt.id); setDragItemId(null); setDragOverItemId(null); }}
+                >
+                  <span
+                    className="text-base-content/30 text-sm select-none cursor-grab active:cursor-grabbing"
+                    draggable
+                    onDragStart={() => setDragItemId(mt.id)}
+                    onDragEnd={() => { setDragItemId(null); setDragOverItemId(null); }}
+                  >⠿</span>
 
                   {editingTypeId === mt.id ? (
                     <input
