@@ -43,22 +43,7 @@ const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[]
   { type: 'commercial', label: 'Commercial', icon: <Store size={22} /> },
 ];
 
-const fallbackDD = (): ChecklistItem[] => [
-  { id: generateId(), title: 'Review executed purchase agreement', completed: false },
-  { id: generateId(), title: 'Order title search', completed: false },
-  { id: generateId(), title: 'Confirm earnest money deposit received', completed: false },
-  { id: generateId(), title: 'Schedule home inspection', completed: false },
-  { id: generateId(), title: 'Request seller disclosures', completed: false },
-  { id: generateId(), title: 'Verify lender pre-approval letter', completed: false },
-  { id: generateId(), title: 'Confirm home warranty ordered and coverage details', completed: false },
-];
-const defaultComp = (): ChecklistItem[] => [
-  { id: generateId(), title: 'MLS data verified and entered', completed: false },
-  { id: generateId(), title: 'Signed agency disclosure on file', completed: false },
-  { id: generateId(), title: 'Buyer representation agreement on file', completed: false },
-  { id: generateId(), title: 'All offer documents uploaded to broker platform', completed: false },
-  { id: generateId(), title: 'Home warranty confirmation on file (if applicable)', completed: false },
-];
+
 
 interface Suggestion {
   field: string;
@@ -1124,23 +1109,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       hasCounterOffer: form.hasCounterOffer || undefined,
-      dueDiligenceChecklist: mergedDDItems.length > 0
-        ? mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
-        : fallbackDD(),
-      complianceChecklist: (() => {
-        // Agent-specific compliance template (legacy per-agent templates) takes highest priority
-        if (form.agentClientId && complianceTemplates) {
-          const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(form.agentClientId!));
-          if (tpl && tpl.items.length > 0) {
-            return tpl.items.map((item: any) => ({ id: generateId(), title: item.title, completed: false, required: item.required }));
-          }
-        }
-        // Merged compliance items (master + MLS + client layers)
-        if (mergedComplianceItems.length > 0) {
-          return mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required }));
-        }
-        return defaultComp();
-      })(),
+      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false })),
+      complianceChecklist: mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required })),
       documentRequests: autoDocRequests,
       reminders: [],
       activityLog: initLog,
@@ -2606,15 +2576,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                         <CheckCircle2 size={16} className="text-green-500 flex-none" />
                       </div>
-                      {(() => {
-                        if (!complianceTemplates) return null;
-                        const tpl = complianceTemplates.find(t =>
-                          (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id)
-                        );
-                        return tpl
-                          ? <p className="text-xs text-green-600 pl-1">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
-                          : null;
-                      })()}
+  
                     </div>
                   ) : (
                     <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
