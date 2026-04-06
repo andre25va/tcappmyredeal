@@ -17,6 +17,7 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 interface Props {
   deal: Deal;
   targetMilestone: DealMilestone;
+  targetLabel?: string;
   contactRecords: ContactRecord[];
   userName: string;
   onConfirm: (milestone: DealMilestone) => void;
@@ -49,11 +50,13 @@ function fillMergeTags(
 export const MilestoneAdvanceModal: React.FC<Props> = ({
   deal,
   targetMilestone,
+  targetLabel,
   contactRecords,
   userName,
   onConfirm,
   onCancel,
 }) => {
+  const milestoneLabel = targetLabel || MILESTONE_LABELS[targetMilestone] || targetMilestone;
   const { data: allNotifSettings = [], isLoading: loadingSettings } = useMilestoneNotifSettings();
 
   const settings = useMemo(() => {
@@ -270,13 +273,13 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
   const previewRecipient = recipients.find(r => r.key === previewRecipientKey) || recipients[0];
   const emailSubject = settings?.emailSubject
     ? fillMergeTags(settings.emailSubject, deal, previewRecipient?.name || '', userName)
-    : `Milestone Update: ${MILESTONE_LABELS[targetMilestone]} — ${deal.propertyAddress}`;
+    : `Milestone Update: ${milestoneLabel} — ${deal.propertyAddress}`;
   const emailBody = settings?.emailBody
     ? fillMergeTags(settings.emailBody, deal, previewRecipient?.name || '', userName)
-    : `Dear ${previewRecipient?.name || 'Team Member'},\n\nThis is to notify you that the transaction at ${deal.propertyAddress} has advanced to the "${MILESTONE_LABELS[targetMilestone]}" milestone.\n\nClosing Date: ${deal.closingDate || 'TBD'}\n\nBest regards,\n${userName}`;
+    : `Dear ${previewRecipient?.name || 'Team Member'},\n\nThis is to notify you that the transaction at ${deal.propertyAddress} has advanced to the "${milestoneLabel}" milestone.\n\nClosing Date: ${deal.closingDate || 'TBD'}\n\nBest regards,\n${userName}`;
   const smsBody = settings?.smsBody
     ? fillMergeTags(settings.smsBody, deal, previewRecipient?.name || '', userName)
-    : `TC Update: ${deal.propertyAddress} has reached "${MILESTONE_LABELS[targetMilestone]}". Closing: ${deal.closingDate || 'TBD'}. — ${userName}`;
+    : `TC Update: ${deal.propertyAddress} has reached "${milestoneLabel}". Closing: ${deal.closingDate || 'TBD'}. — ${userName}`;
 
   const handleConfirm = async () => {
     setSending(true);
@@ -287,10 +290,10 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
         if (r.emailEnabled && r.email) {
           const subject = settings?.emailSubject
             ? fillMergeTags(settings.emailSubject, deal, r.name, userName)
-            : `Milestone Update: ${MILESTONE_LABELS[targetMilestone]} — ${deal.propertyAddress}`;
+            : `Milestone Update: ${milestoneLabel} — ${deal.propertyAddress}`;
           const body = settings?.emailBody
             ? fillMergeTags(settings.emailBody, deal, r.name, userName)
-            : `Dear ${r.name},\n\nThis is to notify you that the transaction at ${deal.propertyAddress} has advanced to the "${MILESTONE_LABELS[targetMilestone]}" milestone.\n\nClosing Date: ${deal.closingDate || 'TBD'}\n\nBest regards,\n${userName}`;
+            : `Dear ${r.name},\n\nThis is to notify you that the transaction at ${deal.propertyAddress} has advanced to the "${milestoneLabel}" milestone.\n\nClosing Date: ${deal.closingDate || 'TBD'}\n\nBest regards,\n${userName}`;
 
           await fetch(`${supabaseUrl}/functions/v1/send-email`, {
             method: 'POST',
@@ -305,7 +308,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
         if (r.smsEnabled && r.phone) {
           const smsText = settings?.smsBody
             ? fillMergeTags(settings.smsBody, deal, r.name, userName)
-            : `TC Update: ${deal.propertyAddress} has reached "${MILESTONE_LABELS[targetMilestone]}". Closing: ${deal.closingDate || 'TBD'}. — ${userName}`;
+            : `TC Update: ${deal.propertyAddress} has reached "${milestoneLabel}". Closing: ${deal.closingDate || 'TBD'}. — ${userName}`;
 
           await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
             method: 'POST',
@@ -326,7 +329,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
       await supabase.from('audit_logs').insert({
         deal_id: deal.id,
         action: 'milestone_advanced',
-        description: `Milestone advanced to "${MILESTONE_LABELS[targetMilestone]}" by ${userName}. Notified: ${notifiedNames || 'nobody'}`,
+        description: `Milestone advanced to "${milestoneLabel}" by ${userName}. Notified: ${notifiedNames || 'nobody'}`,
         performed_by: userName,
       });
     } catch (err) {
@@ -349,7 +352,7 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
               Advance Milestone
             </p>
             <h2 className="font-bold text-base text-base-content mt-0.5">
-              → {MILESTONE_LABELS[targetMilestone]}
+              → {milestoneLabel}
             </h2>
           </div>
           <button onClick={onCancel} className="btn btn-ghost btn-sm btn-square">
