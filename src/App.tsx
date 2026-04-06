@@ -381,33 +381,62 @@ function AppInner() {
     });
   };
 
-  const handleArchiveDeal = (dealId: string, reason: string) => {
+  // ── Archive / Restore / Change Status — confirmed saves with rollback ────────
+  const handleArchiveDeal = async (dealId: string, reason: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
+    // Optimistic update
     setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
-    saveSingleDeal(updated).catch(console.error);
-    // Deselect the deal so the workspace doesn't keep showing an archived deal
     if (selectedId === dealId) {
       setSelectedId(null);
       setTxPanel('list');
     }
+    try {
+      await saveSingleDeal(updated);
+      // Confirmed — force a fresh fetch from DB so cache matches reality
+      invalidateOrgDeals(orgId);
+    } catch (err: any) {
+      // Rollback optimistic update
+      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
+      alert('\u274C Failed to archive deal:\n\n' + (err?.message || JSON.stringify(err)));
+      console.error('[handleArchiveDeal] save failed:', err);
+    }
   };
 
-  const handleRestoreDeal = (dealId: string) => {
+  const handleRestoreDeal = async (dealId: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'contract-received' as DealMilestone, archiveReason: undefined };
+    // Optimistic update
     setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
-    saveSingleDeal(updated).catch(console.error);
+    try {
+      await saveSingleDeal(updated);
+      // Confirmed — force a fresh fetch from DB
+      invalidateOrgDeals(orgId);
+    } catch (err: any) {
+      // Rollback optimistic update
+      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
+      alert('\u274C Failed to restore deal:\n\n' + (err?.message || JSON.stringify(err)));
+      console.error('[handleRestoreDeal] save failed:', err);
+    }
   };
 
-  const handleChangeStatus = (dealId: string, status: DealStatus) => {
+  const handleChangeStatus = async (dealId: string, status: DealStatus) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, status };
+    // Optimistic update
     setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
-    saveSingleDeal(updated).catch(console.error);
+    try {
+      await saveSingleDeal(updated);
+      invalidateOrgDeals(orgId);
+    } catch (err: any) {
+      // Rollback
+      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
+      alert('\u274C Failed to update status:\n\n' + (err?.message || JSON.stringify(err)));
+      console.error('[handleChangeStatus] save failed:', err);
+    }
   };
 
   const handleUpdate = (deal: Deal) => {
@@ -428,7 +457,7 @@ function AppInner() {
     } catch (err: any) {
       // Remove from UI if save failed
       setOrgDealsData(orgId, prev => prev.filter(d => d.id !== deal.id));
-      alert('❌ Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
+      alert('\u274C Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
       console.error('[App.tsx] saveSingleDeal error:', err);
     }
   };
