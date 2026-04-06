@@ -3,6 +3,7 @@ import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
   MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X,
 } from 'lucide-react';
+import { PageIdBadge } from './PageIdBadge';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
@@ -42,6 +43,8 @@ interface SidebarProps {
   userName: string;
   userRole: string;
   userInitials: string;
+  /** Current page ID shown in the sidebar between the user pill and Log Out */
+  pageId?: string;
 }
 
 // ─── Mobile Menu Button (exported for Topbar / mobile header use) ─────────────
@@ -60,7 +63,7 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
   inboxUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
-  onLogout, userName, userRole, userInitials,
+  onLogout, userName, userRole, userInitials, pageId,
 }) => {
   const getBadge = (v: View): number => {
     if (v === 'inbox') return inboxUnread;
@@ -133,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* User + Logout */}
+        {/* User + Page ID + Logout */}
         <div className="flex-none px-2 py-3 border-t border-base-300 space-y-2">
           {/* User info */}
           <div className="flex items-center gap-2 px-2 py-1">
@@ -145,6 +148,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <p className="text-[10px] text-base-content/50 truncate capitalize">{userRole || 'Staff'}</p>
             </div>
           </div>
+          {/* Page ID Badge — sits between user pill and Log Out */}
+          {pageId && <PageIdBadge pageId={pageId} />}
           {/* Logout */}
           <button
             onClick={onLogout}
