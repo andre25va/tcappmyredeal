@@ -1047,8 +1047,11 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
               );
             };
 
-            const buySide = participants.filter(p => p.side === 'buyer' || p.side === 'both' || p.side === 'vendor');
-            const sellSide = participants.filter(p => p.side === 'seller' || p.side === 'listing' || p.side === 'both');
+            // After hook normalisation: side values are 'buyer' | 'seller' | 'both'
+            // 'both' = vendor / shared party — shown once in its own section
+            const buySide   = participants.filter(p => p.side === 'buyer');
+            const sellSide  = participants.filter(p => p.side === 'seller');
+            const sharedVendors = participants.filter(p => p.side === 'both');
 
             return (
               <div className="flex flex-col gap-3">
@@ -1064,6 +1067,13 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                   <div>
                     <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1.5 pl-1">Sell Side</p>
                     <div className="flex flex-col gap-2">{sellSide.map(renderCard)}</div>
+                  </div>
+                )}
+                {/* Shared / Vendors */}
+                {sharedVendors.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1.5 pl-1">Shared</p>
+                    <div className="flex flex-col gap-2">{sharedVendors.map(renderCard)}</div>
                   </div>
                 )}
               </div>
