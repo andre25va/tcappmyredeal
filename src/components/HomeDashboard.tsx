@@ -25,6 +25,7 @@ const STATUS_META: Record<DealStatus, { label: string; color: string; bg: string
   'clear-to-close':{ label: 'Clear to Close', color: 'text-black', bg: 'bg-emerald-500', order: 3 },
   closed:         { label: 'Closed',          color: 'text-black',  bg: 'bg-green-500',   order: 4 },
   terminated:     { label: 'Terminated',      color: 'text-red-400',    bg: 'bg-red-500',     order: 5 },
+  archived:       { label: 'Archived',        color: 'text-gray-400',   bg: 'bg-gray-500',    order: 6 },
 };
 
 function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {

@@ -1420,6 +1420,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   try {
                     await supabase.from('deals').update({
                       status: 'archived',
+                      pipeline_stage: 'archived',
                       archived_at: new Date().toISOString(),
                       archived_by: profile?.id ?? null,
                       archived_reason: 'new_transaction_same_property',

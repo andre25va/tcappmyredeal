@@ -77,7 +77,7 @@ const renderDealCard = (
   onChangeStatus?: (dealId: string, status: DealStatus) => void,
   openArchive?: (dealId: string, label: string) => void,
 ) => {
-  const isArchived = deal.milestone === 'archived';
+  const isArchived = deal.milestone === 'archived' || deal.status === 'archived';
   const side      = deal.transactionType ?? 'buyer';
   const sideKey   = (side === 'buyer' || side === 'seller') ? side : 'buyer';
   const sideStyle = styles[sideKey];
@@ -276,9 +276,9 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
 
   const filtered = deals.filter(d => {
     // View filter
-    if (viewFilter === 'active'     && (d.status === 'terminated' || d.milestone === 'archived')) return false;
+    if (viewFilter === 'active'     && (d.status === 'terminated' || d.status === 'archived' || d.milestone === 'archived')) return false;
     if (viewFilter === 'closed'     && d.status !== 'closed') return false;
-    if (viewFilter === 'archived'   && d.milestone !== 'archived') return false;
+    if (viewFilter === 'archived'   && d.milestone !== 'archived' && d.status !== 'archived') return false;
     if (viewFilter === 'terminated' && d.status !== 'terminated') return false;
 
     const q = search.toLowerCase();
@@ -313,7 +313,7 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
 
   // Split into closing-this-week and others
   const closingThisWeek = filtered.filter(d => {
-    if (d.milestone === 'archived') return false;
+    if (d.milestone === 'archived' || d.status === 'archived') return false;
     const days = daysUntil(d.closingDate);
     return days >= 0 && days <= 7;
   });
@@ -394,8 +394,8 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
                 className={`btn btn-xs ${viewFilter === f.value ? 'btn-primary' : 'btn-ghost text-base-content/50'}`}
               >
                 {f.label}
-                {f.value === 'archived' && deals.filter(d => d.milestone === 'archived').length > 0 && (
-                  <span className="badge badge-xs ml-0.5">{deals.filter(d => d.milestone === 'archived').length}</span>
+                {f.value === 'archived' && deals.filter(d => d.milestone === 'archived' || d.status === 'archived').length > 0 && (
+                  <span className="badge badge-xs ml-0.5">{deals.filter(d => d.milestone === 'archived' || d.status === 'archived').length}</span>
                 )}
               </button>
             ))}

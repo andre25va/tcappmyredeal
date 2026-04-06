@@ -54,6 +54,7 @@ export const statusLabel = (s: DealStatus): string => ({
   'clear-to-close': 'Clear to Close',
   'closed': 'Closed',
   'terminated': 'Terminated',
+  'archived': 'Archived',
 }[s] ?? s);
 
 export const statusColor = (s: DealStatus): string => ({
@@ -62,6 +63,7 @@ export const statusColor = (s: DealStatus): string => ({
   'clear-to-close': 'badge-success',
   'closed': 'badge-neutral',
   'terminated': 'badge-error',
+  'archived': 'badge-ghost',
 }[s] ?? 'badge-neutral');
 
 export const statusDot = (s: DealStatus): string => ({
@@ -70,6 +72,7 @@ export const statusDot = (s: DealStatus): string => ({
   'clear-to-close': 'bg-success',
   'closed': 'bg-neutral',
   'terminated': 'bg-error',
+  'archived': 'bg-gray-400',
 }[s] ?? 'bg-neutral');
 
 export const propertyTypeLabel = (p: PropertyType): string => ({
