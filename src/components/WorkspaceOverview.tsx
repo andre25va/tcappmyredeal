@@ -14,6 +14,7 @@ import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder, DealTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateTasksForMilestone, buildMissingTitleCompanyTasks, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
+import { useMilestoneTaskLookup, resolveTasksForMilestone } from '../hooks/useMilestoneTaskLookup';
 import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,
   closingCountdown, generateId
@@ -274,6 +275,7 @@ const MilestoneStepper: React.FC<{
   const current = deal.milestone ?? 'contract-received';
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [advanceTarget, setAdvanceTarget] = useState<DealMilestone | null>(null);
+  const [targetLabel, setTargetLabel] = useState<string>('');
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [showUnarchive, setShowUnarchive] = useState(false);
   const [unarchiveTo, setUnarchiveTo] = useState<DealMilestone>('contract-received');
@@ -281,6 +283,7 @@ const MilestoneStepper: React.FC<{
   const { data: allMlsEntries = [] } = useMlsEntries();
 
   const { data: notifSettingsRaw = [] } = useMilestoneNotifSettings();
+  const { data: milestoneTaskTemplates = [] } = useMilestoneTaskLookup();
   const milestoneDueDays = useMemo(() => {
     const map: Record<string, number> = {};
     notifSettingsRaw.forEach((d: any) => {
@@ -319,7 +322,14 @@ const MilestoneStepper: React.FC<{
   const isArchived = current === 'archived';
 
   const handleAdvance = (targetMilestone: DealMilestone) => {
-    const newTasks = generateTasksForMilestone(targetMilestone);
+    const newTasks = resolveTasksForMilestone(
+      targetMilestone,
+      milestoneTaskTemplates,
+      deal.orgId,
+      deal.mlsId,
+      deal.transactionType,
+      deal.contractDate,
+    );
     const logEntry = {
       id: generateId(),
       timestamp: new Date().toISOString(),
@@ -402,77 +412,103 @@ const MilestoneStepper: React.FC<{
         </div>
       )}
 
-      <div className="flex items-center gap-1 overflow-x-auto overflow-y-visible scrollbar-none pb-6 pt-8 -mt-8">
-        {mainSteps.map((step, i) => {
-          const isDone = i < currentIdx && !isArchived;
-          const isCurrent = step.key === current;
-          const isFuture = i > currentIdx;
-          const isNext = i === currentIdx + 1;
-
-          return (
-            <React.Fragment key={step.key}>
-              {i > 0 && (
-                <div className={`h-0.5 flex-1 min-w-2 rounded transition-colors ${isDone || isCurrent ? 'bg-primary/60' : 'bg-base-300'}`} />
-              )}
-              <div className="relative flex-none">
-                <button
-                  onClick={() => {
-                    if (isFuture) setAdvanceTarget(step.key as DealMilestone);
-                  }}
-                  onMouseEnter={() => setHoveredIdx(i)}
-                  onMouseLeave={() => setHoveredIdx(null)}
-                  title={step.label}
-                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all
-                    ${isDone ? 'bg-primary border-primary text-primary-content' : ''}
-                    ${isCurrent ? 'bg-primary border-primary text-primary-content ring-2 ring-primary/30 ring-offset-1 scale-110' : ''}
-                    ${isFuture && !isNext ? 'bg-base-100 border-base-300 text-base-content/30 hover:border-primary/40 cursor-pointer' : ''}
-                    ${isNext ? 'bg-base-100 border-primary/50 text-primary/60 hover:bg-primary/10 cursor-pointer animate-pulse' : ''}
-                  `}
-                >
-                  {isDone ? <Check size={12} /> : i + 1}
-                </button>
-                {hoveredIdx === i && (
-                  <div
-                    className="absolute bottom-full mb-2 z-50 pointer-events-none"
-                    style={{
-                      left: i === 0 ? '0' : i >= mainSteps.length - 2 ? 'auto' : '50%',
-                      right: i >= mainSteps.length - 2 ? '0' : 'auto',
-                      transform: i === 0 ? 'none' : i >= mainSteps.length - 2 ? 'none' : 'translateX(-50%)',
-                    }}
-                  >
-                    <div className="bg-gray-800 text-white text-[11px] font-semibold px-2.5 py-1 rounded-md whitespace-nowrap shadow-xl">
-                      {i + 1}. {step.label}
-                    </div>
-                  </div>
-                )}
-                {(() => {
-                  const days = step.dueDays;
-                  if (days == null || !deal.contractDate) return null;
-                  const contractDate = new Date(deal.contractDate + 'T00:00:00');
-                  const dueDate = new Date(contractDate);
-                  dueDate.setDate(dueDate.getDate() + days);
-                  const daysLeft = Math.round((dueDate.getTime() - today.getTime()) / 86400000);
-                  let label: string;
-                  let cls: string;
-                  if (daysLeft > 0)       { label = `${daysLeft}d`; cls = daysLeft <= 7 ? 'text-red-500' : 'text-green-600'; }
-                  else if (daysLeft === 0) { label = 'Today'; cls = 'text-red-600 font-bold'; }
-                  else                    { label = `${Math.abs(daysLeft)}d ago`; cls = 'text-gray-400'; }
-                  return (
-                    <div className={`absolute top-full mt-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] font-bold leading-none ${cls}`}>
-                      {label}
-                    </div>
-                  );
-                })()}
-              </div>
-            </React.Fragment>
+      {/* Snake milestone stepper — 6 per row, alternating direction */}
+      {(() => {
+        const COLS = 6;
+        type StepEntry = { step: typeof mainSteps[0]; globalIdx: number };
+        const snakeRows: StepEntry[][] = [];
+        for (let i = 0; i < mainSteps.length; i += COLS) {
+          snakeRows.push(
+            mainSteps.slice(i, i + COLS).map((s, j) => ({ step: s, globalIdx: i + j }))
           );
-        })}
-      </div>
+        }
+        return (
+          <div className="mt-2 mb-2">
+            {snakeRows.map((rowItems, rowIdx) => {
+              const isReverse = rowIdx % 2 === 1;
+              const displayItems = isReverse ? [...rowItems].reverse() : rowItems;
+              const isLastRow = rowIdx === snakeRows.length - 1;
+              const turnRight = rowIdx % 2 === 0;
+              return (
+                <div key={rowIdx}>
+                  {/* Step row */}
+                  <div className={`flex items-start ${isReverse ? 'flex-row-reverse' : ''}`}>
+                    {displayItems.map(({ step, globalIdx }, colIdx) => {
+                      const isDone = globalIdx < currentIdx && !isArchived;
+                      const isCurrent = step.key === current;
+                      const isFuture = globalIdx > currentIdx;
+                      const isNext = globalIdx === currentIdx + 1;
+                      let dueDateStr: string | null = null;
+                      if (step.dueDays != null && deal.contractDate) {
+                        const base = new Date(deal.contractDate + 'T00:00:00');
+                        base.setDate(base.getDate() + step.dueDays);
+                        dueDateStr = base.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }
+                      return (
+                        <React.Fragment key={step.key}>
+                          {colIdx > 0 && (
+                            <div className={`h-0.5 flex-1 min-w-[4px] self-start mt-[13px] rounded transition-colors ${
+                              isDone ? 'bg-primary/60' : 'bg-base-300'
+                            }`} />
+                          )}
+                          <div
+                            className="flex-none flex flex-col items-center"
+                            style={{ minWidth: '52px', maxWidth: '64px' }}
+                          >
+                            <button
+                              onClick={() => {
+                                if (isFuture) {
+                                  setAdvanceTarget(step.key as DealMilestone);
+                                  setTargetLabel(step.label);
+                                }
+                              }}
+                              title={isFuture ? `Advance to: ${step.label}` : step.label}
+                              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all
+                                ${isDone ? 'bg-green-500 border-green-500 text-white' : ''}
+                                ${isCurrent ? 'bg-primary border-primary text-primary-content ring-2 ring-primary/30 ring-offset-1 scale-110' : ''}
+                                ${isFuture && !isNext ? 'bg-base-100 border-base-300 text-base-content/30 hover:border-primary/40 cursor-pointer' : ''}
+                                ${isNext ? 'bg-base-100 border-primary/50 text-primary/60 hover:bg-primary/10 cursor-pointer animate-pulse' : ''}
+                              `}
+                            >
+                              {isDone ? <Check size={12} /> : globalIdx + 1}
+                            </button>
+                            <p className={`text-[8px] font-medium text-center leading-tight mt-0.5 w-full px-0.5 line-clamp-2 ${
+                              isDone ? 'text-green-600/70' : isCurrent ? 'text-base-content/80 font-semibold' : 'text-base-content/40'
+                            }`}>
+                              {step.label}
+                            </p>
+                            {dueDateStr && (
+                              <p className={`text-[8px] font-bold mt-0.5 leading-none ${
+                                isDone ? 'text-base-content/30 line-through' : isCurrent ? 'text-primary' : 'text-base-content/40'
+                              }`}>
+                                {dueDateStr}
+                              </p>
+                            )}
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* Spacer so short last row fills the container */}
+                    {rowItems.length < COLS && <div className="flex-1" />}
+                  </div>
+                  {/* Turn connector between rows */}
+                  {!isLastRow && (
+                    <div className={`flex ${turnRight ? 'justify-end pr-[26px]' : 'justify-start pl-[26px]'}`}>
+                      <div className="w-0.5 h-4 bg-base-300 rounded" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {advanceTarget && (
         <MilestoneAdvanceModal
           deal={deal}
           targetMilestone={advanceTarget}
+          targetLabel={targetLabel}
           contactRecords={contactRecords}
           userName={userName}
           onConfirm={(milestone) => {
