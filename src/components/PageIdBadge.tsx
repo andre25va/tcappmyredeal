@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Floating badge in the bottom-left corner (clears sidebar) showing the current page ID.
+ * Floating badge anchored just above the Log Out button in the sidebar.
  * Click the copy icon to copy the ID to clipboard for easy bug reporting.
  */
 export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
@@ -36,14 +36,14 @@ export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
 
   return (
     <div
-      className="fixed bottom-4 left-[280px] z-[9999] flex items-center gap-1.5 bg-gray-900/85 backdrop-blur-sm text-white font-mono rounded-full shadow-xl px-3 py-1.5 select-none group"
-      style={{ fontSize: '10px' }}
+      className="fixed bottom-[88px] left-1 z-[9999] flex items-center gap-1.5 bg-gray-900/85 backdrop-blur-sm text-white font-mono rounded-full shadow-xl px-3 py-1.5 select-none group"
+      style={{ fontSize: '10px', maxWidth: '196px' }}
     >
       <Tag size={9} className="text-gray-400 shrink-0" />
-      <span className="text-gray-300 tracking-wide">{fullId}</span>
+      <span className="text-gray-300 tracking-wide truncate">{fullId}</span>
       <button
         onClick={handleCopy}
-        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors focus:outline-none"
+        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors focus:outline-none flex-none"
         title={copied ? 'Copied!' : 'Copy page ID'}
         aria-label="Copy page ID"
       >
