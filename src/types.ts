@@ -61,7 +61,7 @@ export interface AppUser {
   active: boolean;
   createdAt: string;
 }
-export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'closed' | 'terminated';
+export type DealStatus = 'contract' | 'due-diligence' | 'clear-to-close' | 'closed' | 'terminated' | 'archived';
 export type TransactionSide = 'buyer' | 'seller';
 export type TransactionType = 'buyer' | 'seller' | 'dual' | 'listing';
 export type PropertyType = 'single-family' | 'multi-family' | 'duplex' | 'condo' | 'townhouse' | 'land' | 'commercial';
