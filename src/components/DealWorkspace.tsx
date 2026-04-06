@@ -50,6 +50,7 @@ import { WorkspaceTasks } from './WorkspaceTasks';
 import { WorkspaceContacts } from './WorkspaceContacts';
 import { WorkspaceDocuments } from './WorkspaceDocuments';
 import { WorkspaceActivityLog } from './WorkspaceActivityLog';
+import { WorkspaceOutbox } from './WorkspaceOutbox';
 import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 import WorkspaceEmailCompose from './WorkspaceEmailCompose';
 import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
@@ -59,7 +60,7 @@ import { DealAccessPanel } from './DealAccessPanel';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/Button';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'pending-outbox' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
 
 interface Props {
   deal: Deal;
@@ -325,8 +326,9 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'tasks',      label: 'Tasks',      icon: <ListChecks size={13} />, badge: overdueTasks > 0 ? overdueTasks : undefined },
     { id: 'contacts',   label: 'Contacts',   icon: <Users size={13} /> },
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
-    { id: 'requests',   label: 'Requests',   icon: <ClipboardList size={13} />, badge: activeRequestCount > 0 ? activeRequestCount : undefined },
-    { id: 'activity',   label: 'Activity',   icon: <Clock size={13} /> },
+    { id: 'requests',       label: 'Requests',       icon: <ClipboardList size={13} />, badge: activeRequestCount > 0 ? activeRequestCount : undefined },
+    { id: 'pending-outbox', label: 'Pending Outbox', icon: <Inbox size={13} /> },
+    { id: 'activity',       label: 'Activity',       icon: <Clock size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
@@ -707,6 +709,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
             )}
           </div>
         )}
+        {tab === 'pending-outbox' && <WorkspaceOutbox deal={deal} />}
         {tab === 'requests'   && <WorkspaceRequests deal={deal} autoOpenType={(internalRequestType || initialRequestType) as any} taskId={internalTaskId || undefined} />}
         {tab === 'amendments' && <WorkspaceAmendments deal={deal} onUpdate={onUpdate} />}
         {tab === 'access' && <DealAccessPanel deal={deal} />}
