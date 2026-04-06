@@ -345,6 +345,14 @@ const MilestoneStepper: React.FC<{
       activityLog: [logEntry, ...deal.activityLog],
       updatedAt: new Date().toISOString(),
     });
+
+    // Fire milestone advance notification emails (non-blocking — never delay the UI)
+    supabase.functions.invoke('advance-milestone-notify', {
+      body: { deal_id: deal.id, milestone_key: targetMilestone },
+    }).catch((err) => {
+      console.warn('advance-milestone-notify fire-and-forget error:', err);
+    });
+
     setAdvanceTarget(null);
   };
 
