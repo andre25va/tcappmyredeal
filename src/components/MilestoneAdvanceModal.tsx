@@ -132,17 +132,20 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
     (deal as any).mlsId
   );
 
+  // DealMilestone uses hyphens (contract-received) but milestone_types.key uses underscores (contract_received)
+  const normalizedKey = targetMilestone.replace(/-/g, '_');
+
   // Find the config row for this specific milestone (match by milestone_types.key)
   const config = useMemo(() => {
-    return (mlsConfigs as any[]).find(c => c.milestone_types?.key === targetMilestone) ?? null;
-  }, [mlsConfigs, targetMilestone]);
+    return (mlsConfigs as any[]).find(c => c.milestone_types?.key === normalizedKey) ?? null;
+  }, [mlsConfigs, normalizedKey]);
 
   // Find the next milestone in sort_order
   const nextConfig = useMemo(() => {
     const sorted = [...(mlsConfigs as any[])].sort((a, b) => a.sort_order - b.sort_order);
-    const idx = sorted.findIndex(c => c.milestone_types?.key === targetMilestone);
+    const idx = sorted.findIndex(c => c.milestone_types?.key === normalizedKey);
     return idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
-  }, [mlsConfigs, targetMilestone]);
+  }, [mlsConfigs, normalizedKey]);
 
   const nextMilestoneLabel: string = nextConfig?.milestone_types?.label ?? '';
   const contractDate: string | null = (deal as any).contractDate ?? null;
@@ -165,28 +168,50 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
     const smsOn = false;
 
     // notify_agent → both buyer agent and seller agent
+    // Email lookup priority: deal.participants (has real contactEmail) → deal.buyerAgent → contactRecords by name
     if (config?.notify_agent ?? true) {
-      if (deal.buyerAgent?.name) {
-        const ba = deal.buyerAgent;
+      const buyerAgentName = deal.buyerAgent?.name || (deal as any).buyerAgentName || '';
+      const buyerParticipant = deal.participants?.find(p => p.dealRole === 'lead_agent' && p.side === 'buyer');
+      const buyerAgentEmail =
+        buyerParticipant?.contactEmail ||
+        deal.buyerAgent?.email ||
+        contactRecords.find(c => c.fullName === buyerAgentName)?.email || '';
+      const buyerAgentPhone =
+        buyerParticipant?.contactPhone ||
+        deal.buyerAgent?.phone ||
+        contactRecords.find(c => c.fullName === buyerAgentName)?.phone || '';
+
+      if (buyerAgentName) {
         built.push({
           key: 'buyer-agent',
-          name: ba.name || 'Buyer Agent',
+          name: buyerAgentName,
           role: 'Buyer Agent',
-          email: ba.email || '',
-          phone: ba.phone || '',
-          emailEnabled: emailOn && !!ba.email,
+          email: buyerAgentEmail,
+          phone: buyerAgentPhone,
+          emailEnabled: emailOn && !!buyerAgentEmail,
           smsEnabled: smsOn,
         });
       }
-      if (deal.sellerAgent?.name) {
-        const sa = deal.sellerAgent;
+
+      const sellerAgentName = deal.sellerAgent?.name || (deal as any).sellerAgentName || '';
+      const sellerParticipant = deal.participants?.find(p => p.dealRole === 'lead_agent' && (p.side === 'listing' || p.side === 'seller'));
+      const sellerAgentEmail =
+        sellerParticipant?.contactEmail ||
+        deal.sellerAgent?.email ||
+        contactRecords.find(c => c.fullName === sellerAgentName)?.email || '';
+      const sellerAgentPhone =
+        sellerParticipant?.contactPhone ||
+        deal.sellerAgent?.phone ||
+        contactRecords.find(c => c.fullName === sellerAgentName)?.phone || '';
+
+      if (sellerAgentName) {
         built.push({
           key: 'seller-agent',
-          name: sa.name || 'Seller Agent',
+          name: sellerAgentName,
           role: 'Seller Agent',
-          email: sa.email || '',
-          phone: sa.phone || '',
-          emailEnabled: emailOn && !!sa.email,
+          email: sellerAgentEmail,
+          phone: sellerAgentPhone,
+          emailEnabled: emailOn && !!sellerAgentEmail,
           smsEnabled: smsOn,
         });
       }
