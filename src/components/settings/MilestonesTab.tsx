@@ -407,7 +407,8 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     setDeletingType(false);
   };
 
-
+  return (
+    <div className="space-y-10">
       {/* ── Section 0: Milestone Catalog ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
