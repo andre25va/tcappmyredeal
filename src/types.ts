@@ -206,6 +206,7 @@ export interface DealParticipant {
 export interface ComplianceMasterItem {
   id: string;
   title: string;
+  required?: boolean;
   order: number;
 }
 
