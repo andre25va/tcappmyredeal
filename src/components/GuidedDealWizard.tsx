@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
 import { MLS_BY_STATE } from '../utils/mlsData';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
+import { loadMergedChecklistItems } from '../lib/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
@@ -1000,6 +1001,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(true);
     const isMF = form.propertyType === 'multi-family';
 
+    // Load merged checklist items: master + MLS-specific + client-specific
+    const mergedDDItems = await loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null).catch(() => ddMasterItems ?? []);
+    const mergedComplianceItems = await loadMergedChecklistItems('compliance', form.mlsEntryId || null, form.agentClientId || null).catch(() => complianceMasterItems ?? []);
+
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
       type: 'mf_addendum',
@@ -1119,18 +1124,20 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       hasCounterOffer: form.hasCounterOffer || undefined,
-      dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
-        ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
+      dueDiligenceChecklist: mergedDDItems.length > 0
+        ? mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
         : fallbackDD(),
       complianceChecklist: (() => {
+        // Agent-specific compliance template (legacy per-agent templates) takes highest priority
         if (form.agentClientId && complianceTemplates) {
           const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(form.agentClientId!));
           if (tpl && tpl.items.length > 0) {
             return tpl.items.map((item: any) => ({ id: generateId(), title: item.title, completed: false, required: item.required }));
           }
         }
-        if (complianceMasterItems && complianceMasterItems.length > 0) {
-          return complianceMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: m.required }));
+        // Merged compliance items (master + MLS + client layers)
+        if (mergedComplianceItems.length > 0) {
+          return mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required }));
         }
         return defaultComp();
       })(),

@@ -2253,6 +2253,65 @@ export async function loadDealAccessGrants(dealId: string): Promise<{ id: string
 }
 
 
+// ─── LAYERED CHECKLIST TEMPLATES ─────────────────────────────────────────────
+// Architecture: Master (global) → MLS override → Client override → Deal (stamped copy)
+
+/**
+ * Loads merged checklist items for a specific deal context.
+ * Combines: master + MLS-specific additions + client-specific additions.
+ * Items from MLS/client layers are only added if their title doesn't exist in master.
+ * Used by GuidedDealWizard at deal creation time.
+ */
+export async function loadMergedChecklistItems(
+  type: 'dd' | 'compliance',
+  mlsId?: string | null,
+  contactId?: string | null
+): Promise<(DDMasterItem | ComplianceMasterItem)[]> {
+  const masterItems = (await loadMasterItems(type)) as (DDMasterItem | ComplianceMasterItem)[];
+  const seen = new Set(masterItems.map(i => i.title.toLowerCase().trim()));
+  const merged: (DDMasterItem | ComplianceMasterItem)[] = [...masterItems];
+
+  if (mlsId) {
+    const { data: mlsRow } = await supabase
+      .from('checklist_templates')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .eq('checklist_type', type)
+      .eq('mls_id', mlsId)
+      .is('contact_id', null)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    if (mlsRow) {
+      const mlsItems = ((mlsRow.checklist_template_items ?? []) as any[]).sort((a, b) => a.sort_order - b.sort_order);
+      for (const item of mlsItems) {
+        const key = item.title.toLowerCase().trim();
+        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem); }
+      }
+    }
+  }
+
+  if (contactId) {
+    const { data: clientRow } = await supabase
+      .from('checklist_templates')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .eq('checklist_type', type)
+      .eq('contact_id', contactId)
+      .is('mls_id', null)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    if (clientRow) {
+      const clientItems = ((clientRow.checklist_template_items ?? []) as any[]).sort((a, b) => a.sort_order - b.sort_order);
+      for (const item of clientItems) {
+        const key = item.title.toLowerCase().trim();
+        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem); }
+      }
+    }
+  }
+
+  return merged;
+}
+
 /**
  * Generates a signed URL for a document stored in Supabase storage.
  * @param storagePath - The file path within the storage bucket
