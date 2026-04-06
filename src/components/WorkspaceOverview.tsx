@@ -14,6 +14,7 @@ import { CallButton } from './CallButton';
 import { Deal, DealStatus, PropertyType, AgentContact, ContactRecord, DealMilestone, ActivityType, Reminder, DealTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateTasksForMilestone, buildMissingTitleCompanyTasks, MILESTONE_ORDER, MILESTONE_LABELS, MILESTONE_COLORS, isTerminalMilestone } from '../utils/taskTemplates';
+import { useMilestoneTaskLookup, resolveTasksForMilestone } from '../hooks/useMilestoneTaskLookup';
 import {
   formatCurrency, formatDate, daysUntil, statusLabel, propertyTypeLabel,
   closingCountdown, generateId
@@ -282,6 +283,7 @@ const MilestoneStepper: React.FC<{
   const { data: allMlsEntries = [] } = useMlsEntries();
 
   const { data: notifSettingsRaw = [] } = useMilestoneNotifSettings();
+  const { data: milestoneTaskTemplates = [] } = useMilestoneTaskLookup();
   const milestoneDueDays = useMemo(() => {
     const map: Record<string, number> = {};
     notifSettingsRaw.forEach((d: any) => {
@@ -320,7 +322,14 @@ const MilestoneStepper: React.FC<{
   const isArchived = current === 'archived';
 
   const handleAdvance = (targetMilestone: DealMilestone) => {
-    const newTasks = generateTasksForMilestone(targetMilestone);
+    const newTasks = resolveTasksForMilestone(
+      targetMilestone,
+      milestoneTaskTemplates,
+      deal.orgId,
+      deal.mlsId,
+      deal.transactionType,
+      deal.contractDate,
+    );
     const logEntry = {
       id: generateId(),
       timestamp: new Date().toISOString(),

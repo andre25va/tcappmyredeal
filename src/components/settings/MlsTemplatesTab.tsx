@@ -17,6 +17,7 @@ interface TemplateItem {
   template_id: string;
   title: string;
   category: string;
+  priority: string;
   is_required: boolean;
   sort_order: number;
   due_days_from_contract: number | null;
@@ -28,6 +29,7 @@ interface Template {
   name: string;
   mls_id: string | null;
   deal_type: string | null;
+  pipeline_stage: string | null;  // milestone key this template fires on
   checklist_type: string;
   is_active: boolean;
   items: TemplateItem[];
@@ -65,10 +67,17 @@ const CATEGORIES = [
   'Documentation', 'Closing', 'General',
 ];
 
+const PRIORITIES = [
+  { value: 'high',   label: '🔴 High' },
+  { value: 'medium', label: '🟡 Medium' },
+  { value: 'low',    label: '🟢 Low' },
+];
+
 const emptyItem = (templateId: string, sortOrder: number): Omit<TemplateItem, 'id'> => ({
   template_id: templateId,
   title: '',
   category: 'General',
+  priority: 'medium',
   is_required: false,
   sort_order: sortOrder,
   due_days_from_contract: null,
@@ -86,6 +95,7 @@ export function MlsTemplatesTab() {
   const [draftName, setDraftName] = useState('');
   const [draftMlsId, setDraftMlsId] = useState<string>('');
   const [draftDealType, setDraftDealType] = useState<string>('buyer');
+  const [draftPipelineStage, setDraftPipelineStage] = useState<string>('');
   const [draftItems, setDraftItems] = useState<TemplateItem[]>([]);
 
   // ── Milestone section — own MLS dropdown ─────────────────────────────────
@@ -154,7 +164,8 @@ export function MlsTemplatesTab() {
     setDraftName(tpl.name);
     setDraftMlsId(tpl.mls_id ?? '');
     setDraftDealType(tpl.deal_type ?? 'buyer');
-    setDraftItems(tpl.items.map(i => ({ ...i })));
+    setDraftPipelineStage(tpl.pipeline_stage ?? '');
+    setDraftItems(tpl.items.map(i => ({ ...i, priority: (i as any).priority || 'medium' })));
     setSaved(false);
   }, []);
 
@@ -217,6 +228,7 @@ export function MlsTemplatesTab() {
           name: draftName.trim() || 'Untitled Template',
           mls_id: draftMlsId || null,
           deal_type: draftDealType,
+          pipeline_stage: draftPipelineStage || null,
         })
         .eq('id', selectedId);
       if (tErr) throw tErr;
@@ -235,6 +247,7 @@ export function MlsTemplatesTab() {
             template_id: selectedId,
             title: item.title.trim(),
             category: item.category,
+            priority: item.priority || 'medium',
             is_required: item.is_required,
             sort_order: idx,
             due_days_from_contract: item.due_days_from_contract,
@@ -396,7 +409,14 @@ export function MlsTemplatesTab() {
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold truncate">{tpl.name}</div>
                       <div className="text-xs text-base-content/40 truncate">{mlsName} · {dealLabel}</div>
-                      <div className="text-xs text-base-content/30">{tpl.items.length} item{tpl.items.length !== 1 ? 's' : ''}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-xs text-base-content/30">{tpl.items.length} item{tpl.items.length !== 1 ? 's' : ''}</span>
+                        {(tpl as any).pipeline_stage && (
+                          <span className="badge badge-xs badge-primary badge-outline truncate max-w-[100px]">
+                            {(milestoneTypes as any[]).find((m: any) => m.key === (tpl as any).pipeline_stage)?.label ?? (tpl as any).pipeline_stage}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <ChevronRight size={12} className="shrink-0 opacity-30" />
                   </button>
@@ -450,8 +470,8 @@ export function MlsTemplatesTab() {
                 )}
 
                 {/* Template meta */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-3 sm:col-span-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="col-span-2 sm:col-span-1">
                     <label className="text-xs font-semibold text-base-content/60 mb-1 block">Template Name</label>
                     <input
                       className="input input-bordered input-sm w-full"
@@ -461,13 +481,26 @@ export function MlsTemplatesTab() {
                     />
                   </div>
                   <div>
+                    <label className="text-xs font-semibold text-base-content/60 mb-1 block">Fires on Milestone</label>
+                    <select
+                      className="select select-bordered select-sm w-full"
+                      value={draftPipelineStage}
+                      onChange={e => setDraftPipelineStage(e.target.value)}
+                    >
+                      <option value="">— Any / None —</option>
+                      {(milestoneTypes as any[]).map((mt: any) => (
+                        <option key={mt.key} value={mt.key}>{mt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-xs font-semibold text-base-content/60 mb-1 block">MLS Board</label>
                     <select
                       className="select select-bordered select-sm w-full"
                       value={draftMlsId}
                       onChange={e => setDraftMlsId(e.target.value)}
                     >
-                      <option value="">— None —</option>
+                      <option value="">— All MLS —</option>
                       {(mlsEntries as any[]).map((m: any) => (
                         <option key={m.id} value={m.id}>{m.name}{m.state ? ` (${m.state})` : ''}</option>
                       ))}
@@ -486,6 +519,16 @@ export function MlsTemplatesTab() {
                     </select>
                   </div>
                 </div>
+                {draftPipelineStage && (
+                  <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <Bell size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-blue-700">
+                      These tasks will auto-generate when a deal advances to <strong>{(milestoneTypes as any[]).find((m: any) => m.key === draftPipelineStage)?.label ?? draftPipelineStage}</strong>.
+                      {draftMlsId ? ` Applies only to the selected MLS board.` : ` Applies to all MLS boards.`}
+                      {` Most specific match wins (org → MLS → deal type).`}
+                    </p>
+                  </div>
+                )}
 
                 {/* Items table */}
                 <div>
@@ -502,7 +545,8 @@ export function MlsTemplatesTab() {
                         <tr className="bg-gray-50 border-b border-base-300">
                           <th className="w-6 px-2 py-2 text-left text-base-content/40">#</th>
                           <th className="px-3 py-2 text-left text-base-content/50 font-semibold">Title</th>
-                          <th className="w-32 px-3 py-2 text-left text-base-content/50 font-semibold">Category</th>
+                          <th className="w-28 px-3 py-2 text-left text-base-content/50 font-semibold">Category</th>
+                          <th className="w-24 px-2 py-2 text-left text-base-content/50 font-semibold">Priority</th>
                           <th className="w-14 px-2 py-2 text-center text-base-content/50 font-semibold">Req</th>
                           <th className="w-20 px-2 py-2 text-center text-base-content/50 font-semibold">Days</th>
                           <th className="w-28 px-2 py-2 text-left text-base-content/50 font-semibold">From</th>
@@ -512,7 +556,7 @@ export function MlsTemplatesTab() {
                       <tbody>
                         {draftItems.length === 0 && (
                           <tr>
-                            <td colSpan={7} className="text-center py-8 text-base-content/30">
+                            <td colSpan={8} className="text-center py-8 text-base-content/30">
                               No items yet — click Add Item above
                             </td>
                           </tr>
@@ -560,6 +604,15 @@ export function MlsTemplatesTab() {
                                   onChange={e => updateItem(item.id, 'category', e.target.value)}
                                 >
                                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <select
+                                  className="select select-bordered select-xs w-full"
+                                  value={(item as any).priority || 'medium'}
+                                  onChange={e => updateItem(item.id, 'priority' as any, e.target.value)}
+                                >
+                                  {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                                 </select>
                               </td>
                               <td className="px-2 py-1.5 text-center">
