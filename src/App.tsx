@@ -815,6 +815,7 @@ function AppInner() {
           complianceTemplates={complianceTemplates}
           agentClients={agentClients}
           ddMasterItems={ddMasterItems}
+          complianceMasterItems={complianceMasterItems}
         />
       )}
 

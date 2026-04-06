@@ -6,7 +6,7 @@ import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ComplianceMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
 import { MLS_BY_STATE } from '../utils/mlsData';
@@ -28,6 +28,7 @@ interface Props {
   complianceTemplates?: ComplianceTemplate[];
   agentClients?: ContactRecord[];    // contacts with isClient === true
   ddMasterItems?: DDMasterItem[];
+  complianceMasterItems?: ComplianceMasterItem[];
 }
 
 
@@ -194,7 +195,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
 );
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────────────────────────────────────
-export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
+export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems, complianceMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
   const { primaryOrgId, profile } = useAuth();
@@ -1127,6 +1128,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           if (tpl && tpl.items.length > 0) {
             return tpl.items.map((item: any) => ({ id: generateId(), title: item.title, completed: false, required: item.required }));
           }
+        }
+        if (complianceMasterItems && complianceMasterItems.length > 0) {
+          return complianceMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: m.required }));
         }
         return defaultComp();
       })(),
