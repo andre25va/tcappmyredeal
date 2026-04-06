@@ -8,8 +8,8 @@ interface Props {
 }
 
 /**
- * Floating badge anchored just above the Log Out button in the sidebar.
- * Click the copy icon to copy the ID to clipboard for easy bug reporting.
+ * Inline badge rendered inside the Sidebar between the user pill and Log Out button.
+ * Click the copy icon to copy the ID to clipboard for quick bug reporting.
  */
 export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
   const [copied, setCopied] = useState(false);
@@ -20,7 +20,6 @@ export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
     try {
       await navigator.clipboard.writeText(fullId);
     } catch {
-      // Fallback for browsers that don't support clipboard API
       const ta = document.createElement('textarea');
       ta.value = fullId;
       ta.style.position = 'fixed';
@@ -36,20 +35,20 @@ export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
 
   return (
     <div
-      className="fixed bottom-[88px] left-1 z-[9999] flex items-center gap-1.5 bg-gray-900/85 backdrop-blur-sm text-white font-mono rounded-full shadow-xl px-3 py-1.5 select-none group"
-      style={{ fontSize: '10px', maxWidth: '196px' }}
+      className="flex items-center gap-1.5 px-2 py-1.5 bg-base-300/60 rounded-lg font-mono select-none group"
+      style={{ fontSize: '10px' }}
     >
-      <Tag size={9} className="text-gray-400 shrink-0" />
-      <span className="text-gray-300 tracking-wide truncate">{fullId}</span>
+      <Tag size={9} className="text-base-content/30 shrink-0" />
+      <span className="text-base-content/40 tracking-wide truncate flex-1">{fullId}</span>
       <button
         onClick={handleCopy}
-        className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors focus:outline-none flex-none"
+        className="p-0.5 rounded hover:bg-base-content/10 transition-colors focus:outline-none flex-none"
         title={copied ? 'Copied!' : 'Copy page ID'}
         aria-label="Copy page ID"
       >
         {copied
-          ? <Check size={10} className="text-green-400" />
-          : <Copy size={10} className="text-gray-400 group-hover:text-white transition-colors" />
+          ? <Check size={9} className="text-success" />
+          : <Copy size={9} className="text-base-content/30 group-hover:text-base-content/60 transition-colors" />
         }
       </button>
     </div>

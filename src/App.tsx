@@ -3,7 +3,8 @@ import { Eye } from 'lucide-react';
 
 import { Deal, DealStatus, DealMilestone, ContactRecord, MlsEntry, ComplianceTemplate, AppUser, EmailTemplate, ComplianceMasterItem, DDMasterItem } from './types';
 import {
-  saveDeals, saveSingleDeal,
+  loadDeals, saveDeals, saveSingleDeal,
+  loadContactsFull,
   loadMls, saveMls,
   loadCompliance, saveCompliance,
   loadUsers, saveUsers,
@@ -37,13 +38,8 @@ import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 import { RequestCenterView } from './components/RequestCenterView';
-import { PageIdBadge } from './components/PageIdBadge';
 import { PAGE_IDS } from './utils/pageTracking';
 import { Button } from './components/ui/Button';
-import { useQueryClient } from '@tanstack/react-query';
-import { useOrgDeals, useSetOrgDealsData, useInvalidateOrgDeals } from './hooks/useOrgDeals';
-import { useOrgContacts, useInvalidateOrgContacts } from './hooks/useOrgContacts';
-import { useMlsEntries } from './hooks/useMlsEntries';
 
 // View → Page ID mapping for the floating badge
 const VIEW_PAGE_IDS: Record<string, string> = {
@@ -73,13 +69,13 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 function AppInner() {
   const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
   const { logAction } = useAudit();
-  const qc = useQueryClient();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
   const [view, setView]                     = useState<View>('dashboard');
   const [listMode, setListMode]             = useState<'deals' | 'agents' | 'tasks'>('agents');
   const [mobileOpen, setMobileOpen]         = useState(false);
 
+  const [deals, setDeals]                   = useState<Deal[]>([]);
   const [selectedId, setSelectedId]         = useState<string | null>(null);
   const [txPanel, setTxPanel]               = useState<'list' | 'workspace'>('list');
   const [txContainerWide, setTxContainerWide] = useState(false);
@@ -89,6 +85,7 @@ function AppInner() {
   });
   const lastWidthRef = useRef<number>(360);
   const [showAdd, setShowAdd]               = useState(false);
+  const [loading, setLoading]               = useState(true);
   const [loadError, setLoadError]           = useState<string | null>(null);
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent' | 'contact' | null>(null);
@@ -105,6 +102,8 @@ function AppInner() {
   const [inboxInitConvId, setInboxInitConvId] = useState<string | undefined>(undefined);
   const [inboxInitChannel, setInboxInitChannel] = useState<'sms' | 'email' | 'whatsapp' | undefined>(undefined);
 
+  const [contactRecords, setContactRecords]     = useState<ContactRecord[]>([]);
+  const [mlsEntries, setMlsEntries]             = useState<MlsEntry[]>([]);
   const [complianceTemplates, setComplianceTemplates] = useState<ComplianceTemplate[]>([]);
   const [users, setUsers]                       = useState<AppUser[]>([]);
   const [emailTemplates, setEmailTemplates]     = useState<EmailTemplate[]>([]);
@@ -114,33 +113,24 @@ function AppInner() {
   const [pendingWorkspaceTab, setPendingWorkspaceTab] = useState<string | null>(null);
   const [pendingWorkspaceRequestType, setPendingWorkspaceRequestType] = useState<string | null>(null);
 
-  // ── TanStack Query: deals, contacts, mls ─────────────────────────────────────
-  const orgId = primaryOrgId() ?? null;
-  const { data: deals = [], isLoading: dealsLoading, error: dealsError } = useOrgDeals(orgId);
-  const setOrgDealsData = useSetOrgDealsData();
-  const invalidateOrgDeals = useInvalidateOrgDeals();
-  const { data: contactRecords = [] } = useOrgContacts(orgId);
-  const invalidateOrgContacts = useInvalidateOrgContacts();
-  const { data: mlsEntriesData = [] } = useMlsEntries();
-  const mlsEntries = mlsEntriesData as unknown as MlsEntry[];
-
-  // Map dealsLoading/dealsError to the legacy loading/loadError pattern
-  const loading = dealsLoading;
+  // ── Load deals ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (dealsError) {
-      setLoadError('Unable to connect to database. Please check your connection and refresh.');
-    }
-  }, [dealsError]);
-
-  // Auto-select first deal on initial load (desktop only), replaces setSelectedId inside old useEffect
-  const hasAutoSelected = useRef(false);
-  useEffect(() => {
-    if (!dealsLoading && deals.length > 0 && !hasAutoSelected.current) {
-      hasAutoSelected.current = true;
-      const isMobile = window.innerWidth < 768;
-      if (!isMobile) setSelectedId(deals[0].id);
-    }
-  }, [dealsLoading, deals]);
+    if (!profile) return;
+    const init = async () => {
+      try {
+        const data = await loadDeals(primaryOrgId() ?? undefined);
+        setDeals(data);
+        const isMobile = window.innerWidth < 768;
+        if (!isMobile && data.length > 0) setSelectedId(data[0].id);
+      } catch (err) {
+        console.error('Failed to load deals:', err);
+        setLoadError('Unable to connect to database. Please check your connection and refresh.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [profile]);
 
   // Track actual width of transactions container for split-panel logic
   useEffect(() => {
@@ -153,6 +143,22 @@ function AppInner() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [view]);
+
+  // ── Load contact records ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    loadContactsFull()
+      .then(data => setContactRecords(data))
+      .catch(err => { console.error('Failed to load contacts:', err); setContactRecords([]); });
+  }, [profile]);
+
+  // ── Load MLS ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!profile) return;
+    loadMls()
+      .then(data => setMlsEntries(data))
+      .catch(err => { console.error('Failed to load MLS:', err); setMlsEntries([]); });
+  }, [profile]);
 
   // ── Load compliance templates ─────────────────────────────────────────────────
   useEffect(() => {
@@ -311,7 +317,7 @@ function AppInner() {
 
   // ── Persist helpers ──────────────────────────────────────────────────────────
   const persistMls = (updated: MlsEntry[]) => {
-    qc.setQueryData(['mls_entries'], updated);
+    setMlsEntries(updated);
     saveMls(updated).catch(console.error);
   };
 
@@ -365,7 +371,7 @@ function AppInner() {
 
   // ── Agent name cascade ─────────────────────────────────────────────────────
   const handleContactUpdated = (contactId: string, fullName: string, phone: string, email: string) => {
-    setOrgDealsData(orgId, prev => {
+    setDeals(prev => {
       const updated = prev.map(deal => {
         if (deal.agentId !== contactId) return deal;
         const updatedDeal: Deal = {
@@ -381,72 +387,43 @@ function AppInner() {
     });
   };
 
-  // ── Archive / Restore / Change Status — confirmed saves with rollback ────────
-  const handleArchiveDeal = async (dealId: string, reason: string) => {
+  const handleArchiveDeal = (dealId: string, reason: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
-    // Optimistic update
-    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
+    // Deselect the deal so the workspace doesn't keep showing an archived deal
     if (selectedId === dealId) {
       setSelectedId(null);
       setTxPanel('list');
     }
-    try {
-      await saveSingleDeal(updated);
-      // Confirmed — force a fresh fetch from DB so cache matches reality
-      invalidateOrgDeals(orgId);
-    } catch (err: any) {
-      // Rollback optimistic update
-      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
-      alert('\u274C Failed to archive deal:\n\n' + (err?.message || JSON.stringify(err)));
-      console.error('[handleArchiveDeal] save failed:', err);
-    }
   };
 
-  const handleRestoreDeal = async (dealId: string) => {
+  const handleRestoreDeal = (dealId: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, milestone: 'contract-received' as DealMilestone, archiveReason: undefined };
-    // Optimistic update
-    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
-    try {
-      await saveSingleDeal(updated);
-      // Confirmed — force a fresh fetch from DB
-      invalidateOrgDeals(orgId);
-    } catch (err: any) {
-      // Rollback optimistic update
-      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
-      alert('\u274C Failed to restore deal:\n\n' + (err?.message || JSON.stringify(err)));
-      console.error('[handleRestoreDeal] save failed:', err);
-    }
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
   };
 
-  const handleChangeStatus = async (dealId: string, status: DealStatus) => {
+  const handleChangeStatus = (dealId: string, status: DealStatus) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
     const updated = { ...deal, status };
-    // Optimistic update
-    setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? updated : d));
-    try {
-      await saveSingleDeal(updated);
-      invalidateOrgDeals(orgId);
-    } catch (err: any) {
-      // Rollback
-      setOrgDealsData(orgId, prev => prev.map(d => d.id === dealId ? deal : d));
-      alert('\u274C Failed to update status:\n\n' + (err?.message || JSON.stringify(err)));
-      console.error('[handleChangeStatus] save failed:', err);
-    }
+    setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
+    saveSingleDeal(updated).catch(console.error);
   };
 
   const handleUpdate = (deal: Deal) => {
-    setOrgDealsData(orgId, prev => prev.map(d => d.id === deal.id ? deal : d));
+    setDeals(prev => prev.map(d => d.id === deal.id ? deal : d));
     saveSingleDeal(deal, profile?.id).catch(console.error);
     logAction('update', 'deal', deal.id, deal.propertyAddress);
   };
 
   const handleAdd = async (deal: Deal) => {
-    setOrgDealsData(orgId, prev => [deal, ...prev]);
+    setDeals(prev => [deal, ...prev]);
     try {
       await saveSingleDeal(deal, profile?.id);
       setSelectedId(deal.id);
@@ -456,8 +433,8 @@ function AppInner() {
       logAction('create', 'deal', deal.id, deal.propertyAddress);
     } catch (err: any) {
       // Remove from UI if save failed
-      setOrgDealsData(orgId, prev => prev.filter(d => d.id !== deal.id));
-      alert('\u274C Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
+      setDeals(prev => prev.filter(d => d.id !== deal.id));
+      alert('❌ Failed to create deal:\n\n' + (err.message || JSON.stringify(err)));
       console.error('[App.tsx] saveSingleDeal error:', err);
     }
   };
@@ -474,8 +451,6 @@ function AppInner() {
     setPendingWorkspaceTab(tab);
     setPendingWorkspaceRequestType(null);
     setSelectedId(id);
-    setTxPanel('workspace');
-    setView('transactions');
   };
 
   const handleSendRequest = (dealId: string, requestType: string) => {
@@ -558,6 +533,7 @@ function AppInner() {
     userName: profile.name,
     userRole: profile.role,
     userInitials: profile.initials,
+    pageId: VIEW_PAGE_IDS[view] || view,
   };
 
   // ── Derived contact lists for wizard ─────────────────────────────────────────
@@ -735,7 +711,7 @@ function AppInner() {
                 triggerAdd={quickAddRole}
                 onTriggerHandled={() => setQuickAddRole(null)}
                 onDirectoryChanged={() => {
-                  invalidateOrgContacts(orgId);
+                  loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
                 onContactUpdated={handleContactUpdated}
               />
@@ -840,11 +816,10 @@ function AppInner() {
       {showAdd && (
         <GuidedDealWizard
           onAdd={handleAdd}
-          onClose={() => { setShowAdd(false); invalidateOrgContacts(orgId); }}
+          onClose={() => { setShowAdd(false); loadContactsFull().then(data => setContactRecords(data)).catch(console.error); }}
           complianceTemplates={complianceTemplates}
           agentClients={agentClients}
           ddMasterItems={ddMasterItems}
-          complianceMasterItems={complianceMasterItems}
         />
       )}
 
@@ -889,11 +864,6 @@ function AppInner() {
         onSetView={(v) => setView(v as any)}
       />
 
-      {/* Page ID Badge — floating pill showing current view for quick troubleshooting */}
-      {/* Suppressed when any wizard/modal with its own badge is open to avoid duplicate badges */}
-      {!(view === 'transactions' && selected) && !showAdd && !activeCall && (
-        <PageIdBadge pageId={VIEW_PAGE_IDS[view] || view} />
-      )}
 
     </div>
   );
