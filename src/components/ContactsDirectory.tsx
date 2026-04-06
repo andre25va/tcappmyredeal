@@ -228,7 +228,7 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
   const categoryCounts = useMemo(() => {
     const counts: Record<CategoryKey, number> = {
       agent: 0, lender: 0, title: 0, attorney: 0,
-      inspector: 0, buyer_seller: 0, tc: 0, other: 0,
+      inspector: 0, buyer_seller: 0, tc: 0, online_database: 0, other: 0,
     };
     for (const c of contacts) {
       if (c.contactType === 'staff') continue; // Staff managed in Settings
