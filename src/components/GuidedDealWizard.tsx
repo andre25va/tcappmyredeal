@@ -301,6 +301,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [clientSearch, setClientSearch] = useState('');
   const [showClientCreateModal, setShowClientCreateModal] = useState(false);
   const [localNewClients, setLocalNewClients] = useState<ContactRecord[]>([]);
+  const [approvedMismatches, setApprovedMismatches] = useState<Record<string, string>>({});
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
     selectedMls: string;
@@ -1662,25 +1663,43 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   {form.agentClientId ? (() => {
                     const ac = allAgentClients.find(c => c.id === form.agentClientId);
                     if (!ac) return null;
-                    // Compare selected agent name against contract-extracted agent name
+                    // Use approved name if TC already approved a mismatch this session
+                    const isApproved = !!approvedMismatches[ac.id];
+                    const displayName = approvedMismatches[ac.id] ?? ac.fullName;
+                    // Compare against contract-extracted agent names
                     const buyerAgentName = extractedRawData?.buyerAgentName as string | null | undefined;
                     const sellerAgentName = extractedRawData?.sellerAgentName as string | null | undefined;
                     const hasContractAgents = !!(buyerAgentName || sellerAgentName);
-                    const acNameLower = ac.fullName.trim().toLowerCase();
+                    const checkNameLower = displayName.trim().toLowerCase();
                     let matchRole: 'buyer' | 'seller' | null = null;
                     if (hasContractAgents) {
-                      if (buyerAgentName && acNameLower === buyerAgentName.trim().toLowerCase()) matchRole = 'buyer';
-                      else if (sellerAgentName && acNameLower === sellerAgentName.trim().toLowerCase()) matchRole = 'seller';
+                      if (buyerAgentName && checkNameLower === buyerAgentName.trim().toLowerCase()) matchRole = 'buyer';
+                      else if (sellerAgentName && checkNameLower === sellerAgentName.trim().toLowerCase()) matchRole = 'seller';
                     }
-                    const nameMatch = hasContractAgents ? (matchRole !== null) : null;
+                    const nameMatch = isApproved ? true : (hasContractAgents ? (matchRole !== null) : null);
+
+                    const handleApproveName = async () => {
+                      // Pick extracted name with most word overlap against the contact's current name
+                      const words = ac.fullName.toLowerCase().split(' ');
+                      const score = (name: string) => name.toLowerCase().split(' ').filter(w => words.includes(w)).length;
+                      const buyerScore = buyerAgentName ? score(buyerAgentName) : 0;
+                      const sellerScore = sellerAgentName ? score(sellerAgentName) : 0;
+                      const chosenName = ((buyerScore >= sellerScore ? buyerAgentName : sellerAgentName) ?? buyerAgentName ?? sellerAgentName ?? ac.fullName).trim();
+                      const parts = chosenName.split(' ');
+                      const firstName = parts[0];
+                      const lastName = parts.slice(1).join(' ') || null;
+                      await supabase.from('contacts').update({ first_name: firstName, last_name: lastName, full_name: chosenName }).eq('id', ac.id);
+                      setApprovedMismatches(prev => ({ ...prev, [ac.id]: chosenName }));
+                    };
+
                     return (
                       <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
                         <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
-                          {ac.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                          {displayName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-semibold text-base-content truncate">{ac.fullName}</p>
+                            <p className="text-sm font-semibold text-base-content truncate">{displayName}</p>
                             {nameMatch === true && matchRole && (
                               <span title={`Name matches contract ${matchRole === 'buyer' ? "buyer's" : "seller's"} agent`}
                                 className="flex-none w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
@@ -1690,20 +1709,31 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                               </span>
                             )}
                             {nameMatch === false && (
-                              <span title={`Not found in contract agents`}
+                              <span title="Not found in contract agents"
                                 className="flex-none w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center text-white font-bold" style={{ fontSize: 9, lineHeight: 1 }}>
                                 !
                               </span>
                             )}
                           </div>
                           {nameMatch === true && matchRole && (
-                            <p className="text-xs text-green-600 font-medium mt-0.5">{matchRole === 'buyer' ? "Buyer's Agent" : "Seller's Agent"} on contract</p>
+                            <p className="text-xs text-green-600 font-medium mt-0.5">
+                              {matchRole === 'buyer' ? "Buyer's Agent" : "Seller's Agent"} on contract{isApproved ? ' · Name updated' : ''}
+                            </p>
                           )}
                           {!nameMatch && ac.company && <p className="text-xs text-base-content/50 truncate">{ac.company}</p>}
                           {nameMatch === false && (
-                            <p className="text-xs text-amber-600 mt-0.5">
-                              Contract: {[buyerAgentName && `Buyer — ${buyerAgentName}`, sellerAgentName && `Seller — ${sellerAgentName}`].filter(Boolean).join(' · ')}
-                            </p>
+                            <>
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Contract: {[buyerAgentName && `Buyer — ${buyerAgentName}`, sellerAgentName && `Seller — ${sellerAgentName}`].filter(Boolean).join(' · ')}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleApproveName}
+                                className="mt-1 text-xs text-amber-700 underline hover:text-amber-900 font-medium leading-none"
+                              >
+                                Approve &amp; update name
+                              </button>
+                            </>
                           )}
                         </div>
                         <button
