@@ -1,92 +1,68 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Plus, Pencil, Trash2, Check, X, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { ContactRecord, DealMilestone, MilestoneNotificationSetting, CustomMilestone } from '../../types';
-import { MILESTONE_ORDER, MILESTONE_LABELS } from '../../utils/taskTemplates';
-import { useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
-import { useMilestoneNotifSettings, useInvalidateMilestoneNotifSettings } from '../../hooks/useMilestoneNotifSettings';
-import { useCustomMilestones, useInvalidateCustomMilestones } from '../../hooks/useCustomMilestones';
+import { ContactRecord } from '../../types';
+import { MilestoneType, useMilestoneTypes, useInvalidateMilestoneTypes } from '../../hooks/useMilestoneTypes';
+import { useMlsMilestoneConfigFull, useInvalidateMlsMilestoneConfig } from '../../hooks/useMlsMilestoneConfig';
 
 interface Props {
   contactRecords: ContactRecord[];
 }
 
-// ─── Milestone Catalog Types ───────────────────────────────────────────────
-
-interface MilestoneType {
-  id: string;
-  key: string;
-  label: string;
-  sort_order: number;
-  created_at: string;
-}
-
 const MERGE_TAGS = ['{{recipient_name}}', '{{property_address}}', '{{closing_date}}', '{{tc_name}}'];
 
 const ROLE_KEYS = [
-  { key: 'notifyBuyerAgent',  label: 'Buyer Agent',   short: 'BA' },
-  { key: 'notifySellerAgent', label: 'Seller Agent',  short: 'SA' },
-  { key: 'notifyLender',      label: 'Lender',        short: 'Lender' },
-  { key: 'notifyTitle',       label: 'Title',         short: 'Title' },
-  { key: 'notifyBuyer',       label: 'Buyer',         short: 'Buyer' },
-  { key: 'notifySeller',      label: 'Seller',        short: 'Seller' },
+  { key: 'notifyAgent',   label: 'Agent',   short: 'Agent' },
+  { key: 'notifyLender',  label: 'Lender',  short: 'Lender' },
+  { key: 'notifyTitle',   label: 'Title',   short: 'Title' },
+  { key: 'notifyBuyer',   label: 'Buyer',   short: 'Buyer' },
+  { key: 'notifySeller',  label: 'Seller',  short: 'Seller' },
 ] as const;
 
 type RoleKey = typeof ROLE_KEYS[number]['key'];
 
 interface NotifFields {
-  notifyBuyerAgent: boolean;
-  notifySellerAgent: boolean;
+  notifyAgent: boolean;
   notifyLender: boolean;
   notifyTitle: boolean;
   notifyBuyer: boolean;
   notifySeller: boolean;
   sendEmail: boolean;
-  sendSms: boolean;
   emailSubject: string;
   emailBody: string;
-  smsBody: string;
 }
 
 const defaultNotifFields = (): NotifFields => ({
-  notifyBuyerAgent: true,
-  notifySellerAgent: true,
+  notifyAgent: true,
   notifyLender: false,
   notifyTitle: false,
   notifyBuyer: false,
   notifySeller: false,
   sendEmail: true,
-  sendSms: false,
   emailSubject: '',
   emailBody: '',
-  smsBody: '',
 });
 
-function settingToFields(s: MilestoneNotificationSetting): NotifFields {
+function configToFields(row: any): NotifFields {
   return {
-    notifyBuyerAgent: s.notifyBuyerAgent,
-    notifySellerAgent: s.notifySellerAgent,
-    notifyLender: s.notifyLender,
-    notifyTitle: s.notifyTitle,
-    notifyBuyer: s.notifyBuyer,
-    notifySeller: s.notifySeller,
-    sendEmail: s.sendEmail,
-    sendSms: s.sendSms,
-    emailSubject: s.emailSubject || '',
-    emailBody: s.emailBody || '',
-    smsBody: s.smsBody || '',
+    notifyAgent:  row.notify_agent  ?? true,
+    notifyLender: row.notify_lender ?? false,
+    notifyTitle:  row.notify_title  ?? false,
+    notifyBuyer:  row.notify_buyer  ?? false,
+    notifySeller: row.notify_seller ?? false,
+    sendEmail:    row.send_email    !== false,
+    emailSubject: row.email_subject ?? '',
+    emailBody:    row.email_body    ?? '',
   };
 }
 
-/* ─── Notification Fields Form ─── */
 const NotifForm: React.FC<{
   fields: NotifFields;
   onChange: (f: NotifFields) => void;
 }> = ({ fields, onChange }) => {
   const emailSubjectRef = useRef<HTMLInputElement>(null);
   const emailBodyRef = useRef<HTMLTextAreaElement>(null);
-  const smsBodyRef = useRef<HTMLTextAreaElement>(null);
-  const lastFocused = useRef<'emailSubject' | 'emailBody' | 'smsBody' | null>(null);
+  const lastFocused = useRef<'emailSubject' | 'emailBody' | null>(null);
 
   const insertMergeTag = (tag: string) => {
     if (lastFocused.current === 'emailSubject' && emailSubjectRef.current) {
@@ -95,32 +71,15 @@ const NotifForm: React.FC<{
       const end = el.selectionEnd ?? el.value.length;
       const newVal = el.value.slice(0, start) + tag + el.value.slice(end);
       onChange({ ...fields, emailSubject: newVal });
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(start + tag.length, start + tag.length);
-      }, 0);
+      setTimeout(() => { el.focus(); el.setSelectionRange(start + tag.length, start + tag.length); }, 0);
     } else if (lastFocused.current === 'emailBody' && emailBodyRef.current) {
       const el = emailBodyRef.current;
       const start = el.selectionStart ?? el.value.length;
       const end = el.selectionEnd ?? el.value.length;
       const newVal = el.value.slice(0, start) + tag + el.value.slice(end);
       onChange({ ...fields, emailBody: newVal });
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(start + tag.length, start + tag.length);
-      }, 0);
-    } else if (lastFocused.current === 'smsBody' && smsBodyRef.current) {
-      const el = smsBodyRef.current;
-      const start = el.selectionStart ?? el.value.length;
-      const end = el.selectionEnd ?? el.value.length;
-      const newVal = el.value.slice(0, start) + tag + el.value.slice(end);
-      onChange({ ...fields, smsBody: newVal });
-      setTimeout(() => {
-        el.focus();
-        el.setSelectionRange(start + tag.length, start + tag.length);
-      }, 0);
+      setTimeout(() => { el.focus(); el.setSelectionRange(start + tag.length, start + tag.length); }, 0);
     } else {
-      // Default: append to emailBody
       onChange({ ...fields, emailBody: fields.emailBody + tag });
     }
   };
@@ -161,15 +120,6 @@ const NotifForm: React.FC<{
               onChange={e => onChange({ ...fields, sendEmail: e.target.checked })}
             />
             <span className="text-sm">Email</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              className="checkbox checkbox-sm checkbox-success"
-              checked={fields.sendSms}
-              onChange={e => onChange({ ...fields, sendSms: e.target.checked })}
-            />
-            <span className="text-sm">SMS</span>
           </label>
         </div>
       </div>
@@ -220,28 +170,10 @@ const NotifForm: React.FC<{
             ref={emailBodyRef}
             className="textarea textarea-bordered w-full text-sm"
             rows={6}
-            placeholder="Dear {{recipient_name}},&#10;&#10;Your transaction at {{property_address}} has reached a new milestone.&#10;&#10;Closing Date: {{closing_date}}&#10;&#10;Best regards,&#10;{{tc_name}}"
+            placeholder={"Dear {{recipient_name}},\n\nYour transaction at {{property_address}} has reached a new milestone.\n\nClosing Date: {{closing_date}}\n\nBest regards,\n{{tc_name}}"}
             value={fields.emailBody}
             onFocus={() => { lastFocused.current = 'emailBody'; }}
             onChange={e => onChange({ ...fields, emailBody: e.target.value })}
-          />
-        </div>
-      )}
-
-      {/* SMS Body */}
-      {fields.sendSms && (
-        <div>
-          <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">
-            SMS Body
-          </label>
-          <textarea
-            ref={smsBodyRef}
-            className="textarea textarea-bordered w-full text-sm"
-            rows={3}
-            placeholder="TC Update: {{property_address}} has reached a new milestone. Closing: {{closing_date}}. — {{tc_name}}"
-            value={fields.smsBody}
-            onFocus={() => { lastFocused.current = 'smsBody'; }}
-            onChange={e => onChange({ ...fields, smsBody: e.target.value })}
           />
         </div>
       )}
@@ -249,80 +181,57 @@ const NotifForm: React.FC<{
   );
 };
 
-/* ─── Standard Milestones Accordion Row ─── */
-const MilestoneRow: React.FC<{
-  milestone: DealMilestone;
+/* ─── Milestone Notification Rules Row ─── */
+const MilestoneNotifRow: React.FC<{
+  milestoneType: MilestoneType;
   index: number;
-  setting: MilestoneNotificationSetting | undefined;
-  onSaved: (s: MilestoneNotificationSetting) => void;
-}> = ({ milestone, index, setting, onSaved }) => {
+  configRow: any | undefined;
+  mlsId: string;
+  onSaved: () => void;
+}> = ({ milestoneType, index, configRow, mlsId, onSaved }) => {
   const [expanded, setExpanded] = useState(false);
   const [fields, setFields] = useState<NotifFields>(() =>
-    setting ? settingToFields(setting) : defaultNotifFields()
+    configRow ? configToFields(configRow) : defaultNotifFields()
   );
   const [saving, setSaving] = useState(false);
-  const [dueDays, setDueDays] = useState<number | ''>(() => setting?.dueDaysFromContract ?? '');
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    setFields(setting ? settingToFields(setting) : defaultNotifFields());
-    setDueDays(setting?.dueDaysFromContract ?? '');
-  }, [setting]);
+    setFields(configRow ? configToFields(configRow) : defaultNotifFields());
+  }, [configRow]);
 
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
     const payload = {
-      milestone,
-      notify_buyer_agent: fields.notifyBuyerAgent,
-      notify_seller_agent: fields.notifySellerAgent,
+      mls_id: mlsId,
+      milestone_type_id: milestoneType.id,
+      notify_agent:  fields.notifyAgent,
       notify_lender: fields.notifyLender,
-      notify_title: fields.notifyTitle,
-      notify_buyer: fields.notifyBuyer,
+      notify_title:  fields.notifyTitle,
+      notify_buyer:  fields.notifyBuyer,
       notify_seller: fields.notifySeller,
-      send_email: fields.sendEmail,
-      send_sms: fields.sendSms,
+      send_email:    fields.sendEmail,
       email_subject: fields.emailSubject || null,
-      email_body: fields.emailBody || null,
-      sms_body: fields.smsBody || null,
-      due_days_from_contract: dueDays === '' ? null : Number(dueDays),
-      updated_at: new Date().toISOString(),
+      email_body:    fields.emailBody    || null,
+      updated_at:    new Date().toISOString(),
     };
 
-    const { data, error } = await supabase
-      .from('milestone_notification_settings')
-      .upsert(payload, { onConflict: 'milestone' })
-      .select()
-      .single();
+    const { error } = await supabase
+      .from('mls_milestone_config')
+      .upsert(payload, { onConflict: 'mls_id,milestone_type_id' });
 
     if (error) {
       setSaveError(error.message);
-    } else if (data) {
-      onSaved({
-        id: data.id,
-        milestone: data.milestone,
-        notifyBuyerAgent: data.notify_buyer_agent,
-        notifySellerAgent: data.notify_seller_agent,
-        notifyLender: data.notify_lender,
-        notifyTitle: data.notify_title,
-        notifyBuyer: data.notify_buyer,
-        notifySeller: data.notify_seller,
-        sendEmail: data.send_email,
-        sendSms: data.send_sms,
-        emailSubject: data.email_subject,
-        emailBody: data.email_body,
-        smsBody: data.sms_body,
-        dueDaysFromContract: data.due_days_from_contract ?? undefined,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      });
+    } else {
+      onSaved();
       setExpanded(false);
     }
     setSaving(false);
   };
 
   const handleCancel = () => {
-    setFields(setting ? settingToFields(setting) : defaultNotifFields());
+    setFields(configRow ? configToFields(configRow) : defaultNotifFields());
     setExpanded(false);
     setSaveError(null);
   };
@@ -338,7 +247,7 @@ const MilestoneRow: React.FC<{
       >
         <span className="badge badge-sm badge-outline flex-none">{index + 1}</span>
         <span className="font-semibold text-sm text-base-content flex-1 text-left">
-          {MILESTONE_LABELS[milestone]}
+          {milestoneType.label}
         </span>
 
         {/* Role pills */}
@@ -355,43 +264,20 @@ const MilestoneRow: React.FC<{
           )}
         </div>
 
-        {/* Channel badges */}
-        <div className="flex gap-1 flex-none">
-          {fields.sendEmail && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary border border-primary/20">Email</span>
-          )}
-          {fields.sendSms && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success/15 text-success border border-success/20">SMS</span>
-          )}
-        </div>
-
-        {dueDays !== '' && (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-info/15 text-info border border-info/20 flex-none">
-            {dueDays}d
-          </span>
+        {/* Channel badge */}
+        {fields.sendEmail && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary border border-primary/20 flex-none">Email</span>
         )}
 
-        {expanded ? <ChevronUp size={14} className="flex-none text-base-content/40" /> : <ChevronDown size={14} className="flex-none text-base-content/40" />}
+        {expanded
+          ? <ChevronUp size={14} className="flex-none text-base-content/40" />
+          : <ChevronDown size={14} className="flex-none text-base-content/40" />}
       </button>
 
       {/* Expanded form */}
       {expanded && (
         <div className="p-4 border-t border-base-300 bg-base-100">
           <NotifForm fields={fields} onChange={setFields} />
-
-          <div className="mt-4 flex items-center gap-3">
-            <label className="text-xs font-semibold text-base-content/70 whitespace-nowrap">Days from contract date</label>
-            <input
-              type="number"
-              min={0}
-              max={365}
-              placeholder="e.g. 3"
-              value={dueDays}
-              onChange={e => setDueDays(e.target.value === '' ? '' : Number(e.target.value))}
-              className="input input-xs input-bordered w-24"
-            />
-            <span className="text-[10px] text-base-content/40">Leave blank if not applicable</span>
-          </div>
 
           {saveError && (
             <div className="flex items-center gap-2 mt-3 p-2 rounded-lg bg-error/10 border border-error/20">
@@ -415,93 +301,22 @@ const MilestoneRow: React.FC<{
   );
 };
 
-/* ─── Custom Milestone Form ─── */
-interface CustomMilestoneFormData {
-  name: string;
-  description: string;
-  insertAfter: DealMilestone;
-  agentContactId: string;
-  notifFields: NotifFields;
-}
-
-const emptyCustomForm = (): CustomMilestoneFormData => ({
-  name: '',
-  description: '',
-  insertAfter: 'contract-received',
-  agentContactId: '',
-  notifFields: defaultNotifFields(),
-});
-
 /* ─── Main Component ─── */
 export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
-  const { data: notifSettingsRaw = [], isLoading: loadingNotif, error: notifError } = useMilestoneNotifSettings();
-  const invalidateNotifSettings = useInvalidateMilestoneNotifSettings();
-  const { data: customMilestonesRaw = [], isLoading: loadingCustom, error: customError } = useCustomMilestones();
-  const invalidateCustomMilestones = useInvalidateCustomMilestones();
 
-  const loading = loadingNotif || loadingCustom;
-  const loadError = notifError ? (notifError as Error).message : null;
+  // ─── MLS board + Notification Rules state ────────────────────────────────
+  const [mlsEntries, setMlsEntries] = useState<{ id: string; name: string }[]>([]);
+  const [selectedMlsId, setSelectedMlsId] = useState<string>('');
+  const { data: mlsConfig = [], isLoading: loadingConfig } = useMlsMilestoneConfigFull(selectedMlsId || undefined);
+  const invalidateMlsConfig = useInvalidateMlsMilestoneConfig();
 
-  const settings = useMemo<MilestoneNotificationSetting[]>(
-    () =>
-      notifSettingsRaw.map((d: any) => ({
-        id: d.id,
-        milestone: d.milestone,
-        notifyBuyerAgent: d.notify_buyer_agent,
-        notifySellerAgent: d.notify_seller_agent,
-        notifyLender: d.notify_lender,
-        notifyTitle: d.notify_title,
-        notifyBuyer: d.notify_buyer,
-        notifySeller: d.notify_seller,
-        sendEmail: d.send_email,
-        sendSms: d.send_sms,
-        emailSubject: d.email_subject,
-        emailBody: d.email_body,
-        smsBody: d.sms_body,
-        dueDaysFromContract: d.due_days_from_contract ?? undefined,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-      })),
-    [notifSettingsRaw],
-  );
-
-  const customMilestones = useMemo<CustomMilestone[]>(
-    () =>
-      customMilestonesRaw.map((d: any) => {
-        const contact = d.contacts as { id: string; first_name: string; last_name: string } | null;
-        return {
-          id: d.id,
-          agentContactId: d.agent_contact_id,
-          name: d.name,
-          description: d.description,
-          insertAfter: d.insert_after,
-          notifyBuyerAgent: d.notify_buyer_agent,
-          notifySellerAgent: d.notify_seller_agent,
-          notifyLender: d.notify_lender,
-          notifyTitle: d.notify_title,
-          notifyBuyer: d.notify_buyer,
-          notifySeller: d.notify_seller,
-          sendEmail: d.send_email,
-          sendSms: d.send_sms,
-          emailSubject: d.email_subject,
-          emailBody: d.email_body,
-          smsBody: d.sms_body,
-          createdAt: d.created_at,
-          updatedAt: d.updated_at,
-          agentName: contact
-            ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
-            : undefined,
-        };
-      }),
-    [customMilestonesRaw],
-  );
-
-  const [showCustomForm, setShowCustomForm] = useState(false);
-  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
-  const [customForm, setCustomForm] = useState<CustomMilestoneFormData>(emptyCustomForm());
-  const [savingCustom, setSavingCustom] = useState(false);
-  const [customSaveError, setCustomSaveError] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.from('mls_entries').select('id, name').order('name').then(({ data }) => {
+      const entries = (data || []) as { id: string; name: string }[];
+      setMlsEntries(entries);
+      if (entries.length > 0) setSelectedMlsId(prev => prev || entries[0].id);
+    });
+  }, []);
 
   // ─── Milestone Catalog state ────────────────────────────────────────────
   const [addingType, setAddingType] = useState(false);
@@ -515,114 +330,9 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
   const [deletingType, setDeletingType] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
-  const agentClients = contactRecords.filter(c => c.isClient);
-
   // ── Shared TanStack Query hooks ──────────────────────────────────────────
   const { data: milestoneTypes = [] } = useMilestoneTypes();
   const invalidateMilestoneTypes = useInvalidateMilestoneTypes();
-
-  const handleSettingSaved = (_updated: MilestoneNotificationSetting) => {
-    invalidateNotifSettings();
-  };
-
-  const openAddCustom = () => {
-    setEditingCustomId(null);
-    setCustomForm(emptyCustomForm());
-    setCustomSaveError(null);
-    setShowCustomForm(true);
-  };
-
-  const openEditCustom = (cm: CustomMilestone) => {
-    setEditingCustomId(cm.id);
-    setCustomForm({
-      name: cm.name,
-      description: cm.description || '',
-      insertAfter: cm.insertAfter as DealMilestone,
-      agentContactId: cm.agentContactId || '',
-      notifFields: {
-        notifyBuyerAgent: cm.notifyBuyerAgent,
-        notifySellerAgent: cm.notifySellerAgent,
-        notifyLender: cm.notifyLender,
-        notifyTitle: cm.notifyTitle,
-        notifyBuyer: cm.notifyBuyer,
-        notifySeller: cm.notifySeller,
-        sendEmail: cm.sendEmail,
-        sendSms: cm.sendSms,
-        emailSubject: cm.emailSubject || '',
-        emailBody: cm.emailBody || '',
-        smsBody: cm.smsBody || '',
-      },
-    });
-    setCustomSaveError(null);
-    setShowCustomForm(true);
-  };
-
-  const handleSaveCustom = async () => {
-    if (!customForm.name.trim()) {
-      setCustomSaveError('Name is required.');
-      return;
-    }
-    setSavingCustom(true);
-    setCustomSaveError(null);
-
-    const payload = {
-      name: customForm.name.trim(),
-      description: customForm.description || null,
-      insert_after: customForm.insertAfter,
-      agent_contact_id: customForm.agentContactId || null,
-      notify_buyer_agent: customForm.notifFields.notifyBuyerAgent,
-      notify_seller_agent: customForm.notifFields.notifySellerAgent,
-      notify_lender: customForm.notifFields.notifyLender,
-      notify_title: customForm.notifFields.notifyTitle,
-      notify_buyer: customForm.notifFields.notifyBuyer,
-      notify_seller: customForm.notifFields.notifySeller,
-      send_email: customForm.notifFields.sendEmail,
-      send_sms: customForm.notifFields.sendSms,
-      email_subject: customForm.notifFields.emailSubject || null,
-      email_body: customForm.notifFields.emailBody || null,
-      sms_body: customForm.notifFields.smsBody || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (editingCustomId) {
-      const { data, error } = await supabase
-        .from('custom_milestones')
-        .update(payload)
-        .eq('id', editingCustomId)
-        .select()
-        .single();
-
-      if (error) {
-        setCustomSaveError(error.message);
-      } else if (data) {
-        invalidateCustomMilestones();
-        setShowCustomForm(false);
-        setEditingCustomId(null);
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('custom_milestones')
-        .insert(payload)
-        .select()
-        .single();
-
-      if (error) {
-        setCustomSaveError(error.message);
-      } else if (data) {
-        invalidateCustomMilestones();
-        setShowCustomForm(false);
-      }
-    }
-    setSavingCustom(false);
-  };
-
-  const handleDeleteCustom = async (id: string) => {
-    const { error } = await supabase.from('custom_milestones').delete().eq('id', id);
-    if (!error) {
-      invalidateCustomMilestones();
-    }
-    setDeleteConfirmId(null);
-  };
 
   // ─── Milestone Catalog handlers ─────────────────────────────────────────
 
@@ -697,28 +407,8 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
     setDeletingType(false);
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-3 max-w-3xl mx-auto">
-        {MILESTONE_ORDER.filter(m => m !== 'archived').map(m => (
-          <div key={m} className="h-14 rounded-xl bg-base-200 animate-pulse border border-base-300" />
-        ))}
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex items-center gap-3 p-4 rounded-xl bg-error/10 border border-error/20 max-w-3xl mx-auto">
-        <AlertCircle size={16} className="text-error flex-none" />
-        <p className="text-sm text-error">Failed to load settings: {loadError}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
-
+    <div className="space-y-10">
       {/* ── Section 0: Milestone Catalog ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -890,209 +580,61 @@ export const MilestonesTab: React.FC<Props> = ({ contactRecords }) => {
 
       <div className="divider" />
 
-      {/* ── Section 1: Standard Milestones ── */}
-      <section>
-        <div className="mb-4">
-          <h2 className="text-base font-bold text-base-content">Standard Milestones</h2>
-          <p className="text-xs text-base-content/50 mt-0.5">
-            Configure who gets notified and what message they receive at each deal milestone.
-          </p>
-        </div>
-        <div className="space-y-2">
-          {MILESTONE_ORDER.filter(m => m !== 'archived').map((m, i) => (
-            <MilestoneRow
-              key={m}
-              milestone={m}
-              index={i}
-              setting={settings.find(s => s.milestone === m)}
-              onSaved={handleSettingSaved}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* ── Section 2: Custom Milestones ── */}
+      {/* ── Section 1: Milestone Notification Rules ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-base font-bold text-base-content">Custom Milestones</h2>
+            <h2 className="text-base font-bold text-base-content">Milestone Notification Rules</h2>
             <p className="text-xs text-base-content/50 mt-0.5">
-              Add extra milestone steps for specific agent clients.
+              Configure who gets notified and what message they receive at each milestone, per MLS board.
             </p>
           </div>
-          <button
-            onClick={openAddCustom}
-            className="btn btn-sm btn-primary gap-1.5"
-          >
-            <Plus size={13} /> Add Custom Milestone
-          </button>
+          {mlsEntries.length > 1 && (
+            <select
+              className="select select-bordered select-sm"
+              value={selectedMlsId}
+              onChange={e => setSelectedMlsId(e.target.value)}
+            >
+              {mlsEntries.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
-        {/* Custom form */}
-        {showCustomForm && (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 mb-4 space-y-4">
-            <h3 className="font-semibold text-sm text-base-content">
-              {editingCustomId ? 'Edit Custom Milestone' : 'New Custom Milestone'}
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-base-content/50 mb-1 block">Name *</label>
-                <input
-                  className="input input-bordered input-sm w-full"
-                  placeholder="e.g. HOA Approval"
-                  value={customForm.name}
-                  onChange={e => setCustomForm(p => ({ ...p, name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-base-content/50 mb-1 block">Insert After</label>
-                <select
-                  className="select select-bordered select-sm w-full"
-                  value={customForm.insertAfter}
-                  onChange={e => setCustomForm(p => ({ ...p, insertAfter: e.target.value as DealMilestone }))}
-                >
-                  {MILESTONE_ORDER.filter(m => m !== 'archived').map(m => (
-                    <option key={m} value={m}>{MILESTONE_LABELS[m]}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-xs text-base-content/50 mb-1 block">Description</label>
-                <textarea
-                  className="textarea textarea-bordered w-full text-sm"
-                  rows={2}
-                  placeholder="Optional description..."
-                  value={customForm.description}
-                  onChange={e => setCustomForm(p => ({ ...p, description: e.target.value }))}
-                />
-              </div>
-              {agentClients.length > 0 && (
-                <div className="sm:col-span-2">
-                  <label className="text-xs text-base-content/50 mb-1 block">
-                    Agent Client (optional)
-                  </label>
-                  <select
-                    className="select select-bordered select-sm w-full"
-                    value={customForm.agentContactId}
-                    onChange={e => setCustomForm(p => ({ ...p, agentContactId: e.target.value }))}
-                  >
-                    <option value="">All clients</option>
-                    {agentClients.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.fullName}{c.company ? ` — ${c.company}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <NotifForm
-              fields={customForm.notifFields}
-              onChange={notifFields => setCustomForm(p => ({ ...p, notifFields }))}
-            />
-
-            {customSaveError && (
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-error/10 border border-error/20">
-                <AlertCircle size={13} className="text-error flex-none" />
-                <p className="text-xs text-error">{customSaveError}</p>
-              </div>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => { setShowCustomForm(false); setEditingCustomId(null); setCustomSaveError(null); }}
-                className="btn btn-sm btn-ghost gap-1"
-              >
-                <X size={12} /> Cancel
-              </button>
-              <button onClick={handleSaveCustom} disabled={savingCustom} className="btn btn-sm btn-primary gap-1">
-                {savingCustom ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                Save
-              </button>
-            </div>
+        {!selectedMlsId ? (
+          <div className="p-6 text-center border border-base-300 rounded-xl">
+            <p className="text-sm text-base-content/50">No MLS boards configured.</p>
           </div>
-        )}
-
-        {/* Custom milestones list */}
-        {customMilestones.length === 0 && !showCustomForm && (
-          <div className="rounded-xl border border-base-300 bg-base-200 p-6 text-center">
-            <p className="text-sm text-base-content/50">No custom milestones yet.</p>
-            <p className="text-xs text-base-content/40 mt-1">
-              Add custom steps to tailor the workflow for specific agent clients.
+        ) : milestoneTypes.length === 0 ? (
+          <div className="p-6 text-center border border-base-300 rounded-xl">
+            <p className="text-sm text-base-content/50">
+              Add milestones to the Milestone Catalog above to configure notification rules.
             </p>
           </div>
+        ) : loadingConfig ? (
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-12 rounded-xl bg-base-200 animate-pulse border border-base-300" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {milestoneTypes.map((mt, i) => {
+              const configRow = (mlsConfig as any[]).find(c => c.milestone_type_id === mt.id);
+              return (
+                <MilestoneNotifRow
+                  key={mt.id}
+                  milestoneType={mt}
+                  index={i}
+                  configRow={configRow}
+                  mlsId={selectedMlsId}
+                  onSaved={() => invalidateMlsConfig(selectedMlsId)}
+                />
+              );
+            })}
+          </div>
         )}
-
-        <div className="space-y-3">
-          {customMilestones.map(cm => (
-            <div key={cm.id} className="rounded-xl border border-base-300 bg-base-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-base-content">{cm.name}</p>
-                  {cm.description && (
-                    <p className="text-xs text-base-content/60 mt-0.5">{cm.description}</p>
-                  )}
-                  <p className="text-xs text-base-content/40 mt-1">
-                    Inserted after: <span className="font-medium text-base-content/60">{MILESTONE_LABELS[cm.insertAfter as DealMilestone]}</span>
-                    {cm.agentName && (
-                      <> · Agent: <span className="font-medium text-base-content/60">{cm.agentName}</span></>
-                    )}
-                  </p>
-                  <div className="flex gap-1 mt-2">
-                    {ROLE_KEYS.filter(r => cm[r.key as RoleKey]).map(r => (
-                      <span key={r.key} className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary border border-primary/20">
-                        {r.short}
-                      </span>
-                    ))}
-                    {cm.sendEmail && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary border border-primary/20">Email</span>}
-                    {cm.sendSms && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-success/15 text-success border border-success/20">SMS</span>}
-                  </div>
-                </div>
-                <div className="flex gap-1 flex-none">
-                  <button
-                    onClick={() => openEditCustom(cm)}
-                    className="btn btn-ghost btn-xs btn-square"
-                    title="Edit"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(cm.id)}
-                    className="btn btn-ghost btn-xs btn-square text-error"
-                    title="Delete"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Delete confirm */}
-              {deleteConfirmId === cm.id && (
-                <div className="mt-3 p-3 rounded-lg bg-error/10 border border-error/20">
-                  <p className="text-xs font-semibold text-error mb-2">
-                    Delete "{cm.name}"? This cannot be undone.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDeleteCustom(cm.id)}
-                      className="btn btn-xs btn-error gap-1"
-                    >
-                      <Trash2 size={10} /> Yes, Delete
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmId(null)}
-                      className="btn btn-xs btn-ghost"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
       </section>
     </div>
   );
