@@ -20,7 +20,6 @@ export const PageIdBadge: React.FC<Props> = ({ pageId, context }) => {
     try {
       await navigator.clipboard.writeText(fullId);
     } catch {
-      // Fallback for browsers that don't support clipboard API
       const ta = document.createElement('textarea');
       ta.value = fullId;
       ta.style.position = 'fixed';
