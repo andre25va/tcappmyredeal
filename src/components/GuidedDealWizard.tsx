@@ -6,11 +6,12 @@ import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ComplianceMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
 import { MLS_BY_STATE } from '../utils/mlsData';
 import { saveDealParticipant, saveSingleDeal } from '../utils/supabaseDb';
+import { loadMergedChecklistItems } from '../lib/supabaseDb';
 import { buildMissingTitleCompanyTasks } from '../utils/taskTemplates';
 import ContractReferencePanel from './ContractReferencePanel';
 import StepExtractedData from './StepExtractedData';
@@ -28,6 +29,7 @@ interface Props {
   complianceTemplates?: ComplianceTemplate[];
   agentClients?: ContactRecord[];    // contacts with isClient === true
   ddMasterItems?: DDMasterItem[];
+  complianceMasterItems?: ComplianceMasterItem[];
 }
 
 
@@ -41,22 +43,7 @@ const PROP_TYPES: { type: PropertyType; label: string; icon: React.ReactNode }[]
   { type: 'commercial', label: 'Commercial', icon: <Store size={22} /> },
 ];
 
-const fallbackDD = (): ChecklistItem[] => [
-  { id: generateId(), title: 'Review executed purchase agreement', completed: false },
-  { id: generateId(), title: 'Order title search', completed: false },
-  { id: generateId(), title: 'Confirm earnest money deposit received', completed: false },
-  { id: generateId(), title: 'Schedule home inspection', completed: false },
-  { id: generateId(), title: 'Request seller disclosures', completed: false },
-  { id: generateId(), title: 'Verify lender pre-approval letter', completed: false },
-  { id: generateId(), title: 'Confirm home warranty ordered and coverage details', completed: false },
-];
-const defaultComp = (): ChecklistItem[] => [
-  { id: generateId(), title: 'MLS data verified and entered', completed: false },
-  { id: generateId(), title: 'Signed agency disclosure on file', completed: false },
-  { id: generateId(), title: 'Buyer representation agreement on file', completed: false },
-  { id: generateId(), title: 'All offer documents uploaded to broker platform', completed: false },
-  { id: generateId(), title: 'Home warranty confirmation on file (if applicable)', completed: false },
-];
+
 
 interface Suggestion {
   field: string;
@@ -194,7 +181,7 @@ const DisambigModal: React.FC<DisambigModalProps> = ({ candidates, title, onSele
 );
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────────────────────────────────────
-export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems }) => {
+export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTemplates, agentClients, ddMasterItems, complianceMasterItems }) => {
   const today = new Date().toISOString().slice(0, 10);
   const [step, setStep] = useState(1);
   const { primaryOrgId, profile } = useAuth();
@@ -314,6 +301,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [clientSearch, setClientSearch] = useState('');
   const [showClientCreateModal, setShowClientCreateModal] = useState(false);
   const [localNewClients, setLocalNewClients] = useState<ContactRecord[]>([]);
+  const [approvedMismatches, setApprovedMismatches] = useState<Record<string, string>>({});
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [mlsMismatchWarning, setMlsMismatchWarning] = useState<{
     selectedMls: string;
@@ -999,6 +987,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(true);
     const isMF = form.propertyType === 'multi-family';
 
+    // Load merged checklist items: master + MLS-specific + client-specific
+    const mergedDDItems = await loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null).catch(() => ddMasterItems ?? []);
+    const mergedComplianceItems = await loadMergedChecklistItems('compliance', form.mlsEntryId || null, form.agentClientId || null).catch(() => complianceMasterItems ?? []);
+
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),
       type: 'mf_addendum',
@@ -1118,18 +1110,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       hasCounterOffer: form.hasCounterOffer || undefined,
-      dueDiligenceChecklist: (ddMasterItems && ddMasterItems.length > 0)
-        ? ddMasterItems.map(m => ({ id: generateId(), title: m.title, completed: false }))
-        : fallbackDD(),
-      complianceChecklist: (() => {
-        if (form.agentClientId && complianceTemplates) {
-          const tpl = complianceTemplates.find(t => (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(form.agentClientId!));
-          if (tpl && tpl.items.length > 0) {
-            return tpl.items.map((item: any) => ({ id: generateId(), title: item.title, completed: false, required: item.required }));
-          }
-        }
-        return defaultComp();
-      })(),
+      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false })),
+      complianceChecklist: mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required })),
       documentRequests: autoDocRequests,
       reminders: [],
       activityLog: initLog,
@@ -1682,25 +1664,43 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   {form.agentClientId ? (() => {
                     const ac = allAgentClients.find(c => c.id === form.agentClientId);
                     if (!ac) return null;
-                    // Compare selected agent name against contract-extracted agent name
+                    // Use approved name if TC already approved a mismatch this session
+                    const isApproved = !!approvedMismatches[ac.id];
+                    const displayName = approvedMismatches[ac.id] ?? ac.fullName;
+                    // Compare against contract-extracted agent names
                     const buyerAgentName = extractedRawData?.buyerAgentName as string | null | undefined;
                     const sellerAgentName = extractedRawData?.sellerAgentName as string | null | undefined;
                     const hasContractAgents = !!(buyerAgentName || sellerAgentName);
-                    const acNameLower = ac.fullName.trim().toLowerCase();
+                    const checkNameLower = displayName.trim().toLowerCase();
                     let matchRole: 'buyer' | 'seller' | null = null;
                     if (hasContractAgents) {
-                      if (buyerAgentName && acNameLower === buyerAgentName.trim().toLowerCase()) matchRole = 'buyer';
-                      else if (sellerAgentName && acNameLower === sellerAgentName.trim().toLowerCase()) matchRole = 'seller';
+                      if (buyerAgentName && checkNameLower === buyerAgentName.trim().toLowerCase()) matchRole = 'buyer';
+                      else if (sellerAgentName && checkNameLower === sellerAgentName.trim().toLowerCase()) matchRole = 'seller';
                     }
-                    const nameMatch = hasContractAgents ? (matchRole !== null) : null;
+                    const nameMatch = isApproved ? true : (hasContractAgents ? (matchRole !== null) : null);
+
+                    const handleApproveName = async () => {
+                      // Pick extracted name with most word overlap against the contact's current name
+                      const words = ac.fullName.toLowerCase().split(' ');
+                      const score = (name: string) => name.toLowerCase().split(' ').filter(w => words.includes(w)).length;
+                      const buyerScore = buyerAgentName ? score(buyerAgentName) : 0;
+                      const sellerScore = sellerAgentName ? score(sellerAgentName) : 0;
+                      const chosenName = ((buyerScore >= sellerScore ? buyerAgentName : sellerAgentName) ?? buyerAgentName ?? sellerAgentName ?? ac.fullName).trim();
+                      const parts = chosenName.split(' ');
+                      const firstName = parts[0];
+                      const lastName = parts.slice(1).join(' ') || null;
+                      await supabase.from('contacts').update({ first_name: firstName, last_name: lastName, full_name: chosenName }).eq('id', ac.id);
+                      setApprovedMismatches(prev => ({ ...prev, [ac.id]: chosenName }));
+                    };
+
                     return (
                       <div className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/30 rounded-xl">
                         <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-none">
-                          {ac.fullName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
+                          {displayName.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-semibold text-base-content truncate">{ac.fullName}</p>
+                            <p className="text-sm font-semibold text-base-content truncate">{displayName}</p>
                             {nameMatch === true && matchRole && (
                               <span title={`Name matches contract ${matchRole === 'buyer' ? "buyer's" : "seller's"} agent`}
                                 className="flex-none w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
@@ -1710,20 +1710,31 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                               </span>
                             )}
                             {nameMatch === false && (
-                              <span title={`Not found in contract agents`}
+                              <span title="Not found in contract agents"
                                 className="flex-none w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center text-white font-bold" style={{ fontSize: 9, lineHeight: 1 }}>
                                 !
                               </span>
                             )}
                           </div>
                           {nameMatch === true && matchRole && (
-                            <p className="text-xs text-green-600 font-medium mt-0.5">{matchRole === 'buyer' ? "Buyer's Agent" : "Seller's Agent"} on contract</p>
+                            <p className="text-xs text-green-600 font-medium mt-0.5">
+                              {matchRole === 'buyer' ? "Buyer's Agent" : "Seller's Agent"} on contract{isApproved ? ' · Name updated' : ''}
+                            </p>
                           )}
                           {!nameMatch && ac.company && <p className="text-xs text-base-content/50 truncate">{ac.company}</p>}
                           {nameMatch === false && (
-                            <p className="text-xs text-amber-600 mt-0.5">
-                              Contract: {[buyerAgentName && `Buyer — ${buyerAgentName}`, sellerAgentName && `Seller — ${sellerAgentName}`].filter(Boolean).join(' · ')}
-                            </p>
+                            <>
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Contract: {[buyerAgentName && `Buyer — ${buyerAgentName}`, sellerAgentName && `Seller — ${sellerAgentName}`].filter(Boolean).join(' · ')}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleApproveName}
+                                className="mt-1 text-xs text-amber-700 underline hover:text-amber-900 font-medium leading-none"
+                              >
+                                Approve &amp; update name
+                              </button>
+                            </>
                           )}
                         </div>
                         <button
@@ -2596,15 +2607,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                         <CheckCircle2 size={16} className="text-green-500 flex-none" />
                       </div>
-                      {(() => {
-                        if (!complianceTemplates) return null;
-                        const tpl = complianceTemplates.find(t =>
-                          (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(selectedClient.id)
-                        );
-                        return tpl
-                          ? <p className="text-xs text-green-600 pl-1">✓ {tpl.items.length} compliance items will be loaded from this client's template</p>
-                          : null;
-                      })()}
+  
                     </div>
                   ) : (
                     <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
