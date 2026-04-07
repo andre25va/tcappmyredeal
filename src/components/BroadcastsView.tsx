@@ -68,10 +68,8 @@ interface BroadcastsViewProps {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function statusBadge(r: BlastRecipient) {
-  // Check status column first (most reliable for undeliverable)
   if (r.status === 'undeliverable')
     return <span className="badge badge-warning badge-sm gap-1"><AlertCircle size={10} />Undeliverable</span>;
-  // Fall back to response/opened_at for existing rows
   if (r.response === 'confirmed') return <span className="badge badge-success badge-sm gap-1"><CheckCircle size={10} />Confirmed</span>;
   if (r.response === 'declined')  return <span className="badge badge-error badge-sm gap-1"><XCircle size={10} />Declined</span>;
   if (r.opened_at)                return <span className="badge badge-info badge-sm gap-1"><Eye size={10} />Opened</span>;
@@ -798,7 +796,10 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                       </div>
                       {editingGroupId === group.id && (
                         <button
-                          onClick={() => removeMember.mutate(m.id)}
+                          onClick={() => {
+                            const label = m.name ? `${m.name} (${m.email})` : m.email;
+                            if (confirm(`Remove ${label} from this group?`)) removeMember.mutate(m.id);
+                          }}
                           className="btn btn-ghost btn-xs text-error"
                         >
                           <X size={12} />
