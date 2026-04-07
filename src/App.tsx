@@ -38,6 +38,7 @@ import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
 import { EmailReviewQueueView } from './components/EmailReviewQueueView';
 import { RequestCenterView } from './components/RequestCenterView';
+import { BroadcastsView } from './components/BroadcastsView';
 import { PAGE_IDS } from './utils/pageTracking';
 import { Button } from './components/ui/Button';
 
@@ -53,6 +54,7 @@ const VIEW_PAGE_IDS: Record<string, string> = {
   voice:           PAGE_IDS.VOICE,
   reports:         PAGE_IDS.AI_REPORTS,
   requests:        PAGE_IDS.REQUESTS,
+  broadcasts:      'broadcasts',
   settings:        PAGE_IDS.SETTINGS,
   transactions:    PAGE_IDS.TRANSACTIONS_LIST,
 };
@@ -580,7 +582,7 @@ function AppInner() {
           <div className="flex items-center h-14 px-3 gap-2 w-full">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
-              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : 'Settings'}
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : view === 'broadcasts' ? 'Broadcasts' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
             {!isViewer && (
@@ -788,6 +790,12 @@ function AppInner() {
                 onSelectDeal={handleSelectDeal}
                 onSelectDealWithTab={handleSelectDealWithTab}
               />
+            </div>
+          )}
+
+          {view === 'broadcasts' && (
+            <div className="flex-1 overflow-hidden">
+              <BroadcastsView deals={deals} currentUserId={profile?.id} />
             </div>
           )}
 
