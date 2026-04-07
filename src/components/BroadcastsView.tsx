@@ -1,9 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Send, Plus, Trash2, Users, ChevronDown, ChevronRight,
   Mail, CheckCircle, XCircle, Eye, Clock, LayoutList, Edit2, X,
-  Sparkles, Loader2,
+  FileText, Save, ChevronUp,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Deal } from '../types';
@@ -48,18 +48,14 @@ interface BlastRecipient {
 
 interface RecipientRow { name?: string; email: string; }
 
-// ─── AI Suggestion chips ──────────────────────────────────────────────────────
-
-const AI_SUGGESTIONS = [
-  { key: 'closing_reminder',  label: '🏁 Closing Reminder' },
-  { key: 'document_request',  label: '📄 Document Request' },
-  { key: 'availability',      label: '📅 Availability Update' },
-  { key: 'new_listing',       label: '🏠 New Listing' },
-  { key: 'payment_due',       label: '💰 Payment Due' },
-  { key: 'status_update',     label: '📊 Status Update' },
-] as const;
-
-type SuggestionKey = typeof AI_SUGGESTIONS[number]['key'];
+interface BroadcastTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body_html: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -78,13 +74,65 @@ function statusBadge(r: BlastRecipient) {
   return <span className="badge badge-ghost badge-sm gap-1"><Clock size={10} />Pending</span>;
 }
 
+// ─── Rich Text Editor (shared) ────────────────────────────────────────────────
+
+interface RichEditorProps {
+  editorRef: React.RefObject<HTMLDivElement>;
+  minHeight?: string;
+}
+const RichEditor: React.FC<RichEditorProps> = ({ editorRef, minHeight = '160px' }) => {
+  const execCmd = useCallback((cmd: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, value);
+  }, [editorRef]);
+
+  return (
+    <div className="border border-base-300 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 bg-base-200 border-b border-base-300">
+        {[
+          { cmd: 'bold',      label: <strong>B</strong>,                  title: 'Bold' },
+          { cmd: 'italic',    label: <em>I</em>,                           title: 'Italic' },
+          { cmd: 'underline', label: <span className="underline">U</span>, title: 'Underline' },
+        ].map(({ cmd, label, title }) => (
+          <button
+            key={cmd}
+            onMouseDown={e => { e.preventDefault(); execCmd(cmd); }}
+            title={title}
+            className="btn btn-ghost btn-xs w-7 h-7 min-h-0 font-normal"
+          >{label}</button>
+        ))}
+        <div className="w-px h-4 bg-base-300 mx-1" />
+        <button onMouseDown={e => { e.preventDefault(); execCmd('insertUnorderedList'); }} title="Bullet list" className="btn btn-ghost btn-xs w-7 h-7 min-h-0">•–</button>
+        <button onMouseDown={e => { e.preventDefault(); execCmd('insertOrderedList'); }} title="Numbered list" className="btn btn-ghost btn-xs w-7 h-7 min-h-0 text-xs">1.</button>
+        <div className="w-px h-4 bg-base-300 mx-1" />
+        <button
+          onMouseDown={e => {
+            e.preventDefault();
+            const url = window.prompt('Enter URL:');
+            if (url) execCmd('createLink', url);
+          }}
+          title="Insert link"
+          className="btn btn-ghost btn-xs w-7 h-7 min-h-0 text-xs"
+        >🔗</button>
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="p-3 text-sm text-base-content outline-none focus:outline-none"
+        style={{ minHeight, lineHeight: '1.6', color: '#1a1a1a' }}
+      />
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUserId }) => {
   const qc = useQueryClient();
 
   // ── Tab state ────────────────────────────────────────────────────────────────
-  const [mainTab, setMainTab] = useState<'compose' | 'history' | 'groups'>('compose');
+  const [mainTab, setMainTab] = useState<'compose' | 'history' | 'groups' | 'templates'>('compose');
   const [blastType, setBlastType] = useState<'general' | 'deal'>('general');
 
   // ── Compose state ────────────────────────────────────────────────────────────
@@ -98,12 +146,8 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [sendResult, setSendResult]      = useState<{ success: boolean; message: string } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
-  // ── AI state ─────────────────────────────────────────────────────────────────
-  const [showAiPanel, setShowAiPanel]       = useState(false);
-  const [aiPrompt, setAiPrompt]             = useState('');
-  const [aiSuggestion, setAiSuggestion]     = useState<SuggestionKey | null>(null);
-  const [aiLoading, setAiLoading]           = useState(false);
-  const [aiError, setAiError]               = useState<string | null>(null);
+  // ── Template picker state ─────────────────────────────────────────────────────
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   // ── History state ─────────────────────────────────────────────────────────────
   const [expandedBlastId, setExpandedBlastId] = useState<string | null>(null);
@@ -113,6 +157,14 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [newMemberName, setNewMemberName]   = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
+
+  // ── Templates editor state ────────────────────────────────────────────────────
+  const [editingTemplate, setEditingTemplate] = useState<BroadcastTemplate | null>(null);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateSubject, setNewTemplateSubject] = useState('');
+  const [showNewForm, setShowNewForm] = useState(false);
+  const newTemplateEditorRef = useRef<HTMLDivElement>(null);
+  const editTemplateEditorRef = useRef<HTMLDivElement>(null);
 
   // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -158,7 +210,19 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     refetchInterval: expandedBlastId ? 10000 : false,
   });
 
-  // ─── Mutations ────────────────────────────────────────────────────────────────
+  const { data: templates = [] } = useQuery<BroadcastTemplate[]>({
+    queryKey: ['broadcast_templates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('broadcast_templates')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // ─── Mutations — Groups ───────────────────────────────────────────────────────
 
   const createGroup = useMutation({
     mutationFn: async (name: string) => {
@@ -201,50 +265,58 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     onSuccess: () => qc.invalidateQueries({ queryKey: ['email_blast_groups'] }),
   });
 
-  // ─── Rich text toolbar ────────────────────────────────────────────────────────
+  // ─── Mutations — Templates ────────────────────────────────────────────────────
 
-  const execCmd = useCallback((cmd: string, value?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(cmd, false, value);
-  }, []);
-
-  // ─── AI Generate ─────────────────────────────────────────────────────────────
-
-  const handleAiGenerate = async () => {
-    if (!aiPrompt.trim() && !aiSuggestion) {
-      setAiError('Choose a suggestion or describe what you want to send.');
-      return;
-    }
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-broadcast-email', {
-        body: {
-          prompt: aiPrompt.trim() || undefined,
-          suggestion_type: aiSuggestion ?? undefined,
-        },
-      });
+  const createTemplate = useMutation({
+    mutationFn: async ({ name, subject, body_html }: { name: string; subject: string; body_html: string }) => {
+      const { error } = await supabase.from('broadcast_templates').insert({ name, subject, body_html });
       if (error) throw error;
-      if (!data?.subject || !data?.body_html) throw new Error('Incomplete response from AI');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['broadcast_templates'] });
+      setNewTemplateName('');
+      setNewTemplateSubject('');
+      if (newTemplateEditorRef.current) newTemplateEditorRef.current.innerHTML = '';
+      setShowNewForm(false);
+    },
+  });
 
-      // Populate compose fields
-      setSubject(data.subject);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = data.body_html;
-      }
+  const updateTemplate = useMutation({
+    mutationFn: async ({ id, name, subject, body_html }: { id: string; name: string; subject: string; body_html: string }) => {
+      const { error } = await supabase.from('broadcast_templates').update({ name, subject, body_html }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['broadcast_templates'] });
+      setEditingTemplate(null);
+    },
+  });
 
-      // Close AI panel and switch to compose
-      setShowAiPanel(false);
-      setAiPrompt('');
-      setAiSuggestion(null);
-    } catch (err: any) {
-      setAiError(err.message ?? 'AI generation failed. Please try again.');
-    } finally {
-      setAiLoading(false);
+  const deleteTemplate = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('broadcast_templates').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['broadcast_templates'] }),
+  });
+
+  // ─── Sync editor HTML when editing a template ─────────────────────────────────
+
+  useEffect(() => {
+    if (editingTemplate && editTemplateEditorRef.current) {
+      editTemplateEditorRef.current.innerHTML = editingTemplate.body_html;
     }
+  }, [editingTemplate]);
+
+  // ─── Apply template to compose ────────────────────────────────────────────────
+
+  const applyTemplate = (tpl: BroadcastTemplate) => {
+    setSubject(tpl.subject);
+    if (editorRef.current) editorRef.current.innerHTML = tpl.body_html;
+    setShowTemplatePicker(false);
   };
 
-  // ─── Build recipients from selections ────────────────────────────────────────
+  // ─── Build recipients ─────────────────────────────────────────────────────────
 
   const buildRecipients = (): RecipientRow[] => {
     const recipients: RecipientRow[] = [];
@@ -331,13 +403,21 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setIncludeDecline(false);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
-      setSendResult({ success: false, message: '❌ Send failed: ' + (err.message ?? String(err)) });
+      let detail = err.message ?? String(err);
+      try {
+        if (err?.context) {
+          const body = await err.context.json();
+          if (body?.detail) detail = body.detail;
+          else if (body?.error) detail = `${body.error}${body.detail ? ': ' + body.detail : ''}`;
+        }
+      } catch {}
+      setSendResult({ success: false, message: '❌ Send failed: ' + detail });
     } finally {
       setSending(false);
     }
   };
 
-  // ─── Active deal list (non-archived) ─────────────────────────────────────────
+  // ─── Active deal list ─────────────────────────────────────────────────────────
   const activeDeals = deals.filter(d => d.milestone !== 'archived');
 
   // ─── Render ───────────────────────────────────────────────────────────────────
@@ -351,7 +431,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
           <p className="text-xs text-base-content/50">Send professional emails to groups or deal parties</p>
         </div>
         <div className="flex gap-1 bg-base-200 rounded-lg p-1">
-          {(['compose', 'history', 'groups'] as const).map(tab => (
+          {(['compose', 'history', 'groups', 'templates'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setMainTab(tab)}
@@ -359,7 +439,10 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                 mainTab === tab ? 'bg-white shadow text-primary' : 'text-base-content/60 hover:text-base-content'
               }`}
             >
-              {tab === 'compose' ? '✏️ Compose' : tab === 'history' ? '📬 History' : '👥 Groups'}
+              {tab === 'compose'   ? '✏️ Compose'
+               : tab === 'history'   ? '📬 History'
+               : tab === 'groups'    ? '👥 Groups'
+               : '📄 Templates'}
             </button>
           ))}
         </div>
@@ -461,116 +544,55 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
               />
             </div>
 
-            {/* Rich text editor */}
+            {/* Rich text editor + template picker */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Message</label>
                 <button
-                  onClick={() => { setShowAiPanel(v => !v); setAiError(null); }}
+                  onClick={() => setShowTemplatePicker(v => !v)}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
-                    showAiPanel
-                      ? 'bg-violet-600 text-white border-violet-600'
-                      : 'bg-base-100 border-violet-300 text-violet-600 hover:bg-violet-50'
+                    showTemplatePicker
+                      ? 'bg-primary text-primary-content border-primary'
+                      : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/30'
                   }`}
                 >
-                  <Sparkles size={12} />
-                  Generate with AI
+                  <FileText size={12} />
+                  Use Template
+                  {showTemplatePicker ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                 </button>
               </div>
 
-              {/* AI Panel */}
-              {showAiPanel && (
-                <div className="border border-violet-200 bg-violet-50 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-semibold text-violet-700">✨ AI Email Generator</p>
-
-                  {/* Suggestion chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {AI_SUGGESTIONS.map(s => (
-                      <button
-                        key={s.key}
-                        onClick={() => setAiSuggestion(aiSuggestion === s.key ? null : s.key)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                          aiSuggestion === s.key
-                            ? 'bg-violet-600 text-white border-violet-600'
-                            : 'bg-white border-violet-200 text-violet-700 hover:border-violet-400'
-                        }`}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Custom prompt */}
-                  <textarea
-                    value={aiPrompt}
-                    onChange={e => setAiPrompt(e.target.value)}
-                    placeholder="Or describe what you want to send... (e.g. 'remind buyers their inspection window closes Friday')"
-                    className="textarea w-full text-sm h-20 resize-none bg-white border border-violet-200 focus:border-violet-400 focus:outline-none rounded-lg"
-                  />
-
-                  {aiError && (
-                    <p className="text-xs text-red-600">{aiError}</p>
+              {/* Template Picker Panel */}
+              {showTemplatePicker && (
+                <div className="border border-base-300 rounded-xl bg-base-50 p-3 space-y-2">
+                  {templates.length === 0 ? (
+                    <p className="text-xs text-base-content/40 text-center py-3 italic">
+                      No templates yet — create one in the Templates tab.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {templates.map(tpl => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => applyTemplate(tpl)}
+                          className="flex items-start gap-3 px-3 py-2.5 rounded-lg text-left border border-base-200 bg-white hover:border-primary/40 hover:bg-primary/5 transition-all group"
+                        >
+                          <FileText size={15} className="text-base-content/30 group-hover:text-primary/60 mt-0.5 flex-none" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-base-content group-hover:text-primary">{tpl.name}</p>
+                            <p className="text-xs text-base-content/50 truncate">{tpl.subject}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleAiGenerate}
-                      disabled={aiLoading || (!aiPrompt.trim() && !aiSuggestion)}
-                      className="btn btn-sm gap-2 bg-violet-600 hover:bg-violet-700 text-white border-0 disabled:opacity-50"
-                    >
-                      {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {aiLoading ? 'Generating...' : 'Generate'}
-                    </button>
-                    <p className="text-[10px] text-violet-500">Fills in subject + message. You can edit before sending.</p>
-                  </div>
+                  <p className="text-[10px] text-base-content/40 text-center pt-1">
+                    Selecting a template fills in the subject and message. You can edit before sending.
+                  </p>
                 </div>
               )}
 
-              <div className="border border-base-300 rounded-lg overflow-hidden">
-                {/* Toolbar */}
-                <div className="flex items-center gap-0.5 px-2 py-1.5 bg-base-200 border-b border-base-300">
-                  {[
-                    { cmd: 'bold',      label: <strong>B</strong>,                         title: 'Bold' },
-                    { cmd: 'italic',    label: <em>I</em>,                                  title: 'Italic' },
-                    { cmd: 'underline', label: <span className="underline">U</span>,        title: 'Underline' },
-                  ].map(({ cmd, label, title }) => (
-                    <button
-                      key={cmd}
-                      onMouseDown={e => { e.preventDefault(); execCmd(cmd); }}
-                      title={title}
-                      className="btn btn-ghost btn-xs w-7 h-7 min-h-0 font-normal"
-                    >{label}</button>
-                  ))}
-                  <div className="w-px h-4 bg-base-300 mx-1" />
-                  <button onMouseDown={e => { e.preventDefault(); execCmd('insertUnorderedList'); }} title="Bullet list" className="btn btn-ghost btn-xs w-7 h-7 min-h-0">•–</button>
-                  <button onMouseDown={e => { e.preventDefault(); execCmd('insertOrderedList'); }} title="Numbered list" className="btn btn-ghost btn-xs w-7 h-7 min-h-0 text-xs">1.</button>
-                  <div className="w-px h-4 bg-base-300 mx-1" />
-                  <button
-                    onMouseDown={e => {
-                      e.preventDefault();
-                      const url = window.prompt('Enter URL:');
-                      if (url) execCmd('createLink', url);
-                    }}
-                    title="Insert link"
-                    className="btn btn-ghost btn-xs w-7 h-7 min-h-0 text-xs"
-                  >🔗</button>
-                </div>
-                {/* Editable area */}
-                <div
-                  ref={editorRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  className="min-h-[160px] p-3 text-sm text-base-content outline-none focus:outline-none"
-                  style={{ lineHeight: '1.6', color: '#1a1a1a' }}
-                  data-placeholder="Write your message here..."
-                  onFocus={e => {
-                    const el = e.currentTarget;
-                    if (!el.innerHTML || el.innerHTML === '') {
-                      el.style.color = '#1a1a1a';
-                    }
-                  }}
-                />
-              </div>
+              <RichEditor editorRef={editorRef} minHeight="160px" />
               <p className="text-[10px] text-base-content/40">Emails are sent with white background + dark text — dark mode protected.</p>
             </div>
 
@@ -800,6 +822,153 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                     >
                       <Plus size={13} /> Add
                     </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── TEMPLATES TAB ────────────────────────────────────────────────── */}
+        {mainTab === 'templates' && (
+          <div className="max-w-2xl mx-auto px-6 py-6 space-y-4">
+
+            {/* New template button */}
+            <div className="flex justify-between items-center">
+              <p className="text-xs text-base-content/50">{templates.length} template{templates.length !== 1 ? 's' : ''}</p>
+              <button
+                onClick={() => { setShowNewForm(v => !v); setEditingTemplate(null); }}
+                className="btn btn-primary btn-sm gap-1"
+              >
+                <Plus size={14} /> New Template
+              </button>
+            </div>
+
+            {/* New template form */}
+            {showNewForm && (
+              <div className="border border-primary/30 bg-primary/5 rounded-xl p-4 space-y-3">
+                <p className="text-sm font-semibold text-base-content">✨ New Template</p>
+                <input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={e => setNewTemplateName(e.target.value)}
+                  placeholder="Template name (e.g. Closing Reminder)..."
+                  className="input input-bordered w-full text-sm"
+                />
+                <input
+                  type="text"
+                  value={newTemplateSubject}
+                  onChange={e => setNewTemplateSubject(e.target.value)}
+                  placeholder="Email subject..."
+                  className="input input-bordered w-full text-sm"
+                />
+                <div>
+                  <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">Body</label>
+                  <RichEditor editorRef={newTemplateEditorRef} minHeight="140px" />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setShowNewForm(false); setNewTemplateName(''); setNewTemplateSubject(''); if (newTemplateEditorRef.current) newTemplateEditorRef.current.innerHTML = ''; }}
+                    className="btn btn-ghost btn-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const body_html = newTemplateEditorRef.current?.innerHTML ?? '';
+                      if (!newTemplateName.trim()) return;
+                      createTemplate.mutate({ name: newTemplateName.trim(), subject: newTemplateSubject.trim(), body_html });
+                    }}
+                    disabled={!newTemplateName.trim() || createTemplate.isPending}
+                    className="btn btn-primary btn-sm gap-1"
+                  >
+                    <Save size={14} /> Save Template
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Template list */}
+            {templates.length === 0 && !showNewForm && (
+              <div className="text-center py-12 text-base-content/30">
+                <FileText size={36} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No templates yet. Create one above.</p>
+              </div>
+            )}
+
+            {templates.map(tpl => (
+              <div key={tpl.id} className="border border-base-300 rounded-lg overflow-hidden">
+                {editingTemplate?.id === tpl.id ? (
+                  /* ── Edit mode ── */
+                  <div className="p-4 space-y-3">
+                    <input
+                      type="text"
+                      value={editingTemplate.name}
+                      onChange={e => setEditingTemplate(t => t ? { ...t, name: e.target.value } : t)}
+                      className="input input-bordered w-full text-sm font-semibold"
+                    />
+                    <input
+                      type="text"
+                      value={editingTemplate.subject}
+                      onChange={e => setEditingTemplate(t => t ? { ...t, subject: e.target.value } : t)}
+                      placeholder="Subject..."
+                      className="input input-bordered w-full text-sm"
+                    />
+                    <div>
+                      <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">Body</label>
+                      <RichEditor editorRef={editTemplateEditorRef} minHeight="140px" />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditingTemplate(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                      <button
+                        onClick={() => {
+                          const body_html = editTemplateEditorRef.current?.innerHTML ?? '';
+                          if (!editingTemplate.name.trim()) return;
+                          updateTemplate.mutate({ id: tpl.id, name: editingTemplate.name.trim(), subject: editingTemplate.subject.trim(), body_html });
+                        }}
+                        disabled={updateTemplate.isPending}
+                        className="btn btn-primary btn-sm gap-1"
+                      >
+                        <Save size={14} /> Save Changes
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── View mode ── */
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <FileText size={16} className="text-base-content/30 flex-none" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-base-content">{tpl.name}</p>
+                      <p className="text-xs text-base-content/50 truncate">{tpl.subject || <em>No subject</em>}</p>
+                    </div>
+                    <div className="flex gap-1 flex-none">
+                      <button
+                        onClick={() => {
+                          setMainTab('compose');
+                          applyTemplate(tpl);
+                        }}
+                        className="btn btn-ghost btn-xs text-primary gap-1"
+                        title="Use in Compose"
+                      >
+                        <Send size={12} /> Use
+                      </button>
+                      <button
+                        onClick={() => { setEditingTemplate(tpl); setShowNewForm(false); }}
+                        className="btn btn-ghost btn-xs gap-1"
+                        title="Edit template"
+                      >
+                        <Edit2 size={12} /> Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplate.mutate(tpl.id);
+                        }}
+                        className="btn btn-ghost btn-xs text-error"
+                        title="Delete template"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
