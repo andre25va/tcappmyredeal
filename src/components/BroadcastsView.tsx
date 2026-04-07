@@ -49,6 +49,12 @@ interface BlastRecipient {
 
 interface RecipientRow { name?: string; email: string; }
 
+interface PlaceholderFill {
+  label: string;          // e.g. "[Date]"
+  value: string;
+  type: 'date' | 'time' | 'text';
+}
+
 interface BroadcastTemplate {
   id: string;
   name: string;
@@ -66,6 +72,30 @@ interface BroadcastsViewProps {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function detectPlaceholderType(label: string): 'date' | 'time' | 'text' {
+  const lower = label.toLowerCase();
+  if (/time|hour|am|pm/.test(lower)) return 'time';
+  if (/date|deadline|day|month|year/.test(lower)) return 'date';
+  return 'text';
+}
+
+function formatDateForDisplay(val: string): string {
+  if (!val) return '';
+  // val is YYYY-MM-DD from input[type=date]
+  const [y, m, d] = val.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m,10)-1]} ${parseInt(d,10)}, ${y}`;
+}
+
+function formatTimeForDisplay(val: string): string {
+  if (!val) return '';
+  // val is HH:MM from input[type=time]
+  const [h, m] = val.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${m.toString().padStart(2,'0')} ${ampm}`;
+}
 
 function statusBadge(r: BlastRecipient) {
   if (r.status === 'undeliverable')
@@ -157,6 +187,9 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
   // ── Template picker state ─────────────────────────────────────────────────────
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+
+  // ── Placeholder filler state ──────────────────────────────────────────────────
+  const [placeholderFills, setPlaceholderFills] = useState<PlaceholderFill[]>([]);
 
   // ── History state ─────────────────────────────────────────────────────────────
   const [expandedBlastId, setExpandedBlastId] = useState<string | null>(null);
@@ -376,6 +409,39 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     setSubject(tpl.subject);
     if (editorRef.current) editorRef.current.innerHTML = tpl.body_html;
     setShowTemplatePicker(false);
+
+    // Extract unique placeholders from subject + body and build filler entries
+    const combined = tpl.subject + ' ' + tpl.body_html;
+    const raw = [...new Set((combined.match(/\[[^\]]{1,60}\]/g) ?? []))];
+    setPlaceholderFills(raw.map(label => ({
+      label,
+      value: '',
+      type: detectPlaceholderType(label),
+    })));
+  };
+
+  const fillPlaceholder = (label: string, rawValue: string) => {
+    // Format value for display depending on type
+    const fill = placeholderFills.find(p => p.label === label);
+    const display = fill?.type === 'date'
+      ? formatDateForDisplay(rawValue)
+      : fill?.type === 'time'
+        ? formatTimeForDisplay(rawValue)
+        : rawValue;
+
+    // Replace in subject
+    setSubject(prev => prev.split(label).join(display || label));
+
+    // Replace in editor HTML
+    if (editorRef.current && display) {
+      editorRef.current.innerHTML = editorRef.current.innerHTML
+        .split(label).join(display);
+    }
+
+    // Mark as filled
+    setPlaceholderFills(prev =>
+      prev.map(p => p.label === label ? { ...p, value: rawValue } : p)
+    );
   };
 
   // ─── Build recipients ─────────────────────────────────────────────────────────
@@ -484,6 +550,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setRecipientSearch('');
       setIncludeConfirm(false);
       setIncludeDecline(false);
+      setPlaceholderFills([]);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
       let detail = err.message ?? String(err);
@@ -770,6 +837,56 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                   <p className="text-[10px] text-base-content/40 text-center pt-1">
                     Selecting a template fills in the subject and message. You can edit before sending.
                   </p>
+                </div>
+              )}
+
+              {/* ── Placeholder Filler Panel ──────────────────────────────── */}
+              {placeholderFills.length > 0 && (
+                <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+                    <span>📋</span> Fill in placeholders
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {placeholderFills.map(p => (
+                      <div key={p.label} className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-amber-800 w-36 flex-none truncate" title={p.label}>
+                          {p.label}
+                        </span>
+                        {p.type === 'date' ? (
+                          <input
+                            type="date"
+                            className="input input-bordered input-sm flex-1 text-sm bg-white"
+                            value={p.value}
+                            onChange={e => fillPlaceholder(p.label, e.target.value)}
+                          />
+                        ) : p.type === 'time' ? (
+                          <input
+                            type="time"
+                            className="input input-bordered input-sm flex-1 text-sm bg-white"
+                            value={p.value}
+                            onChange={e => fillPlaceholder(p.label, e.target.value)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            placeholder={`Enter ${p.label.replace(/[\[\]]/g, '')}...`}
+                            className="input input-bordered input-sm flex-1 text-sm bg-white"
+                            value={p.value}
+                            onChange={e => fillPlaceholder(p.label, e.target.value)}
+                            onBlur={e => {
+                              if (e.target.value) fillPlaceholder(p.label, e.target.value);
+                            }}
+                          />
+                        )}
+                        {p.value && (
+                          <span className="text-success text-xs">✓</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {placeholderFills.every(p => p.value) && (
+                    <p className="text-[10px] text-green-700 text-center pt-0.5">✅ All placeholders filled!</p>
+                  )}
                 </div>
               )}
 
