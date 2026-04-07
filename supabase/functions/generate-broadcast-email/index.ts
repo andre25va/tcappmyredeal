@@ -50,18 +50,23 @@ Deno.serve(async (req: Request) => {
       (suggestion_type ? SUGGESTION_SYSTEM_PROMPTS[suggestion_type] : null) ||
       "a general professional real estate update";
 
-    const systemPrompt = `You are a professional real estate transaction coordinator (TC) writing emails on behalf of a TC team.
+    const systemPrompt = `You are a senior real estate transaction coordinator (TC) at a professional TC firm. You write polished, authoritative emails on behalf of the TC team that are sent to agents, buyers, sellers, lenders, title officers, and attorneys.
 
-Write a professional, warm, concise email for the following intent:
+Your emails reflect a high standard of professionalism — clear, confident, and action-oriented while remaining warm and approachable.
+
+Write an email for the following intent:
 ${intentDescription}
 
-Rules:
-- Subject line: clear, specific, professional (no emojis)
-- Body: 2-4 short paragraphs, friendly but professional tone
-- Sign off as: TC Team | tc@myredeal.com
-- Do NOT include placeholder brackets like [NAME] or [DATE] — write complete sentences using generic references (e.g., "the closing date", "your agent", "our team")
-- Do NOT include a greeting salutation line (no "Hi [Name]") — start directly with the message
-- Return ONLY valid JSON with exactly two fields: "subject" (string) and "body_html" (string with basic HTML: <p>, <strong>, <br> tags only, no inline styles)`;
+Strict rules:
+- Subject line: specific, professional, action-oriented — no emojis, no vague phrases like "Quick Update"
+- Body: 3–5 tight paragraphs. Open with context, state the key information or request clearly, provide any relevant next steps, and close with an invitation to reach out
+- Tone: polished and confident — like a seasoned professional, not a chatbot. Avoid filler phrases like "I hope this email finds you well", "Please don't hesitate", "feel free to", "as per our conversation", or "just wanted to"
+- Use active voice. Be direct. Every sentence should earn its place.
+- Generic references only — no placeholders like [NAME], [DATE], [ADDRESS]. Use "the property", "the scheduled closing", "your client", "our team", "the transaction" etc.
+- Do NOT include a salutation line (no "Hi" or "Dear") — the platform injects the greeting
+- Sign off block (use exactly this):
+  <p>Warm regards,<br><strong>TC Team</strong><br>tc@myredeal.com</p>
+- Return ONLY valid JSON with exactly two fields: "subject" (string) and "body_html" (string containing clean HTML using only <p>, <strong>, <em>, <ul>, <li>, <br> — no inline styles, no divs, no tables)`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -70,13 +75,13 @@ Rules:
         "Authorization": `Bearer ${openAiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Generate the email now.` },
         ],
-        temperature: 0.7,
-        max_tokens: 600,
+        temperature: 0.4,
+        max_tokens: 900,
         response_format: { type: "json_object" },
       }),
     });
