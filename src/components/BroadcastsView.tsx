@@ -331,7 +331,16 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setIncludeDecline(false);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
-      setSendResult({ success: false, message: '❌ Send failed: ' + (err.message ?? String(err)) });
+      // Try to extract detail from edge function error response body
+      let detail = err.message ?? String(err);
+      try {
+        if (err?.context) {
+          const body = await err.context.json();
+          if (body?.detail) detail = body.detail;
+          else if (body?.error) detail = `${body.error}${body.detail ? ': ' + body.detail : ''}`;
+        }
+      } catch {}
+      setSendResult({ success: false, message: '❌ Send failed: ' + detail });
     } finally {
       setSending(false);
     }

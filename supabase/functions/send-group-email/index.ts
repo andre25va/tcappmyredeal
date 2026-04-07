@@ -81,12 +81,18 @@ Deno.serve(async (req: Request) => {
         include_decline,
         blast_type,
         deal_id,
-        sent_by,
+        sent_by: sent_by ?? null,
       })
       .select()
       .single();
 
-    if (blastError) throw blastError;
+    if (blastError) {
+      console.error("blast insert error:", JSON.stringify(blastError));
+      return new Response(JSON.stringify({ error: "blast_insert_failed", detail: blastError.message, code: blastError.code }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Create recipient rows with tokens
     const recipientRows = recipients.map((r: { name?: string; email: string }) => ({
@@ -100,7 +106,13 @@ Deno.serve(async (req: Request) => {
       .insert(recipientRows)
       .select();
 
-    if (recipError) throw recipError;
+    if (recipError) {
+      console.error("recipient insert error:", JSON.stringify(recipError));
+      return new Response(JSON.stringify({ error: "recipient_insert_failed", detail: recipError.message, code: recipError.code }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Send emails
     const trackBase = `${SUPABASE_URL}/functions/v1/track-email`;
