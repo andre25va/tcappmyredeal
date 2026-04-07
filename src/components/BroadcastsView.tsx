@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Send, Plus, Trash2, Users, ChevronDown, ChevronRight,
   Mail, CheckCircle, XCircle, Eye, Clock, LayoutList, Edit2, X,
-  FileText, Save, ChevronUp,
+  FileText, Save, ChevronUp, AlertCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Deal } from '../types';
@@ -40,6 +40,7 @@ interface BlastRecipient {
   id: string;
   name: string | null;
   email: string;
+  status: string | null;
   sent_at: string | null;
   opened_at: string | null;
   response: 'confirmed' | 'declined' | null;
@@ -67,6 +68,10 @@ interface BroadcastsViewProps {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function statusBadge(r: BlastRecipient) {
+  // Check status column first (most reliable for undeliverable)
+  if (r.status === 'undeliverable')
+    return <span className="badge badge-warning badge-sm gap-1"><AlertCircle size={10} />Undeliverable</span>;
+  // Fall back to response/opened_at for existing rows
   if (r.response === 'confirmed') return <span className="badge badge-success badge-sm gap-1"><CheckCircle size={10} />Confirmed</span>;
   if (r.response === 'declined')  return <span className="badge badge-error badge-sm gap-1"><XCircle size={10} />Declined</span>;
   if (r.opened_at)                return <span className="badge badge-info badge-sm gap-1"><Eye size={10} />Opened</span>;
@@ -402,7 +407,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
         success: failCount === 0,
         message: failCount === 0
           ? `✅ Sent to ${successCount} recipient${successCount !== 1 ? 's' : ''}!`
-          : `⚠️ Sent to ${successCount}, failed for ${failCount}.`,
+          : `⚠️ Sent to ${successCount}, undeliverable for ${failCount}.`,
       });
 
       setSubject('');
@@ -712,14 +717,20 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                         </tbody>
                       </table>
                     )}
-                    {blastRecipients.length > 0 && (
-                      <div className="flex gap-4 mt-3 pt-3 border-t border-base-200 text-xs text-base-content/50">
-                        <span>📬 {blastRecipients.filter(r => r.sent_at).length} sent</span>
-                        <span>👁 {blastRecipients.filter(r => r.opened_at).length} opened</span>
-                        <span>✅ {blastRecipients.filter(r => r.response === 'confirmed').length} confirmed</span>
-                        <span>❌ {blastRecipients.filter(r => r.response === 'declined').length} declined</span>
-                      </div>
-                    )}
+                    {blastRecipients.length > 0 && (() => {
+                      const undeliverable = blastRecipients.filter(r => r.status === 'undeliverable').length;
+                      return (
+                        <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-base-200 text-xs text-base-content/50">
+                          <span>📬 {blastRecipients.filter(r => r.sent_at).length} sent</span>
+                          <span>👁 {blastRecipients.filter(r => r.opened_at).length} opened</span>
+                          <span>✅ {blastRecipients.filter(r => r.response === 'confirmed').length} confirmed</span>
+                          <span>✗ {blastRecipients.filter(r => r.response === 'declined').length} declined</span>
+                          {undeliverable > 0 && (
+                            <span className="text-warning font-semibold">⚠️ {undeliverable} undeliverable</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
