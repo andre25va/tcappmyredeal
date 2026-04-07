@@ -92,12 +92,65 @@ function formatDateForDisplay(val: string): string {
 
 function formatTimeForDisplay(val: string): string {
   if (!val) return '';
-  // val is HH:MM from input[type=time]
+  // val is HH:MM (24h)
   const [h, m] = val.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
   const hour = h % 12 || 12;
   return `${hour}:${m.toString().padStart(2,'0')} ${ampm}`;
 }
+
+// ─── Custom Time Picker (hour + 15-min steps + AM/PM) ────────────────────────
+interface TimeSelectProps {
+  value: string; // HH:MM (24h) or ''
+  onChange: (val: string) => void;
+}
+const TimeSelect: React.FC<TimeSelectProps> = ({ value, onChange }) => {
+  // Parse current value
+  const [curH, curM] = value ? value.split(':').map(Number) : [12, 0];
+  const period = curH >= 12 ? 'PM' : 'AM';
+  const hour12 = curH % 12 || 12;
+
+  const emit = (h12: number, m: number, p: string) => {
+    let h24 = h12 % 12; // 12 → 0
+    if (p === 'PM') h24 += 12;
+    onChange(`${h24.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`);
+  };
+
+  return (
+    <div className="flex items-center gap-1 flex-1">
+      {/* Hour */}
+      <select
+        className="select select-bordered select-sm text-sm bg-white flex-1"
+        value={hour12}
+        onChange={e => emit(Number(e.target.value), curM, period)}
+      >
+        {[1,2,3,4,5,6,7,8,9,10,11,12].map(h => (
+          <option key={h} value={h}>{h}</option>
+        ))}
+      </select>
+      <span className="text-base-content/50 text-sm font-bold">:</span>
+      {/* Minute */}
+      <select
+        className="select select-bordered select-sm text-sm bg-white flex-1"
+        value={curM}
+        onChange={e => emit(hour12, Number(e.target.value), period)}
+      >
+        {[0,15,30,45].map(m => (
+          <option key={m} value={m}>{m.toString().padStart(2,'0')}</option>
+        ))}
+      </select>
+      {/* AM/PM */}
+      <select
+        className="select select-bordered select-sm text-sm bg-white"
+        value={period}
+        onChange={e => emit(hour12, curM, e.target.value)}
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+};
 
 function statusBadge(r: BlastRecipient) {
   if (r.status === 'undeliverable')
@@ -507,11 +560,14 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     if (!bodyHtml.trim() || bodyHtml === '<br>') { setSendResult({ success: false, message: 'Message body is required.' }); return; }
 
     // ── Warn if template placeholders were not replaced ──────────────────────
-    const placeholderPattern = /\[[^\]]{1,60}\]/;
+    // [Name] is intentionally excluded — it's auto-filled per recipient at send time
+    const placeholderPattern = /\[[^\]]+\]/g;
     const bodyText = editorRef.current?.innerText ?? '';
-    if (placeholderPattern.test(subject) || placeholderPattern.test(bodyText)) {
+    const subjectMatches = (subject.match(placeholderPattern) ?? []).filter(p => p.toLowerCase() !== '[name]');
+    const bodyMatches    = (bodyText.match(placeholderPattern) ?? []).filter(p => p.toLowerCase() !== '[name]');
+    if (subjectMatches.length > 0 || bodyMatches.length > 0) {
       const go = window.confirm(
-        'Your message still has unfilled placeholders like [Name] or [Date].\n\nThey will appear as-is in the email. Send anyway?'
+        'Your message still has unfilled placeholders like [Date] or [Event Name].\n\nThey will appear as-is in the email. Send anyway?'
       );
       if (!go) return;
     }
@@ -885,12 +941,9 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                             onChange={e => fillPlaceholder(p.label, e.target.value)}
                           />
                         ) : p.type === 'time' ? (
-                          <input
-                            type="time"
-                            step="900"
-                            className="input input-bordered input-sm flex-1 text-sm bg-white"
+                          <TimeSelect
                             value={p.value}
-                            onChange={e => fillPlaceholder(p.label, e.target.value)}
+                            onChange={val => fillPlaceholder(p.label, val)}
                           />
                         ) : (
                           <input
