@@ -179,6 +179,8 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [sending, setSending]            = useState(false);
   const [sendResult, setSendResult]      = useState<{ success: boolean; message: string } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const originalBodyHtmlRef = useRef<string>('');
+  const originalSubjectRef  = useRef<string>('');
 
   // ── Recipient autocomplete state ──────────────────────────────────────────────
   const [individualRecipients, setIndividualRecipients] = useState<RecipientRow[]>([]);
@@ -410,6 +412,8 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
   const applyTemplate = (tpl: BroadcastTemplate) => {
     setSubject(tpl.subject);
+    originalSubjectRef.current  = tpl.subject;
+    originalBodyHtmlRef.current = tpl.body_html;
     if (editorRef.current) editorRef.current.innerHTML = tpl.body_html;
     setShowTemplatePicker(false);
 
@@ -429,28 +433,31 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   };
 
   const fillPlaceholder = (label: string, rawValue: string) => {
-    // Format value for display depending on type
-    const fill = placeholderFills.find(p => p.label === label);
-    const display = fill?.type === 'date'
-      ? formatDateForDisplay(rawValue)
-      : fill?.type === 'time'
-        ? formatTimeForDisplay(rawValue)
-        : rawValue;
-
-    // Replace in subject
-    setSubject(prev => prev.split(label).join(display || label));
-
-    // Replace in editor HTML
-    if (editorRef.current && display) {
-      editorRef.current.innerHTML = editorRef.current.innerHTML
-        .split(label).join(display);
-    }
-
-    // Mark as filled
+    // Just update state — the useEffect below re-applies ALL fills from the original HTML
     setPlaceholderFills(prev =>
       prev.map(p => p.label === label ? { ...p, value: rawValue } : p)
     );
   };
+
+  // Re-apply all fills to editor whenever any fill value changes
+  // This avoids the "first char only" bug caused by replacing the label mid-typing
+  useEffect(() => {
+    if (!originalBodyHtmlRef.current || placeholderFills.length === 0) return;
+    let html = originalBodyHtmlRef.current;
+    let subj = originalSubjectRef.current;
+    for (const p of placeholderFills) {
+      if (!p.value) continue;
+      const display = p.type === 'date'
+        ? formatDateForDisplay(p.value)
+        : p.type === 'time'
+          ? formatTimeForDisplay(p.value)
+          : p.value;
+      html = html.split(p.label).join(display);
+      subj = subj.split(p.label).join(display);
+    }
+    if (editorRef.current) editorRef.current.innerHTML = html;
+    setSubject(subj);
+  }, [placeholderFills]);
 
   // ─── Build recipients ─────────────────────────────────────────────────────────
 
@@ -560,6 +567,8 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setIncludeDecline(false);
       setPlaceholderFills([]);
       setHasNamePlaceholder(false);
+      originalBodyHtmlRef.current = '';
+      originalSubjectRef.current  = '';
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
       let detail = err.message ?? String(err);
@@ -878,6 +887,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                         ) : p.type === 'time' ? (
                           <input
                             type="time"
+                            step="900"
                             className="input input-bordered input-sm flex-1 text-sm bg-white"
                             value={p.value}
                             onChange={e => fillPlaceholder(p.label, e.target.value)}
@@ -889,9 +899,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                             className="input input-bordered input-sm flex-1 text-sm bg-white"
                             value={p.value}
                             onChange={e => fillPlaceholder(p.label, e.target.value)}
-                            onBlur={e => {
-                              if (e.target.value) fillPlaceholder(p.label, e.target.value);
-                            }}
                           />
                         )}
                         {p.value && (
