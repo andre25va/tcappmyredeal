@@ -2,7 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Send, Plus, Trash2, Users, ChevronDown, ChevronRight,
-  Mail, CheckCircle, XCircle, Eye, Clock, LayoutList, Edit2, X
+  Mail, CheckCircle, XCircle, Eye, Clock, LayoutList, Edit2, X,
+  Sparkles, Loader2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Deal } from '../types';
@@ -47,6 +48,19 @@ interface BlastRecipient {
 
 interface RecipientRow { name?: string; email: string; }
 
+// ─── AI Suggestion chips ──────────────────────────────────────────────────────
+
+const AI_SUGGESTIONS = [
+  { key: 'closing_reminder',  label: '🏁 Closing Reminder' },
+  { key: 'document_request',  label: '📄 Document Request' },
+  { key: 'availability',      label: '📅 Availability Update' },
+  { key: 'new_listing',       label: '🏠 New Listing' },
+  { key: 'payment_due',       label: '💰 Payment Due' },
+  { key: 'status_update',     label: '📊 Status Update' },
+] as const;
+
+type SuggestionKey = typeof AI_SUGGESTIONS[number]['key'];
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface BroadcastsViewProps {
@@ -74,7 +88,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [blastType, setBlastType] = useState<'general' | 'deal'>('general');
 
   // ── Compose state ────────────────────────────────────────────────────────────
-  const [subject, setSubject]             = useState('');
+  const [subject, setSubject]               = useState('');
   const [includeConfirm, setIncludeConfirm] = useState(false);
   const [includeDecline, setIncludeDecline] = useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
@@ -83,6 +97,13 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [sending, setSending]            = useState(false);
   const [sendResult, setSendResult]      = useState<{ success: boolean; message: string } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+
+  // ── AI state ─────────────────────────────────────────────────────────────────
+  const [showAiPanel, setShowAiPanel]       = useState(false);
+  const [aiPrompt, setAiPrompt]             = useState('');
+  const [aiSuggestion, setAiSuggestion]     = useState<SuggestionKey | null>(null);
+  const [aiLoading, setAiLoading]           = useState(false);
+  const [aiError, setAiError]               = useState<string | null>(null);
 
   // ── History state ─────────────────────────────────────────────────────────────
   const [expandedBlastId, setExpandedBlastId] = useState<string | null>(null);
@@ -134,7 +155,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       return data ?? [];
     },
     enabled: !!expandedBlastId,
-    refetchInterval: expandedBlastId ? 10000 : false, // live refresh every 10s
+    refetchInterval: expandedBlastId ? 10000 : false,
   });
 
   // ─── Mutations ────────────────────────────────────────────────────────────────
@@ -187,6 +208,42 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     document.execCommand(cmd, false, value);
   }, []);
 
+  // ─── AI Generate ─────────────────────────────────────────────────────────────
+
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim() && !aiSuggestion) {
+      setAiError('Choose a suggestion or describe what you want to send.');
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-broadcast-email', {
+        body: {
+          prompt: aiPrompt.trim() || undefined,
+          suggestion_type: aiSuggestion ?? undefined,
+        },
+      });
+      if (error) throw error;
+      if (!data?.subject || !data?.body_html) throw new Error('Incomplete response from AI');
+
+      // Populate compose fields
+      setSubject(data.subject);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = data.body_html;
+      }
+
+      // Close AI panel and switch to compose
+      setShowAiPanel(false);
+      setAiPrompt('');
+      setAiSuggestion(null);
+    } catch (err: any) {
+      setAiError(err.message ?? 'AI generation failed. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // ─── Build recipients from selections ────────────────────────────────────────
 
   const buildRecipients = (): RecipientRow[] => {
@@ -194,7 +251,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     const seen = new Set<string>();
 
     if (blastType === 'general') {
-      // From selected groups
       for (const gid of selectedGroupIds) {
         const group = groups.find(g => g.id === gid);
         for (const m of group?.members ?? []) {
@@ -204,20 +260,15 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
           }
         }
       }
-      // From manual emails
       const lines = manualEmails.split(/[\n,;]+/).map(l => l.trim()).filter(Boolean);
       for (const line of lines) {
         const emailMatch = line.match(/<?([^\s<>@]+@[^\s<>@]+)>?/);
         if (emailMatch && !seen.has(emailMatch[1])) {
           seen.add(emailMatch[1]);
-          // try to extract name: "First Last <email@...>"
           const nameMatch = line.match(/^([^<]+)<[^>]+>/);
           recipients.push({ name: nameMatch?.[1]?.trim() || undefined, email: emailMatch[1] });
         }
       }
-    } else {
-      // Deal blast — get parties from deal_participants
-      // We pass the dealId to the edge function which will resolve participants there
     }
 
     return recipients;
@@ -256,7 +307,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
         payload.recipients = recipients;
       } else {
         payload.deal_id = selectedDealId;
-        payload.recipients = []; // edge function resolves deal parties
+        payload.recipients = [];
       }
 
       const { data, error } = await supabase.functions.invoke('send-group-email', { body: payload });
@@ -272,7 +323,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
           : `⚠️ Sent to ${successCount}, failed for ${failCount}.`,
       });
 
-      // Reset compose
       setSubject('');
       if (editorRef.current) editorRef.current.innerHTML = '';
       setSelectedGroupIds([]);
@@ -351,7 +401,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
               {blastType === 'general' ? (
                 <>
-                  {/* Group pills */}
                   {groups.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {groups.map(g => {
@@ -379,7 +428,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                   {groups.length === 0 && (
                     <p className="text-xs text-base-content/40 italic">No groups yet — create one in the Groups tab, or add emails below.</p>
                   )}
-                  {/* Manual emails */}
                   <textarea
                     value={manualEmails}
                     onChange={e => setManualEmails(e.target.value)}
@@ -415,14 +463,76 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
             {/* Rich text editor */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Message</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Message</label>
+                <button
+                  onClick={() => { setShowAiPanel(v => !v); setAiError(null); }}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                    showAiPanel
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-base-100 border-violet-300 text-violet-600 hover:bg-violet-50'
+                  }`}
+                >
+                  <Sparkles size={12} />
+                  Generate with AI
+                </button>
+              </div>
+
+              {/* AI Panel */}
+              {showAiPanel && (
+                <div className="border border-violet-200 bg-violet-50 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-violet-700">✨ AI Email Generator</p>
+
+                  {/* Suggestion chips */}
+                  <div className="flex flex-wrap gap-2">
+                    {AI_SUGGESTIONS.map(s => (
+                      <button
+                        key={s.key}
+                        onClick={() => setAiSuggestion(aiSuggestion === s.key ? null : s.key)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                          aiSuggestion === s.key
+                            ? 'bg-violet-600 text-white border-violet-600'
+                            : 'bg-white border-violet-200 text-violet-700 hover:border-violet-400'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom prompt */}
+                  <textarea
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    placeholder="Or describe what you want to send... (e.g. 'remind buyers their inspection window closes Friday')"
+                    className="textarea w-full text-sm h-20 resize-none bg-white border border-violet-200 focus:border-violet-400 focus:outline-none rounded-lg"
+                  />
+
+                  {aiError && (
+                    <p className="text-xs text-red-600">{aiError}</p>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleAiGenerate}
+                      disabled={aiLoading || (!aiPrompt.trim() && !aiSuggestion)}
+                      className="btn btn-sm gap-2 bg-violet-600 hover:bg-violet-700 text-white border-0 disabled:opacity-50"
+                    >
+                      {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      {aiLoading ? 'Generating...' : 'Generate'}
+                    </button>
+                    <p className="text-[10px] text-violet-500">Fills in subject + message. You can edit before sending.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="border border-base-300 rounded-lg overflow-hidden">
                 {/* Toolbar */}
                 <div className="flex items-center gap-0.5 px-2 py-1.5 bg-base-200 border-b border-base-300">
                   {[
-                    { cmd: 'bold',          label: <strong>B</strong>,       title: 'Bold' },
-                    { cmd: 'italic',         label: <em>I</em>,               title: 'Italic' },
-                    { cmd: 'underline',      label: <span className="underline">U</span>, title: 'Underline' },
+                    { cmd: 'bold',      label: <strong>B</strong>,                         title: 'Bold' },
+                    { cmd: 'italic',    label: <em>I</em>,                                  title: 'Italic' },
+                    { cmd: 'underline', label: <span className="underline">U</span>,        title: 'Underline' },
                   ].map(({ cmd, label, title }) => (
                     <button
                       key={cmd}
@@ -570,7 +680,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                         </tbody>
                       </table>
                     )}
-                    {/* Summary bar */}
                     {blastRecipients.length > 0 && (
                       <div className="flex gap-4 mt-3 pt-3 border-t border-base-200 text-xs text-base-content/50">
                         <span>📬 {blastRecipients.filter(r => r.sent_at).length} sent</span>
@@ -590,7 +699,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
         {mainTab === 'groups' && (
           <div className="max-w-2xl mx-auto px-6 py-6 space-y-4">
 
-            {/* Create group */}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -618,7 +726,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
             {groups.map(group => (
               <div key={group.id} className="border border-base-300 rounded-lg overflow-hidden">
-                {/* Group header */}
                 <div className="flex items-center gap-2 px-4 py-3 bg-base-200">
                   <Users size={15} className="text-base-content/50" />
                   <span className="font-semibold text-sm text-base-content flex-1">{group.name}</span>
@@ -639,7 +746,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                   </button>
                 </div>
 
-                {/* Members list */}
                 <div className="divide-y divide-base-200">
                   {(group.members ?? []).map(m => (
                     <div key={m.id} className="flex items-center gap-2 px-4 py-2">
@@ -662,7 +768,6 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                   )}
                 </div>
 
-                {/* Add member form */}
                 {editingGroupId === group.id && (
                   <div className="flex gap-2 px-4 py-3 border-t border-base-300 bg-base-50">
                     <input
