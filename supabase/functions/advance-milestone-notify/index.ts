@@ -130,36 +130,38 @@ function daysUntil(dateStr: string | null): number | null {
   return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-// ── Universal email template ──────────────────────────────────────────────────
-function buildEmailHtml(vars: {
-  firstName: string;
-  dealAddress: string;
-  currentMilestone: string;
-  currentDate: string;
-  nextMilestone: string | null;
-  nextDueDate: string | null;
-  daysToClosing: number | null;
-  closingDate: string | null;
-}): string {
-  const nextSection = vars.nextMilestone
-    ? `<p>⏭️ <strong>Coming up next:</strong><br>${vars.nextMilestone} is due on <strong>${vars.nextDueDate || 'TBD'}</strong>.</p>`
-    : '';
+// ── Default email template (fallback if DB has no template) ───────────────────
+const DEFAULT_MILESTONE_EMAIL_SUBJECT = '{{deal_address}} — {{current_milestone}} Confirmed';
 
-  const closingSection = vars.daysToClosing !== null
-    ? `<p>🏠 <strong>${vars.daysToClosing} days</strong> until closing on <strong>${formatDate(vars.closingDate)}</strong>.</p>`
-    : '';
+const DEFAULT_MILESTONE_EMAIL_BODY = `Hi {{first_name}},
 
-  return `
-<div style="background-color:#ffffff;padding:24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:600px;border-radius:8px;">
-  <p>Hi ${vars.firstName},</p>
-  <p>This is a quick update on your transaction at <strong>${vars.dealAddress}</strong>.</p>
-  <p>✅ <strong>${vars.currentMilestone}</strong> — ${vars.currentDate}</p>
-  ${nextSection}
-  ${closingSection}
-  <p>If you have any questions, don't hesitate to reach out.</p>
-  <p><strong>TC Team</strong><br>
-  <a href="mailto:tc@myredeal.com">tc@myredeal.com</a></p>
-</div>`.trim();
+This is a quick update on your transaction at {{deal_address}}.
+
+✅ {{current_milestone}} — {{current_date}}
+
+⏭️ Coming up next:
+{{next_milestone}} is due on {{next_due_date}}.
+
+🏠 {{days_to_closing}} days until closing on {{closing_date}}.
+
+If you have any questions, don't hesitate to reach out.
+
+TC Team
+tc@myredeal.com`;
+
+// ── Template substitution ─────────────────────────────────────────────────────
+function substituteVars(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+}
+
+function wrapBodyHtml(plainBody: string): string {
+  // Convert plain text (with line breaks) to HTML paragraphs inside a styled container
+  const htmlBody = plainBody
+    .split('\n\n')
+    .map(block => `<p>${block.replace(/\n/g, '<br>')}</p>`)
+    .join('\n');
+
+  return `<div style="background-color:#ffffff;padding:24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:600px;border-radius:8px;">${htmlBody}</div>`;
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -274,32 +276,33 @@ serve(async (req: Request) => {
       return jsonResponse({ sent: 0, message: 'No matching recipients found' });
     }
 
-    // 8. Build subject — use custom if set, else default
+    // 8. Build shared template vars
     const currentLabel = currentConfig.milestone_types?.label || milestone_key;
     const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-    const defaultSubject = `${dealAddress} — ${currentLabel} Confirmed`;
-    const subject = currentConfig.email_subject?.trim()
-      ? currentConfig.email_subject.trim()
-      : defaultSubject;
+    const subjectTemplate = currentConfig.email_subject?.trim() || DEFAULT_MILESTONE_EMAIL_SUBJECT;
+    const bodyTemplate = currentConfig.email_body?.trim() || DEFAULT_MILESTONE_EMAIL_BODY;
+
+    const sharedVars: Record<string, string> = {
+      deal_address: dealAddress,
+      current_milestone: currentLabel,
+      current_date: today,
+      next_milestone: nextMilestoneLabel || 'TBD',
+      next_due_date: nextDueDateStr || 'TBD',
+      days_to_closing: days !== null ? String(days) : 'TBD',
+      closing_date: formatDate(deal.closing_date),
+    };
 
     // 9. Send emails
     let sent = 0;
     const errors: string[] = [];
 
     for (const recipient of recipients) {
-      const bodyHtml = buildEmailHtml({
-        firstName: recipient.firstName,
-        dealAddress,
-        currentMilestone: currentLabel,
-        currentDate: today,
-        nextMilestone: nextMilestoneLabel,
-        nextDueDate: nextDueDateStr,
-        daysToClosing: days,
-        closingDate: deal.closing_date,
-      });
+      const vars = { ...sharedVars, first_name: recipient.firstName };
+      const subject = substituteVars(subjectTemplate, vars);
+      const bodyHtml = wrapBodyHtml(substituteVars(bodyTemplate, vars));
 
-      const result = await sendViaGmail({ to: [recipient.email], subject, bodyHtml });
+      const result = await sendViaGmail({ to: [recipient.email], subject, bodyHtml, });
 
       if (!result.success) {
         errors.push(`${recipient.email}: ${result.error}`);
