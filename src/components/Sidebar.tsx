@@ -1,14 +1,14 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X, Radio,
 } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
-  | 'email-review' | 'requests';
+  | 'email-review' | 'requests' | 'broadcasts';
 
 const APP_VERSION = 'v2026.03.18.17';
 
@@ -21,6 +21,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
   { view: 'inbox',         label: 'Inbox',        icon: <MessageSquare size={18} /> },
   { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
+  { view: 'broadcasts',    label: 'Broadcasts',   icon: <Radio size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
   { view: 'voice',         label: 'Voice',        icon: <Phone size={18} /> },
   { view: 'requests',      label: 'Requests',     icon: <ClipboardList size={18} /> },
@@ -28,7 +29,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'settings',      label: 'Settings',     icon: <Settings size={18} /> },
 ];
 
-// ─── Sidebar Props — all required so TypeScript catches missing props at build time ──
+// ─── Sidebar Props ────────────────────────────────────────────────────────────
 interface SidebarProps {
   view: View;
   onSetView: (v: View) => void;
@@ -43,11 +44,10 @@ interface SidebarProps {
   userName: string;
   userRole: string;
   userInitials: string;
-  /** Current page ID shown in the sidebar between the user pill and Log Out */
   pageId?: string;
 }
 
-// ─── Mobile Menu Button (exported for Topbar / mobile header use) ─────────────
+// ─── Mobile Menu Button ───────────────────────────────────────────────────────
 export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: number }> = ({ onClick, pendingAlerts }) => (
   <button onClick={onClick} className="btn btn-ghost btn-sm btn-square relative border border-base-300">
     <Menu size={22} />
@@ -75,9 +75,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const SidebarContent = () => {
-    // Filter nav items for viewer role
     const visibleNavItems = userRole === 'viewer'
-      ? NAV_ITEMS.filter(item => !['inbox', 'email-review', 'tasks', 'voice', 'settings'].includes(item.view))
+      ? NAV_ITEMS.filter(item => !['inbox', 'email-review', 'tasks', 'voice', 'settings', 'broadcasts'].includes(item.view))
       : NAV_ITEMS;
 
     return (
@@ -91,7 +90,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="font-bold text-sm text-base-content">TC Command</span>
             <p className="text-[10px] text-base-content/40">{APP_VERSION}</p>
           </div>
-          {/* Close button - only shown on mobile overlay */}
           <button
             onClick={onCloseMobile}
             className="md:hidden btn btn-ghost btn-sm btn-square"
@@ -106,7 +104,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {visibleNavItems.map(item => {
             const badge = getBadge(item.view);
             const active = view === item.view;
-            // Amber badge for email-review to stand out from error-red
             const isEmailQueue = item.view === 'email-review';
             return (
               <button
@@ -138,7 +135,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User + Page ID + Logout */}
         <div className="flex-none px-2 py-3 border-t border-base-300 space-y-2">
-          {/* User info */}
           <div className="flex items-center gap-2 px-2 py-1">
             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-none">
               <span className="text-xs font-bold text-primary">{userInitials || '?'}</span>
@@ -148,9 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <p className="text-[10px] text-base-content/50 truncate capitalize">{userRole || 'Staff'}</p>
             </div>
           </div>
-          {/* Page ID Badge — sits between user pill and Log Out */}
           {pageId && <PageIdBadge pageId={pageId} />}
-          {/* Logout */}
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-error hover:bg-error/10 transition-colors"
