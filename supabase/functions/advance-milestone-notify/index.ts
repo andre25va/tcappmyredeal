@@ -150,7 +150,7 @@ function buildEmailHtml(vars: {
     : '';
 
   return `
-<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#333;max-width:600px;">
+<div style="background-color:#ffffff;padding:24px;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:600px;border-radius:8px;">
   <p>Hi ${vars.firstName},</p>
   <p>This is a quick update on your transaction at <strong>${vars.dealAddress}</strong>.</p>
   <p>✅ <strong>${vars.currentMilestone}</strong> — ${vars.currentDate}</p>
