@@ -155,7 +155,11 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewRecipientKey, setPreviewRecipientKey] = useState<string>('');
   const [sending, setSending] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
   const focusedFieldRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
+
+  const staffFirstName = (userName || '').split(' ')[0];
+  const nameConfirmed = confirmName.trim().toLowerCase() === staffFirstName.toLowerCase();
 
   const tasksToGenerate = generateTasksForMilestone(targetMilestone);
 
@@ -543,21 +547,37 @@ export const MilestoneAdvanceModal: React.FC<Props> = ({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-base-300 flex-none bg-base-200/50 rounded-b-2xl">
-        <button onClick={onCancel} className="btn btn-sm btn-ghost gap-1.5">
-          <X size={13} /> Cancel
-        </button>
-        <button
-          onClick={handleConfirm}
-          disabled={sending}
-          className="btn btn-sm btn-primary gap-1.5"
-        >
-          {sending ? (
-            <><Loader2 size={13} className="animate-spin" /> Sending...</>
-          ) : (
-            <><Check size={13} /> Confirm &amp; Advance{notifyCount > 0 ? ` · Notify ${notifyCount}` : ''}</>
-          )}
-        </button>
+      <div className="flex flex-col gap-3 px-6 py-4 border-t border-base-300 flex-none bg-base-200/50 rounded-b-2xl">
+        <div>
+          <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide block mb-1">
+            Type your first name to confirm
+          </label>
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full"
+            placeholder={staffFirstName}
+            value={confirmName}
+            onChange={e => setConfirmName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && nameConfirmed && !sending && handleConfirm()}
+            autoComplete="off"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <button onClick={onCancel} className="btn btn-sm btn-ghost gap-1.5">
+            <X size={13} /> Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={sending || !nameConfirmed}
+            className="btn btn-sm btn-primary gap-1.5"
+          >
+            {sending ? (
+              <><Loader2 size={13} className="animate-spin" /> Sending...</>
+            ) : (
+              <><Check size={13} /> Confirm &amp; Advance{notifyCount > 0 ? ` · Notify ${notifyCount}` : ''}</>
+            )}
+          </button>
+        </div>
       </div>
       <PageIdBadge pageId={PAGE_IDS.MILESTONE_ADVANCE} context={deal.id.slice(0, 8)} />
     </Modal>
