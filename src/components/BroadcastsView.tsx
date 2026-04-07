@@ -74,9 +74,11 @@ interface BroadcastsViewProps {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function detectPlaceholderType(label: string): 'date' | 'time' | 'text' {
-  const lower = label.toLowerCase();
-  if (/time|hour|am|pm/.test(lower)) return 'time';
-  if (/date|deadline|day|month|year/.test(lower)) return 'date';
+  // Strip brackets and trim before testing, use word boundaries to avoid false matches
+  // e.g. "name" contains "am" — without \b it would wrongly match time
+  const lower = label.replace(/[\[\]]/g, '').trim().toLowerCase();
+  if (/\btime\b|\bhour\b/.test(lower)) return 'time';
+  if (/\bdate\b|\bdeadline\b|\bday\b|\bmonth\b|\byear\b/.test(lower)) return 'date';
   return 'text';
 }
 
@@ -190,6 +192,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
   // ── Placeholder filler state ──────────────────────────────────────────────────
   const [placeholderFills, setPlaceholderFills] = useState<PlaceholderFill[]>([]);
+  const [hasNamePlaceholder, setHasNamePlaceholder] = useState(false);
 
   // ── History state ─────────────────────────────────────────────────────────────
   const [expandedBlastId, setExpandedBlastId] = useState<string | null>(null);
@@ -413,11 +416,16 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     // Extract unique placeholders from subject + body and build filler entries
     const combined = tpl.subject + ' ' + tpl.body_html;
     const raw = [...new Set((combined.match(/\[[^\]]{1,60}\]/g) ?? []))];
-    setPlaceholderFills(raw.map(label => ({
-      label,
-      value: '',
-      type: detectPlaceholderType(label),
-    })));
+    // [Name] is auto-personalized per recipient in the edge function — hide it from the panel
+    const hasName = raw.some(label => /^\[name\]$/i.test(label));
+    setHasNamePlaceholder(hasName);
+    setPlaceholderFills(raw
+      .filter(label => !/^\[name\]$/i.test(label))
+      .map(label => ({
+        label,
+        value: '',
+        type: detectPlaceholderType(label),
+      })));
   };
 
   const fillPlaceholder = (label: string, rawValue: string) => {
@@ -551,6 +559,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setIncludeConfirm(false);
       setIncludeDecline(false);
       setPlaceholderFills([]);
+      setHasNamePlaceholder(false);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
       let detail = err.message ?? String(err);
@@ -841,11 +850,18 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
               )}
 
               {/* ── Placeholder Filler Panel ──────────────────────────────── */}
-              {placeholderFills.length > 0 && (
+              {(placeholderFills.length > 0 || hasNamePlaceholder) && (
                 <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
                   <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
                     <span>📋</span> Fill in placeholders
                   </p>
+                  {/* [Name] personalization note */}
+                  {hasNamePlaceholder && (
+                    <div className="flex items-center gap-2 text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      <span className="text-green-600">✓</span>
+                      <span><strong>[Name]</strong> auto-fills from each recipient's name</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 gap-2">
                     {placeholderFills.map(p => (
                       <div key={p.label} className="flex items-center gap-2">
