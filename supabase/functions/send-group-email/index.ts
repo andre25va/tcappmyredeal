@@ -220,18 +220,27 @@ serve(async (req: Request) => {
       const confirmUrl = include_confirm ? `${trackBase}/confirm?token=${recipient.token}` : undefined;
       const declineUrl = include_decline ? `${trackBase}/decline?token=${recipient.token}` : undefined;
 
-      const htmlWithTracking = wrapBodyHtml(body_html, confirmUrl, declineUrl)
+      // Personalize [Name] for this recipient
+      const recipientName = recipient.name || 'Agent';
+      const personalizedBody = body_html.replace(/\[Name\]/gi, recipientName);
+      const personalizedSubject = subject.replace(/\[Name\]/gi, recipientName);
+
+      const htmlWithTracking = wrapBodyHtml(personalizedBody, confirmUrl, declineUrl)
         .replace('</body>', `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" /></body>`);
 
       try {
-        await sendViaGmail(accessToken, recipient.email, subject, htmlWithTracking);
+        await sendViaGmail(accessToken, recipient.email, personalizedSubject, htmlWithTracking);
         await supabase
           .from('email_blast_recipients')
-          .update({ sent_at: new Date().toISOString() })
+          .update({ sent_at: new Date().toISOString(), status: 'sent' })
           .eq('id', recipient.id);
         sendResults.push({ email: recipient.email, success: true });
       } catch (sendErr) {
         console.error(`Send error for ${recipient.email}:`, sendErr);
+        await supabase
+          .from('email_blast_recipients')
+          .update({ status: 'undeliverable' })
+          .eq('id', recipient.id);
         sendResults.push({ email: recipient.email, success: false, error: String(sendErr) });
       }
     }
