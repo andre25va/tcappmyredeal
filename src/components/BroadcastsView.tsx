@@ -144,10 +144,16 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [includeDecline, setIncludeDecline] = useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedDealId, setSelectedDealId]     = useState<string>('');
-  const [manualEmails, setManualEmails]  = useState('');
   const [sending, setSending]            = useState(false);
   const [sendResult, setSendResult]      = useState<{ success: boolean; message: string } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+
+  // ── Recipient autocomplete state ──────────────────────────────────────────────
+  const [individualRecipients, setIndividualRecipients] = useState<RecipientRow[]>([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const recipientInputRef = useRef<HTMLInputElement>(null);
 
   // ── Template picker state ─────────────────────────────────────────────────────
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -168,6 +174,12 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [showNewForm, setShowNewForm] = useState(false);
   const newTemplateEditorRef = useRef<HTMLDivElement>(null);
   const editTemplateEditorRef = useRef<HTMLDivElement>(null);
+
+  // ─── Debounce recipient search ────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(recipientSearch), 250);
+    return () => clearTimeout(t);
+  }, [recipientSearch]);
 
   // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -223,6 +235,53 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  // ─── Contact autocomplete query ────────────────────────────────────────────────
+  const { data: contactSuggestions = [] } = useQuery<RecipientRow[]>({
+    queryKey: ['contact_search', debouncedSearch],
+    queryFn: async () => {
+      if (debouncedSearch.length < 2) return [];
+
+      // Search both group members and contacts table in parallel
+      const [membersRes, contactsRes] = await Promise.all([
+        supabase
+          .from('email_blast_group_members')
+          .select('name, email')
+          .or(`name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%`)
+          .limit(15),
+        supabase
+          .from('contacts')
+          .select('full_name, first_name, last_name, email')
+          .not('email', 'is', null)
+          .or(`full_name.ilike.%${debouncedSearch}%,first_name.ilike.%${debouncedSearch}%,last_name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%`)
+          .limit(15),
+      ]);
+
+      const seen = new Set<string>();
+      const results: RecipientRow[] = [];
+
+      // Add group members first
+      for (const r of membersRes.data ?? []) {
+        if (r.email && !seen.has(r.email.toLowerCase())) {
+          seen.add(r.email.toLowerCase());
+          results.push({ name: r.name ?? undefined, email: r.email });
+        }
+      }
+
+      // Add contacts (use full_name, fall back to first+last)
+      for (const c of contactsRes.data ?? []) {
+        if (c.email && !seen.has(c.email.toLowerCase())) {
+          seen.add(c.email.toLowerCase());
+          const name = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || undefined;
+          results.push({ name, email: c.email });
+        }
+      }
+
+      // Filter already selected
+      return results.filter(r => !individualRecipients.some(ir => ir.email.toLowerCase() === r.email.toLowerCase()));
+    },
+    enabled: debouncedSearch.length >= 2,
   });
 
   // ─── Mutations — Groups ───────────────────────────────────────────────────────
@@ -326,6 +385,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     const seen = new Set<string>();
 
     if (blastType === 'general') {
+      // Group members
       for (const gid of selectedGroupIds) {
         const group = groups.find(g => g.id === gid);
         for (const m of group?.members ?? []) {
@@ -335,18 +395,27 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
           }
         }
       }
-      const lines = manualEmails.split(/[\n,;]+/).map(l => l.trim()).filter(Boolean);
-      for (const line of lines) {
-        const emailMatch = line.match(/<?([^\s<>@]+@[^\s<>@]+)>?/);
-        if (emailMatch && !seen.has(emailMatch[1])) {
-          seen.add(emailMatch[1]);
-          const nameMatch = line.match(/^([^<]+)<[^>]+>/);
-          recipients.push({ name: nameMatch?.[1]?.trim() || undefined, email: emailMatch[1] });
+      // Individual recipients from autocomplete
+      for (const r of individualRecipients) {
+        if (!seen.has(r.email)) {
+          seen.add(r.email);
+          recipients.push(r);
         }
       }
     }
 
     return recipients;
+  };
+
+  // ─── Add individual recipient from suggestion ──────────────────────────────────
+
+  const addIndividualRecipient = (r: RecipientRow) => {
+    if (!individualRecipients.some(ir => ir.email === r.email)) {
+      setIndividualRecipients(prev => [...prev, r]);
+    }
+    setRecipientSearch('');
+    setShowSuggestions(false);
+    recipientInputRef.current?.focus();
   };
 
   // ─── Send ─────────────────────────────────────────────────────────────────────
@@ -368,7 +437,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
     const recipients = buildRecipients();
     if (blastType === 'general' && recipients.length === 0) {
-      setSendResult({ success: false, message: 'Add at least one recipient (group or manual email).' });
+      setSendResult({ success: false, message: 'Add at least one recipient (group or individual).' });
       return;
     }
     if (blastType === 'deal' && !selectedDealId) {
@@ -411,7 +480,8 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setSubject('');
       if (editorRef.current) editorRef.current.innerHTML = '';
       setSelectedGroupIds([]);
-      setManualEmails('');
+      setIndividualRecipients([]);
+      setRecipientSearch('');
       setIncludeConfirm(false);
       setIncludeDecline(false);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
@@ -497,6 +567,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
               {blastType === 'general' ? (
                 <>
+                  {/* Group pills */}
                   {groups.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {groups.map(g => {
@@ -522,14 +593,111 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
                     </div>
                   )}
                   {groups.length === 0 && (
-                    <p className="text-xs text-base-content/40 italic">No groups yet — create one in the Groups tab, or add emails below.</p>
+                    <p className="text-xs text-base-content/40 italic">No groups yet — create one in the Groups tab.</p>
                   )}
-                  <textarea
-                    value={manualEmails}
-                    onChange={e => setManualEmails(e.target.value)}
-                    placeholder="Or type emails here: john@example.com, Jane Doe <jane@example.com>"
-                    className="textarea textarea-bordered w-full text-sm h-20 resize-none"
-                  />
+
+                  {/* Individual recipient chips */}
+                  {individualRecipients.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {individualRecipients.map(r => (
+                        <span
+                          key={r.email}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full border border-primary/20"
+                        >
+                          {r.name ?? r.email}
+                          <button
+                            onClick={() => setIndividualRecipients(prev => prev.filter(ir => ir.email !== r.email))}
+                            className="hover:text-error transition-colors ml-0.5"
+                            title={`Remove ${r.name ?? r.email}`}
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Autocomplete input */}
+                  <div className="relative">
+                    <input
+                      ref={recipientInputRef}
+                      type="text"
+                      value={recipientSearch}
+                      onChange={e => {
+                        setRecipientSearch(e.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => {
+                        if (recipientSearch.length >= 2) setShowSuggestions(true);
+                      }}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                      onKeyDown={e => {
+                        // Press Enter or comma to add a raw email address
+                        if ((e.key === 'Enter' || e.key === ',') && recipientSearch.trim()) {
+                          const val = recipientSearch.trim().replace(/,$/, '');
+                          const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+                          if (isEmail) {
+                            e.preventDefault();
+                            addIndividualRecipient({ email: val });
+                          }
+                        }
+                        // Backspace on empty input removes last chip
+                        if (e.key === 'Backspace' && recipientSearch === '' && individualRecipients.length > 0) {
+                          setIndividualRecipients(prev => prev.slice(0, -1));
+                        }
+                      }}
+                      placeholder={
+                        individualRecipients.length > 0
+                          ? 'Add more recipients...'
+                          : 'Search by name or email, or type an email + Enter...'
+                      }
+                      className="input input-bordered w-full text-sm"
+                    />
+
+                    {/* Suggestions dropdown */}
+                    {showSuggestions && debouncedSearch.length >= 2 && contactSuggestions.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-base-300 rounded-xl shadow-lg overflow-hidden">
+                        {contactSuggestions.slice(0, 8).map(c => (
+                          <button
+                            key={c.email}
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => addIndividualRecipient(c)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-primary/5 transition-colors border-b border-base-100 last:border-0"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-none select-none">
+                              {(c.name ?? c.email)[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-base-content">{c.name ?? c.email}</p>
+                              {c.name && <p className="text-xs text-base-content/50 truncate">{c.email}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* No results */}
+                    {showSuggestions && debouncedSearch.length >= 2 && contactSuggestions.length === 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-base-300 rounded-xl shadow-lg px-4 py-3">
+                        <p className="text-xs text-base-content/40 text-center">
+                          No contacts found — type a valid email and press <kbd className="kbd kbd-xs">Enter</kbd> to add manually.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {(selectedGroupIds.length > 0 || individualRecipients.length > 0) && (
+                    <p className="text-[11px] text-base-content/40">
+                      {(() => {
+                        const groupCount = selectedGroupIds.reduce((sum, gid) => {
+                          const g = groups.find(g => g.id === gid);
+                          return sum + (g?.members?.length ?? 0);
+                        }, 0);
+                        const total = groupCount + individualRecipients.length;
+                        return `${total} recipient${total !== 1 ? 's' : ''} total`;
+                      })()}
+                    </p>
+                  )}
                 </>
               ) : (
                 <select
