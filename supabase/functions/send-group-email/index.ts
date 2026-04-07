@@ -1,17 +1,31 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+// send-group-email Edge Function
+// Sends a broadcast email to a list of recipients, logs to email_blasts + email_blast_recipients.
+// Uses Gmail OAuth for sending (same pattern as advance-milestone-notify).
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const APP_URL = Deno.env.get("APP_URL") ?? "https://tcapp.myredeal.com";
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function jsonResp(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// ── Email HTML wrapper ────────────────────────────────────────────────────────
 function wrapBodyHtml(body: string, confirmUrl?: string, declineUrl?: string): string {
   const buttons = (confirmUrl || declineUrl) ? `
     <div style="margin: 32px 0; text-align: center;">
-      ${confirmUrl ? `<a href="${confirmUrl}" style="display:inline-block;margin:0 8px;padding:12px 28px;background-color:#22c55e;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">✅ Confirm</a>` : ""}
-      ${declineUrl ? `<a href="${declineUrl}" style="display:inline-block;margin:0 8px;padding:12px 28px;background-color:#ef4444;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">❌ Decline</a>` : ""}
-    </div>` : "";
+      ${confirmUrl ? `<a href="${confirmUrl}" style="display:inline-block;margin:0 8px;padding:12px 28px;background-color:#22c55e;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">✅ Confirm</a>` : ''}
+      ${declineUrl ? `<a href="${declineUrl}" style="display:inline-block;margin:0 8px;padding:12px 28px;background-color:#ef4444;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;">❌ Decline</a>` : ''}
+    </div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -38,19 +52,93 @@ function wrapBodyHtml(body: string, confirmUrl?: string, declineUrl?: string): s
 </html>`;
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// ── Gmail OAuth helpers ───────────────────────────────────────────────────────
+const GMAIL_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+function getGmailCredentials() {
+  const clientId = Deno.env.get('GMAIL_CLIENT_ID');
+  const clientSecret = Deno.env.get('GMAIL_CLIENT_SECRET');
+  const refreshToken = Deno.env.get('GMAIL_REFRESH_TOKEN');
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Missing Gmail OAuth credentials');
+  }
+  return { clientId, clientSecret, refreshToken };
+}
+
+async function getGmailAccessToken(): Promise<string> {
+  const { clientId, clientSecret, refreshToken } = getGmailCredentials();
+  const res = await fetch(GMAIL_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gmail token refresh failed: ${err}`);
+  }
+  const json = await res.json();
+  return json.access_token;
+}
+
+function makeRawEmail(to: string, subject: string, htmlBody: string, fromName = 'TC Team', fromEmail = 'tc@myredeal.com'): string {
+  const boundary = 'boundary_' + Math.random().toString(36).slice(2);
+  const raw = [
+    `From: ${fromName} <${fromEmail}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    btoa(unescape(encodeURIComponent(htmlBody))),
+    `--${boundary}--`,
+  ].join('\r\n');
+  return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function sendViaGmail(accessToken: string, to: string, subject: string, htmlBody: string): Promise<void> {
+  const raw = makeRawEmail(to, subject, htmlBody);
+  const res = await fetch(GMAIL_SEND_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gmail send failed: ${err}`);
+  }
+}
+
+// ── Main handler ─────────────────────────────────────────────────────────────
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const trackBase = Deno.env.get('APP_URL')
+      ? `${Deno.env.get('SUPABASE_URL')}/functions/v1/track-email`
+      : `${supabaseUrl}/functions/v1/track-email`;
+
+    if (!supabaseUrl || !serviceKey) {
+      return jsonResp({ error: 'Missing Supabase env vars' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json();
     const {
@@ -58,43 +146,37 @@ Deno.serve(async (req: Request) => {
       body_html,
       include_confirm = false,
       include_decline = false,
-      blast_type = "general",
+      blast_type = 'general',
       deal_id = null,
       sent_by = null,
-      recipients, // Array of { name, email }
+      recipients, // Array of { name?, email }
     } = body;
 
     if (!subject || !body_html || !recipients?.length) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResp({ error: 'Missing required fields: subject, body_html, and recipients are required.' }, 400);
     }
 
-    // Create the blast record
+    // ── Insert blast record ─────────────────────────────────────────────────
     const { data: blast, error: blastError } = await supabase
-      .from("email_blasts")
+      .from('email_blasts')
       .insert({
         subject,
         body_html,
         include_confirm,
         include_decline,
         blast_type,
-        deal_id,
-        sent_by: sent_by ?? null,
+        deal_id: deal_id || null,
+        sent_by: sent_by || null,
       })
       .select()
       .single();
 
     if (blastError) {
-      console.error("blast insert error:", JSON.stringify(blastError));
-      return new Response(JSON.stringify({ error: "blast_insert_failed", detail: blastError.message, code: blastError.code }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error('blast insert error:', JSON.stringify(blastError));
+      return jsonResp({ error: 'blast_insert_failed', detail: blastError.message, code: blastError.code }, 500);
     }
 
-    // Create recipient rows with tokens
+    // ── Insert recipient rows ───────────────────────────────────────────────
     const recipientRows = recipients.map((r: { name?: string; email: string }) => ({
       blast_id: blast.id,
       name: r.name ?? null,
@@ -102,65 +184,52 @@ Deno.serve(async (req: Request) => {
     }));
 
     const { data: insertedRecipients, error: recipError } = await supabase
-      .from("email_blast_recipients")
+      .from('email_blast_recipients')
       .insert(recipientRows)
       .select();
 
     if (recipError) {
-      console.error("recipient insert error:", JSON.stringify(recipError));
-      return new Response(JSON.stringify({ error: "recipient_insert_failed", detail: recipError.message, code: recipError.code }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error('recipient insert error:', JSON.stringify(recipError));
+      return jsonResp({ error: 'recipient_insert_failed', detail: recipError.message, code: recipError.code }, 500);
     }
 
-    // Send emails
-    const trackBase = `${SUPABASE_URL}/functions/v1/track-email`;
+    // ── Get Gmail access token once ────────────────────────────────────────
+    let accessToken: string;
+    try {
+      accessToken = await getGmailAccessToken();
+    } catch (gmailErr) {
+      console.error('Gmail auth error:', gmailErr);
+      return jsonResp({ error: 'gmail_auth_failed', detail: String(gmailErr) }, 500);
+    }
+
+    // ── Send emails ────────────────────────────────────────────────────────
     const sendResults: { email: string; success: boolean; error?: string }[] = [];
 
-    for (const recipient of insertedRecipients) {
+    for (const recipient of insertedRecipients ?? []) {
       const pixelUrl = `${trackBase}/open?token=${recipient.token}`;
       const confirmUrl = include_confirm ? `${trackBase}/confirm?token=${recipient.token}` : undefined;
       const declineUrl = include_decline ? `${trackBase}/decline?token=${recipient.token}` : undefined;
 
       const htmlWithTracking = wrapBodyHtml(body_html, confirmUrl, declineUrl)
-        .replace("</body>", `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" /></body>`);
+        .replace('</body>', `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" /></body>`);
 
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "TC Team <tc@myredeal.com>",
-          to: [recipient.email],
-          subject,
-          html: htmlWithTracking,
-        }),
-      });
-
-      if (res.ok) {
+      try {
+        await sendViaGmail(accessToken, recipient.email, subject, htmlWithTracking);
         await supabase
-          .from("email_blast_recipients")
+          .from('email_blast_recipients')
           .update({ sent_at: new Date().toISOString() })
-          .eq("id", recipient.id);
+          .eq('id', recipient.id);
         sendResults.push({ email: recipient.email, success: true });
-      } else {
-        const err = await res.text();
-        sendResults.push({ email: recipient.email, success: false, error: err });
+      } catch (sendErr) {
+        console.error(`Send error for ${recipient.email}:`, sendErr);
+        sendResults.push({ email: recipient.email, success: false, error: String(sendErr) });
       }
     }
 
-    return new Response(
-      JSON.stringify({ blast_id: blast.id, results: sendResults }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResp({ blast_id: blast.id, results: sendResults });
+
   } catch (err) {
-    console.error("send-group-email error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error('send-group-email unhandled error:', err);
+    return jsonResp({ error: 'unhandled', detail: String(err) }, 500);
   }
 });
