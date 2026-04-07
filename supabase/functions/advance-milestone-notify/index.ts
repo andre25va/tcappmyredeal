@@ -170,6 +170,18 @@ serve(async (req: Request) => {
     const { deal_id, milestone_key } = await req.json();
     if (!deal_id || !milestone_key) return errorResponse('Missing deal_id or milestone_key', 400);
 
+    // Normalize app keys (hyphens → underscores) then translate to DB keys
+    const APP_TO_DB_KEY: Record<string, string> = {
+      'inspections_due':    'inspection_period',
+      'appraisal_ordered':  'appraisal',
+      'appraisal_received': 'appraisal',
+      'loan_commitment':    'loan_approval',
+      'closing_scheduled':  'closing',
+      'closed':             'closing',
+    };
+    const normalizedKey = milestone_key.replace(/-/g, '_');
+    const dbKey = APP_TO_DB_KEY[normalizedKey] ?? normalizedKey;
+
     const supabase = getSupabaseClient();
 
     // 1. Load deal
@@ -201,7 +213,7 @@ serve(async (req: Request) => {
     }
 
     // 3. Find current milestone config row
-    const currentIdx = configs.findIndex((c: any) => c.milestone_types?.key === milestone_key);
+    const currentIdx = configs.findIndex((c: any) => c.milestone_types?.key === dbKey);
     if (currentIdx === -1) {
       return jsonResponse({ sent: 0, message: `No config row found for milestone_key: ${milestone_key}` });
     }
