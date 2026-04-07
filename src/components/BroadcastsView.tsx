@@ -353,6 +353,16 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
     if (!subject.trim()) { setSendResult({ success: false, message: 'Subject is required.' }); return; }
     if (!bodyHtml.trim() || bodyHtml === '<br>') { setSendResult({ success: false, message: 'Message body is required.' }); return; }
 
+    // ── Warn if template placeholders were not replaced ──────────────────────
+    const placeholderPattern = /\[[^\]]{1,60}\]/;
+    const bodyText = editorRef.current?.innerText ?? '';
+    if (placeholderPattern.test(subject) || placeholderPattern.test(bodyText)) {
+      const go = window.confirm(
+        'Your message still has unfilled placeholders like [Name] or [Date].\n\nThey will appear as-is in the email. Send anyway?'
+      );
+      if (!go) return;
+    }
+
     const recipients = buildRecipients();
     if (blastType === 'general' && recipients.length === 0) {
       setSendResult({ success: false, message: 'Add at least one recipient (group or manual email).' });
