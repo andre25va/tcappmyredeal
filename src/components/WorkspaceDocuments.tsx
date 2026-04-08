@@ -1126,7 +1126,37 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ─── Drag-and-Drop ───────────────────────────────────────────────────────────
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleDroppedFile(file);
+  };
 
   // ─── Document Log ────────────────────────────────────────────────────────────
   const logDocumentAction = async (
@@ -1188,6 +1218,36 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     } catch {
       return null; // classify failure should never block upload
     }
+  };
+
+  const handleDroppedFile = async (file: File) => {
+    // Same flow as clicking upload — runs through SoT guard, AI classify, address mismatch check
+    const existingSot = docs.find(d => d.category === 'purchase_contract' && d.is_source_of_truth);
+    if (docTypeForUpload === 'purchase_contract' && existingSot) {
+      setSotPending({ file, docType: docTypeForUpload });
+      return;
+    }
+
+    setClassifying(true);
+    setUploadProgress('Analyzing document…');
+    const classified = await classifyDocument(file, docTypeForUpload);
+    setClassifying(false);
+    setUploadProgress('');
+
+    if (classified) {
+      if (classified.addressMatch === 'mismatch' || classified.addressMatch === 'partial') {
+        setAddressMismatchPending({
+          file,
+          docType: docTypeForUpload,
+          extracted: classified.addressExtracted,
+          match: classified.addressMatch,
+          classifyResult: classified,
+        });
+        return;
+      }
+    }
+
+    await uploadFile(file, docTypeForUpload, classified);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1583,7 +1643,30 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const pendingDocRequests = (deal.documentRequests ?? []).filter(r => r.status === 'pending');
 
   return (
-    <div className="p-4 space-y-6 pb-10">
+    <div
+      className="p-4 space-y-6 pb-10 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+
+      {/* ── Drag-and-Drop Overlay ─────────────────────────────────────────── */}
+      {isDragging && (
+        <div className="absolute inset-0 z-40 rounded-2xl flex flex-col items-center justify-center gap-3 pointer-events-none"
+          style={{ background: 'rgba(99,102,241,0.10)', border: '2.5px dashed #6366f1' }}>
+          <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center">
+            <Upload size={28} className="text-indigo-600" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-bold text-indigo-700">Drop to upload</p>
+            <p className="text-xs text-indigo-500 mt-0.5">
+              {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? ` ${deal.state}` : ''}
+            </p>
+          </div>
+          <p className="text-xs text-indigo-400">Will upload as: <span className="font-semibold capitalize">{(docTypeForUpload ?? '').replace(/_/g, ' ')}</span></p>
+        </div>
+      )}
 
       {/* Option C: Source-of-Truth replacement confirmation modal */}
       {sotPending && (
