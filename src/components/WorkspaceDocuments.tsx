@@ -1664,7 +1664,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
               {deal.propertyAddress}{deal.city ? `, ${deal.city}` : ''}{deal.state ? ` ${deal.state}` : ''}
             </p>
           </div>
-          <p className="text-xs text-indigo-400">Will upload as: <span className="font-semibold capitalize">{docTypeForUpload.replace(/_/g, ' ')}</span></p>
+          <p className="text-xs text-indigo-400">Will upload as: <span className="font-semibold capitalize">{(docTypeForUpload ?? '').replace(/_/g, ' ')}</span></p>
         </div>
       )}
 
