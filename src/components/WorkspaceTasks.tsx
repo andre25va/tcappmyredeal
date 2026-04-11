@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   CheckSquare, Plus, Trash2, Check, ChevronDown, User, Calendar,
   MoreVertical, Smartphone, AtSign, MessageCircle, Phone, Loader2,
-  Send,
+  Send, Flag,
 } from 'lucide-react';
 import { Deal, DealTask, TaskPriority, AppUser } from '../types';
 import { generateId } from '../utils/helpers';
@@ -180,6 +180,16 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
     invalidateCommTasks(deal.id);
   };
 
+  // ── Post-closing task toggle ──────────────────────────────────────────────
+
+  const markPostClosingDone = async (taskId: string, isDone: boolean) => {
+    await supabase.from('tasks').update({
+      status: isDone ? 'pending' : 'completed',
+      completed_at: isDone ? null : new Date().toISOString(),
+    }).eq('id', taskId);
+    invalidateDealTasks(deal.id);
+  };
+
   // ── Deal task CRUD ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -250,6 +260,11 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
 
   const activeCommTasks = commTasks.filter(t => t.status !== 'done');
   const doneCommTasks   = commTasks.filter(t => t.status === 'done');
+
+  // ── Post-closing split ────────────────────────────────────────────────────
+  const postClosingTasks    = milestoneTasks.filter(t => t.category === 'post_closing');
+  const regularMilestoneTasks = milestoneTasks.filter(t => t.category !== 'post_closing');
+  const postClosingPending  = postClosingTasks.filter(t => t.status !== 'completed').length;
 
   const formatDue = (date: string) => {
     const d = new Date(date + 'T00:00:00');
@@ -472,6 +487,9 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
             {activeCommTasks.length > 0 && (
               <span className="text-blue-500 font-semibold ml-1">· {activeCommTasks.length} comm tasks</span>
             )}
+            {postClosingPending > 0 && (
+              <span className="text-violet-600 font-semibold ml-1">· {postClosingPending} post-closing</span>
+            )}
           </p>
         </div>
         <button onClick={() => setShowAdd(s => !s)} className="btn btn-sm btn-primary gap-1.5">
@@ -525,12 +543,107 @@ export const WorkspaceTasks: React.FC<Props> = ({ deal, onUpdate, users = [], on
         </div>
       )}
 
-      {/* ── Milestone Tasks (from DB tasks table) ─────────────────────────── */}
-      {milestoneTasks.length > 0 && (
+      {/* ── Post-Closing Checklist ────────────────────────────────────────── */}
+      {postClosingTasks.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full border bg-violet-50 text-violet-700 border-violet-200 flex items-center gap-1.5">
+              <Flag size={10} />
+              Post-Closing Checklist
+            </span>
+            <span className="text-xs text-gray-400">
+              {postClosingTasks.filter(t => t.status === 'completed').length}/{postClosingTasks.length} done
+            </span>
+          </div>
+          <div className="space-y-2">
+            {postClosingTasks.map(task => {
+              const isDone = task.status === 'completed';
+              const daysUntil = task.due_date
+                ? Math.ceil((new Date(task.due_date + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000)
+                : null;
+              const isOverdue = !isDone && daysUntil !== null && daysUntil < 0;
+              const isUrgent  = !isDone && task.priority === 'high';
+
+              return (
+                <div
+                  key={task.id}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-sm transition-all ${
+                    isDone
+                      ? 'bg-gray-50 border-gray-200 opacity-60'
+                      : isOverdue
+                      ? 'bg-red-50 border-red-200'
+                      : isUrgent
+                      ? 'bg-orange-50 border-orange-200'
+                      : 'bg-white border-violet-100'
+                  }`}
+                >
+                  {/* Click-to-complete circle */}
+                  <button
+                    onClick={() => markPostClosingDone(task.id, isDone)}
+                    title={isDone ? 'Mark incomplete' : 'Mark complete'}
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-none transition-all ${
+                      isDone
+                        ? 'bg-green-500 border-green-500'
+                        : isOverdue
+                        ? 'border-red-400 hover:border-red-600 hover:bg-red-100'
+                        : isUrgent
+                        ? 'border-orange-400 hover:border-orange-600 hover:bg-orange-100'
+                        : 'border-violet-300 hover:border-violet-500 hover:bg-violet-50'
+                    }`}
+                  >
+                    {isDone && <Check size={11} className="text-white" />}
+                  </button>
+
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-medium leading-tight ${
+                      isDone ? 'line-through text-gray-400' : isOverdue ? 'text-red-900' : 'text-gray-900'
+                    }`}>
+                      {task.title}
+                    </p>
+                    {task.due_date && (
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {!isDone && daysUntil !== null && daysUntil < 0 && (
+                          <span className="ml-1 text-red-500 font-semibold">
+                            ({Math.abs(daysUntil)}d overdue)
+                          </span>
+                        )}
+                        {!isDone && daysUntil === 0 && (
+                          <span className="ml-1 text-amber-500 font-semibold">(today)</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Urgency badge */}
+                  {!isDone && isOverdue && (
+                    <span className="text-[10px] font-bold text-red-600 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded-full flex-none">
+                      🔴 Overdue
+                    </span>
+                  )}
+                  {!isDone && !isOverdue && isUrgent && (
+                    <span className="text-[10px] font-bold text-orange-600 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded-full flex-none">
+                      ⚡ Urgent
+                    </span>
+                  )}
+                  {isDone && (
+                    <span className="text-[10px] font-medium text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full flex-none">
+                      ✓ Done
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Regular Milestone Tasks (from DB tasks table) ─────────────────── */}
+      {regularMilestoneTasks.length > 0 && (
         <div className="mb-4">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Milestone Tasks</h3>
           <div className="space-y-2">
-            {milestoneTasks.map(task => {
+            {regularMilestoneTasks.map(task => {
               const isDone = task.status === 'completed';
               const linkedReq = linkedRequests[task.id];
               const reqType = TASK_REQUEST_MAP[task.category];
