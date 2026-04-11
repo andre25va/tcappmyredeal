@@ -212,7 +212,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
               {/* New Send Agent Summary Button */}
               <button
                 onClick={sendAgentSummary}
-                className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
               >
                 <Mail size={16} />
                 Send AI Summary to Agent
