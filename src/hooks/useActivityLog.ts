@@ -5,7 +5,7 @@ interface ChangeDiff { field: string; old_value: string; new_value: string; }
 
 export interface ActivityItem {
   id: string;
-  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'contact_update';
+  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'contact_update' | 'task_event' | 'status_change';
   timestamp: string;
   title: string;
   body?: string;
@@ -26,7 +26,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
       if (!dealId) return [];
 
       // Parallel fetches
-      const [emailRes, callRes, callNoteRes, requestRes, messagesRes, contactChangeRes] = await Promise.all([
+      const [emailRes, callRes, callNoteRes, requestRes, messagesRes, contactChangeRes, activityLogRes] = await Promise.all([
         supabase
           .from('email_send_log')
           .select('id, subject, to_addresses, template_name, sent_by, sent_at')
@@ -64,6 +64,12 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
           .eq('deal_id', dealId)
           .order('created_at', { ascending: false })
           .limit(50),
+        supabase
+          .from('activity_log')
+          .select('id, action, entity_type, description, performed_by, created_at')
+          .eq('deal_id', dealId)
+          .order('created_at', { ascending: false })
+          .limit(200),
       ]);
 
       // Request events (chained)
@@ -180,6 +186,22 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
           body: r.changed_by_name
             + (r.changes?.length ? ': ' + (r.changes as ChangeDiff[]).map(c => `${c.field} changed`).join(', ') : ''),
           meta: { changes: r.changes, action_type: r.action_type, changed_by_name: r.changed_by_name },
+        });
+      }
+
+      // Activity log (deal status changes, task events, MLS fetches, etc.)
+      for (const a of activityLogRes.data || []) {
+        const action = a.action as string;
+        let type: ActivityItem['type'] = 'activity';
+        if (action === 'status_changed') type = 'status_change';
+        else if (action === 'task_completed' || action === 'task_reopened' || action === 'task_created') type = 'task_event';
+
+        normalized.push({
+          id: `actlog-${a.id}`,
+          type,
+          timestamp: a.created_at,
+          title: a.description || action.replace(/_/g, ' '),
+          meta: { user: a.performed_by, action },
         });
       }
 
