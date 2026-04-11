@@ -4,6 +4,7 @@ import { getDealHealth } from '../ai/dealHealth';
 import { dealHealthAI } from '../ai/apiClient';
 import type { DealHealthAIResponse } from '../ai/apiClient';
 import { DealRecord } from '../ai/types';
+import { supabase } from '../lib/supabase'; // Import supabase client
 
 interface Props {
   dealRecord: DealRecord;
@@ -30,7 +31,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
   const [aiResult, setAiResult] = useState<DealHealthAIResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [aiExpanded, setAiExpanded] = useState(true);
+  const [aiExpanded, setAiExpanded] = useState(true); // Initialize to true to show by default
 
   const runAIAnalysis = useCallback(async () => {
     if (aiLoading) return;
@@ -50,21 +51,25 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
   const sendAgentSummary = useCallback(async () => {
     if (!aiResult) return; // Only send if AI analysis is available
 
-    // In a real implementation, this would call an Edge Function or API to send the summary
-    // For now, we'll simulate the action and log the content
-    console.log('Sending AI summary to agent:', {
-      dealId: dealRecord.id,
-      riskSummary: aiResult.riskSummary,
-      topRisk: aiResult.topRisk,
-      recommendations: aiResult.recommendations,
-      // You would typically include agent contact info from dealRecord here
-      // e.g., agentEmail: dealRecord.agent.email,
-    });
+    // Call the auto-nudge Edge Function
+    try {
+      const { error } = await supabase.functions.invoke('auto-nudge', {
+        body: {
+          dealId: dealRecord.id,
+          riskSummary: aiResult.riskSummary,
+          topRisk: aiResult.topRisk,
+          recommendations: aiResult.recommendations,
+          // You would typically include agent contact info from dealRecord here
+          // e.g., agentEmail: dealRecord.agent.email,
+        },
+      });
 
-    // Simulate API call success
-    alert('AI Summary sent to agent (simulated)!');
+      if (error) throw error;
 
-    // Optionally, you might want to disable the button or show a success message
+      alert('AI Summary sent to agent successfully!');
+    } catch (err: any) {
+      alert(`Failed to send nudge: ${err.message}`);
+    }
   }, [aiResult, dealRecord]);
 
   return (
