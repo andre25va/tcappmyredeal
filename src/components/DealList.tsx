@@ -44,7 +44,7 @@ const STATUS_FILTERS: { label: string; value: DealStatus | 'all' }[] = [
   { label: 'Closed',   value: 'closed' },
 ];
 
-// Neutral grey cards — buyer/seller only affects badges and dots
+// Neutral grey cards
 const cardBase     = 'bg-gray-50 border-gray-200';
 const cardSelected = 'bg-gray-100 border-gray-300';
 
@@ -64,6 +64,61 @@ const sideStylesConst = {
     dot:          'bg-green-400',
   },
 };
+
+// ── Deal Health Score ───────────────────────────────────────────────────────
+
+function computeDealHealth(deal: Deal): { score: number; label: 'healthy' | 'watch' | 'at-risk'; tooltip: string } {
+  let score = 100;
+  const today = new Date().toISOString().slice(0, 10);
+  const reasons: string[] = [];
+
+  // Overdue tasks (-12 each)
+  const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate && t.dueDate < today);
+  if (overdueTasks.length > 0) {
+    score -= overdueTasks.length * 12;
+    reasons.push(`${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`);
+  }
+
+  // Incomplete compliance items (-5 each, capped at -25)
+  const missingCompliance = (deal.complianceChecklist ?? []).filter(i => !i.completed);
+  if (missingCompliance.length > 0) {
+    score -= Math.min(missingCompliance.length * 5, 25);
+    reasons.push(`${missingCompliance.length} compliance item${missingCompliance.length > 1 ? 's' : ''} pending`);
+  }
+
+  // Pending doc requests (-8 each)
+  const pendingDocs = (deal.documentRequests ?? []).filter(d => d.status === 'pending');
+  if (pendingDocs.length > 0) {
+    score -= pendingDocs.length * 8;
+    reasons.push(`${pendingDocs.length} doc request${pendingDocs.length > 1 ? 's' : ''} pending`);
+  }
+
+  // Closing proximity penalty (-15 if closing <=7d with open issues)
+  if (deal.closingDate) {
+    const daysToClose = Math.floor((new Date(deal.closingDate).getTime() - Date.now()) / 86_400_000);
+    if (daysToClose >= 0 && daysToClose <= 7 && reasons.length > 0) {
+      score -= 15;
+      reasons.push(`closing in ${daysToClose}d with open items`);
+    }
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  const label = score >= 80 ? 'healthy' : score >= 50 ? 'watch' : 'at-risk';
+  const tooltip = reasons.length > 0 ? reasons.join(' · ') : 'Deal is on track';
+  return { score, label, tooltip };
+}
+
+const HEALTH_PILL = {
+  'healthy': 'bg-emerald-100 text-emerald-700 border-emerald-300',
+  'watch':   'bg-amber-100   text-amber-700   border-amber-300',
+  'at-risk': 'bg-red-100     text-red-700     border-red-300',
+} as const;
+
+const HEALTH_ICON = {
+  'healthy': '✓',
+  'watch':   '!',
+  'at-risk': '⚠',
+} as const;
 
 const renderDealCard = (
   deal: Deal,
@@ -85,6 +140,9 @@ const renderDealCard = (
   const pending   = pendingDocCount(deal.documentRequests);
   const ddProg    = checklistProgress(deal.dueDiligenceChecklist);
   const isSelected = deal.id === selectedId;
+
+  // Only compute health for active (non-archived, non-closed) deals
+  const health = (!isArchived && deal.status !== 'closed') ? computeDealHealth(deal) : null;
 
   return (
     <div
@@ -109,12 +167,24 @@ const renderDealCard = (
           <p className="text-xs text-base-content/50 truncate">{deal.city}, {deal.state} {deal.zipCode}</p>
         </div>
         <div className="flex items-center gap-1 flex-none">
+          {/* Amber alert count */}
           {!isArchived && pending > 0 && (
             <div className="flex items-center gap-0.5 bg-amber-500 px-1.5 py-0.5 rounded-full shadow-sm">
               <AlertTriangle size={10} className="text-white" />
               <span className="text-white text-xs font-bold">{pending}</span>
             </div>
           )}
+          {/* Health score badge */}
+          {health && (
+            <div
+              title={health.tooltip}
+              className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border cursor-default select-none ${HEALTH_PILL[health.label]}`}
+            >
+              <span>{HEALTH_ICON[health.label]}</span>
+              <span>{health.score}</span>
+            </div>
+          )}
+          {/* Buyer/Seller or Archived badge */}
           {isArchived ? (
             <span className="flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full border bg-gray-100 text-gray-500 border-gray-300">
               <Archive size={9} /> ARCHIVED
@@ -322,7 +392,6 @@ export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFi
   return (
     <>
       <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80" data-deallist-menu>
-        {/* Search + Filters */}
         {/* Amber Alert Filter Banner */}
         {amberFilter && (
           <div className="flex items-center gap-2 px-3 py-2 bg-amber-500 border-b border-amber-600">
