@@ -78,15 +78,28 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
       });
 
       if (error) throw error;
-      
-      // Log the activity if onUpdate is provided
+
+      // Find recipient name for the log description
+      const recipientName = (deal?.participants ?? [])
+        .find(p => p.contactEmail === recipientEmail)?.contactName ?? recipientEmail;
+
+      // Write to activity_log table (persisted, shows in Activity tab)
+      await supabase.from('activity_log').insert({
+        deal_id: dealRecord.id,
+        action: 'ai_summary_sent',
+        entity_type: 'deal',
+        description: `AI Deal Summary emailed to ${recipientName} (${recipientEmail})`,
+        performed_by: 'TC Staff',
+      });
+
+      // Also keep legacy in-memory update for immediate UI refresh
       if (deal && onUpdate) {
         const newActivityLog = [
           {
             id: generateId(),
             timestamp: new Date().toISOString(),
             action: 'Email sent',
-            detail: 'AI Summary sent to agent',
+            detail: `AI Summary sent to ${recipientName}`,
             user: 'TC Staff',
             type: 'email_sent' as const,
           },
@@ -209,7 +222,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
               {aiExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
             
-            {/* Action Button for AI Summary */}
+            {/* Recipient selector + Send button */}
             {deal && (
               <select
                 className="select select-bordered select-xs w-full max-w-xs mr-2"
