@@ -14,11 +14,27 @@ serve(async (req) => {
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    const { dealId } = await req.json()
+    // Log the request body for debugging
+    const bodyText = await req.text();
+    if (!bodyText) {
+      throw new Error('Request body is empty');
+    }
+    
+    let body;
+    try {
+      body = JSON.parse(bodyText);
+    } catch (e) {
+      throw new Error(`Invalid JSON in request body: ${bodyText}`);
+    }
+    
+    const { dealId } = body;
+    if (!dealId) {
+      throw new Error('dealId is required');
+    }
 
     // Fetch deal data for analysis
     const { data: deal, error: dealError } = await supabaseClient
@@ -30,8 +46,8 @@ serve(async (req) => {
     if (dealError) throw dealError
 
     // Construct analysis prompt
-    const overdueTasks = deal.tasks.filter((t: any) => !t.completedAt && t.dueDate && new Date(t.dueDate) < new Date())
-    const pendingDocs = deal.documents.filter((d: any) => d.status === 'pending_request')
+    const overdueTasks = deal.tasks?.filter((t: any) => !t.completedAt && t.dueDate && new Date(t.dueDate) < new Date()) || []
+    const pendingDocs = deal.documents?.filter((d: any) => d.status === 'pending_request') || []
     
     const prompt = `Analyze this real estate deal and provide a 1-2 sentence status summary.
     Property: ${deal.propertyAddress}
@@ -54,6 +70,11 @@ serve(async (req) => {
       }),
     })
 
+    if (!openAiResponse.ok) {
+      const errorData = await openAiResponse.text();
+      throw new Error(`OpenAI API error: ${errorData}`);
+    }
+
     const aiData = await openAiResponse.json()
     const insight = aiData.choices[0].message.content
 
@@ -62,6 +83,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
+    console.error('Error in get-ai-insights:', error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
