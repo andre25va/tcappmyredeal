@@ -67,6 +67,116 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    const requestBody = await req.json();
+    const { dealId, riskSummary, topRisk, recommendations, context } = requestBody;
+
+    if (context === "manual_summary_send" && dealId && riskSummary) {
+      // Handle manual AI Summary send
+      try {
+        // Fetch deal details
+        const { data: deal, error: dealError } = await supabase
+          .from("deals")
+          .select("id, deal_ref, property_address, org_id")
+          .eq("id", dealId)
+          .single();
+
+        if (dealError || !deal) {
+          console.error(`Deal not found for manual summary send: ${dealId}`);
+          return new Response(
+            JSON.stringify({ error: "Deal not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Find primary agent contact
+        const { data: participants, error: partError } = await supabase
+          .from("deal_participants")
+          .select("contact_id, contacts(id, email, first_name, last_name)")
+          .eq("deal_id", deal.id)
+          .in("deal_role", ["buyers_agent", "listing_agent"])
+          .eq("is_primary", true)
+          .limit(1);
+
+        if (partError || !participants || participants.length === 0) {
+          console.error(`No primary agent found for deal: ${deal.id}`);
+          return new Response(
+            JSON.stringify({ error: "No primary agent found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const contact = (participants[0] as any).contacts;
+        if (!contact || !contact.email) {
+          console.error(`Primary agent contact email not found for deal: ${deal.id}`);
+          return new Response(
+            JSON.stringify({ error: "Primary agent email not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const agentName = contact.first_name ? `${contact.first_name} ${contact.last_name}` : contact.email;
+        const subject = `AI Summary for ${deal.deal_ref} - ${deal.property_address}`;
+        let body = `Hi ${agentName},
+
+Here is an AI-generated summary for your deal at ${deal.property_address} (${deal.deal_ref}):
+
+Risk Summary: ${riskSummary}
+`;
+
+        if (topRisk) {
+          body += `\nTop Risk: ${topRisk}\n`;
+        }
+        if (recommendations && recommendations.length > 0) {
+          body += `\nRecommendations:\n- ${recommendations.join("\n- ")}\n`;
+        }
+
+        body += `\nBest regards,\nMyReDeal Team`;
+
+        // Call send-email function
+        const emailRes = await fetch(
+          `${supabaseUrl}/functions/v1/send-email`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            body: JSON.stringify({
+              to: contact.email,
+              subject: subject,
+              body: body,
+              html: wrapHtml(body),
+              dealId: deal.id,
+              templateName: "AI Summary",
+              emailType: "ai_summary",
+              sentBy: "AI",
+            }),
+          }
+        );
+
+        if (!emailRes.ok) {
+          const errText = await emailRes.text();
+          console.error(`send-email failed for AI Summary:`, errText);
+          return new Response(
+            JSON.stringify({ error: "Failed to send AI Summary email", details: errText }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(JSON.stringify({ message: "AI Summary sent successfully" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      } catch (err) {
+        console.error("Error processing manual AI Summary send:", err);
+        return new Response(
+          JSON.stringify({ error: "Internal server error", details: String(err) }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Existing logic for scheduled nudges
     // 1. Query tasks that need nudging
     const { data: tasks, error: tasksError } = await supabase
       .from("task_nudge_status")

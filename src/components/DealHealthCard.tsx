@@ -4,10 +4,14 @@ import { getDealHealth } from '../ai/dealHealth';
 import { dealHealthAI } from '../ai/apiClient';
 import type { DealHealthAIResponse } from '../ai/apiClient';
 import { DealRecord } from '../ai/types';
+import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
+import { generateId } from '../utils/helpers';
 
 interface Props {
   dealRecord: DealRecord;
+  deal?: Deal;
+  onUpdate?: (deal: Deal) => void;
 }
 
 const LABEL_STYLES = {
@@ -23,7 +27,7 @@ const ASSESSMENT_STYLES: Record<string, string> = {
   'critical': 'bg-red-100 text-red-800',
 };
 
-export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
+export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) => {
   const health = getDealHealth(dealRecord);
   const style = LABEL_STYLES[health.label];
   const Icon = style.icon;
@@ -71,6 +75,27 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
       });
 
       if (error) throw error;
+      
+      // Log the activity if onUpdate is provided
+      if (deal && onUpdate) {
+        const newActivityLog = [
+          {
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            action: 'Email sent',
+            detail: 'AI Summary sent to agent',
+            user: 'TC Staff',
+            type: 'email_sent' as const,
+          },
+          ...deal.activityLog,
+        ];
+        onUpdate({
+          ...deal,
+          activityLog: newActivityLog,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      
       alert('AI Summary sent to agent successfully!');
     } catch (err: any) {
       console.error('Failed to send nudge:', err);
@@ -78,7 +103,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
     } finally {
       setIsSending(false);
     }
-  }, [aiResult, dealRecord.id, isSending]);
+  }, [aiResult, dealRecord.id, isSending, deal, onUpdate]);
 
   return (
     <div className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>

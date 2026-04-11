@@ -859,7 +859,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       <PageIdBadge pageId={PAGE_IDS.DEAL_OVERVIEW} context={deal.id?.slice(0, 8)} />
 
       {/* ─── Deal Health ─── */}
-      <DealHealthCard dealRecord={dealToRecord(deal)} />
+      <DealHealthCard dealRecord={dealToRecord(deal)} deal={deal} onUpdate={onUpdate} />
 
       {/* ─── Email Summary ─── */}
       <EmailSummaryCard deal={deal} onGoToEmails={onGoToEmails} />
