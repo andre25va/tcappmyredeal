@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, MoreVertical, RotateCcw } from 'lucide-react';
+import { Search, AlertTriangle, Clock, ShoppingCart, Tag, X, Archive, Flame, MoreVertical, RotateCcw, Info, Send } from 'lucide-react';
 import { Deal, DealStatus, ContactRecord } from '../types';
 import { MILESTONE_LABELS, MILESTONE_COLORS } from '../utils/taskTemplates';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../utils/helpers';
 import { StatusDotLabel } from './ui/StatusBadge';
 import { Button } from './ui/Button';
+import { supabase } from '../lib/supabase';
 
 const ARCHIVE_REASONS = [
   { value: 'deal-closed',  label: 'Deal Closed'  },
@@ -65,49 +66,6 @@ const sideStylesConst = {
   },
 };
 
-// ── Deal Health Score ───────────────────────────────────────────────────────
-
-function computeDealHealth(deal: Deal): { score: number; label: 'healthy' | 'watch' | 'at-risk'; tooltip: string } {
-  let score = 100;
-  const today = new Date().toISOString().slice(0, 10);
-  const reasons: string[] = [];
-
-  // Overdue tasks (-12 each)
-  const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate && t.dueDate < today);
-  if (overdueTasks.length > 0) {
-    score -= overdueTasks.length * 12;
-    reasons.push(`${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`);
-  }
-
-  // Incomplete compliance items (-5 each, capped at -25)
-  const missingCompliance = (deal.complianceChecklist ?? []).filter(i => !i.completed);
-  if (missingCompliance.length > 0) {
-    score -= Math.min(missingCompliance.length * 5, 25);
-    reasons.push(`${missingCompliance.length} compliance item${missingCompliance.length > 1 ? 's' : ''} pending`);
-  }
-
-  // Pending doc requests (-8 each)
-  const pendingDocs = (deal.documentRequests ?? []).filter(d => d.status === 'pending');
-  if (pendingDocs.length > 0) {
-    score -= pendingDocs.length * 8;
-    reasons.push(`${pendingDocs.length} doc request${pendingDocs.length > 1 ? 's' : ''} pending`);
-  }
-
-  // Closing proximity penalty (-15 if closing <=7d with open issues)
-  if (deal.closingDate) {
-    const daysToClose = Math.floor((new Date(deal.closingDate).getTime() - Date.now()) / 86_400_000);
-    if (daysToClose >= 0 && daysToClose <= 7 && reasons.length > 0) {
-      score -= 15;
-      reasons.push(`closing in ${daysToClose}d with open items`);
-    }
-  }
-
-  score = Math.max(0, Math.min(100, score));
-  const label = score >= 80 ? 'healthy' : score >= 50 ? 'watch' : 'at-risk';
-  const tooltip = reasons.length > 0 ? reasons.join(' · ') : 'Deal is on track';
-  return { score, label, tooltip };
-}
-
 const HEALTH_PILL = {
   'healthy': 'bg-emerald-100 text-emerald-700 border-emerald-300',
   'watch':   'bg-amber-100   text-amber-700   border-amber-300',
@@ -119,6 +77,89 @@ const HEALTH_ICON = {
   'watch':   '!',
   'at-risk': '⚠',
 } as const;
+
+// ── Deal Health Insight Component ───────────────────────────────────────────
+
+const DealHealthInsight = ({ dealId, score }: { dealId: string, score: number }) => {
+  const [insight, setInsight] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [nudging, setNudging] = useState(false);
+
+  const label = score >= 80 ? 'healthy' : score >= 50 ? 'watch' : 'at-risk';
+
+  const fetchInsight = async () => {
+    if (insight) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-ai-insights', {
+        body: { dealId }
+      });
+      if (error) throw error;
+      setInsight(data.insight);
+    } catch (err) {
+      setInsight("Unable to load AI insights at this time.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNudge = async () => {
+    setNudging(true);
+    try {
+      await supabase.functions.invoke('auto-nudge', {
+        body: { dealId, urgency: score < 70 ? 'high' : 'medium' }
+      });
+      alert("Nudge sent to agent!");
+    } catch (err) {
+      alert("Failed to send nudge.");
+    } finally {
+      setNudging(false);
+    }
+  };
+
+  return (
+    <div className="dropdown dropdown-end">
+      <div 
+        tabIndex={0} 
+        role="button" 
+        onClick={(e) => { e.stopPropagation(); fetchInsight(); }}
+        className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border cursor-pointer select-none ${HEALTH_PILL[label]}`}
+      >
+        <span>{HEALTH_ICON[label]}</span>
+        <span>{score}</span>
+      </div>
+      <div tabIndex={0} className="dropdown-content z-[100] card card-compact w-64 p-2 shadow bg-base-100 border border-base-300 mt-1" onClick={e => e.stopPropagation()}>
+        <div className="card-body">
+          <h3 className="card-title text-xs font-bold flex items-center gap-1">
+            <Info size={12} /> AI Deal Insight
+          </h3>
+          {loading ? (
+            <div className="flex items-center gap-2 text-xs text-base-content/60">
+              <span className="loading loading-spinner loading-xs"></span>
+              Analyzing deal...
+            </div>
+          ) : (
+            <p className="text-xs leading-relaxed text-base-content/80">
+              {insight || "No insights available."}
+            </p>
+          )}
+          <div className="card-actions justify-end mt-2">
+            <Button 
+              size="xs" 
+              variant="primary" 
+              className="gap-1" 
+              onClick={handleNudge}
+              disabled={nudging}
+            >
+              {nudging ? <span className="loading loading-spinner loading-xs"></span> : <Send size={10} />}
+              Nudge Agent
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const renderDealCard = (
   deal: Deal,
@@ -141,8 +182,9 @@ const renderDealCard = (
   const ddProg    = checklistProgress(deal.dueDiligenceChecklist);
   const isSelected = deal.id === selectedId;
 
-  // Only compute health for active (non-archived, non-closed) deals
-  const health = (!isArchived && deal.status !== 'closed') ? computeDealHealth(deal) : null;
+  // Use the pre-calculated health score from the database
+  const healthScore = (deal as any).health_score ?? 100;
+  const showHealth = !isArchived && deal.status !== 'closed';
 
   return (
     <div
@@ -174,15 +216,9 @@ const renderDealCard = (
               <span className="text-white text-xs font-bold">{pending}</span>
             </div>
           )}
-          {/* Health score badge */}
-          {health && (
-            <div
-              title={health.tooltip}
-              className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border cursor-default select-none ${HEALTH_PILL[health.label]}`}
-            >
-              <span>{HEALTH_ICON[health.label]}</span>
-              <span>{health.score}</span>
-            </div>
+          {/* Health score badge with AI Insight Popover */}
+          {showHealth && (
+            <DealHealthInsight dealId={deal.id} score={healthScore} />
           )}
           {/* Buyer/Seller or Archived badge */}
           {isArchived ? (
@@ -257,45 +293,38 @@ const renderDealCard = (
         >
           View <span className="text-[10px]">→</span>
         </button>
-        {/* 3-dot menu */}
-        <div className="relative">
+
+        <div className="dropdown dropdown-end" onClick={e => e.stopPropagation()}>
           <button
-            className="btn btn-xs btn-ghost p-1"
-            onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === deal.id ? null : deal.id); }}
-            title="More actions"
+            className="btn btn-ghost btn-xs p-0 w-6 h-6 min-h-0"
+            onClick={() => setOpenMenu(openMenu === deal.id ? null : deal.id)}
           >
-            <MoreVertical size={13} />
+            <MoreVertical size={14} />
           </button>
           {openMenu === deal.id && (
-            <div className="absolute right-0 bottom-7 z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg min-w-[150px] py-1">
-              {/* Change Status submenu */}
-              <div className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Change Status</div>
-              {(['contract','due-diligence','clear-to-close','closed','terminated'] as DealStatus[]).map(s => (
-                <button
-                  key={s}
-                  className={`w-full text-left px-3 py-1 text-xs hover:bg-base-200 ${deal.status === s ? 'font-bold text-primary' : ''}`}
-                  onClick={e => { e.stopPropagation(); onChangeStatus?.(deal.id, s); setOpenMenu(null); }}
-                >
-                  {s === 'contract' ? 'Contract' : s === 'due-diligence' ? 'Due Diligence' : s === 'clear-to-close' ? 'Clear to Close' : s === 'closed' ? 'Closed' : 'Terminated'}
-                </button>
-              ))}
-              <div className="border-t border-base-300 my-1" />
-              {isArchived ? (
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-green-600"
-                  onClick={e => { e.stopPropagation(); onRestoreDeal?.(deal.id); setOpenMenu(null); }}
-                >
-                  <RotateCcw size={11} /> Restore
-                </button>
-              ) : (
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2 text-red-500"
-                  onClick={e => { e.stopPropagation(); openArchive?.(deal.id, deal.propertyAddress.split(',')[0]); }}
-                >
-                  <Archive size={11} /> Archive
-                </button>
+            <ul className="dropdown-content z-[50] menu p-1 shadow bg-base-100 border border-base-300 rounded-lg w-40 mt-1">
+              {!isArchived && (
+                <>
+                  <li>
+                    <button onClick={() => { onChangeStatus?.(deal.id, 'closed'); setOpenMenu(null); }}>
+                      <ShoppingCart size={14} /> Mark Closed
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={() => { openArchive?.(deal.id, deal.propertyAddress); setOpenMenu(null); }}>
+                      <Archive size={14} className="text-error" /> Archive Deal
+                    </button>
+                  </li>
+                </>
               )}
-            </div>
+              {isArchived && (
+                <li>
+                  <button onClick={() => { onRestoreDeal?.(deal.id); setOpenMenu(null); }}>
+                    <RotateCcw size={14} /> Restore Deal
+                  </button>
+                </li>
+              )}
+            </ul>
           )}
         </div>
       </div>
@@ -303,244 +332,196 @@ const renderDealCard = (
   );
 };
 
-export const DealList: React.FC<Props> = ({ deals, selectedId, onSelect, amberFilter = false, onClearAmberFilter, contactRecords = [], onArchiveDeal, onRestoreDeal, onChangeStatus }) => {
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<DealStatus | 'all'>('all');
-  const [sideFilter, setSideFilter] = useState<'all' | 'buyer' | 'seller'>('all');
+const DealList: React.FC<Props> = ({
+  deals,
+  selectedId,
+  onSelect,
+  amberFilter,
+  onClearAmberFilter,
+  onArchiveDeal,
+  onRestoreDeal,
+  onChangeStatus,
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
   const [viewFilter, setViewFilter] = useState<'active' | 'closed' | 'archived' | 'all' | 'terminated'>('active');
+  const [statusFilter, setStatusFilter] = useState<DealStatus | 'all'>('all');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [archiveTarget, setArchiveTarget] = useState<{ dealId: string; label: string } | null>(null);
+
+  const [archiveModal, setArchiveModal] = useState<{ id: string; label: string } | null>(null);
   const [archiveReason, setArchiveReason] = useState('deal-closed');
 
-  // Close menu on outside click
-  React.useEffect(() => {
-    if (!openMenu) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-deallist-menu]')) setOpenMenu(null);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [openMenu]);
+  const filtered = deals.filter(d => {
+    // 1. Text search
+    const matchesSearch =
+      d.propertyAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.agentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d as any).dealRef?.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
 
-  const openArchive = (dealId: string, label: string) => {
-    setOpenMenu(null);
-    setArchiveReason('deal-closed');
-    setArchiveTarget({ dealId, label });
+    // 2. View filter (active, archived, etc)
+    const isArchived = d.milestone === 'archived' || d.status === 'archived';
+    const isClosed   = d.status === 'closed';
+    const isTerminated = d.status === 'terminated';
+
+    if (viewFilter === 'active') {
+      if (isArchived || isClosed || isTerminated) return false;
+    } else if (viewFilter === 'archived') {
+      if (!isArchived) return false;
+    } else if (viewFilter === 'closed') {
+      if (!isClosed) return false;
+    } else if (viewFilter === 'terminated') {
+      if (!isTerminated) return false;
+    }
+
+    // 3. Status filter (contract, dd, etc)
+    if (statusFilter !== 'all' && d.status !== statusFilter) return false;
+
+    // 4. Amber alert filter
+    if (amberFilter) {
+      const pending = pendingDocCount(d.documentRequests);
+      if (pending === 0) return false;
+    }
+
+    return true;
+  });
+
+  // Sort: At-risk deals first, then by closing date
+  const sorted = [...filtered].sort((a, b) => {
+    const aScore = (a as any).health_score ?? 100;
+    const bScore = (b as any).health_score ?? 100;
+    if (aScore !== bScore) return aScore - bScore;
+    if (!a.closingDate) return 1;
+    if (!b.closingDate) return -1;
+    return a.closingDate.localeCompare(b.closingDate);
+  });
+
+  const openArchive = (id: string, label: string) => {
+    setArchiveModal({ id, label });
   };
 
   const confirmArchive = () => {
-    if (!archiveTarget) return;
-    onArchiveDeal?.(archiveTarget.dealId, archiveReason);
-    setArchiveTarget(null);
-  };
-
-  // Reset local filters when amber filter activates
-  React.useEffect(() => {
-    if (amberFilter) {
-      setSearch('');
-      setFilter('all');
-      setSideFilter('all');
+    if (archiveModal && onArchiveDeal) {
+      onArchiveDeal(archiveModal.id, archiveReason);
+      setArchiveModal(null);
     }
-  }, [amberFilter]);
-
-  const filtered = deals.filter(d => {
-    // View filter
-    if (viewFilter === 'active'     && (d.status === 'terminated' || d.status === 'archived' || d.milestone === 'archived')) return false;
-    if (viewFilter === 'closed'     && d.status !== 'closed') return false;
-    if (viewFilter === 'archived'   && d.milestone !== 'archived' && d.status !== 'archived') return false;
-    if (viewFilter === 'terminated' && d.status !== 'terminated') return false;
-
-    const q = search.toLowerCase();
-    const agentClient = d.agentClientId ? contactRecords.find(c => c.id === d.agentClientId) : undefined;
-    const matchSearch =
-      !q ||
-      d.propertyAddress.toLowerCase().includes(q) ||
-      d.agentName.toLowerCase().includes(q) ||
-      d.mlsNumber.toLowerCase().includes(q) ||
-      d.city.toLowerCase().includes(q) ||
-      (agentClient?.id ?? '').toLowerCase().includes(q) ||
-      (agentClient?.fullName ?? '').toLowerCase().includes(q);
-    const matchStatus = filter === 'all' || d.status === filter;
-    const matchSide   = sideFilter === 'all' || d.transactionType === sideFilter;
-    const matchAmber  = !amberFilter || pendingDocCount(d.documentRequests) > 0;
-    return matchSearch && matchStatus && matchSide && matchAmber;
-  });
-
-  // Clearing any manual filter also clears the amber filter
-  const handleFilterChange = (val: DealStatus | 'all') => {
-    setFilter(val);
-    if (amberFilter) onClearAmberFilter?.();
   };
-  const handleSideFilterChange = (val: 'all' | 'buyer' | 'seller') => {
-    setSideFilter(val);
-    if (amberFilter) onClearAmberFilter?.();
-  };
-  const handleSearchChange = (val: string) => {
-    setSearch(val);
-    if (amberFilter) onClearAmberFilter?.();
-  };
-
-  // Split into closing-this-week and others
-  const closingThisWeek = filtered.filter(d => {
-    if (d.milestone === 'archived' || d.status === 'archived') return false;
-    const days = daysUntil(d.closingDate);
-    return days >= 0 && days <= 7;
-  });
-  const otherDeals = filtered.filter(d => !closingThisWeek.includes(d));
 
   return (
-    <>
-      <div className="flex-none bg-base-200 border-r border-base-300 flex flex-col h-full w-72 lg:w-80" data-deallist-menu>
-        {/* Amber Alert Filter Banner */}
-        {amberFilter && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-500 border-b border-amber-600">
-            <AlertTriangle size={13} className="text-white flex-none" />
-            <span className="text-xs font-semibold text-white flex-1">
-              Showing {filtered.length} deal{filtered.length !== 1 ? 's' : ''} with amber alerts
-            </span>
+    <div className="flex flex-col h-full bg-base-100">
+      <div className="p-4 border-b border-base-300 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            Transactions
+            <span className="badge badge-sm badge-ghost">{filtered.length}</span>
+          </h2>
+          {amberFilter && (
             <button
               onClick={onClearAmberFilter}
-              className="flex items-center gap-0.5 text-xs text-white/80 hover:text-white font-medium"
+              className="btn btn-xs btn-ghost text-amber-600 gap-1"
             >
-              <X size={12} /> Clear
+              <X size={12} /> Clear Filter
             </button>
-          </div>
-        )}
-
-        <div className="p-3 border-b border-base-300 space-y-2">
-          <label className="input input-bordered input-sm flex items-center gap-2">
-            <Search size={13} className="opacity-50" />
-            <input
-              type="text"
-              className="grow text-sm min-w-0"
-              placeholder="Search deals, agents, MLS…"
-              value={search}
-              onChange={e => handleSearchChange(e.target.value)}
-            />
-          </label>
-
-          {/* Buyer / Seller toggle */}
-          <div className="flex gap-1">
-            {(['all', 'buyer', 'seller'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => handleSideFilterChange(s)}
-                className={`btn btn-xs flex-1 gap-1 ${
-                  sideFilter === s
-                    ? s === 'buyer'  ? 'bg-blue-500  text-white border-blue-500  hover:bg-blue-600'
-                    : s === 'seller' ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
-                    : 'btn-neutral'
-                    : 'btn-ghost'
-                }`}
-              >
-                {s === 'buyer'  && <ShoppingCart size={10} />}
-                {s === 'seller' && <Tag size={10} />}
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {/* Status filters */}
-          <div className="flex gap-1 flex-wrap">
-            {STATUS_FILTERS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => handleFilterChange(f.value)}
-                className={`btn btn-xs ${filter === f.value ? 'btn-primary' : 'btn-ghost'}`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* View filter pills */}
-          <div className="flex gap-1 flex-wrap">
-            {VIEW_FILTER_OPTS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => setViewFilter(f.value)}
-                className={`btn btn-xs ${viewFilter === f.value ? 'btn-primary' : 'btn-ghost text-base-content/50'}`}
-              >
-                {f.label}
-                {f.value === 'archived' && deals.filter(d => d.milestone === 'archived' || d.status === 'archived').length > 0 && (
-                  <span className="badge badge-xs ml-0.5">{deals.filter(d => d.milestone === 'archived' || d.status === 'archived').length}</span>
-                )}
-              </button>
-            ))}
-          </div>
+          )}
         </div>
 
-        {/* Deal Cards */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-          {filtered.length === 0 && (
-            <div className="text-center text-base-content/30 text-sm py-10">No deals found</div>
-          )}
-
-          {/* Closing This Week section */}
-          {closingThisWeek.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 px-1 py-1">
-                <Flame size={11} className="text-red-500" />
-                <span className="text-xs font-bold text-red-600 uppercase tracking-wide">
-                  Closing This Week ({closingThisWeek.length})
-                </span>
-              </div>
-              {closingThisWeek.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, openMenu, setOpenMenu, onArchiveDeal, onRestoreDeal, onChangeStatus, openArchive))}
-              {otherDeals.length > 0 && (
-                <div className="border-t border-gray-200 my-1" />
-              )}
-            </>
-          )}
-          {otherDeals.map(deal => renderDealCard(deal, selectedId, onSelect, sideStylesConst, openMenu, setOpenMenu, onArchiveDeal, onRestoreDeal, onChangeStatus, openArchive))}
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" size={16} />
+          <input
+            type="text"
+            placeholder="Search address, agent, or ID..."
+            className="input input-sm input-bordered w-full pl-10 bg-base-200/50 border-none"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
         </div>
 
-        {/* Footer */}
-        <div className="p-2 border-t border-base-300">
-          <div className="flex items-center justify-center gap-3 text-xs text-base-content/30">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-              {deals.filter(d => d.transactionType === 'buyer').length} Buyer
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-              {deals.filter(d => d.transactionType === 'seller').length} Seller
-            </span>
-            <span>{filtered.length} shown</span>
-          </div>
+        {/* View Filter Tabs */}
+        <div className="flex flex-wrap gap-1">
+          {VIEW_FILTER_OPTS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setViewFilter(opt.value)}
+              className={`btn btn-xs rounded-full ${
+                viewFilter === opt.value ? 'btn-neutral' : 'btn-ghost text-base-content/60'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Status Filter Tabs */}
+        <div className="flex flex-wrap gap-1">
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f.value}
+              onClick={() => setStatusFilter(f.value as any)}
+              className={`btn btn-xs rounded-full border ${
+                statusFilter === f.value
+                  ? 'bg-base-300 border-base-400 font-bold'
+                  : 'bg-transparent border-base-200 text-base-content/50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Archive confirmation modal */}
-      {archiveTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => setArchiveTarget(null)}>
-          <div className="bg-base-100 rounded-xl shadow-xl p-5 w-80 space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <Archive size={16} className="text-red-500" /> Archive Deal
-            </h3>
-            <p className="text-sm text-base-content/70">
-              Archiving <span className="font-semibold">{archiveTarget.label}</span>. Choose a reason:
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {sorted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-base-content/30">
+            <Search size={48} className="mb-2 opacity-20" />
+            <p>No transactions found</p>
+          </div>
+        ) : (
+          sorted.map(deal => renderDealCard(
+            deal,
+            selectedId,
+            onSelect,
+            sideStylesConst,
+            openMenu,
+            setOpenMenu,
+            onArchiveDeal,
+            onRestoreDeal,
+            onChangeStatus,
+            openArchive
+          ))
+        )}
+      </div>
+
+      {/* Archive Modal */}
+      {archiveModal && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Archive Deal</h3>
+            <p className="py-2 text-sm text-base-content/70">
+              Are you sure you want to archive <strong>{archiveModal.label}</strong>?
             </p>
-            <div className="space-y-1.5">
-              {ARCHIVE_REASONS.map(r => (
-                <label key={r.value} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    className="radio radio-sm radio-primary"
-                    checked={archiveReason === r.value}
-                    onChange={() => setArchiveReason(r.value)}
-                  />
-                  <span className="text-sm">{r.label}</span>
-                </label>
-              ))}
+            <div className="form-control w-full mt-4">
+              <label className="label">
+                <span className="label-text">Reason for archiving</span>
+              </label>
+              <select
+                className="select select-bordered select-sm w-full"
+                value={archiveReason}
+                onChange={e => setArchiveReason(e.target.value)}
+              >
+                {ARCHIVE_REASONS.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
             </div>
-            <div className="flex gap-2 justify-end pt-1">
-              <Button variant="ghost" onClick={() => setArchiveTarget(null)}>Cancel</Button>
-              <Button variant="error" onClick={confirmArchive}>Archive</Button>
+            <div className="modal-action">
+              <button className="btn btn-sm btn-ghost" onClick={() => setArchiveModal(null)}>Cancel</button>
+              <button className="btn btn-sm btn-error" onClick={confirmArchive}>Archive Deal</button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };
+
+export default DealList;
