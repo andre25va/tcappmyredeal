@@ -3,6 +3,7 @@ import { useActivityLog, useInvalidateActivityLog, type ActivityItem } from '../
 import {
   Mail, Phone, ClipboardList, MessageSquare, Plus, RefreshCw,
   Activity, ChevronDown, ChevronUp, Smartphone, UserCheck,
+  CheckSquare, ArrowRightLeft,
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +26,8 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   sms:            <Smartphone size={13} className="text-teal-600" />,
   whatsapp:       <Smartphone size={13} className="text-emerald-600" />,
   contact_update: <UserCheck size={13} className="text-amber-600" />,
+  task_event:     <CheckSquare size={13} className="text-indigo-600" />,
+  status_change:  <ArrowRightLeft size={13} className="text-rose-500" />,
 };
 
 const TYPE_BG: Record<string, string> = {
@@ -38,6 +41,8 @@ const TYPE_BG: Record<string, string> = {
   sms:            'bg-teal-50',
   whatsapp:       'bg-emerald-50',
   contact_update: 'bg-amber-50',
+  task_event:     'bg-indigo-50',
+  status_change:  'bg-rose-50',
 };
 
 const FILTERS = [
@@ -46,19 +51,14 @@ const FILTERS = [
   { value: 'call',           label: '📞 Calls' },
   { value: 'sms',            label: '💬 SMS/Chat' },
   { value: 'request',        label: '📋 Requests' },
+  { value: 'task_event',     label: '✅ Tasks' },
+  { value: 'status_change',  label: '🔀 Status' },
   { value: 'note',           label: '📝 Notes' },
-  { value: 'contact_update', label: '👤 Contact Updates' },
+  { value: 'contact_update', label: '👤 Contacts' },
 ];
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-const fmtDuration = (secs?: number) => {
-  if (!secs) return '';
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-};
 
 export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
   const { profile } = useAuth();
@@ -71,8 +71,6 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
   const [staffName, setStaffName]   = useState(profile?.name || 'TC Staff');
 
   useEffect(() => { if (profile?.name) setStaffName(profile.name); }, [profile?.name]);
-
-
 
   const addNote = () => {
     if (!note.trim()) return;
@@ -109,9 +107,11 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
     else grouped.push({ date, entries: [item] });
   });
 
-  // Count SMS for filter badge
+  // Filter badge counts
   const smsCount = items.filter(i => i.type === 'sms' || i.type === 'whatsapp').length;
   const contactUpdateCount = items.filter(i => i.type === 'contact_update').length;
+  const taskEventCount = items.filter(i => i.type === 'task_event').length;
+  const statusChangeCount = items.filter(i => i.type === 'status_change').length;
 
   return (
     <div className="p-5 space-y-4">
@@ -151,10 +151,16 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
           >
             {f.label}
             {f.value === 'sms' && smsCount > 0 && (
-              <span className="ml-1 badge badge-xs badge-teal bg-teal-100 text-teal-700 border-teal-200">{smsCount}</span>
+              <span className="ml-1 badge badge-xs bg-teal-100 text-teal-700 border-teal-200">{smsCount}</span>
             )}
             {f.value === 'contact_update' && contactUpdateCount > 0 && (
               <span className="ml-1 badge badge-xs bg-amber-100 text-amber-700 border-amber-200">{contactUpdateCount}</span>
+            )}
+            {f.value === 'task_event' && taskEventCount > 0 && (
+              <span className="ml-1 badge badge-xs bg-indigo-100 text-indigo-700 border-indigo-200">{taskEventCount}</span>
+            )}
+            {f.value === 'status_change' && statusChangeCount > 0 && (
+              <span className="ml-1 badge badge-xs bg-rose-100 text-rose-700 border-rose-200">{statusChangeCount}</span>
             )}
           </button>
         ))}
@@ -196,18 +202,20 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                 const hasSummary = entry.meta?.ai_summary;
                 const hasChanges = entry.type === 'contact_update' && (entry.meta?.changes?.length ?? 0) > 0;
                 const isExpandable = hasSummary || hasChanges;
+                const iconBg = TYPE_BG[entry.type] ?? 'bg-base-200';
+                const icon = TYPE_ICON[entry.type] ?? <Activity size={13} className="text-base-content/40" />;
                 return (
                   <div key={entry.id} className="flex gap-3 items-start">
                     {/* Icon */}
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-none mt-0.5 ${TYPE_BG[entry.type]}`}>
-                      {TYPE_ICON[entry.type]}
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-none mt-0.5 ${iconBg}`}>
+                      {icon}
                     </div>
                     {/* Card */}
                     <div className="flex-1 min-w-0 bg-base-200 rounded-xl border border-base-300 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-base-content leading-snug">{entry.title}</p>
                         <div className="flex items-center gap-1.5 flex-none">
-                          {/* Channel badges */}
+                          {/* Channel / type badges */}
                           {entry.type === 'sms' && (
                             <span className="badge badge-xs bg-teal-100 text-teal-700 border-teal-200 font-medium">SMS</span>
                           )}
@@ -218,6 +226,14 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                             <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 font-medium">
                               {entry.meta?.action_type === 'add' ? 'added' : entry.meta?.action_type === 'remove' ? 'removed' : 'updated'}
                             </span>
+                          )}
+                          {entry.type === 'task_event' && (
+                            <span className="badge badge-xs bg-indigo-100 text-indigo-700 border-indigo-200 font-medium">
+                              {entry.meta?.action === 'task_completed' ? 'completed' : entry.meta?.action === 'task_reopened' ? 'reopened' : 'created'}
+                            </span>
+                          )}
+                          {entry.type === 'status_change' && (
+                            <span className="badge badge-xs bg-rose-100 text-rose-700 border-rose-200 font-medium">status</span>
                           )}
                           <span className="text-xs text-base-content/40 whitespace-nowrap">
                             {fmtTime(entry.timestamp)}
