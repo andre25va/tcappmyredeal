@@ -217,7 +217,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
                 onChange={(e) => setSelectedRecipientId(e.target.value)}
               >
                 <option value="" disabled>Select Recipient</option>
-                {deal.participants
+                {(deal.participants ?? [])
                   .filter(p => ['lead_agent', 'co_agent', 'buyer', 'seller'].includes(p.dealRole) && p.contactEmail)
                   .map(p => (
                     <option key={p.contactId} value={p.contactEmail}>
