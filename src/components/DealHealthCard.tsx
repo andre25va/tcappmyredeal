@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
-import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import { getDealHealth } from '../ai/dealHealth';
 import { dealHealthAI } from '../ai/apiClient';
 import type { DealHealthAIResponse } from '../ai/apiClient';
 import { DealRecord } from '../ai/types';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   dealRecord: DealRecord;
@@ -31,6 +32,13 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiExpanded, setAiExpanded] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+
+  useEffect(() => {
+    if (aiResult) {
+      setAiExpanded(true);
+    }
+  }, [aiResult]);
 
   const runAIAnalysis = useCallback(async () => {
     if (aiLoading) return;
@@ -46,6 +54,31 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
       setAiLoading(false);
     }
   }, [dealRecord, aiLoading]);
+
+  const sendAgentSummary = useCallback(async () => {
+    if (!aiResult || isSending) return;
+    
+    setIsSending(true);
+    try {
+      const { error } = await supabase.functions.invoke('auto-nudge', {
+        body: {
+          dealId: dealRecord.id,
+          riskSummary: aiResult.riskSummary,
+          topRisk: aiResult.topRisk,
+          recommendations: aiResult.recommendations,
+          context: 'manual_summary_send'
+        },
+      });
+
+      if (error) throw error;
+      alert('AI Summary sent to agent successfully!');
+    } catch (err: any) {
+      console.error('Failed to send nudge:', err);
+      alert(`Failed to send nudge: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsSending(false);
+    }
+  }, [aiResult, dealRecord.id, isSending]);
 
   return (
     <div className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
@@ -135,17 +168,33 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
       {/* AI Results */}
       {aiResult && (
         <div className="mt-3 border-t border-current/10 pt-3">
-          <button
-            onClick={() => setAiExpanded(!aiExpanded)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900 mb-2"
-          >
-            <Brain size={12} />
-            AI Insights
-            <span className={`badge badge-xs ${ASSESSMENT_STYLES[aiResult.overallAssessment] || 'bg-gray-100 text-gray-700'}`}>
-              {aiResult.overallAssessment}
-            </span>
-            {aiExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setAiExpanded(!aiExpanded)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
+            >
+              <Brain size={12} />
+              AI Insights
+              <span className={`badge badge-xs ${ASSESSMENT_STYLES[aiResult.overallAssessment] || 'bg-gray-100 text-gray-700'}`}>
+                {aiResult.overallAssessment}
+              </span>
+              {aiExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+            
+            {/* Action Button for AI Summary */}
+            <button
+              onClick={sendAgentSummary}
+              disabled={isSending}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {isSending ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : (
+                <Mail size={12} />
+              )}
+              Send Summary to Agent
+            </button>
+          </div>
 
           {aiExpanded && (
             <div className="space-y-3 pl-1">
