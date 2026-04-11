@@ -13,7 +13,7 @@ import {
 } from './utils/supabaseDb';
 import { generateId } from './utils/helpers';
 import { Sidebar, MobileMenuButton, View } from './components/Sidebar';
-import { DealList } from './components/DealList';
+import DealList from './components/DealList';
 import { AgentCardView } from './components/AgentCardView';
 import { ByTaskView } from './components/ByTaskView';
 import { DealWorkspace } from './components/DealWorkspace';
