@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const requestBody = await req.json();
-    const { dealId, riskSummary, topRisk, recommendations, context } = requestBody;
+    const { dealId, riskSummary, topRisk, recommendations, context, recipientEmail } = requestBody;
 
     if (context === "manual_summary_send" && dealId && riskSummary) {
       // Handle manual AI Summary send
@@ -88,33 +88,61 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        // Find primary agent contact
-        const { data: participants, error: partError } = await supabase
-          .from("deal_participants")
-          .select("contact_id, contacts(id, email, first_name, last_name)")
-          .eq("deal_id", deal.id)
-          .in("deal_role", ["buyers_agent", "listing_agent"])
-          .eq("is_primary", true)
-          .limit(1);
+        let targetEmail = recipientEmail;
+        let agentName = "Agent";
 
-        if (partError || !participants || participants.length === 0) {
-          console.error(`No primary agent found for deal: ${deal.id}`);
+        if (!targetEmail) {
+          // Fallback to primary agent if no specific recipientEmail is provided
+          const { data: participants, error: partError } = await supabase
+            .from("deal_participants")
+            .select("contact_id, contacts(id, email, first_name, last_name)")
+            .eq("deal_id", deal.id)
+            .in("deal_role", ["buyers_agent", "listing_agent"])
+            .eq("is_primary", true)
+            .limit(1);
+
+          if (partError || !participants || participants.length === 0) {
+            console.error(`No primary agent found for deal: ${deal.id}`);
+            return new Response(
+              JSON.stringify({ error: "No primary agent found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const contact = (participants[0] as any).contacts;
+          if (!contact || !contact.email) {
+            console.error(`Primary agent contact email not found for deal: ${deal.id}`);
+            return new Response(
+              JSON.stringify({ error: "Primary agent email not found" }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          targetEmail = contact.email;
+          agentName = contact.first_name ? `${contact.first_name} ${contact.last_name}` : contact.email;
+        } else {
+          // If recipientEmail is provided, try to fetch contact name for personalization
+          const { data: contactData, error: contactError } = await supabase
+            .from("contacts")
+            .select("first_name, last_name")
+            .eq("email", targetEmail)
+            .limit(1)
+            .single();
+          
+          if (!contactError && contactData) {
+            agentName = contactData.first_name ? `${contactData.first_name} ${contactData.last_name}` : targetEmail;
+          } else {
+            agentName = targetEmail; // Fallback to email if name not found
+          }
+        }
+
+        if (!targetEmail) {
+          console.error(`No recipient email determined for deal: ${deal.id}`);
           return new Response(
-            JSON.stringify({ error: "No primary agent found" }),
-            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            JSON.stringify({ error: "No recipient email determined" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const contact = (participants[0] as any).contacts;
-        if (!contact || !contact.email) {
-          console.error(`Primary agent contact email not found for deal: ${deal.id}`);
-          return new Response(
-            JSON.stringify({ error: "Primary agent email not found" }),
-            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const agentName = contact.first_name ? `${contact.first_name} ${contact.last_name}` : contact.email;
         const subject = `AI Summary for ${deal.deal_ref} - ${deal.property_address}`;
         let body = `Hi ${agentName},
 
@@ -142,7 +170,7 @@ Risk Summary: ${riskSummary}
               Authorization: `Bearer ${serviceRoleKey}`,
             },
             body: JSON.stringify({
-              to: contact.email,
+              to: targetEmail,
               subject: subject,
               body: body,
               html: wrapHtml(body),
@@ -320,7 +348,7 @@ Risk Summary: ${riskSummary}
                       Authorization: `Bearer ${serviceRoleKey}`,
                     },
                     body: JSON.stringify({
-                      to: contact.email,
+                      to: targetEmail,
                       subject: resolvedSubject,
                       body: resolvedBody,
                       html: wrapHtml(resolvedBody),

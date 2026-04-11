@@ -7,6 +7,7 @@ import { DealRecord } from '../ai/types';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { generateId } from '../utils/helpers';
+import { DealParticipant } from '../types';
 
 interface Props {
   dealRecord: DealRecord;
@@ -37,6 +38,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiExpanded, setAiExpanded] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
 
   useEffect(() => {
     if (aiResult) {
@@ -59,7 +61,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
     }
   }, [dealRecord, aiLoading]);
 
-  const sendAgentSummary = useCallback(async () => {
+  const sendAgentSummary = useCallback(async (recipientEmail: string) => {
     if (!aiResult || isSending) return;
     
     setIsSending(true);
@@ -70,7 +72,8 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
           riskSummary: aiResult.riskSummary,
           topRisk: aiResult.topRisk,
           recommendations: aiResult.recommendations,
-          context: 'manual_summary_send'
+          context: 'manual_summary_send',
+          recipientEmail: recipientEmail
         },
       });
 
@@ -96,7 +99,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
         });
       }
       
-      alert('AI Summary sent to agent successfully!');
+      alert(`AI Summary sent to ${recipientEmail} successfully!`);
     } catch (err: any) {
       console.error('Failed to send nudge:', err);
       alert(`Failed to send nudge: ${err.message || 'Unknown error'}`);
@@ -207,9 +210,25 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
             </button>
             
             {/* Action Button for AI Summary */}
+            {deal && (
+              <select
+                className="select select-bordered select-xs w-full max-w-xs mr-2"
+                value={selectedRecipientId || ''}
+                onChange={(e) => setSelectedRecipientId(e.target.value)}
+              >
+                <option value="" disabled>Select Recipient</option>
+                {deal.participants
+                  .filter(p => ['lead_agent', 'co_agent', 'buyer', 'seller'].includes(p.dealRole) && p.contactEmail)
+                  .map(p => (
+                    <option key={p.contactId} value={p.contactEmail}>
+                      {p.contactName} ({p.dealRole.replace('_', ' ')})
+                    </option>
+                  ))}
+              </select>
+            )}
             <button
-              onClick={sendAgentSummary}
-              disabled={isSending}
+              onClick={() => selectedRecipientId && sendAgentSummary(selectedRecipientId)}
+              disabled={isSending || !selectedRecipientId}
               className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50"
             >
               {isSending ? (
