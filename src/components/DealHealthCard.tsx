@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import { getDealHealth } from '../ai/dealHealth';
 import { dealHealthAI } from '../ai/apiClient';
 import type { DealHealthAIResponse } from '../ai/apiClient';
@@ -46,6 +46,26 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
       setAiLoading(false);
     }
   }, [dealRecord, aiLoading]);
+
+  const sendAgentSummary = useCallback(async () => {
+    if (!aiResult) return; // Only send if AI analysis is available
+
+    // In a real implementation, this would call an Edge Function or API to send the summary
+    // For now, we'll simulate the action and log the content
+    console.log('Sending AI summary to agent:', {
+      dealId: dealRecord.id,
+      riskSummary: aiResult.riskSummary,
+      topRisk: aiResult.topRisk,
+      recommendations: aiResult.recommendations,
+      // You would typically include agent contact info from dealRecord here
+      // e.g., agentEmail: dealRecord.agent.email,
+    });
+
+    // Simulate API call success
+    alert('AI Summary sent to agent (simulated)!');
+
+    // Optionally, you might want to disable the button or show a success message
+  }, [aiResult, dealRecord]);
 
   return (
     <div className={`rounded-xl border p-4 ${style.bg} ${style.border}`}>
@@ -188,6 +208,15 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
                   </div>
                 )}
               </div>
+
+              {/* New Send Agent Summary Button */}
+              <button
+                onClick={sendAgentSummary}
+                className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                <Mail size={16} />
+                Send AI Summary to Agent
+              </button>
             </div>
           )}
         </div>
