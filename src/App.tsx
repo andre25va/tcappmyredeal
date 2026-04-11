@@ -290,15 +290,15 @@ function AppInner() {
   }, [profile]);
 
   // ── Keep selectedId valid ────────────────────────────────────────────────────
+  // FIX: check against ALL deals (not just non-archived) so that intentionally
+  // selecting a closed/archived deal from ByTaskView is not immediately reset.
+  // handleArchiveDeal already calls setSelectedId(null) explicitly, so this
+  // effect only needs to handle the case where the deal no longer exists at all.
   useEffect(() => {
-    const activeDeals = deals.filter(d => d.milestone !== 'archived');
-    if (activeDeals.length === 0) {
-      if (selectedId !== null) setSelectedId(null);
-      return;
-    }
-    const stillActive = selectedId && activeDeals.some((deal) => deal.id === selectedId);
-    if (!stillActive) {
-      // Don't auto-select — let user pick from the list
+    if (!selectedId) return;
+    if (deals.length === 0) return; // still loading
+    const stillExists = deals.some((deal) => deal.id === selectedId);
+    if (!stillExists) {
       setSelectedId(null);
     }
   }, [deals, selectedId]);
@@ -661,9 +661,10 @@ function AppInner() {
                       deals={deals}
                       onSelectDeal={(id) => {
                         setPendingWorkspaceRequestType(null);
+                        setPendingWorkspaceTab('tasks');
                         setSelectedId(id);
                         setTxPanel('workspace');
-                        setPendingWorkspaceTab('tasks');
+                        setView('transactions');
                       }}
                       onSendRequest={handleSendRequest}
                     />
