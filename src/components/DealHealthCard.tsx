@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Activity, AlertTriangle, CheckCircle, Clock, Brain, RefreshCw, ChevronDown, ChevronUp, Mail } from 'lucide-react';
 import { getDealHealth } from '../ai/dealHealth';
 import { dealHealthAI } from '../ai/apiClient';
@@ -32,6 +32,12 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord }) => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiExpanded, setAiExpanded] = useState(true); // Initialize to true to show by default
+
+  useEffect(() => {
+    if (aiResult) {
+      setAiExpanded(true); // Ensure AI insights are expanded when results are available
+    }
+  }, [aiResult]);
 
   const runAIAnalysis = useCallback(async () => {
     if (aiLoading) return;
