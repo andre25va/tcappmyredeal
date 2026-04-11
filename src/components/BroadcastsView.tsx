@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Send, Plus, Trash2, Users, ChevronDown, ChevronRight,
   Mail, CheckCircle, XCircle, Eye, Clock, LayoutList, Edit2, X,
-  FileText, Save, ChevronUp, AlertCircle,
+  FileText, Save, ChevronUp, AlertCircle, Paperclip,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Deal } from '../types';
@@ -265,6 +265,27 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
   const [showNewForm, setShowNewForm] = useState(false);
   const newTemplateEditorRef = useRef<HTMLDivElement>(null);
   const editTemplateEditorRef = useRef<HTMLDivElement>(null);
+
+  // ── PDF Attachments ────────────────────────────────────────────────────────
+  const [attachments, setAttachments] = useState<{ name: string; base64: string }[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAttachFiles = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      if (file.type !== 'application/pdf') return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        const base64 = result.split(',')[1];
+        setAttachments(prev => {
+          if (prev.some(a => a.name === file.name)) return prev;
+          return [...prev, { name: file.name, base64 }];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
 
   // ─── Debounce recipient search ────────────────────────────────────────────────
   useEffect(() => {
@@ -592,6 +613,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
         include_decline: includeDecline,
         blast_type: blastType,
         sent_by: currentUserId ?? null,
+        attachments,
       };
 
       if (blastType === 'general') {
@@ -625,6 +647,7 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
       setHasNamePlaceholder(false);
       originalBodyHtmlRef.current = '';
       originalSubjectRef.current  = '';
+      setAttachments([]);
       qc.invalidateQueries({ queryKey: ['email_blasts'] });
     } catch (err: any) {
       let detail = err.message ?? String(err);
@@ -968,6 +991,54 @@ export const BroadcastsView: React.FC<BroadcastsViewProps> = ({ deals, currentUs
 
               <RichEditor editorRef={editorRef} minHeight="160px" />
               <p className="text-[10px] text-base-content/40">Emails are sent with white background + dark text — dark mode protected.</p>
+            </div>
+
+            {/* PDF Attachments */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-base-content/60 uppercase tracking-wide flex items-center gap-1.5">
+                <Paperclip size={12} /> Attachments (PDF only)
+              </label>
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map(att => (
+                    <span
+                      key={att.name}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-base-200 border border-base-300 text-xs font-medium rounded-full text-base-content"
+                    >
+                      <Paperclip size={11} className="text-base-content/50" />
+                      {att.name}
+                      <button
+                        onClick={() => setAttachments(prev => prev.filter(a => a.name !== att.name))}
+                        className="hover:text-error transition-colors ml-0.5"
+                        title={`Remove ${att.name}`}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept="application/pdf"
+                multiple
+                className="hidden"
+                onChange={e => handleAttachFiles(e.target.files)}
+              />
+              <button
+                type="button"
+                onClick={() => attachmentInputRef.current?.click()}
+                className="btn btn-ghost btn-sm gap-1.5 border border-base-300 text-base-content/60 hover:text-base-content hover:border-base-400"
+              >
+                <Paperclip size={14} />
+                {attachments.length > 0 ? 'Attach another PDF' : 'Attach PDF'}
+              </button>
+              {attachments.length > 0 && (
+                <p className="text-[10px] text-base-content/40">
+                  {attachments.length} PDF{attachments.length !== 1 ? 's' : ''} attached — sent to every recipient
+                </p>
+              )}
             </div>
 
             {/* Confirm / Decline toggles */}
