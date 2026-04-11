@@ -5,7 +5,7 @@ interface ChangeDiff { field: string; old_value: string; new_value: string; }
 
 export interface ActivityItem {
   id: string;
-  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'contact_update' | 'task_event' | 'status_change';
+  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'contact_update' | 'task_event' | 'status_change' | 'ai_summary';
   timestamp: string;
   title: string;
   body?: string;
@@ -195,6 +195,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
         let type: ActivityItem['type'] = 'activity';
         if (action === 'status_changed') type = 'status_change';
         else if (action === 'task_completed' || action === 'task_reopened' || action === 'task_created') type = 'task_event';
+        else if (action === 'ai_summary_sent') type = 'ai_summary';
 
         normalized.push({
           id: `actlog-${a.id}`,
