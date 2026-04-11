@@ -3,7 +3,7 @@ import { useActivityLog, useInvalidateActivityLog, type ActivityItem } from '../
 import {
   Mail, Phone, ClipboardList, MessageSquare, Plus, RefreshCw,
   Activity, ChevronDown, ChevronUp, Smartphone, UserCheck,
-  CheckSquare, ArrowRightLeft,
+  CheckSquare, ArrowRightLeft, Brain,
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +28,7 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   contact_update: <UserCheck size={13} className="text-amber-600" />,
   task_event:     <CheckSquare size={13} className="text-indigo-600" />,
   status_change:  <ArrowRightLeft size={13} className="text-rose-500" />,
+  ai_summary:     <Brain size={13} className="text-violet-600" />,
 };
 
 const TYPE_BG: Record<string, string> = {
@@ -43,6 +44,7 @@ const TYPE_BG: Record<string, string> = {
   contact_update: 'bg-amber-50',
   task_event:     'bg-indigo-50',
   status_change:  'bg-rose-50',
+  ai_summary:     'bg-violet-50',
 };
 
 const FILTERS = [
@@ -53,6 +55,7 @@ const FILTERS = [
   { value: 'request',        label: '📋 Requests' },
   { value: 'task_event',     label: '✅ Tasks' },
   { value: 'status_change',  label: '🔀 Status' },
+  { value: 'ai_summary',     label: '🧠 AI Summaries' },
   { value: 'note',           label: '📝 Notes' },
   { value: 'contact_update', label: '👤 Contacts' },
 ];
@@ -108,10 +111,11 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
   });
 
   // Filter badge counts
-  const smsCount = items.filter(i => i.type === 'sms' || i.type === 'whatsapp').length;
+  const smsCount          = items.filter(i => i.type === 'sms' || i.type === 'whatsapp').length;
   const contactUpdateCount = items.filter(i => i.type === 'contact_update').length;
-  const taskEventCount = items.filter(i => i.type === 'task_event').length;
+  const taskEventCount    = items.filter(i => i.type === 'task_event').length;
   const statusChangeCount = items.filter(i => i.type === 'status_change').length;
+  const aiSummaryCount    = items.filter(i => i.type === 'ai_summary').length;
 
   return (
     <div className="p-5 space-y-4">
@@ -161,6 +165,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
             )}
             {f.value === 'status_change' && statusChangeCount > 0 && (
               <span className="ml-1 badge badge-xs bg-rose-100 text-rose-700 border-rose-200">{statusChangeCount}</span>
+            )}
+            {f.value === 'ai_summary' && aiSummaryCount > 0 && (
+              <span className="ml-1 badge badge-xs bg-violet-100 text-violet-700 border-violet-200">{aiSummaryCount}</span>
             )}
           </button>
         ))}
@@ -215,7 +222,6 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-base-content leading-snug">{entry.title}</p>
                         <div className="flex items-center gap-1.5 flex-none">
-                          {/* Channel / type badges */}
                           {entry.type === 'sms' && (
                             <span className="badge badge-xs bg-teal-100 text-teal-700 border-teal-200 font-medium">SMS</span>
                           )}
@@ -235,6 +241,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                           {entry.type === 'status_change' && (
                             <span className="badge badge-xs bg-rose-100 text-rose-700 border-rose-200 font-medium">status</span>
                           )}
+                          {entry.type === 'ai_summary' && (
+                            <span className="badge badge-xs bg-violet-100 text-violet-700 border-violet-200 font-medium">AI</span>
+                          )}
                           <span className="text-xs text-base-content/40 whitespace-nowrap">
                             {fmtTime(entry.timestamp)}
                           </span>
@@ -243,7 +252,6 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                       {entry.body && (
                         <p className="text-xs text-base-content/60 mt-0.5 leading-relaxed whitespace-pre-wrap">{entry.body}</p>
                       )}
-                      {/* AI summary or contact diff expand/collapse */}
                       {isExpandable && (
                         <div className="mt-1.5">
                           <button
@@ -272,7 +280,6 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                           )}
                         </div>
                       )}
-                      {/* Actor/user attribution */}
                       {(entry.meta?.user || entry.meta?.actor) && (
                         <p className="text-xs text-base-content/40 mt-1">
                           — {entry.meta.user || entry.meta.actor}
