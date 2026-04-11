@@ -115,6 +115,7 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal, onSendRequest
         .from('tasks')
         .select('id, deal_id, title, description, category, status, priority, due_date')
         .neq('status', 'completed')
+        .not('deal_id', 'is', null)
         .gte('due_date', pastDate.toISOString().split('T')[0])
         .lte('due_date', aheadDate.toISOString().split('T')[0])
         .order('due_date', { ascending: true });
@@ -233,6 +234,8 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal, onSendRequest
               const addr       = deal ? [deal.propertyAddress, deal.city].filter(Boolean).join(', ') : '—';
               const { label: dueLbl, urgent, overdue } = formatDueDate(task.daysUntil, task.effectiveDate);
               const requestCfg = task.category ? TASK_REQUEST_MAP[task.category] : undefined;
+              // Only allow navigation if the deal exists in the current deals map
+              const canOpen    = !!deal;
 
               return (
                 <div
@@ -241,8 +244,10 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal, onSendRequest
                 >
                   {/* Main clickable row — opens deal workspace */}
                   <div
-                    className="text-left px-3 py-2.5 cursor-pointer"
-                    onClick={() => onSelectDeal(task.deal_id)}
+                    className={`text-left px-3 py-2.5 ${canOpen ? 'cursor-pointer' : 'cursor-default'}`}
+                    onClick={() => {
+                      if (canOpen) onSelectDeal(task.deal_id);
+                    }}
                   >
                     <div className="flex items-start gap-2.5">
                       {/* Priority dot */}
@@ -284,10 +289,12 @@ export const ByTaskView: React.FC<Props> = ({ deals, onSelectDeal, onSendRequest
                         )}
                       </div>
 
-                      {/* Arrow hint */}
-                      <span className="text-[10px] text-base-content/30 group-hover:text-primary transition-colors mt-1 flex-none font-medium">
-                        Open →
-                      </span>
+                      {/* Arrow hint — only shown when deal is navigable */}
+                      {canOpen && (
+                        <span className="text-[10px] text-base-content/30 group-hover:text-primary transition-colors mt-1 flex-none font-medium">
+                          Open →
+                        </span>
+                      )}
                     </div>
                   </div>
 
