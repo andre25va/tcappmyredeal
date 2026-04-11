@@ -264,7 +264,8 @@ export type DocRequestType =
 export type DocRequestStatus = 'pending' | 'in_progress' | 'confirmed';
 export type ActivityType =
   | 'deal_created' | 'status_change' | 'checklist' | 'contact_added'
-  | 'document_requested' | 'document_confirmed' | 'reminder_set' | 'note' | 'price_change';
+  | 'document_requested' | 'document_confirmed' | 'reminder_set' | 'note' | 'price_change'
+  | 'email_sent';
 
 export interface AdditionalPerson {
   id: string;
