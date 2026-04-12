@@ -1,4 +1,4 @@
-// client-portal-auth Edge Function — v10
+// client-portal-auth Edge Function — v11
 // Source of truth: deal_timeline table (TC app manages it; portal reads it)
 // Falls back to empty array if no rows seeded yet for a deal
 
@@ -189,7 +189,7 @@ serve(async (req: Request) => {
 
     const { data: allParticipants } = await supabase
       .from('deal_participants')
-      .select('deal_id, deal_role, contacts(first_name, last_name, phone, email)')
+      .select('deal_id, deal_role, is_client_side, is_primary, contacts(first_name, last_name, phone, email, company)')
       .in('deal_id', activeDealIds);
 
     const { data: allTasks } = await supabase.from('tasks').select('deal_id, status').in('deal_id', activeDealIds);
@@ -227,13 +227,22 @@ serve(async (req: Request) => {
         .filter((p) => p.deal_id === d.id)
         .map((p) => {
           const c = (p as any).contacts ?? {};
+          const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || '';
           return {
-            name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+            name: fullName,
             role: formatRole(p.deal_role ?? ''),
             phone: c.phone ?? null,
             email: c.email ?? null,
+            _isClientLeadAgent: p.deal_role === 'lead_agent' && p.is_client_side === true,
           };
-        });
+        })
+        .sort((a, b) => {
+          // Client's lead agent always first
+          if (a._isClientLeadAgent && !b._isClientLeadAgent) return -1;
+          if (!a._isClientLeadAgent && b._isClientLeadAgent) return 1;
+          return 0;
+        })
+        .map(({ _isClientLeadAgent: _, ...p }) => p); // strip internal sort flag
 
       const taskCounts = taskCountsMap[d.id] ?? { completed: 0, total: 0 };
 
