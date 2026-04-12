@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+} from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 2 * 60 * 1000 } },
+});
+import {
   AlertCircle,
   CheckCircle2,
   Loader2,
@@ -258,7 +268,7 @@ function Logo() {
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
-export default function App() {
+function PortalApp() {
   const [screen, setScreen] = useState<Screen>('login');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
@@ -283,31 +293,19 @@ export default function App() {
 
   const activeDeal = deals.find((d) => d.id === activeDealId) ?? null;
 
-  // ── Auth ───────────────────────────────────────────────────────────────────
-  const handleLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      const digits = phone.replace(/\D/g, '');
-      if (digits.length < 10) {
-        setError('Please enter a valid 10-digit phone number.');
-        return;
-      }
-      if (!/^\d{4,6}$/.test(pin)) {
-        setError('Please enter your PIN (4–6 digits).');
-        return;
-      }
+  // ── Auth (TanStack useMutation) ────────────────────────────────────────────
+  const loginMutation = useMutation({
+    mutationFn: async ({ phone, pin }: { phone: string; pin: string }) => {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/client-portal-auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ phone, pin }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error ?? 'An error occurred. Please try again.');
-        return;
-      }
+      if (!res.ok || data.error) throw new Error(data.error ?? 'An error occurred. Please try again.');
+      return data;
+    },
+    onSuccess: (data) => {
       setContactName(data.contactName ?? '');
       const activeDeals = (data.deals ?? []).filter((d: any) => d.status !== 'archived');
       setDeals(activeDeals);
@@ -317,41 +315,50 @@ export default function App() {
       if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
       if (data.welcomeMessage) setWelcomeMessage(data.welcomeMessage);
       setScreen('dashboard');
-    } catch {
-      setError('An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const handleLookup = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) { setError('Please enter a valid 10-digit phone number.'); return; }
+    if (!/^\d{4,6}$/.test(pin)) { setError('Please enter your PIN (4–6 digits).'); return; }
+    loginMutation.mutate({ phone, pin });
   };
 
-  // ── Refresh ────────────────────────────────────────────────────────────────
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
+  // ── Auto-refresh (TanStack useQuery — every 5 min while logged in) ──────────
+  const { isFetching: isQueryFetching, refetch: refetchDeals } = useQuery({
+    queryKey: ['portal-deals', phone, pin],
+    queryFn: async () => {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/client-portal-auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({ phone, pin }),
       });
       const data = await res.json();
-      if (res.ok && !data.error) {
-        setDeals((data.deals ?? []).filter((d: any) => d.status !== 'archived'));
-        if (data.requestTypes?.length) setAvailableRequestTypes(data.requestTypes);
-        if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
-      }
-    } catch {
-      // silent
-    } finally {
-      setRefreshing(false);
-    }
+      if (!res.ok || data.error) throw new Error(data.error);
+      return data;
+    },
+    enabled: screen !== 'login' && !!phone && !!pin,
+    refetchInterval: 5 * 60 * 1000, // every 5 min
+    refetchOnWindowFocus: true,
+    onSuccess: (data: any) => {
+      setDeals((data.deals ?? []).filter((d: any) => d.status !== 'archived'));
+      if (data.requestTypes?.length) setAvailableRequestTypes(data.requestTypes);
+      if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
+    },
+  });
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    refetchDeals().finally(() => setRefreshing(false));
   };
 
-  // ── Submit request ─────────────────────────────────────────────────────────
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
+  // ── Submit request (TanStack useMutation) ──────────────────────────────────
+  const submitMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/requests`, {
         method: 'POST',
         headers: {
@@ -370,12 +377,15 @@ export default function App() {
         }),
       });
       if (!res.ok) throw new Error('Failed to submit');
-      setSubmitted(true);
-    } catch {
-      setError('Failed to submit request. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    },
+    onSuccess: () => setSubmitted(true),
+    onError: () => setError('Failed to submit request. Please try again.'),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    submitMutation.mutate();
   };
 
   const reset = () => {
@@ -459,7 +469,7 @@ export default function App() {
               </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loginMutation.isPending || submitMutation.isPending}
                 className="w-full bg-[#1B2C5E] text-white font-semibold py-3 rounded-xl hover:bg-[#0f1a38] transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
               >
                 {loading ? (
@@ -1313,4 +1323,12 @@ export default function App() {
 
   // Fallback (should not reach here in normal flow)
   return null;
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <PortalApp />
+    </QueryClientProvider>
+  );
 }
