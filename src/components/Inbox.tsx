@@ -98,7 +98,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const [composeNeedReply, setComposeNeedReply] = useState(false);
 
   // Common state
-  const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email' | 'waiting'>('all');
+  const [tab, setTab] = useState<'all' | 'sms' | 'whatsapp' | 'email' | 'waiting' | 'portal'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [mobileShowThread, setMobileShowThread] = useState(false);
@@ -178,13 +178,27 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     }
   }, [tab, gmailConnected, loadEmailThreads]);
 
-  const loadMessages = useCallback(async (convId: string) => {
+  const loadMessages = useCallback(async (convId: string, channel?: string) => {
     setMsgLoading(true);
     try {
-      const resp = await fetch(`/api/sms?action=conversations&conversation_id=${convId}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        setMessages(data.messages || []);
+      if (channel === 'portal') {
+        // Portal: read directly from Supabase (no Twilio involved)
+        const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+        const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const resp = await fetch(
+          `${sbUrl}/rest/v1/messages?conversation_id=eq.${convId}&order=sent_at.asc`,
+          { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } },
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          setMessages(data || []);
+        }
+      } else {
+        const resp = await fetch(`/api/sms?action=conversations&conversation_id=${convId}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          setMessages(data.messages || []);
+        }
       }
     } catch (e) {
       console.error('Failed to load messages:', e);
@@ -210,7 +224,7 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
 
   useEffect(() => {
     if (selectedConv) {
-      loadMessages(selectedConv.id);
+      loadMessages(selectedConv.id, selectedConv.channel);
       setConversations(prev => prev.map(c =>
         c.id === selectedConv.id ? { ...c, unread_count: 0 } : c
       ));
@@ -311,33 +325,66 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     if (!replyText.trim() || !selectedConv || sending) return;
     setSending(true);
     try {
-      const resp = await fetch('/api/sms?action=send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: selectedConv.id,
-          deal_id: selectedConv.deal_id,
-          recipients: selectedConv.participants,
-          body: replyText,
-          type: selectedConv.type,
-          channel: selectedConv.channel,
-          need_reply: needReply,
-        }),
-      });
-      if (resp.ok) {
+      if (selectedConv.channel === 'portal') {
+        // Portal: write directly to Supabase — no Twilio
+        const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+        const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const now = new Date().toISOString();
+        await fetch(`${sbUrl}/rest/v1/messages`, {
+          method: 'POST',
+          headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            deal_id: selectedConv.deal_id,
+            conversation_id: selectedConv.id,
+            direction: 'outbound',
+            channel: 'portal',
+            body: replyText.trim(),
+            status: 'sent',
+            sent_at: now,
+          }),
+        });
+        await fetch(`${sbUrl}/rest/v1/conversations?id=eq.${selectedConv.id}`, {
+          method: 'PATCH',
+          headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            last_message_at: now,
+            last_message_preview: replyText.trim().slice(0, 100),
+            waiting_for_reply: false,
+            unread_count: 0,
+          }),
+        });
         setReplyText('');
         setNeedReply(false);
-        // Optimistically update waiting status
-        if (needReply) {
-          setConversations(prev => prev.map(c =>
-            c.id === selectedConv.id
-              ? { ...c, waiting_for_reply: true, waiting_since: new Date().toISOString() }
-              : c
-          ));
-          setSelectedConv(prev => prev ? { ...prev, waiting_for_reply: true, waiting_since: new Date().toISOString() } : prev);
-        }
-        await loadMessages(selectedConv.id);
+        await loadMessages(selectedConv.id, 'portal');
         await loadConversations();
+      } else {
+        const resp = await fetch('/api/sms?action=send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversation_id: selectedConv.id,
+            deal_id: selectedConv.deal_id,
+            recipients: selectedConv.participants,
+            body: replyText,
+            type: selectedConv.type,
+            channel: selectedConv.channel,
+            need_reply: needReply,
+          }),
+        });
+        if (resp.ok) {
+          setReplyText('');
+          setNeedReply(false);
+          if (needReply) {
+            setConversations(prev => prev.map(c =>
+              c.id === selectedConv.id
+                ? { ...c, waiting_for_reply: true, waiting_since: new Date().toISOString() }
+                : c
+            ));
+            setSelectedConv(prev => prev ? { ...prev, waiting_for_reply: true, waiting_since: new Date().toISOString() } : prev);
+          }
+          await loadMessages(selectedConv.id);
+          await loadConversations();
+        }
       }
     } catch (e) {
       console.error('Send failed:', e);
@@ -618,7 +665,21 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
   const filteredConvs = conversations.filter(c => {
     if (tab === 'email') return false;
     if (tab === 'waiting') return c.waiting_for_reply === true;
-    if (tab !== 'all' && c.channel !== tab) return false;
+    // Portal tab: show only portal channel
+    if (tab === 'portal') return c.channel === 'portal';
+    // All tab: show everything including portal
+    if (tab === 'all') {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.last_message_preview?.toLowerCase().includes(q) ||
+        c.deals?.property_address?.toLowerCase().includes(q)
+      );
+    }
+    // SMS/WA tabs: exclude portal
+    if (c.channel === 'portal') return false;
+    if (c.channel !== tab) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -724,18 +785,23 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
       </div>
 
       <div className="flex border-b border-base-300 bg-base-200 px-2 gap-1 py-1.5 overflow-x-auto">
-        {(['all', 'sms', 'whatsapp', 'email', 'waiting'] as const).map(t => (
+        {(['all', 'sms', 'whatsapp', 'email', 'portal', 'waiting'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${tab === t ? 'bg-primary text-white' : 'text-base-content/60 hover:bg-base-300'}`}
           >
-            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : t === 'whatsapp' ? '💬 WhatsApp' : t === 'email' ? '✉️ Email' : '⏳ Waiting'}
+            {t === 'all' ? 'All' : t === 'sms' ? '📱 SMS' : t === 'whatsapp' ? '💬 WhatsApp' : t === 'email' ? '✉️ Email' : t === 'portal' ? '🏠 Portal' : '⏳ Waiting'}
             {t === 'whatsapp' && waCount > 0 && (
               <span className="ml-1 bg-green-500 text-white text-[9px] font-bold rounded-full px-1">{waCount}</span>
             )}
             {t === 'email' && emailUnread > 0 && (
               <span className="ml-1 bg-primary text-white text-[9px] font-bold rounded-full px-1">{emailUnread}</span>
+            )}
+            {t === 'portal' && conversations.filter(c => c.channel === 'portal' && (c.unread_count ?? 0) > 0).length > 0 && (
+              <span className="ml-1 bg-blue-500 text-white text-[9px] font-bold rounded-full px-1">
+                {conversations.filter(c => c.channel === 'portal' && (c.unread_count ?? 0) > 0).length}
+              </span>
             )}
             {t === 'waiting' && totalWaiting > 0 && (
               <span className="ml-1 bg-amber-500 text-white text-[9px] font-bold rounded-full px-1">{totalWaiting}</span>
@@ -929,7 +995,9 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
                           {conv.name}
                         </span>
                         {typeIcon(conv.type)}
-                        <ChannelBadge channel={conv.channel} />
+                        {conv.channel === 'portal'
+                          ? <span className="badge badge-xs bg-blue-100 text-blue-700 border-blue-200">PORTAL</span>
+                          : <ChannelBadge channel={conv.channel} />}
                         {conv.waiting_for_reply && (
                           <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 gap-0.5">
                             <Clock size={8} />
@@ -1321,11 +1389,13 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
         </div>
         <div className="flex items-center justify-between mt-2 px-1">
           <p className="text-[10px] text-base-content/30">
-            {selectedConv.channel === 'whatsapp'
+            {selectedConv.channel === 'portal'
+              ? '🏠 Replying via Client Portal — client will see this in their portal'
+              : selectedConv.channel === 'whatsapp'
               ? '💬 Sending via WhatsApp'
               : '📱 Sending via SMS from (464) 733-3257'}
-            {selectedConv.type === 'broadcast' && ' · Broadcast'}
-            {selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
+            {selectedConv.channel !== 'portal' && selectedConv.type === 'broadcast' && ' · Broadcast'}
+            {selectedConv.channel !== 'portal' && selectedConv.type === 'group' && ` · Group (${selectedConv.participants.length} participants)`}
           </p>
           <NeedReplyCheckbox checked={needReply} onChange={setNeedReply} />
         </div>

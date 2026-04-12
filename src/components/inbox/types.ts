@@ -3,7 +3,7 @@ export interface Participant { contact_id: string | null; name: string; phone: s
 export interface Conversation {
   id: string; name: string; deal_id: string | null;
   type: 'direct' | 'broadcast' | 'group';
-  channel: 'sms' | 'email' | 'whatsapp';
+  channel: 'sms' | 'email' | 'whatsapp' | 'portal';
   participants: Participant[];
   last_message_at: string | null; last_message_preview: string | null;
   unread_count: number; waiting_for_reply?: boolean; waiting_since?: string | null;
@@ -12,7 +12,7 @@ export interface Conversation {
 
 export interface Message {
   id: string; conversation_id: string; direction: 'inbound' | 'outbound';
-  channel: 'sms' | 'email' | 'whatsapp'; body: string; status: string;
+  channel: 'sms' | 'email' | 'whatsapp' | 'portal'; body: string; status: string;
   from_number: string | null; to_number: string | null; sent_at: string;
   need_reply?: boolean; auto_created_task_id: string | null;
   contacts?: { first_name: string; last_name: string; phone: string; contact_type: string } | null;
@@ -39,7 +39,7 @@ export interface InboxProps {
   onSelectDeal?: (id: string) => void;
   onWaitingCountChange?: (count: number) => void;
   initialConversationId?: string;
-  initialChannel?: 'sms' | 'email' | 'whatsapp';
+  initialChannel?: 'sms' | 'email' | 'whatsapp' | 'portal';
   initialEmailSubTab?: 'all' | 'linked' | 'needs_review' | 'unmatched';
   onInitHandled?: () => void;
   onCallStarted?: (callData: { contactName: string; contactPhone: string; callSid?: string; startedAt: string }) => void;
