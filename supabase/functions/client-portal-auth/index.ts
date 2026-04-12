@@ -1,5 +1,6 @@
-// client-portal-auth Edge Function — v9
-// Fix: TC app milestone stages (no Option Period); add earnestMoneyDueDate + milestone to response
+// client-portal-auth Edge Function — v10
+// Source of truth: deal_timeline table (TC app manages it; portal reads it)
+// Falls back to empty array if no rows seeded yet for a deal
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
@@ -50,41 +51,6 @@ function formatRole(role: string): string {
 // ── Phone normalizer: extract last 10 digits ─────────────────────────────────
 function normPhone(p: string): string {
   return (p ?? '').replace(/\D/g, '').slice(-10);
-}
-
-// ── Build milestones from TC app milestone stages (no Option Period) ──────────
-function buildMilestones(
-  deal: any,
-  dealData: Record<string, any>,
-): Array<{ label: string; done: boolean; date: string | null }> {
-  const currentMilestone = (dealData.milestone ?? deal.status ?? '').toLowerCase();
-
-  // TC app milestone order
-  const stages = ['contract_received', 'emd_due', 'inspection_period', 'clear_to_close', 'closed'];
-  const currentIdx = stages.indexOf(currentMilestone);
-
-  // A stage is done if the current milestone is strictly past it
-  const isDone = (stageKey: string): boolean => {
-    const idx = stages.indexOf(stageKey);
-    if (idx === -1 || currentIdx === -1) return false;
-    return currentIdx > idx;
-  };
-
-  const contractDone = isDone('contract_received') || (!!deal.contract_date && currentMilestone !== 'contract_received' && currentIdx > 0);
-  const emdDone = isDone('emd_due');
-  const inspectionDone = isDone('inspection_period');
-  const ctcDone = isDone('clear_to_close') || currentMilestone === 'closed';
-  const closingDone = currentMilestone === 'closed';
-
-  const earnestMoneyDueDate = dealData.earnestMoneyDueDate ?? dealData.earnest_money_due_date ?? deal.earnest_money_due_date ?? null;
-
-  return [
-    { label: 'Contract Received', done: contractDone, date: deal.contract_date ?? null },
-    { label: 'EMD Due', done: emdDone, date: earnestMoneyDueDate },
-    { label: 'Inspection Period', done: inspectionDone, date: null },
-    { label: 'Clear to Close', done: ctcDone, date: null },
-    { label: 'Closing', done: closingDone, date: deal.closing_date ?? null },
-  ];
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -172,7 +138,7 @@ serve(async (req: Request) => {
 
     const dealIds = [...new Set(participations.map((p) => p.deal_id))];
 
-    // v8+: exclude archived/closed/terminated/cancelled/withdrawn at DB level
+    // Exclude archived/closed/terminated/cancelled/withdrawn at DB level
     const { data: deals, error: dealsErr } = await supabase
       .from('deals')
       .select(`
@@ -193,6 +159,33 @@ serve(async (req: Request) => {
     }
 
     const activeDealIds = deals.map((d) => d.id);
+
+    // v10: deal_timeline is the single source of truth for milestones
+    // TC app seeds + manages these rows; portal reads them live
+    const { data: allTimelines } = await supabase
+      .from('deal_timeline')
+      .select('deal_id, milestone, label, status, due_date, sort_order')
+      .in('deal_id', activeDealIds)
+      .order('sort_order', { ascending: true });
+
+    type TimelineRow = {
+      milestone: string;
+      label: string;
+      status: 'pending' | 'completed' | 'waived' | 'extended';
+      due_date: string | null;
+      sort_order: number;
+    };
+    const timelinesMap: Record<string, TimelineRow[]> = {};
+    for (const row of allTimelines ?? []) {
+      if (!timelinesMap[row.deal_id]) timelinesMap[row.deal_id] = [];
+      timelinesMap[row.deal_id].push({
+        milestone: row.milestone,
+        label: row.label,
+        status: row.status as TimelineRow['status'],
+        due_date: row.due_date ?? null,
+        sort_order: row.sort_order,
+      });
+    }
 
     const { data: allParticipants } = await supabase
       .from('deal_participants')
@@ -228,7 +221,7 @@ serve(async (req: Request) => {
       const earnestMoneyDueDate = dd.earnestMoneyDueDate ?? dd.earnest_money_due_date ?? d.earnest_money_due_date ?? null;
       const inspectionDate = dd.inspectionDate ?? dd.inspection_date ?? null;
       const financeDeadline = dd.financeDeadline ?? dd.finance_deadline ?? null;
-      const milestone = dd.milestone ?? null;
+      const milestone = dd.milestone ?? null; // raw TC app milestone value (for status label)
 
       const participantsForDeal = (allParticipants ?? [])
         .filter((p) => p.deal_id === d.id)
@@ -268,7 +261,8 @@ serve(async (req: Request) => {
         possessionDate: d.possession_date ?? null,
         milestone,
         participants: participantsForDeal,
-        milestones: buildMilestones(d, dd),
+        // v10: live deal_timeline rows — empty array if not yet seeded
+        milestones: timelinesMap[d.id] ?? [],
         tasksCompleted: taskCounts.completed,
         tasksTotal: taskCounts.total,
       };

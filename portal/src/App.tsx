@@ -51,9 +51,15 @@ type RequestType =
   | 'Special Task Request';
 
 interface Milestone {
+  milestone: string;
   label: string;
-  done: boolean;
-  date: string | null;
+  status: 'pending' | 'completed' | 'waived' | 'extended';
+  due_date: string | null;
+  sort_order: number;
+}
+
+function isDone(m: Milestone): boolean {
+  return m.status === 'completed' || m.status === 'waived';
 }
 
 interface DealParticipant {
@@ -240,27 +246,41 @@ function DealHealthCard({ deal }: { deal: ClientDeal }) {
 
 // ── Deal Roadmap stages ───────────────────────────────────────────────────────
 interface RoadmapStage {
+  key: string;
   label: string; sublabel: string; icon: string;
   getDates: (deal: ClientDeal) => { label: string; value: string | null }[];
 }
+const STAGE_KEYS = ['contract', 'emd', 'inspection', 'clear_to_close', 'closing'];
 const DEAL_STAGES: RoadmapStage[] = [
-  { label: 'Contract Received', sublabel: 'Offer accepted & executed', icon: '📝',
+  { key: 'contract', label: 'Contract Received', sublabel: 'Offer accepted & executed', icon: '📝',
     getDates: (d) => [{ label: 'Contract Date', value: d.contractDate }] },
-  { label: 'EMD Due', sublabel: 'Earnest money submitted', icon: '💰',
+  { key: 'emd', label: 'EMD Due', sublabel: 'Earnest money submitted', icon: '💰',
     getDates: (d) => [{ label: 'EMD Due Date', value: d.earnestMoneyDueDate }] },
-  { label: 'Inspection Period', sublabel: 'Property inspections underway', icon: '🔍',
-    getDates: () => [] },
-  { label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅', getDates: () => [] },
-  { label: 'Closing Day', sublabel: 'Keys exchanged!', icon: '🏠',
+  { key: 'inspection', label: 'Inspection Period', sublabel: 'Property inspections underway', icon: '🔍',
+    getDates: (d) => {
+      const m = (d.milestones ?? []).find((ms) => ms.milestone === 'inspection');
+      return m?.due_date ? [{ label: 'Inspection Deadline', value: m.due_date }] : [];
+    }},
+  { key: 'clear_to_close', label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅', getDates: () => [] },
+  { key: 'closing', label: 'Closing Day', sublabel: 'Keys exchanged!', icon: '🏠',
     getDates: (d) => [{ label: 'Closing Date', value: d.closingDate }, { label: 'Possession', value: d.possessionDate }] },
 ];
-function getStageIndex(milestone: string): number {
-  const m = (milestone ?? '').toLowerCase();
-  if (m === 'emd_due') return 1;
-  if (m === 'inspection_period') return 2;
-  if (m === 'clear_to_close' || m === 'ctc' || m.includes('clear')) return 3;
-  if (m === 'closed' || m.includes('clos')) return 4;
-  return 0; // contract_received or default
+function getStageIndex(deal: ClientDeal): number {
+  const milestones = deal.milestones ?? [];
+  if (milestones.length > 0) {
+    for (let i = 0; i < STAGE_KEYS.length; i++) {
+      const m = milestones.find((ms) => ms.milestone === STAGE_KEYS[i]);
+      if (!m || !isDone(m)) return i;
+    }
+    return STAGE_KEYS.length - 1;
+  }
+  // fallback: use raw milestone string from deal_data
+  const ms = (deal.milestone ?? '').toLowerCase();
+  if (ms === 'emd_due') return 1;
+  if (ms === 'inspection_period') return 2;
+  if (ms === 'clear_to_close' || ms === 'ctc') return 3;
+  if (ms === 'closed' || ms.includes('clos')) return 4;
+  return 0;
 }
 
 function Logo() {
@@ -621,12 +641,12 @@ function PortalApp() {
   if (screen === 'deal' && activeDeal) {
     const days = daysToClose(activeDeal.closingDate);
     const milestones = activeDeal.milestones ?? [];
-    const lastDone = [...milestones].reverse().find((m) => m.done) ?? null;
-    const nextUp = milestones.find((m) => !m.done) ?? null;
-    const firstNotDoneIdx = milestones.findIndex((m) => !m.done);
+    const lastDone = [...milestones].reverse().find((m) => isDone(m)) ?? null;
+    const nextUp = milestones.find((m) => !isDone(m)) ?? null;
+    const firstNotDoneIdx = milestones.findIndex((m) => !isDone(m));
     const progress =
       milestones.length > 0
-        ? Math.round((milestones.filter((m) => m.done).length / milestones.length) * 100)
+        ? Math.round((milestones.filter((m) => isDone(m)).length / milestones.length) * 100)
         : 0;
 
     return (
@@ -748,8 +768,8 @@ function PortalApp() {
                       <CheckCircle2 className="w-5 h-5 text-green-600" />
                     </div>
                     <p className="text-xs font-bold text-gray-800 leading-tight">{lastDone.label}</p>
-                    {lastDone.date && (
-                      <p className="text-xs text-gray-400 mt-0.5">{formatShortDate(lastDone.date)}</p>
+                    {lastDone.due_date && (
+                      <p className="text-xs text-gray-400 mt-0.5">{formatShortDate(lastDone.due_date)}</p>
                     )}
                     <p className="text-xs text-green-600 font-semibold mt-1">Completed</p>
                   </div>
@@ -765,8 +785,8 @@ function PortalApp() {
                       <div className="w-3 h-3 rounded-full bg-[#F4B942]" />
                     </div>
                     <p className="text-xs font-bold text-gray-800 leading-tight">{nextUp.label}</p>
-                    {nextUp.date && (
-                      <p className="text-xs text-gray-400 mt-0.5">{formatShortDate(nextUp.date)}</p>
+                    {nextUp.due_date && (
+                      <p className="text-xs text-gray-400 mt-0.5">{formatShortDate(nextUp.due_date)}</p>
                     )}
                     <p className="text-xs text-[#F4B942] font-semibold mt-1">Up Next</p>
                   </div>
@@ -801,16 +821,17 @@ function PortalApp() {
                 <p className="text-sm font-bold text-[#1B2C5E]">Milestones</p>
               </div>
               {milestones.map((m, i) => {
-                const isCurrent = !m.done && i === firstNotDoneIdx;
+                const done = isDone(m);
+                const isCurrent = !done && i === firstNotDoneIdx;
                 return (
                   <div
-                    key={m.label}
+                    key={m.milestone}
                     className={`flex items-center gap-4 px-5 py-3.5 ${
                       i > 0 ? 'border-t border-gray-100' : ''
                     } ${isCurrent ? 'bg-blue-50' : ''}`}
                   >
                     <div className="flex-shrink-0">
-                      {m.done ? (
+                      {done ? (
                         <CheckCircle2 className="w-5 h-5 text-green-500" />
                       ) : isCurrent ? (
                         <div className="w-5 h-5 rounded-full border-2 border-blue-500 flex items-center justify-center">
@@ -823,7 +844,7 @@ function PortalApp() {
                     <div className="flex-1 min-w-0">
                       <p
                         className={`text-sm ${
-                          m.done
+                          done
                             ? 'line-through text-gray-400'
                             : isCurrent
                             ? 'font-bold text-blue-700'
@@ -832,9 +853,9 @@ function PortalApp() {
                       >
                         {m.label}
                       </p>
-                      {m.date && (
-                        <p className={`text-xs mt-0.5 ${m.done ? 'text-gray-400' : 'text-gray-400'}`}>
-                          {formatShortDate(m.date)}
+                      {m.due_date && (
+                        <p className={`text-xs mt-0.5 ${done ? 'text-gray-400' : 'text-gray-400'}`}>
+                          {formatShortDate(m.due_date)}
                         </p>
                       )}
                     </div>
@@ -874,7 +895,7 @@ function PortalApp() {
 
   /* ── ROADMAP ── */
   if (screen === 'roadmap' && activeDeal) {
-    const currentStageIdx = getStageIndex(activeDeal.milestone ?? activeDeal.status);
+    const currentStageIdx = getStageIndex(activeDeal);
     const health = computeDealHealth(activeDeal);
     const days = daysToClose(activeDeal.closingDate);
     const hMap: Record<string, { bg: string; text: string; icon: string }> = {
@@ -1017,7 +1038,7 @@ function PortalApp() {
   /* ── DEAL SHEET ── */
   if (screen === 'sheet' && activeDeal) {
     const milestones = activeDeal.milestones ?? [];
-    const doneMilestones = milestones.filter((m) => m.done).length;
+    const doneMilestones = milestones.filter((m) => isDone(m)).length;
     const sheetProgress = milestones.length > 0 ? Math.round((doneMilestones / milestones.length) * 100) : 0;
     const days = daysToClose(activeDeal.closingDate);
 

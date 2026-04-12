@@ -175,19 +175,22 @@ export default function WorkspaceTimeline({ deal }: Props) {
   const seedMilestones = async () => {
     setSeeding(true);
     setError(null);
-    const seeds: { milestone: string; label: string; due_date: string }[] = [];
+    const seeds: { milestone: string; label: string; due_date: string | null }[] = [];
     // Some date fields exist in the DB but not the Deal TypeScript interface — cast to access them
     const d = deal as Record<string, any>;
-    const map: [string | undefined, string, string][] = [
+    // Canonical MO milestone order — no option period; clear_to_close always seeded (no date field)
+    const map: [string | null | undefined, string, string][] = [
       [d.contractDate, 'contract', 'Contract Date'],
-      [d.optionPeriodEnd ?? d.option_period_end, 'option_period', 'Option Period End'],
+      [d.earnestMoneyDueDate ?? d.earnest_money_due_date, 'emd', 'EMD Due'],
       [d.inspectionDate ?? d.inspection_date, 'inspection', 'Inspection Deadline'],
       [d.appraisalDate ?? d.appraisal_date, 'appraisal', 'Appraisal Deadline'],
       [d.financeDeadline ?? d.finance_deadline, 'financing', 'Financing Deadline'],
+      [null, 'clear_to_close', 'Clear to Close'],
       [d.closingDate, 'closing', 'Closing Date'],
     ];
     map.forEach(([val, ms, lbl]) => {
-      if (val) seeds.push({ milestone: ms, label: lbl, due_date: val });
+      // Always include clear_to_close; others only if date exists
+      if (val || ms === 'clear_to_close') seeds.push({ milestone: ms, label: lbl, due_date: val ?? null });
     });
 
     if (seeds.length === 0) {
