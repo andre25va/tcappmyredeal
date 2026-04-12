@@ -81,9 +81,10 @@ interface ClientDeal {
   propertyType: string | null;
   mlsNumber: string | null;
   contractDate: string | null;
-  optionPeriodEnd: string | null;
+  earnestMoneyDueDate: string | null;
   inspectionDate: string | null;
   financeDeadline: string | null;
+  milestone: string | null;
   possessionDate: string | null;
   participants: DealParticipant[];
   milestones: Milestone[];
@@ -105,6 +106,8 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
 
 const STATUS_COLORS: Record<string, string> = {
   'Under Contract': 'bg-blue-100 text-blue-800',
+  'EMD Due': 'bg-amber-100 text-amber-800',
+  'Inspection Period': 'bg-amber-100 text-amber-800',
   'Due Diligence': 'bg-amber-100 text-amber-800',
   'Clear to Close': 'bg-green-100 text-green-800',
   Pending: 'bg-purple-100 text-purple-800',
@@ -173,9 +176,9 @@ function computeDealHealth(deal: ClientDeal): {
     if (fd !== null && fd < 0) flags.push(`Finance deadline passed ${Math.abs(fd)} day${Math.abs(fd) === 1 ? '' : 's'} ago`);
     else if (fd !== null && fd <= 3) flags.push(`Finance deadline in ${fd} day${fd === 1 ? '' : 's'}`);
   }
-  if (deal.optionPeriodEnd) {
-    const op = daysToClose(deal.optionPeriodEnd);
-    if (op !== null && op >= 0 && op <= 2) flags.push(`Option period ends in ${op} day${op === 1 ? '' : 's'}`);
+  if (deal.earnestMoneyDueDate) {
+    const emd = daysToClose(deal.earnestMoneyDueDate);
+    if (emd !== null && emd >= 0 && emd <= 1) flags.push(`EMD due in ${emd} day${emd === 1 ? '' : 's'}`);
   }
   if (days !== null && days < 0) flags.push(`Closing was ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`);
   else if (days !== null && days <= 3 && days >= 0) flags.push(`Closing in ${days} day${days === 1 ? '' : 's'} — final stretch!`);
@@ -241,20 +244,23 @@ interface RoadmapStage {
   getDates: (deal: ClientDeal) => { label: string; value: string | null }[];
 }
 const DEAL_STAGES: RoadmapStage[] = [
-  { label: 'Under Contract', sublabel: 'Offer accepted & executed', icon: '📝',
-    getDates: (d) => [{ label: 'Contract Date', value: d.contractDate }, { label: 'Option Period Ends', value: d.optionPeriodEnd }] },
-  { label: 'Due Diligence', sublabel: 'Inspections & financing', icon: '🔍',
-    getDates: (d) => [{ label: 'Inspection', value: d.inspectionDate }, { label: 'Finance Deadline', value: d.financeDeadline }] },
+  { label: 'Contract Received', sublabel: 'Offer accepted & executed', icon: '📝',
+    getDates: (d) => [{ label: 'Contract Date', value: d.contractDate }] },
+  { label: 'EMD Due', sublabel: 'Earnest money submitted', icon: '💰',
+    getDates: (d) => [{ label: 'EMD Due Date', value: d.earnestMoneyDueDate }] },
+  { label: 'Inspection Period', sublabel: 'Property inspections underway', icon: '🔍',
+    getDates: () => [] },
   { label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅', getDates: () => [] },
   { label: 'Closing Day', sublabel: 'Keys exchanged!', icon: '🏠',
     getDates: (d) => [{ label: 'Closing Date', value: d.closingDate }, { label: 'Possession', value: d.possessionDate }] },
 ];
-function getStageIndex(status: string): number {
-  const s = (status ?? '').toLowerCase();
-  if (s.includes('clear')) return 2;
-  if (s.includes('diligence') || s === 'due-diligence') return 1;
-  if (s.includes('clos')) return 3;
-  return 0;
+function getStageIndex(milestone: string): number {
+  const m = (milestone ?? '').toLowerCase();
+  if (m === 'emd_due') return 1;
+  if (m === 'inspection_period') return 2;
+  if (m === 'clear_to_close' || m === 'ctc' || m.includes('clear')) return 3;
+  if (m === 'closed' || m.includes('clos')) return 4;
+  return 0; // contract_received or default
 }
 
 function Logo() {
@@ -868,7 +874,7 @@ function PortalApp() {
 
   /* ── ROADMAP ── */
   if (screen === 'roadmap' && activeDeal) {
-    const currentStageIdx = getStageIndex(activeDeal.status);
+    const currentStageIdx = getStageIndex(activeDeal.milestone ?? activeDeal.status);
     const health = computeDealHealth(activeDeal);
     const days = daysToClose(activeDeal.closingDate);
     const hMap: Record<string, { bg: string; text: string; icon: string }> = {
@@ -1017,9 +1023,7 @@ function PortalApp() {
 
     const keyDates: { label: string; value: string | null; badge?: boolean }[] = [
       { label: 'Contract Date', value: activeDeal.contractDate },
-      { label: 'Option Period End', value: activeDeal.optionPeriodEnd },
-      { label: 'Inspection', value: activeDeal.inspectionDate },
-      { label: 'Finance Deadline', value: activeDeal.financeDeadline },
+      { label: 'EMD Due Date', value: activeDeal.earnestMoneyDueDate },
       { label: 'Closing Date', value: activeDeal.closingDate, badge: true },
       { label: 'Possession', value: activeDeal.possessionDate },
     ];
