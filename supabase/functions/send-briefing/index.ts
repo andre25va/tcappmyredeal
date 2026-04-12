@@ -1,6 +1,5 @@
-// send-briefing Edge Function - v24 (JWT disabled)
-// Daily morning briefing - queries deals data and sends summary email
-// v24: adds "Draft Follow-Up" button to each overdue task
+// send-briefing Edge Function - v25
+// v25: adds "Draft Follow-Up" button to Due Today tasks (was only on overdue)
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { sendViaGmail } from './_shared/gmail.ts';
@@ -87,7 +86,7 @@ serve(async (req: Request) => {
       .from('documents')
       .select('id, deal_id, name, status');
 
-    // Find overdue tasks — now includes task id
+    // Overdue tasks — with id for follow-up links
     const overdueTasks: { id: string; title: string; address: string; urgency: string; daysOverdue: number }[] = [];
     if (allTasks && allDeals) {
       for (const task of allTasks) {
@@ -110,13 +109,15 @@ serve(async (req: Request) => {
     }
     overdueTasks.sort((a, b) => b.daysOverdue - a.daysOverdue);
 
-    const dueTodayTasks: { title: string; address: string; urgency: string }[] = [];
+    // Due Today tasks — NOW with id for follow-up links
+    const dueTodayTasks: { id: string; title: string; address: string; urgency: string }[] = [];
     if (allTasks && allDeals) {
       for (const task of allTasks) {
         if (task.status !== 'completed' && task.due_date === today) {
           const dealMatch = allDeals.find(d => d.id === task.deal_id);
           if (dealMatch) {
             dueTodayTasks.push({
+              id: task.id,
               title: task.title,
               address: dealMatch.property_address,
               urgency: task.priority?.toUpperCase() || 'HIGH',
@@ -164,14 +165,13 @@ serve(async (req: Request) => {
       return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${bgColor};color:${color};margin-left:6px;">${urgency}</span>`;
     };
 
-    // ── Build email HTML ──────────────────────────────────────────────────────
     let emailHtml = `<!DOCTYPE html><html><body style="background-color:#f8f9fa;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><div style="max-width:640px;margin:0 auto;padding:0 16px;"><div style="text-align:center;padding:28px 0 20px 0;border-bottom:1px solid #e5e7eb;"><div style="font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">TC Command - Daily Briefing</div><div style="font-size:14px;color:#6b7280;margin-top:4px;">${dateStr}</div></div><div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">What Needs Your Attention</div>`;
 
     if (overdueTasks.length > 0) {
       emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Urgent:</strong> You have ${overdueTasks.length} overdue task${overdueTasks.length !== 1 ? 's' : ''} requiring immediate attention. The oldest is overdue by ${overdueTasks[0].daysOverdue} day${overdueTasks[0].daysOverdue !== 1 ? 's' : ''}.</div>`;
     }
     if (closingSoon.length > 0) {
-      emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Priority:</strong> ${closingSoon.length} deal${closingSoon.length !== 1 ? 's' : ''} closing within the next 14 days. Ensure all documentation and inspections are on track.</div>`;
+      emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Priority:</strong> ${closingSoon.length} deal${closingSoon.length !== 1 ? 's' : ''} closing within the next 14 days.</div>`;
     }
     if (dueTodayTasks.length > 0) {
       emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Tip:</strong> Today has ${dueTodayTasks.length} task${dueTodayTasks.length !== 1 ? 's' : ''} due. Prioritize these to maintain deal momentum.</div>`;
@@ -184,17 +184,17 @@ serve(async (req: Request) => {
     }
     emailHtml += `</div>`;
 
-    // Active Deals Summary cards
+    // Active Deals Summary
     emailHtml += `<div style="margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Active Deals Summary</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:32px;font-weight:700;color:#2563eb;">${stageCounts.total_active}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Total Active</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:32px;font-weight:700;color:#6b7280;">${stageCounts.under_contract}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Under Contract</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:32px;font-weight:700;color:#059669;">${stageCounts.clear_to_close}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Clear to Close</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:32px;font-weight:700;color:#d97706;">${stageCounts.due_diligence}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Due Diligence</div></div>
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#2563eb;">${stageCounts.total_active}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Total Active</div></div>
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#6b7280;">${stageCounts.under_contract}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Under Contract</div></div>
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#059669;">${stageCounts.clear_to_close}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Clear to Close</div></div>
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#d97706;">${stageCounts.due_diligence}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Due Diligence</div></div>
     </div></div>`;
 
     // Closing soon
     if (closingSoon.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Closing Soon - Next 14 Days</div><table style="width:100%;border-collapse:collapse;font-size:14px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
+      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Closing Soon - Next 14 Days</div><table style="width:100%;border-collapse:collapse;font-size:14px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
       for (const d of closingSoon) {
         emailHtml += `<tr><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td></tr>`;
       }
@@ -203,7 +203,7 @@ serve(async (req: Request) => {
 
     // Full pipeline
     if (allDeals && allDeals.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Full Pipeline</div><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
+      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Full Pipeline</div><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
       for (const d of allDeals) {
         if (d.closing_date) {
           emailHtml += `<tr><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td></tr>`;
@@ -212,40 +212,50 @@ serve(async (req: Request) => {
       emailHtml += `</table></div>`;
     }
 
-    // ── Overdue Tasks — with "Draft Follow-Up" button ─────────────────────
+    // ── Overdue Tasks — with "Draft Follow-Up" button ──
     if (overdueTasks.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Overdue Tasks — ${overdueTasks.length} Task${overdueTasks.length !== 1 ? 's' : ''}</div>`;
+      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Overdue Tasks — ${overdueTasks.length} Task${overdueTasks.length !== 1 ? 's' : ''}</div>`;
       for (let idx = 0; idx < overdueTasks.length; idx++) {
         const task = overdueTasks[idx];
         const followUpUrl = `${FOLLOWUP_BASE_URL}?task_id=${task.id}`;
-        emailHtml += `<div style="padding:14px 0;${idx < overdueTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-          <div style="flex:1;">
-            <div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div>
-            <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address} · ${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue</div>
-          </div>
-          <div style="flex-shrink:0;">
-            <a href="${followUpUrl}" target="_blank" style="display:inline-block;background:#2563eb;color:#ffffff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;text-decoration:none;white-space:nowrap;">📬 Draft Follow-Up</a>
-          </div>
+        emailHtml += `<div style="padding:14px 0;${idx < overdueTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+          <table style="width:100%;border-collapse:collapse;"><tr>
+            <td style="vertical-align:middle;">
+              <div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address} · ${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue</div>
+            </td>
+            <td style="vertical-align:middle;text-align:right;white-space:nowrap;padding-left:12px;">
+              <a href="${followUpUrl}" target="_blank" style="display:inline-block;background:#2563eb;color:#ffffff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;text-decoration:none;">📬 Draft Follow-Up</a>
+            </td>
+          </tr></table>
         </div>`;
       }
       emailHtml += `</div>`;
     }
 
-    // Due today
+    // ── Due Today — NOW with "Draft Follow-Up" button ──
     if (dueTodayTasks.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Due Today — ${dueTodayTasks.length} Task${dueTodayTasks.length !== 1 ? 's' : ''}</div>`;
+      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Due Today — ${dueTodayTasks.length} Task${dueTodayTasks.length !== 1 ? 's' : ''}</div>`;
       for (let idx = 0; idx < dueTodayTasks.length; idx++) {
         const task = dueTodayTasks[idx];
-        emailHtml += `<div style="padding:12px 0;${idx < dueTodayTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}"><div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div><div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address}</div></div>`;
+        const followUpUrl = `${FOLLOWUP_BASE_URL}?task_id=${task.id}`;
+        emailHtml += `<div style="padding:14px 0;${idx < dueTodayTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+          <table style="width:100%;border-collapse:collapse;"><tr>
+            <td style="vertical-align:middle;">
+              <div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div>
+              <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address}</div>
+            </td>
+            <td style="vertical-align:middle;text-align:right;white-space:nowrap;padding-left:12px;">
+              <a href="${followUpUrl}" target="_blank" style="display:inline-block;background:#059669;color:#ffffff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;text-decoration:none;">📬 Draft Follow-Up</a>
+            </td>
+          </tr></table>
+        </div>`;
       }
       emailHtml += `</div>`;
     }
 
-    // Calendar / Missing docs
-    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Today's Calendar</div><div style="font-size:14px;color:#6b7280;">No events scheduled</div></div>`;
-    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Missing Documents</div><div style="font-size:14px;color:${pendingDocs.length === 0 ? '#059669' : '#dc2626'};">${pendingDocs.length === 0 ? 'All deals have documents' : 'Pending documents: ' + pendingDocs.length}</div></div>`;
-
-    // Footer
+    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Today's Calendar</div><div style="font-size:14px;color:#6b7280;">No events scheduled</div></div>`;
+    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Missing Documents</div><div style="font-size:14px;color:${pendingDocs.length === 0 ? '#059669' : '#dc2626'};">${pendingDocs.length === 0 ? 'All deals have documents' : 'Pending documents: ' + pendingDocs.length}</div></div>`;
     emailHtml += `<div style="text-align:center;padding:24px 0 8px 0;margin-top:24px;border-top:1px solid #e5e7eb;"><div style="font-size:12px;color:#9ca3af;">TC Command - MyReDeal</div><div style="font-size:11px;color:#9ca3af;margin-top:4px;">Generated ${dateStr} at ${new Date().toLocaleTimeString('en-US', { timeZone: config.timezone })} CT</div></div></div></body></html>`;
 
     const recipients = config.to_addresses || ['tc@myredeal.com'];
@@ -282,6 +292,7 @@ serve(async (req: Request) => {
       recipients,
       deals_found: allDeals?.length || 0,
       overdue_tasks: overdueTasks.length,
+      due_today_tasks: dueTodayTasks.length,
       closing_soon: closingSoon.length,
     });
   } catch (error) {
