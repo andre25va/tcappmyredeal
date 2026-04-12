@@ -261,7 +261,11 @@ const DEAL_STAGES: RoadmapStage[] = [
       const m = (d.milestones ?? []).find((ms) => ms.milestone === 'inspection');
       return m?.due_date ? [{ label: 'Inspection Deadline', value: m.due_date }] : [];
     }},
-  { key: 'clear_to_close', label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅', getDates: () => [] },
+  { key: 'clear_to_close', label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅',
+    getDates: (d) => {
+      const m = (d.milestones ?? []).find((ms) => ms.milestone === 'clear_to_close');
+      return m?.due_date ? [{ label: 'Target Date', value: m.due_date }] : [];
+    }},
   { key: 'closing', label: 'Closing Day', sublabel: 'Keys exchanged!', icon: '🏠',
     getDates: (d) => [{ label: 'Closing Date', value: d.closingDate }, { label: 'Possession', value: d.possessionDate }] },
 ];
@@ -313,7 +317,7 @@ function PortalApp() {
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -381,8 +385,7 @@ function PortalApp() {
   }, [refreshData]);
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    refetchDeals().finally(() => setRefreshing(false));
+    window.location.reload();
   };
 
   // ── Submit request (TanStack useMutation) ──────────────────────────────────
