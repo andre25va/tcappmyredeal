@@ -1,5 +1,6 @@
-// send-briefing Edge Function - v25
-// v25: adds "Draft Follow-Up" button to Due Today tasks (was only on overdue)
+// send-briefing Edge Function - v26
+// v26: Deal-centric layout — one card per deal, inline tasks grouped under each deal,
+//      urgent closing banners, TC action emphasis, persistent reminder language
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { sendViaGmail } from './_shared/gmail.ts';
@@ -40,9 +41,13 @@ serve(async (req: Request) => {
       }
     }
 
+    const today = new Date().toISOString().split('T')[0];
+    const threeDaysFromNow = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+    const fourteenDaysFromNow = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
     const { data: rawDeals, error: queryError } = await supabase
       .from('deals')
-      .select('id, property_address, closing_date, status, pipeline_stage, deal_data, purchase_price, buyer_name, seller_name');
+      .select('id, property_address, closing_date, status, pipeline_stage, purchase_price, buyer_name, seller_name');
 
     if (queryError) {
       return errorResponse('Failed to query deals: ' + queryError.message);
@@ -51,215 +56,289 @@ serve(async (req: Request) => {
     const allDeals = (rawDeals || []).filter(d =>
       d.status !== 'closed' &&
       d.status !== 'archived' &&
-      d.status !== 'cancelled'
+      d.status !== 'cancelled' &&
+      d.status !== 'terminated'
     );
-
-    const today = new Date().toISOString().split('T')[0];
-    const twoWeeksFromNow = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
-
-    const stageCounts = {
-      total_active: allDeals?.length || 0,
-      under_contract: 0,
-      clear_to_close: 0,
-      due_diligence: 0,
-    };
-
-    if (allDeals) {
-      for (const deal of allDeals) {
-        const status = deal.status?.toLowerCase() || '';
-        const stage = deal.pipeline_stage?.toLowerCase() || '';
-        if (status.includes('contract') || stage.includes('contract')) {
-          stageCounts.under_contract++;
-        } else if (status.includes('clear') || stage.includes('clear')) {
-          stageCounts.clear_to_close++;
-        } else if (status.includes('diligence') || stage.includes('diligence')) {
-          stageCounts.due_diligence++;
-        }
-      }
-    }
 
     const { data: allTasks } = await supabase
       .from('tasks')
       .select('id, deal_id, title, status, priority, due_date');
 
-    const { data: allDocuments } = await supabase
-      .from('documents')
-      .select('id, deal_id, name, status');
-
-    // Overdue tasks — with id for follow-up links
-    const overdueTasks: { id: string; title: string; address: string; urgency: string; daysOverdue: number }[] = [];
-    if (allTasks && allDeals) {
-      for (const task of allTasks) {
-        if (task.status !== 'completed' && task.due_date && task.due_date < today) {
-          const dealMatch = allDeals.find(d => d.id === task.deal_id);
-          if (dealMatch) {
-            const daysOverdue = Math.floor(
-              (new Date(today).getTime() - new Date(task.due_date).getTime()) / (1000 * 60 * 60 * 24)
-            );
-            overdueTasks.push({
-              id: task.id,
-              title: task.title,
-              address: dealMatch.property_address,
-              urgency: task.priority?.toUpperCase() || 'HIGH',
-              daysOverdue,
-            });
-          }
-        }
-      }
-    }
-    overdueTasks.sort((a, b) => b.daysOverdue - a.daysOverdue);
-
-    // Due Today tasks — NOW with id for follow-up links
-    const dueTodayTasks: { id: string; title: string; address: string; urgency: string }[] = [];
-    if (allTasks && allDeals) {
-      for (const task of allTasks) {
-        if (task.status !== 'completed' && task.due_date === today) {
-          const dealMatch = allDeals.find(d => d.id === task.deal_id);
-          if (dealMatch) {
-            dueTodayTasks.push({
-              id: task.id,
-              title: task.title,
-              address: dealMatch.property_address,
-              urgency: task.priority?.toUpperCase() || 'HIGH',
-            });
-          }
-        }
-      }
+    // Build deal cards with tasks
+    interface DealCard {
+      id: string;
+      address: string;
+      status: string;
+      closingDate: string | null;
+      daysToClosing: number | null;
+      overdueTasks: TaskItem[];
+      dueTodayTasks: TaskItem[];
+      upcomingTasks: TaskItem[];
+      urgencyScore: number; // higher = more urgent
     }
 
-    const pendingDocs: { deal_id: string; address: string; docName: string }[] = [];
-    if (allDocuments && allDeals) {
-      for (const doc of allDocuments) {
-        if (doc.status === 'pending' || doc.status === 'missing') {
-          const dealMatch = allDeals.find(d => d.id === doc.deal_id);
-          if (dealMatch) {
-            pendingDocs.push({
-              deal_id: doc.deal_id,
-              address: dealMatch.property_address,
-              docName: doc.name,
-            });
-          }
-        }
-      }
+    interface TaskItem {
+      id: string;
+      title: string;
+      dueDate: string;
+      daysOverdue: number;
+      priority: string;
     }
-
-    const closingSoon = allDeals?.filter(
-      d => d.closing_date && d.closing_date >= today && d.closing_date <= twoWeeksFromNow
-    ) || [];
 
     const calculateDaysLeft = (closeDate: string): number => {
       return Math.ceil((new Date(closeDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
     };
 
+    const dealCards: DealCard[] = allDeals.map(deal => {
+      const dealTasks = (allTasks || []).filter(t => t.deal_id === deal.id && t.status !== 'completed');
+      const daysToClosing = deal.closing_date ? calculateDaysLeft(deal.closing_date) : null;
+
+      const overdueTasks: TaskItem[] = [];
+      const dueTodayTasks: TaskItem[] = [];
+      const upcomingTasks: TaskItem[] = [];
+
+      for (const task of dealTasks) {
+        if (!task.due_date) continue;
+        if (task.due_date < today) {
+          const daysOverdue = Math.floor(
+            (new Date(today).getTime() - new Date(task.due_date).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          overdueTasks.push({ id: task.id, title: task.title, dueDate: task.due_date, daysOverdue, priority: task.priority || 'normal' });
+        } else if (task.due_date === today) {
+          dueTodayTasks.push({ id: task.id, title: task.title, dueDate: task.due_date, daysOverdue: 0, priority: task.priority || 'normal' });
+        } else if (task.due_date <= fourteenDaysFromNow) {
+          upcomingTasks.push({ id: task.id, title: task.title, dueDate: task.due_date, daysOverdue: 0, priority: task.priority || 'normal' });
+        }
+      }
+
+      overdueTasks.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      upcomingTasks.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+      // Urgency score: closing soon + overdue tasks
+      let urgencyScore = 0;
+      if (daysToClosing !== null && daysToClosing <= 1) urgencyScore += 1000;
+      else if (daysToClosing !== null && daysToClosing <= 3) urgencyScore += 500;
+      else if (daysToClosing !== null && daysToClosing <= 7) urgencyScore += 200;
+      urgencyScore += overdueTasks.length * 50;
+      urgencyScore += overdueTasks.reduce((sum, t) => sum + t.daysOverdue, 0);
+      urgencyScore += dueTodayTasks.length * 10;
+
+      return {
+        id: deal.id,
+        address: deal.property_address,
+        status: deal.status || deal.pipeline_stage || 'Active',
+        closingDate: deal.closing_date,
+        daysToClosing,
+        overdueTasks,
+        dueTodayTasks,
+        upcomingTasks,
+        urgencyScore,
+      };
+    });
+
+    // Sort by urgency (most urgent first)
+    dealCards.sort((a, b) => b.urgencyScore - a.urgencyScore);
+
+    // Only show deals with something actionable or closing soon
+    const actionableDeals = dealCards.filter(d =>
+      d.overdueTasks.length > 0 ||
+      d.dueTodayTasks.length > 0 ||
+      (d.daysToClosing !== null && d.daysToClosing <= 14)
+    );
+
+    // Critical closing ≤3 days
+    const closingCritical = dealCards.filter(d => d.daysToClosing !== null && d.daysToClosing <= 3 && d.daysToClosing >= 0);
+
+    const totalOverdue = dealCards.reduce((sum, d) => sum + d.overdueTasks.length, 0);
+    const totalDueToday = dealCards.reduce((sum, d) => sum + d.dueTodayTasks.length, 0);
+
     const dateStr = new Date().toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       timeZone: config.timezone,
     });
 
-    const urgencyBadge = (urgency: string) => {
-      const color = urgency === 'URGENT' ? '#dc2626' : '#d97706';
-      const bgColor = urgency === 'URGENT' ? '#fef2f2' : '#fffbeb';
-      return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${bgColor};color:${color};margin-left:6px;">${urgency}</span>`;
+    const statusLabel = (status: string): string => {
+      const s = status.toLowerCase();
+      if (s.includes('contract')) return 'Under Contract';
+      if (s.includes('clear')) return 'Clear to Close';
+      if (s.includes('diligence')) return 'Due Diligence';
+      if (s.includes('closed')) return 'Closed';
+      return status;
     };
 
-    let emailHtml = `<!DOCTYPE html><html><body style="background-color:#f8f9fa;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><div style="max-width:640px;margin:0 auto;padding:0 16px;"><div style="text-align:center;padding:28px 0 20px 0;border-bottom:1px solid #e5e7eb;"><div style="font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">TC Command - Daily Briefing</div><div style="font-size:14px;color:#6b7280;margin-top:4px;">${dateStr}</div></div><div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04);"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">What Needs Your Attention</div>`;
+    const statusColor = (status: string): string => {
+      const s = status.toLowerCase();
+      if (s.includes('clear')) return '#059669';
+      if (s.includes('contract')) return '#2563eb';
+      if (s.includes('diligence')) return '#d97706';
+      return '#6b7280';
+    };
 
-    if (overdueTasks.length > 0) {
-      emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Urgent:</strong> You have ${overdueTasks.length} overdue task${overdueTasks.length !== 1 ? 's' : ''} requiring immediate attention. The oldest is overdue by ${overdueTasks[0].daysOverdue} day${overdueTasks[0].daysOverdue !== 1 ? 's' : ''}.</div>`;
-    }
-    if (closingSoon.length > 0) {
-      emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Priority:</strong> ${closingSoon.length} deal${closingSoon.length !== 1 ? 's' : ''} closing within the next 14 days.</div>`;
-    }
-    if (dueTodayTasks.length > 0) {
-      emailHtml += `<div style="margin-bottom:14px;font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Tip:</strong> Today has ${dueTodayTasks.length} task${dueTodayTasks.length !== 1 ? 's' : ''} due. Prioritize these to maintain deal momentum.</div>`;
-    }
-    if (pendingDocs.length > 0) {
-      emailHtml += `<div style="font-size:14px;color:#1a1a1a;line-height:1.6;"><strong>Portfolio Insight:</strong> ${pendingDocs.length} document${pendingDocs.length !== 1 ? 's' : ''} pending across active deals.</div>`;
-    }
-    if (overdueTasks.length === 0 && closingSoon.length === 0 && dueTodayTasks.length === 0 && pendingDocs.length === 0) {
-      emailHtml += `<div style="font-size:14px;color:#1a1a1a;line-height:1.6;">All clear! Your pipeline is well-organized with no immediate blockers.</div>`;
-    }
-    emailHtml += `</div>`;
+    const taskBtnHtml = (taskId: string, label = '📬 Draft Follow-Up', color = '#2563eb') =>
+      `<a href="${FOLLOWUP_BASE_URL}?task_id=${taskId}" target="_blank" style="display:inline-block;background:${color};color:#ffffff;font-size:11px;font-weight:600;padding:5px 12px;border-radius:5px;text-decoration:none;white-space:nowrap;">${label}</a>`;
 
-    // Active Deals Summary
-    emailHtml += `<div style="margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Active Deals Summary</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#2563eb;">${stageCounts.total_active}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Total Active</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#6b7280;">${stageCounts.under_contract}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Under Contract</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#059669;">${stageCounts.clear_to_close}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Clear to Close</div></div>
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:32px;font-weight:700;color:#d97706;">${stageCounts.due_diligence}</div><div style="font-size:11px;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Due Diligence</div></div>
-    </div></div>`;
+    // ── Build Email ──
+    let emailHtml = `<!DOCTYPE html><html><body style="background-color:#f1f5f9;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:660px;margin:0 auto;padding:0 16px;">
 
-    // Closing soon
-    if (closingSoon.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Closing Soon - Next 14 Days</div><table style="width:100%;border-collapse:collapse;font-size:14px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
-      for (const d of closingSoon) {
-        emailHtml += `<tr><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td></tr>`;
+<!-- Header -->
+<div style="text-align:center;padding:28px 0 20px 0;">
+  <div style="font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-0.5px;">🏠 TC Command</div>
+  <div style="font-size:13px;color:#64748b;margin-top:4px;">${dateStr}</div>
+</div>`;
+
+    // ── 🚨 Critical Closing Alert Banner ──
+    if (closingCritical.length > 0) {
+      emailHtml += `<div style="background:#7f1d1d;border-radius:10px;padding:18px 20px;margin-bottom:20px;">
+  <div style="font-size:15px;font-weight:800;color:#fef2f2;margin-bottom:8px;">🚨 CLOSING ALERT — Action Required Today</div>`;
+      for (const d of closingCritical) {
+        const label = d.daysToClosing === 0 ? 'CLOSING TODAY' : d.daysToClosing === 1 ? 'CLOSING TOMORROW' : `CLOSING IN ${d.daysToClosing} DAYS`;
+        emailHtml += `<div style="font-size:13px;color:#fecaca;margin-top:4px;">⚡ <strong style="color:#ffffff;">${d.address}</strong> — ${label}</div>`;
       }
-      emailHtml += `</table></div>`;
+      emailHtml += `<div style="font-size:12px;color:#fca5a5;margin-top:10px;">These deals need your full attention first. Complete all remaining tasks before close.</div>
+</div>`;
     }
 
-    // Full pipeline
-    if (allDeals && allDeals.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Full Pipeline</div><table style="width:100%;border-collapse:collapse;font-size:13px;"><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Address</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Close Date</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Days Left</th><th style="text-align:left;padding:10px 12px;color:#374151;font-weight:600;border-bottom:1px solid #e5e7eb;">Stage</th></tr>`;
-      for (const d of allDeals) {
-        if (d.closing_date) {
-          emailHtml += `<tr><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.property_address}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.closing_date}</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${calculateDaysLeft(d.closing_date)} days</td><td style="padding:10px 12px;color:#1a1a1a;border-bottom:1px solid #f3f4f6;">${d.pipeline_stage || 'N/A'}</td></tr>`;
+    // ── Summary Row ──
+    const stageCounts = { total: allDeals.length, contract: 0, ctc: 0, dd: 0 };
+    for (const deal of allDeals) {
+      const s = (deal.status || '').toLowerCase();
+      if (s.includes('contract')) stageCounts.contract++;
+      else if (s.includes('clear')) stageCounts.ctc++;
+      else if (s.includes('diligence')) stageCounts.dd++;
+    }
+
+    emailHtml += `<div style="display:flex;gap:10px;margin-bottom:20px;">
+  ${[
+    ['#1e3a5f', '#dbeafe', stageCounts.total, 'Active Deals'],
+    ['#7f1d1d', '#fee2e2', totalOverdue, 'Overdue Tasks'],
+    ['#713f12', '#fef9c3', totalDueToday, 'Due Today'],
+    ['#14532d', '#dcfce7', closingCritical.length, 'Closing ≤3 Days'],
+  ].map(([tc, bg, val, label]) =>
+    `<div style="flex:1;background:${bg};border-radius:8px;padding:14px 10px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:${tc};">${val}</div>
+      <div style="font-size:10px;color:${tc};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;">${label}</div>
+    </div>`
+  ).join('')}
+</div>`;
+
+    // ── Deal Cards ──
+    if (actionableDeals.length > 0) {
+      emailHtml += `<div style="font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">📋 Your Deals — Action Needed</div>`;
+
+      for (const deal of actionableDeals) {
+        const isCritical = deal.daysToClosing !== null && deal.daysToClosing <= 3 && deal.daysToClosing >= 0;
+        const borderColor = isCritical ? '#dc2626' : deal.overdueTasks.length > 0 ? '#f59e0b' : '#e2e8f0';
+        const topBadgeBg = isCritical ? '#dc2626' : deal.overdueTasks.length > 0 ? '#d97706' : statusColor(deal.status);
+        const closingText = deal.daysToClosing !== null
+          ? deal.daysToClosing <= 0 ? '🔴 CLOSING TODAY'
+          : deal.daysToClosing === 1 ? '🔴 CLOSING TOMORROW'
+          : deal.daysToClosing <= 3 ? `🟡 ${deal.daysToClosing} days to close`
+          : `🟢 ${deal.daysToClosing} days to close`
+          : '';
+
+        emailHtml += `<div style="background:#ffffff;border:2px solid ${borderColor};border-radius:10px;margin-bottom:16px;overflow:hidden;">
+  <!-- Deal Header -->
+  <div style="background:${topBadgeBg}08;border-bottom:1px solid ${borderColor}30;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div style="font-size:15px;font-weight:700;color:#0f172a;">${deal.address}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">
+        <span style="background:${topBadgeBg}18;color:${topBadgeBg};font-weight:600;padding:2px 8px;border-radius:4px;font-size:11px;">${statusLabel(deal.status)}</span>
+        ${closingText ? `<span style="margin-left:10px;">${closingText}</span>` : ''}
+      </div>
+    </div>
+    ${deal.overdueTasks.length > 0 ? `<div style="background:#fef2f2;color:#dc2626;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;">${deal.overdueTasks.length} OVERDUE</div>` : ''}
+  </div>
+  <!-- Tasks -->
+  <div style="padding:12px 18px;">`;
+
+        // Overdue tasks under this deal
+        if (deal.overdueTasks.length > 0) {
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⚠️ Overdue</div>`;
+          for (const task of deal.overdueTasks) {
+            emailHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">${task.title}</div>
+        <div style="font-size:11px;color:#dc2626;margin-top:2px;">${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue — due ${task.dueDate}</div>
+      </div>
+      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, '📬 Draft Follow-Up', '#dc2626')}</div>
+    </div>`;
+          }
         }
+
+        // Due Today tasks
+        if (deal.dueTodayTasks.length > 0) {
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin:${deal.overdueTasks.length > 0 ? '12px' : '0px'} 0 8px 0;">📅 Due Today</div>`;
+          for (const task of deal.dueTodayTasks) {
+            emailHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">${task.title}</div>
+        <div style="font-size:11px;color:#d97706;margin-top:2px;">Due today — complete before EOD</div>
+      </div>
+      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, '📬 Draft Follow-Up', '#059669')}</div>
+    </div>`;
+          }
+        }
+
+        // Upcoming tasks (preview — no button, just awareness)
+        if (deal.upcomingTasks.length > 0) {
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px 0;">🗓 Coming Up</div>`;
+          for (const task of deal.upcomingTasks.slice(0, 3)) {
+            emailHtml += `<div style="font-size:12px;color:#475569;padding:4px 0;">• ${task.title} <span style="color:#94a3b8;">— ${task.dueDate}</span></div>`;
+          }
+          if (deal.upcomingTasks.length > 3) {
+            emailHtml += `<div style="font-size:11px;color:#94a3b8;padding:4px 0;">+${deal.upcomingTasks.length - 3} more upcoming tasks</div>`;
+          }
+        }
+
+        if (deal.overdueTasks.length === 0 && deal.dueTodayTasks.length === 0 && deal.upcomingTasks.length === 0) {
+          emailHtml += `<div style="font-size:12px;color:#94a3b8;padding:6px 0;">No tasks due in the next 14 days ✓</div>`;
+        }
+
+        emailHtml += `</div></div>`;
+      }
+    } else {
+      emailHtml += `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;text-align:center;margin-bottom:16px;">
+  <div style="font-size:15px;color:#166534;font-weight:700;">✅ All Clear!</div>
+  <div style="font-size:13px;color:#166534;margin-top:4px;">No overdue tasks or imminent closings. Pipeline is on track.</div>
+</div>`;
+    }
+
+    // ── Idle Deals (no tasks, not closing soon) ──
+    const idleDeals = dealCards.filter(d =>
+      d.overdueTasks.length === 0 &&
+      d.dueTodayTasks.length === 0 &&
+      (d.daysToClosing === null || d.daysToClosing > 14)
+    );
+    if (idleDeals.length > 0) {
+      emailHtml += `<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:16px;">
+  <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">📁 Other Active Deals</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">`;
+      for (const d of idleDeals) {
+        emailHtml += `<tr style="border-bottom:1px solid #f1f5f9;">
+    <td style="padding:7px 0;color:#334155;font-weight:500;">${d.address}</td>
+    <td style="padding:7px 0;color:#64748b;text-align:right;">${statusLabel(d.status)}</td>
+    <td style="padding:7px 0;color:#94a3b8;text-align:right;padding-left:16px;">${d.closingDate ? `Closes ${d.closingDate}` : '—'}</td>
+  </tr>`;
       }
       emailHtml += `</table></div>`;
     }
 
-    // ── Overdue Tasks — with "Draft Follow-Up" button ──
-    if (overdueTasks.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Overdue Tasks — ${overdueTasks.length} Task${overdueTasks.length !== 1 ? 's' : ''}</div>`;
-      for (let idx = 0; idx < overdueTasks.length; idx++) {
-        const task = overdueTasks[idx];
-        const followUpUrl = `${FOLLOWUP_BASE_URL}?task_id=${task.id}`;
-        emailHtml += `<div style="padding:14px 0;${idx < overdueTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
-          <table style="width:100%;border-collapse:collapse;"><tr>
-            <td style="vertical-align:middle;">
-              <div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address} · ${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue</div>
-            </td>
-            <td style="vertical-align:middle;text-align:right;white-space:nowrap;padding-left:12px;">
-              <a href="${followUpUrl}" target="_blank" style="display:inline-block;background:#2563eb;color:#ffffff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;text-decoration:none;">📬 Draft Follow-Up</a>
-            </td>
-          </tr></table>
-        </div>`;
-      }
-      emailHtml += `</div>`;
-    }
+    // ── Nudge Reminder Footer ──
+    emailHtml += `<div style="background:#1e293b;border-radius:10px;padding:16px 18px;margin-bottom:20px;text-align:center;">
+  <div style="font-size:12px;color:#94a3b8;">⏰ <strong style="color:#f1f5f9;">Reminders active</strong> — you'll receive nudges at <strong style="color:#f1f5f9;">1 PM</strong> and <strong style="color:#f1f5f9;">3 PM</strong> for anything still unfinished. Tasks stay on the list until marked complete in TC Command.</div>
+</div>`;
 
-    // ── Due Today — NOW with "Draft Follow-Up" button ──
-    if (dueTodayTasks.length > 0) {
-      emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Due Today — ${dueTodayTasks.length} Task${dueTodayTasks.length !== 1 ? 's' : ''}</div>`;
-      for (let idx = 0; idx < dueTodayTasks.length; idx++) {
-        const task = dueTodayTasks[idx];
-        const followUpUrl = `${FOLLOWUP_BASE_URL}?task_id=${task.id}`;
-        emailHtml += `<div style="padding:14px 0;${idx < dueTodayTasks.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">
-          <table style="width:100%;border-collapse:collapse;"><tr>
-            <td style="vertical-align:middle;">
-              <div style="font-size:14px;font-weight:600;color:#1a1a1a;">${task.title}${urgencyBadge(task.urgency)}</div>
-              <div style="font-size:13px;color:#6b7280;margin-top:4px;">${task.address}</div>
-            </td>
-            <td style="vertical-align:middle;text-align:right;white-space:nowrap;padding-left:12px;">
-              <a href="${followUpUrl}" target="_blank" style="display:inline-block;background:#059669;color:#ffffff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:6px;text-decoration:none;">📬 Draft Follow-Up</a>
-            </td>
-          </tr></table>
-        </div>`;
-      }
-      emailHtml += `</div>`;
-    }
-
-    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Today's Calendar</div><div style="font-size:14px;color:#6b7280;">No events scheduled</div></div>`;
-    emailHtml += `<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-top:24px;"><div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:16px;">Missing Documents</div><div style="font-size:14px;color:${pendingDocs.length === 0 ? '#059669' : '#dc2626'};">${pendingDocs.length === 0 ? 'All deals have documents' : 'Pending documents: ' + pendingDocs.length}</div></div>`;
-    emailHtml += `<div style="text-align:center;padding:24px 0 8px 0;margin-top:24px;border-top:1px solid #e5e7eb;"><div style="font-size:12px;color:#9ca3af;">TC Command - MyReDeal</div><div style="font-size:11px;color:#9ca3af;margin-top:4px;">Generated ${dateStr} at ${new Date().toLocaleTimeString('en-US', { timeZone: config.timezone })} CT</div></div></div></body></html>`;
+    // Footer
+    emailHtml += `<div style="text-align:center;padding:16px 0 8px 0;"><div style="font-size:11px;color:#94a3b8;">TC Command · MyReDeal · Generated ${dateStr}</div></div>
+</div></body></html>`;
 
     const recipients = config.to_addresses || ['tc@myredeal.com'];
-    const subject = 'TC Command Briefing - ' + dateStr;
+    const subject = closingCritical.length > 0
+      ? `🚨 TC Brief — ${closingCritical.length} Closing Alert${closingCritical.length > 1 ? 's' : ''} + ${totalOverdue} Overdue`
+      : totalOverdue > 0
+      ? `⚠️ TC Brief — ${totalOverdue} Overdue Task${totalOverdue !== 1 ? 's' : ''} · ${dateStr}`
+      : `✅ TC Brief — ${dateStr}`;
 
     const result = await sendViaGmail({ to: recipients, subject, bodyHtml: emailHtml });
 
@@ -270,7 +349,7 @@ serve(async (req: Request) => {
     await supabase.from('email_send_log').insert({
       deal_id: null,
       template_id: null,
-      template_name: 'Morning Briefing',
+      template_name: 'Morning Briefing v26',
       to_addresses: recipients,
       cc_addresses: [],
       subject,
@@ -290,10 +369,11 @@ serve(async (req: Request) => {
       success: true,
       messageId: result.messageId,
       recipients,
-      deals_found: allDeals?.length || 0,
-      overdue_tasks: overdueTasks.length,
-      due_today_tasks: dueTodayTasks.length,
-      closing_soon: closingSoon.length,
+      deals_found: allDeals.length,
+      actionable_deals: actionableDeals.length,
+      closing_critical: closingCritical.length,
+      overdue_tasks: totalOverdue,
+      due_today: totalDueToday,
     });
   } catch (error) {
     console.error('send-briefing error:', error);
