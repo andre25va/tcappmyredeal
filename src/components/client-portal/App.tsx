@@ -865,7 +865,6 @@ export default function App() {
     const hcfg = hMap[health.status];
     return (
       <div className="min-h-screen bg-gray-50" data-page-id="portal-roadmap">
-        <PortalPageBadge pageId="portal-roadmap" context={activeDeal?.id?.slice(0, 8) || undefined} />
         <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <button onClick={() => setScreen('deal')} className="flex items-center gap-1.5 text-sm font-semibold hover:text-white/80 transition">
