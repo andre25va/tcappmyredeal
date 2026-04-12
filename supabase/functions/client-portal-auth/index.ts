@@ -1,4 +1,4 @@
-// client-portal-auth Edge Function — v11
+// client-portal-auth Edge Function — v13
 // Source of truth: deal_timeline table (TC app manages it; portal reads it)
 // Falls back to empty array if no rows seeded yet for a deal
 
