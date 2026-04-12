@@ -67,6 +67,7 @@ interface DealParticipant {
   role: string;
   phone: string | null;
   email: string | null;
+  is_client_side: boolean;
 }
 
 interface ClientDeal {
@@ -884,6 +885,78 @@ function PortalApp() {
               })}
             </div>
           )}
+
+          {/* Deal Team — Buyer / Seller split */}
+          {activeDeal.participants && activeDeal.participants.length > 0 && (() => {
+            const buyers = activeDeal.participants.filter(p => p.is_client_side);
+            const sellers = activeDeal.participants.filter(p => !p.is_client_side);
+            return (
+              <div className="space-y-3">
+                {buyers.length > 0 && (
+                  <div className="bg-white rounded-2xl shadow overflow-hidden">
+                    <div className="px-5 py-3 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                      <span className="text-base">🏠</span>
+                      <p className="text-sm font-bold text-blue-800">Buyer Side</p>
+                    </div>
+                    {buyers.map((p, i) => (
+                      <div key={i} className="flex items-start gap-4 px-5 py-4 border-b border-gray-50 last:border-0">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}>
+                          {(p.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-gray-800">{p.name || '—'}</p>
+                            {p.role && <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">{p.role}</span>}
+                          </div>
+                          {p.phone && (
+                            <a href={`tel:${p.phone}`} className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 hover:text-[#1B2C5E] transition">
+                              <PhoneCall className="w-3 h-3" />{p.phone}
+                            </a>
+                          )}
+                          {p.email && (
+                            <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5 hover:text-[#1B2C5E] transition">
+                              <Mail className="w-3 h-3" />{p.email}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {sellers.length > 0 && (
+                  <div className="bg-white rounded-2xl shadow overflow-hidden">
+                    <div className="px-5 py-3 bg-green-50 border-b border-green-100 flex items-center gap-2">
+                      <span className="text-base">🤝</span>
+                      <p className="text-sm font-bold text-green-800">Seller Side</p>
+                    </div>
+                    {sellers.map((p, i) => (
+                      <div key={i} className="flex items-start gap-4 px-5 py-4 border-b border-gray-50 last:border-0">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${AVATAR_COLORS[(i + 3) % AVATAR_COLORS.length]}`}>
+                          {(p.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-gray-800">{p.name || '—'}</p>
+                            {p.role && <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">{p.role}</span>}
+                          </div>
+                          {p.phone && (
+                            <a href={`tel:${p.phone}`} className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 hover:text-[#1B2C5E] transition">
+                              <PhoneCall className="w-3 h-3" />{p.phone}
+                            </a>
+                          )}
+                          {p.email && (
+                            <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5 hover:text-[#1B2C5E] transition">
+                              <Mail className="w-3 h-3" />{p.email}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Bottom CTAs */}
           <div className="space-y-3 pb-6">

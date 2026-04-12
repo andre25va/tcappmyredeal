@@ -233,6 +233,7 @@ serve(async (req: Request) => {
             role: formatRole(p.deal_role ?? ''),
             phone: c.phone ?? null,
             email: c.email ?? null,
+            is_client_side: p.is_client_side === true,
             _isClientLeadAgent: p.deal_role === 'lead_agent' && p.is_client_side === true,
           };
         })
