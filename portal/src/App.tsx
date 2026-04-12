@@ -16,6 +16,14 @@ import {
   User,
   Mail,
   PhoneCall,
+  Copy,
+  Check,
+  Tag,
+  MapPin,
+  TrendingUp,
+  AlertTriangle,
+  Flag,
+  Zap,
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://alxrmusieuzgssynktxg.supabase.co';
@@ -23,7 +31,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFseHJtdXNpZXV6Z3NzeW5rdHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1MDY1OTQsImV4cCI6MjA1MTA4MjU5NH0.wGaBlD2C0ioMLJgGBxdBOGdTxZHT0SL0cN9cXWu67zo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request';
+type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request' | 'roadmap';
 
 type RequestType =
   | 'Document Request'
@@ -139,6 +147,104 @@ function daysAwayBadge(days: number | null): JSX.Element {
 function formatCurrency(n: number | null): string {
   if (n == null) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+}
+
+// ── Deal Health ───────────────────────────────────────────────────────────────
+function computeDealHealth(deal: ClientDeal): {
+  status: 'on-track' | 'attention' | 'critical';
+  label: string;
+  narrative: string;
+  flags: string[];
+} {
+  const flags: string[] = [];
+  const days = daysToClose(deal.closingDate);
+  if (deal.financeDeadline) {
+    const fd = daysToClose(deal.financeDeadline);
+    if (fd !== null && fd < 0) flags.push(`Finance deadline passed ${Math.abs(fd)} day${Math.abs(fd) === 1 ? '' : 's'} ago`);
+    else if (fd !== null && fd <= 3) flags.push(`Finance deadline in ${fd} day${fd === 1 ? '' : 's'}`);
+  }
+  if (deal.optionPeriodEnd) {
+    const op = daysToClose(deal.optionPeriodEnd);
+    if (op !== null && op >= 0 && op <= 2) flags.push(`Option period ends in ${op} day${op === 1 ? '' : 's'}`);
+  }
+  if (days !== null && days < 0) flags.push(`Closing was ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`);
+  else if (days !== null && days <= 3 && days >= 0) flags.push(`Closing in ${days} day${days === 1 ? '' : 's'} — final stretch!`);
+  if (deal.tasksTotal > 0) {
+    const open = deal.tasksTotal - deal.tasksCompleted;
+    if (open > 0 && deal.tasksCompleted / deal.tasksTotal < 0.5) {
+      flags.push(`${open} of ${deal.tasksTotal} tasks still open`);
+    }
+  }
+  let status: 'on-track' | 'attention' | 'critical';
+  let label: string;
+  let narrative: string;
+  if (flags.length === 0) {
+    status = 'on-track'; label = 'On Track';
+    narrative = 'Your deal is progressing smoothly. Your TC has everything under control.';
+  } else if (flags.length >= 2 || (days !== null && days <= 3 && days >= 0)) {
+    status = 'critical'; label = 'Needs Attention';
+    narrative = 'There are time-sensitive items on this deal. Your TC is actively working on them.';
+  } else {
+    status = 'attention'; label = 'Watch List';
+    narrative = 'A few items need monitoring. Your TC has been notified and is on top of it.';
+  }
+  return { status, label, narrative, flags };
+}
+
+function DealHealthCard({ deal }: { deal: ClientDeal }) {
+  const health = computeDealHealth(deal);
+  const cfgMap = {
+    'on-track':  { border: 'border-green-200', bg: 'bg-green-50',  textCls: 'text-green-700',  badgeBg: 'bg-green-100',  icon: '✅' },
+    'attention': { border: 'border-amber-200', bg: 'bg-amber-50',  textCls: 'text-amber-700',  badgeBg: 'bg-amber-100',  icon: '⚠️' },
+    'critical':  { border: 'border-red-200',   bg: 'bg-red-50',    textCls: 'text-red-700',    badgeBg: 'bg-red-100',    icon: '🚨' },
+  };
+  const cfg = cfgMap[health.status];
+  return (
+    <div className={`rounded-2xl border-2 p-5 ${cfg.bg} ${cfg.border}`}>
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp className={`w-4 h-4 ${cfg.textCls}`} />
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Deal Health</p>
+        </div>
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cfg.badgeBg} ${cfg.textCls} flex items-center gap-1`}>
+          {cfg.icon} {health.label}
+        </span>
+      </div>
+      <p className="text-sm text-gray-600 mb-3">{health.narrative}</p>
+      {health.flags.length > 0 && (
+        <div className="space-y-1.5 border-t border-gray-200 pt-3">
+          {health.flags.map((flag, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span>{flag}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Deal Roadmap stages ───────────────────────────────────────────────────────
+interface RoadmapStage {
+  label: string; sublabel: string; icon: string;
+  getDates: (deal: ClientDeal) => { label: string; value: string | null }[];
+}
+const DEAL_STAGES: RoadmapStage[] = [
+  { label: 'Under Contract', sublabel: 'Offer accepted & executed', icon: '📝',
+    getDates: (d) => [{ label: 'Contract Date', value: d.contractDate }, { label: 'Option Period Ends', value: d.optionPeriodEnd }] },
+  { label: 'Due Diligence', sublabel: 'Inspections & financing', icon: '🔍',
+    getDates: (d) => [{ label: 'Inspection', value: d.inspectionDate }, { label: 'Finance Deadline', value: d.financeDeadline }] },
+  { label: 'Clear to Close', sublabel: 'Lender & title approved', icon: '✅', getDates: () => [] },
+  { label: 'Closing Day', sublabel: 'Keys exchanged!', icon: '🏠',
+    getDates: (d) => [{ label: 'Closing Date', value: d.closingDate }, { label: 'Possession', value: d.possessionDate }] },
+];
+function getStageIndex(status: string): number {
+  const s = (status ?? '').toLowerCase();
+  if (s.includes('clear')) return 2;
+  if (s.includes('diligence') || s === 'due-diligence') return 1;
+  if (s.includes('clos')) return 3;
+  return 0;
 }
 
 function Logo() {
@@ -583,6 +689,9 @@ export default function App() {
             </div>
           </div>
 
+          {/* Deal Health */}
+          <DealHealthCard deal={activeDeal} />
+
           {/* Progress bar card */}
           <div className="bg-white rounded-2xl shadow p-5">
             <div className="flex items-center justify-between mb-2">
@@ -646,6 +755,25 @@ export default function App() {
             </div>
           )}
 
+          {/* Next Steps for You */}
+          {activeDeal.nextItem && (
+            <div className="bg-white rounded-2xl shadow p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-4 h-4 text-[#F4B942]" />
+                <p className="text-sm font-bold text-[#1B2C5E]">Next Steps</p>
+              </div>
+              <div className="bg-[#F4B942]/10 border border-[#F4B942]/30 rounded-xl p-4">
+                <p className="text-sm font-semibold text-gray-800">{activeDeal.nextItem.title}</p>
+                {activeDeal.nextItem.dueDate && (
+                  <p className="text-xs text-gray-500 mt-1">Due {formatDate(activeDeal.nextItem.dueDate)}</p>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Your TC is coordinating this. No action needed unless they reach out to you.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Full milestones */}
           {milestones.length > 0 && (
             <div className="bg-white rounded-2xl shadow overflow-hidden">
@@ -697,7 +825,157 @@ export default function App() {
           )}
 
           {/* Bottom CTAs */}
-          <div className="grid grid-cols-2 gap-3 pb-6">
+          <div className="space-y-3 pb-6">
+            <button
+              onClick={() => setScreen('roadmap')}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-[#F4B942] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#e0a830] transition"
+            >
+              <MapPin className="w-4 h-4" /> View Deal Roadmap
+            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setScreen('sheet')}
+                className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition"
+              >
+                📄 Deal Sheet
+              </button>
+              <button
+                onClick={() => { setMessage(''); setScreen('request'); }}
+                className="flex items-center justify-center gap-2 py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition"
+              >
+                Make a Request
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  /* ── ROADMAP ── */
+  if (screen === 'roadmap' && activeDeal) {
+    const currentStageIdx = getStageIndex(activeDeal.status);
+    const health = computeDealHealth(activeDeal);
+    const days = daysToClose(activeDeal.closingDate);
+    const hMap: Record<string, { bg: string; text: string; icon: string }> = {
+      'on-track':  { bg: 'bg-green-50 border-green-200', text: 'text-green-700', icon: '✅' },
+      'attention': { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', icon: '⚠️' },
+      'critical':  { bg: 'bg-red-50 border-red-200',    text: 'text-red-700',   icon: '🚨' },
+    };
+    const hcfg = hMap[health.status];
+    return (
+      <div className="min-h-screen bg-gray-50" data-page-id="portal-roadmap">
+        <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <button onClick={() => setScreen('deal')} className="flex items-center gap-1.5 text-sm font-semibold hover:text-white/80 transition">
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <Logo />
+            <div className="w-16" />
+          </div>
+        </header>
+        <main className="max-w-2xl mx-auto px-4 py-6 space-y-4 pb-10">
+          {/* Deal header */}
+          <div className="bg-[#1B2C5E] rounded-2xl px-5 py-5 text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-white/60 font-semibold uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3" /> Deal Roadmap
+                </p>
+                <p className="font-bold text-lg leading-snug">{activeDeal.address}</p>
+                <p className="text-white/60 text-sm mt-0.5">{[activeDeal.city, activeDeal.state].filter(Boolean).join(', ')}</p>
+              </div>
+              {days !== null && days >= 0 && (
+                <div className="text-right flex-shrink-0 ml-4">
+                  <p className="text-2xl font-bold text-[#F4B942]">{days}</p>
+                  <p className="text-xs text-white/60">days to close</p>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Health banner */}
+          <div className={`rounded-2xl border-2 p-4 ${hcfg.bg}`}>
+            <div className="flex items-start gap-3">
+              <span className="text-xl mt-0.5">{hcfg.icon}</span>
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${hcfg.text}`}>{health.label}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{health.narrative}</p>
+                {health.flags.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {health.flags.map((flag, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
+                        <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                        {flag}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Pipeline */}
+          <div className="bg-white rounded-2xl shadow overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Flag className="w-4 h-4 text-[#1B2C5E]" />
+              <p className="text-sm font-bold text-[#1B2C5E]">Transaction Pipeline</p>
+            </div>
+            <div className="px-5 py-5 space-y-0">
+              {DEAL_STAGES.map((stage, idx) => {
+                const isDone = idx < currentStageIdx;
+                const isCurrent = idx === currentStageIdx;
+                const isFuture = idx > currentStageIdx;
+                const dates = stage.getDates(activeDeal).filter(d => d.value);
+                const isLast = idx === DEAL_STAGES.length - 1;
+                return (
+                  <div key={stage.label} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className={`relative flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-lg border-2 z-10
+                        ${isDone ? 'bg-green-500 border-green-500' : ''}
+                        ${isCurrent ? 'bg-[#1B2C5E] border-[#1B2C5E] shadow-lg shadow-[#1B2C5E]/20' : ''}
+                        ${isFuture ? 'bg-gray-50 border-gray-200' : ''}
+                      `}>
+                        {isDone
+                          ? <CheckCircle2 className="w-5 h-5 text-white" />
+                          : <span className={isFuture ? 'opacity-30' : ''}>{stage.icon}</span>
+                        }
+                        {isCurrent && (
+                          <span className="absolute -inset-1.5 rounded-full border-2 border-[#F4B942] animate-pulse" />
+                        )}
+                      </div>
+                      {!isLast && (
+                        <div className={`w-0.5 my-1 flex-1 min-h-8 ${isDone ? 'bg-green-300' : 'bg-gray-200'}`} />
+                      )}
+                    </div>
+                    <div className={`flex-1 ${isLast ? 'pb-2' : 'pb-5'}`}>
+                      <div className="flex items-center justify-between mt-2">
+                        <div>
+                          <p className={`text-sm font-bold ${isDone ? 'text-green-700' : isCurrent ? 'text-[#1B2C5E]' : 'text-gray-400'}`}>
+                            {stage.label}
+                          </p>
+                          <p className={`text-xs mt-0.5 ${isFuture ? 'text-gray-300' : 'text-gray-500'}`}>{stage.sublabel}</p>
+                        </div>
+                        {isDone && <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full flex-shrink-0">Done ✓</span>}
+                        {isCurrent && <span className="text-xs font-bold text-[#1B2C5E] bg-[#F4B942]/20 border border-[#F4B942]/40 px-2 py-0.5 rounded-full flex-shrink-0">📍 You Are Here</span>}
+                      </div>
+                      {dates.length > 0 && !isFuture && (
+                        <div className="mt-2 space-y-1 pl-1">
+                          {dates.map(({ label, value }) => (
+                            <div key={label} className="flex items-center gap-2 text-xs">
+                              <Calendar className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              <span className="text-gray-500">{label}:</span>
+                              <span className="font-semibold text-gray-700">{formatDate(value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* CTAs */}
+          <div className="grid grid-cols-2 gap-3 pb-4">
             <button
               onClick={() => setScreen('sheet')}
               className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition"
