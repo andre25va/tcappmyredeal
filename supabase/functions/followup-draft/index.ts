@@ -1,5 +1,6 @@
-// followup-draft Edge Function (no JWT)
-// GET  ?task_id=xxx  → renders HTML draft page
+// followup-draft Edge Function v2 (no JWT)
+// v2: pre-populates "To" email from deal_participants → contacts
+// GET  ?task_id=xxx  → renders HTML draft page with GPT draft + pre-filled recipient
 // POST              → sends the email via Gmail
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -62,11 +63,15 @@ async function sendEmail(to: string, subject: string, bodyHtml: string) {
 }
 
 async function draftWithGPT(taskTitle: string, address: string, daysOverdue: number, dealContext: string): Promise<{ subject: string; body: string }> {
-  const prompt = `You are a professional Transaction Coordinator assistant. Draft a concise, professional follow-up email for an overdue task.
+  const overdueNote = daysOverdue > 0
+    ? `Days Overdue: ${daysOverdue}`
+    : 'Due: Today';
+
+  const prompt = `You are a professional Transaction Coordinator assistant. Draft a concise, professional follow-up email for a task.
 
 Task: ${taskTitle}
 Property: ${address}
-Days Overdue: ${daysOverdue}
+${overdueNote}
 Deal Context: ${dealContext}
 
 Rules:
@@ -102,10 +107,29 @@ function renderPage(opts: {
   subject: string;
   body: string;
   taskId: string;
+  suggestedEmail?: string;
+  suggestedName?: string;
+  allParticipants?: { name: string; email: string; role: string }[];
   error?: string;
 }): string {
   const bodyEscaped = opts.body.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const subjectEscaped = opts.subject.replace(/"/g, '&quot;');
+  const overdueText = opts.daysOverdue > 0
+    ? `${opts.daysOverdue}d overdue`
+    : 'Due today';
+  const badgeColor = opts.daysOverdue > 0 ? '#dc2626' : '#059669';
+
+  // Build participant options for the dropdown
+  let participantOptions = '';
+  if (opts.allParticipants && opts.allParticipants.length > 0) {
+    for (const p of opts.allParticipants) {
+      const selected = p.email === opts.suggestedEmail ? ' selected' : '';
+      participantOptions += `<option value="${p.email}"${selected}>${p.name} (${p.role})</option>`;
+    }
+  }
+
+  const hasParticipants = opts.allParticipants && opts.allParticipants.length > 0;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,17 +141,17 @@ function renderPage(opts: {
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; min-height: 100vh; padding: 32px 16px; }
     .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; max-width: 600px; margin: 0 auto; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .logo { font-size: 13px; font-weight: 700; color: #2563eb; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 20px; }
-    .task-header { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; }
+    .task-header { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; margin-bottom: 24px; }
     .task-title { font-size: 15px; font-weight: 600; color: #1a1a1a; }
     .task-meta { font-size: 13px; color: #6b7280; margin-top: 4px; }
-    .overdue-badge { display: inline-block; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+    .overdue-badge { display: inline-block; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; background: ${badgeColor}; }
     label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; margin-top: 18px; }
-    input[type="email"], input[type="text"], textarea {
+    select, input[type="email"], input[type="text"], textarea {
       width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px;
       font-size: 14px; color: #1a1a1a; background: #fff; outline: none;
       transition: border-color 0.15s;
     }
-    input:focus, textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    select:focus, input:focus, textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
     textarea { min-height: 200px; resize: vertical; font-family: inherit; line-height: 1.6; }
     .hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
     .btn-row { display: flex; gap: 10px; margin-top: 24px; }
@@ -137,11 +161,10 @@ function renderPage(opts: {
       transition: background 0.15s;
     }
     button[type="submit"]:hover { background: #1d4ed8; }
-    button[type="submit"]:active { background: #1e40af; }
     .discard { flex: 0; background: #f3f4f6; color: #6b7280; border: none; border-radius: 8px; padding: 12px 16px; font-size: 14px; cursor: pointer; }
     .error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; border-radius: 8px; padding: 12px 14px; font-size: 14px; margin-bottom: 16px; }
-    .loading { text-align: center; color: #6b7280; font-size: 14px; padding: 8px 0; display: none; }
     #sendBtn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .or-divider { text-align: center; font-size: 12px; color: #9ca3af; margin: 8px 0; }
   </style>
 </head>
 <body>
@@ -149,7 +172,7 @@ function renderPage(opts: {
     <div class="logo">TC Command · Follow-Up Draft</div>
 
     <div class="task-header">
-      <div class="task-title">${opts.taskTitle} <span class="overdue-badge">${opts.daysOverdue}d overdue</span></div>
+      <div class="task-title">${opts.taskTitle} <span class="overdue-badge">${overdueText}</span></div>
       <div class="task-meta">📍 ${opts.address}</div>
     </div>
 
@@ -159,8 +182,16 @@ function renderPage(opts: {
       <input type="hidden" name="task_id" value="${opts.taskId}">
 
       <label for="to">To (recipient email)</label>
-      <input type="email" id="to" name="to" required placeholder="agent@example.com, lender@bank.com">
-      <div class="hint">Enter the email of the person responsible for this task.</div>
+      ${hasParticipants ? `
+      <select id="participantSelect" onchange="document.getElementById('to').value = this.value">
+        <option value="">— Select a deal participant —</option>
+        ${participantOptions}
+        <option value="__other__">Other (type manually below)</option>
+      </select>
+      <div class="or-divider">or type manually</div>
+      ` : ''}
+      <input type="email" id="to" name="to" required placeholder="agent@example.com" value="${opts.suggestedEmail || ''}">
+      <div class="hint">${opts.suggestedName ? `Suggested: ${opts.suggestedName}` : 'Enter the email of the person responsible for this task.'}</div>
 
       <label for="subject">Subject</label>
       <input type="text" id="subject" name="subject" required value="${subjectEscaped}">
@@ -173,15 +204,22 @@ function renderPage(opts: {
         <button type="button" class="discard" onclick="window.close()">Discard</button>
         <button type="submit" id="sendBtn">✉️ Send Follow-Up</button>
       </div>
-      <div class="loading" id="loadingMsg">Sending via Gmail…</div>
     </form>
   </div>
   <script>
     document.getElementById('sendForm').addEventListener('submit', function() {
       document.getElementById('sendBtn').disabled = true;
       document.getElementById('sendBtn').textContent = 'Sending…';
-      document.getElementById('loadingMsg').style.display = 'block';
     });
+    ${hasParticipants ? `
+    // When "Other" selected, clear the email field so user can type
+    document.getElementById('participantSelect').addEventListener('change', function() {
+      if (this.value === '__other__') {
+        document.getElementById('to').value = '';
+        document.getElementById('to').focus();
+      }
+    });
+    ` : ''}
   </script>
 </body>
 </html>`;
@@ -218,7 +256,6 @@ serve(async (req: Request) => {
   const url = new URL(req.url);
   const supabase = getSupabase();
 
-  // ── POST: send the email ─────────────────────────────────────────────────
   if (req.method === 'POST') {
     const form = await req.formData();
     const to = form.get('to') as string;
@@ -226,26 +263,18 @@ serve(async (req: Request) => {
     const body = form.get('body') as string;
     const taskId = form.get('task_id') as string;
 
-    // Convert plain text body to simple HTML
     const bodyHtml = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.7;max-width:600px;margin:0 auto;padding:24px;">
-      ${body.split('\n').map(l => l.trim() ? `<p style="margin:0 0 12px 0;">${l}</p>` : '<br>').join('')}
+      ${body.split('\n').map((l: string) => l.trim() ? `<p style="margin:0 0 12px 0;">${l}</p>` : '<br>').join('')}
       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;">Sent via TC Command · MyReDeal</p>
     </body></html>`;
 
     try {
       await sendEmail(to, subject, bodyHtml);
-
-      // Mark task as having a follow-up sent (update notes or just log)
-      await supabase.from('tasks').update({
-        description: `Follow-up sent to ${to} on ${new Date().toLocaleDateString('en-US')}`
-      }).eq('id', taskId).is('description', null);
-
       return new Response(successPage(to), {
         headers: { 'Content-Type': 'text/html; charset=UTF-8' },
       });
     } catch (err) {
-      // Re-render page with error — need task data again
       const { data: task } = await supabase.from('tasks').select('*, deals(property_address)').eq('id', taskId).single();
       const daysOverdue = task?.due_date
         ? Math.floor((Date.now() - new Date(task.due_date).getTime()) / 86400000)
@@ -258,18 +287,16 @@ serve(async (req: Request) => {
           daysOverdue,
           subject,
           body,
-          error: `Failed to send: ${err.message}`,
+          error: `Failed to send: ${(err as Error).message}`,
         }),
         { headers: { 'Content-Type': 'text/html; charset=UTF-8' } }
       );
     }
   }
 
-  // ── GET: render draft page ───────────────────────────────────────────────
+  // ── GET: render draft page ──
   const taskId = url.searchParams.get('task_id');
-  if (!taskId) {
-    return new Response('Missing task_id', { status: 400 });
-  }
+  if (!taskId) return new Response('Missing task_id', { status: 400 });
 
   const { data: task, error: taskErr } = await supabase
     .from('tasks')
@@ -277,24 +304,18 @@ serve(async (req: Request) => {
     .eq('id', taskId)
     .single();
 
-  if (taskErr || !task) {
-    return new Response('Task not found', { status: 404 });
-  }
+  if (taskErr || !task) return new Response('Task not found', { status: 404 });
 
   const deal = task.deals as {
-    property_address?: string;
-    buyer_name?: string;
-    seller_name?: string;
-    buyer_agent_name?: string;
-    seller_agent_name?: string;
-    loan_officer_name?: string;
-    title_company_name?: string;
-    status?: string;
+    property_address?: string; buyer_name?: string; seller_name?: string;
+    buyer_agent_name?: string; seller_agent_name?: string;
+    loan_officer_name?: string; title_company_name?: string; status?: string;
   } | null;
 
   const address = deal?.property_address || 'Unknown Property';
+  const today = new Date().toISOString().split('T')[0];
   const daysOverdue = task.due_date
-    ? Math.floor((Date.now() - new Date(task.due_date).getTime()) / 86400000)
+    ? Math.max(0, Math.floor((new Date(today).getTime() - new Date(task.due_date).getTime()) / 86400000))
     : 0;
 
   const dealContext = [
@@ -307,11 +328,49 @@ serve(async (req: Request) => {
     deal?.status ? `Deal Status: ${deal.status}` : '',
   ].filter(Boolean).join(', ') || 'No additional context';
 
+  // ── Look up deal participants with emails ──
+  const allParticipants: { name: string; email: string; role: string }[] = [];
+  let suggestedEmail = '';
+  let suggestedName = '';
+
+  if (task.deal_id) {
+    const { data: participants } = await supabase
+      .from('deal_participants')
+      .select('deal_role, contacts(full_name, first_name, last_name, email)')
+      .eq('deal_id', task.deal_id)
+      .not('contact_id', 'is', null);
+
+    if (participants) {
+      // Priority order for auto-suggestion: buyer_agent, lender, title_officer, seller_agent, buyer, seller, other
+      const rolePriority: Record<string, number> = {
+        buyer_agent: 1, lender: 2, title_officer: 3, lead_agent: 4,
+        seller_agent: 5, buyer: 6, seller: 7, co_agent: 8, other: 9,
+      };
+
+      const sorted = [...participants].sort((a, b) =>
+        (rolePriority[a.deal_role] || 99) - (rolePriority[b.deal_role] || 99)
+      );
+
+      for (const p of sorted) {
+        const c = p.contacts as { full_name?: string; first_name?: string; last_name?: string; email?: string } | null;
+        if (!c?.email) continue;
+        const name = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+        const roleLabel = p.deal_role.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+        allParticipants.push({ name, email: c.email, role: roleLabel });
+        if (!suggestedEmail) {
+          suggestedEmail = c.email;
+          suggestedName = `${name} (${roleLabel})`;
+        }
+      }
+    }
+  }
+
+  // ── GPT draft ──
   let draft = { subject: `Follow-Up: ${task.title} — ${address}`, body: '' };
   try {
     draft = await draftWithGPT(task.title, address, daysOverdue, dealContext);
   } catch {
-    draft.body = `Hi,\n\nI wanted to follow up on the pending task: "${task.title}" for the property at ${address}.\n\nThis item is currently ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue. Please let me know the current status so we can keep the transaction on track.\n\nThank you,\nAndre Vargas | Transaction Coordinator | MyReDeal`;
+    draft.body = `Hi,\n\nI wanted to follow up on the pending task: "${task.title}" for the property at ${address}.\n\nThis item is ${daysOverdue > 0 ? `currently ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue` : 'due today'}. Please let me know the current status so we can keep the transaction on track.\n\nThank you,\nAndre Vargas | Transaction Coordinator | MyReDeal`;
   }
 
   return new Response(
@@ -322,6 +381,9 @@ serve(async (req: Request) => {
       daysOverdue,
       subject: draft.subject,
       body: draft.body,
+      suggestedEmail,
+      suggestedName,
+      allParticipants,
     }),
     { headers: { 'Content-Type': 'text/html; charset=UTF-8' } }
   );
