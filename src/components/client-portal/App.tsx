@@ -309,8 +309,9 @@ export default function App() {
         return;
       }
       setContactName(data.contactName ?? '');
-      setDeals(data.deals ?? []);
-      if ((data.deals ?? []).length >= 1) setActiveDealId(data.deals[0].id);
+      const activeDeals = (data.deals ?? []).filter((d: any) => d.status !== 'archived');
+      setDeals(activeDeals);
+      if (activeDeals.length >= 1) setActiveDealId(activeDeals[0].id);
       if (data.requestTypes?.length) setAvailableRequestTypes(data.requestTypes);
       if (data.requestTypes?.[0]) setRequestType(data.requestTypes[0] as RequestType);
       if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
@@ -334,7 +335,7 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && !data.error) {
-        setDeals(data.deals ?? []);
+        setDeals((data.deals ?? []).filter((d: any) => d.status !== 'archived'));
         if (data.requestTypes?.length) setAvailableRequestTypes(data.requestTypes);
         if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
       }
