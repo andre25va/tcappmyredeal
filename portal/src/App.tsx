@@ -34,6 +34,8 @@ import {
   AlertTriangle,
   Flag,
   Zap,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://alxrmusieuzgssynktxg.supabase.co';
@@ -41,7 +43,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFseHJtdXNpZXV6Z3NzeW5rdHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1MDY1OTQsImV4cCI6MjA1MTA4MjU5NH0.wGaBlD2C0ioMLJgGBxdBOGdTxZHT0SL0cN9cXWu67zo';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request' | 'roadmap';
+type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request' | 'roadmap' | 'messages';
 
 type RequestType =
   | 'Document Request'
@@ -322,6 +324,11 @@ function PortalApp() {
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
+  // ── Portal messaging state ─────────────────────────────────────────────────
+  const [newMsg, setNewMsg] = useState('');
+  const [msgError, setMsgError] = useState('');
+  const msgsEndRef = React.useRef<HTMLDivElement>(null);
+
   const activeDeal = deals.find((d) => d.id === activeDealId) ?? null;
 
   // ── Auth (TanStack useMutation) ────────────────────────────────────────────
@@ -404,6 +411,59 @@ function PortalApp() {
     }
     // Force fresh fetch from server via cache-busting query param
     window.location.href = window.location.pathname + '?v=' + Date.now();
+  };
+
+  // ── Portal messages (TanStack useQuery + useMutation) ─────────────────────
+  const { data: messagesData, isFetching: msgsFetching, refetch: refetchMsgs } = useQuery({
+    queryKey: ['portal-messages', activeDealId, phone, pin],
+    queryFn: async () => {
+      if (!activeDealId || !phone || !pin) return { messages: [] };
+      const params = new URLSearchParams({ phone, pin, deal_id: activeDealId });
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/portal-messages?${params}`,
+        { headers: { apikey: SUPABASE_ANON_KEY } },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load messages');
+      return data;
+    },
+    enabled: screen === 'messages' && !!activeDealId && !!phone && !!pin,
+    refetchInterval: screen === 'messages' ? 30 * 1000 : false,
+    refetchOnWindowFocus: screen === 'messages',
+  });
+  const portalMsgs: any[] = messagesData?.messages ?? [];
+
+  // Auto-scroll to bottom when new messages arrive
+  React.useEffect(() => {
+    if (screen === 'messages') {
+      msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [screen, portalMsgs.length]);
+
+  const sendMsgMutation = useMutation({
+    mutationFn: async (body: string) => {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ phone, pin, deal_id: activeDealId, body }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? 'Failed to send');
+      return data;
+    },
+    onSuccess: () => {
+      setNewMsg('');
+      setMsgError('');
+      refetchMsgs();
+    },
+    onError: (err: Error) => setMsgError(err.message),
+  });
+
+  const handleSendMsg = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMsg.trim() || sendMsgMutation.isPending) return;
+    setMsgError('');
+    sendMsgMutation.mutate(newMsg.trim());
   };
 
   // ── Submit request (TanStack useMutation) ──────────────────────────────────
@@ -886,6 +946,7 @@ function PortalApp() {
             </div>
           )}
 
+
           {/* Deal Team — Buyer / Seller split */}
           {activeDeal.participants && activeDeal.participants.length > 0 && (() => {
             const buyers = activeDeal.participants.filter(p => p.is_client_side);
@@ -966,18 +1027,24 @@ function PortalApp() {
             >
               <MapPin className="w-4 h-4" /> View Deal Roadmap
             </button>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => setScreen('sheet')}
-                className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition"
+                className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition text-sm"
               >
                 📄 Deal Sheet
               </button>
               <button
-                onClick={() => { setMessage(''); setScreen('request'); }}
-                className="flex items-center justify-center gap-2 py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition"
+                onClick={() => { setMsgError(''); setScreen('messages'); }}
+                className="flex items-center justify-center gap-1.5 py-3 border-2 border-blue-600 text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition text-sm"
               >
-                Make a Request
+                <MessageCircle className="w-4 h-4" /> Messages
+              </button>
+              <button
+                onClick={() => { setMessage(''); setScreen('request'); }}
+                className="flex items-center justify-center gap-2 py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition text-sm"
+              >
+                Request
               </button>
             </div>
           </div>
@@ -1109,18 +1176,24 @@ function PortalApp() {
             </div>
           </div>
           {/* CTAs */}
-          <div className="grid grid-cols-2 gap-3 pb-4">
+          <div className="grid grid-cols-3 gap-3 pb-4">
             <button
               onClick={() => setScreen('sheet')}
-              className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition"
+              className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition text-sm"
             >
               📄 Deal Sheet
             </button>
             <button
-              onClick={() => { setMessage(''); setScreen('request'); }}
-              className="flex items-center justify-center gap-2 py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition"
+              onClick={() => { setMsgError(''); setScreen('messages'); }}
+              className="flex items-center justify-center gap-1.5 py-3 border-2 border-blue-600 text-blue-700 font-bold rounded-xl hover:bg-blue-50 transition text-sm"
             >
-              Make a Request
+              <MessageCircle className="w-4 h-4" /> Messages
+            </button>
+            <button
+              onClick={() => { setMessage(''); setScreen('request'); }}
+              className="flex items-center justify-center gap-2 py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition text-sm"
+            >
+              Request
             </button>
           </div>
         </main>
@@ -1438,6 +1511,126 @@ function PortalApp() {
             </button>
           </form>
         </main>
+      </div>
+    );
+  }
+
+  /* ── MESSAGES ── */
+  if (screen === 'messages' && activeDeal) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {/* Header */}
+        <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg flex-none">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <button
+              onClick={() => setScreen('deal')}
+              className="flex items-center gap-1.5 text-sm font-semibold hover:text-white/80 transition"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <Logo />
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-white/70">
+              <MessageCircle className="w-4 h-4" /> Messages
+            </div>
+          </div>
+        </header>
+
+        {/* Deal tag */}
+        <div className="max-w-2xl mx-auto w-full px-4 pt-4 flex-none">
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-white rounded-xl px-3 py-2 shadow-sm border border-gray-100">
+            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+            <span className="font-semibold text-gray-700 truncate">{activeDeal.address}</span>
+          </div>
+        </div>
+
+        {/* Message thread */}
+        <div className="flex-1 overflow-y-auto max-w-2xl mx-auto w-full px-4 py-4 space-y-3">
+          {msgsFetching && portalMsgs.length === 0 ? (
+            <div className="flex items-center justify-center h-32 gap-2 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading messages...</span>
+            </div>
+          ) : portalMsgs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 text-gray-300 text-center px-6">
+              <MessageCircle className="w-10 h-10" />
+              <div>
+                <p className="font-semibold text-gray-500 text-sm">No messages yet</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Send a message below and your Transaction Coordinator will respond shortly.
+                </p>
+              </div>
+            </div>
+          ) : (
+            portalMsgs.map((msg: any) => {
+              const isMe = msg.direction === 'inbound';
+              const time = msg.sent_at
+                ? new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
+              const dateStr = msg.sent_at
+                ? new Date(msg.sent_at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+                : '';
+              return (
+                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'}`}>
+                    {!isMe && (
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className="w-6 h-6 rounded-full bg-[#1B2C5E] flex items-center justify-center text-white text-[10px] font-bold">TC</div>
+                        <span className="text-[11px] text-gray-400 font-medium">Your TC</span>
+                      </div>
+                    )}
+                    <div
+                      className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                        isMe
+                          ? 'bg-[#1B2C5E] text-white rounded-br-sm'
+                          : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm shadow-sm'
+                      }`}
+                    >
+                      {msg.body}
+                    </div>
+                    <span className="text-[10px] text-gray-400 px-1">
+                      {dateStr} · {time}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={msgsEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className="flex-none bg-white border-t border-gray-200 px-4 py-4 max-w-2xl mx-auto w-full">
+          {msgError && (
+            <div className="mb-3 flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+              {msgError}
+            </div>
+          )}
+          <form onSubmit={handleSendMsg} className="flex gap-3 items-end">
+            <textarea
+              value={newMsg}
+              onChange={(e) => setNewMsg(e.target.value)}
+              placeholder="Type a message to your TC..."
+              rows={2}
+              className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#F4B942] focus:outline-none text-gray-700 resize-none transition text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMsg(e as any); }
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!newMsg.trim() || sendMsgMutation.isPending}
+              className="flex-none w-11 h-11 bg-[#1B2C5E] text-white rounded-xl flex items-center justify-center hover:bg-[#0f1a38] transition disabled:opacity-40"
+            >
+              {sendMsgMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Send className="w-4 h-4" />}
+            </button>
+          </form>
+          <p className="text-[10px] text-gray-400 mt-2 text-center">
+            Messages are reviewed by your Transaction Coordinator · typically responded to within a few hours
+          </p>
+        </div>
       </div>
     );
   }
