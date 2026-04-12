@@ -326,37 +326,24 @@ export const Inbox: React.FC<InboxProps> = ({ onSelectDeal, onWaitingCountChange
     setSending(true);
     try {
       if (selectedConv.channel === 'portal') {
-        // Portal: write directly to Supabase — no Twilio
+        // Portal: route through edge function — saves message + emails client
         const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-        const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        const now = new Date().toISOString();
-        await fetch(`${sbUrl}/rest/v1/messages`, {
+        const resp = await fetch(`${sbUrl}/functions/v1/portal-messages`, {
           method: 'POST',
-          headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            tc_reply: true,
             deal_id: selectedConv.deal_id,
             conversation_id: selectedConv.id,
-            direction: 'outbound',
-            channel: 'portal',
             body: replyText.trim(),
-            status: 'sent',
-            sent_at: now,
           }),
         });
-        await fetch(`${sbUrl}/rest/v1/conversations?id=eq.${selectedConv.id}`, {
-          method: 'PATCH',
-          headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-          body: JSON.stringify({
-            last_message_at: now,
-            last_message_preview: replyText.trim().slice(0, 100),
-            waiting_for_reply: false,
-            unread_count: 0,
-          }),
-        });
-        setReplyText('');
-        setNeedReply(false);
-        await loadMessages(selectedConv.id, 'portal');
-        await loadConversations();
+        if (resp.ok) {
+          setReplyText('');
+          setNeedReply(false);
+          await loadMessages(selectedConv.id, 'portal');
+          await loadConversations();
+        }
       } else {
         const resp = await fetch('/api/sms?action=send', {
           method: 'POST',
