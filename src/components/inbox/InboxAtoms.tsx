@@ -3,15 +3,16 @@ import { Clock, ExternalLink, Paperclip } from 'lucide-react';
 import type { EmailAttachment, EmailMessage } from './types';
 import { getFileIcon, formatFileSize } from './helpers';
 
-export function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' }) {
+export function ChannelBadge({ channel }: { channel: 'sms' | 'email' | 'whatsapp' | 'portal' }) {
   if (channel === 'whatsapp') return (
     <span className="badge badge-xs text-white font-bold" style={{ backgroundColor: '#25D366' }}>WA</span>
   );
   if (channel === 'sms') return <span className="badge badge-xs badge-info">SMS</span>;
+  if (channel === 'portal') return <span className="badge badge-xs" style={{ backgroundColor: '#1e3a5f', color: '#fff' }}>PORTAL</span>;
   return <span className="badge badge-xs badge-success">EMAIL</span>;
 }
 
-export function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp'; name: string }) {
+export function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'whatsapp' | 'portal'; name: string }) {
   const letter = name.charAt(0).toUpperCase();
   if (channel === 'whatsapp') return (
     <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold text-white" style={{ backgroundColor: '#25D366' }}>
@@ -20,6 +21,9 @@ export function ChannelAvatar({ channel, name }: { channel: 'sms' | 'email' | 'w
   );
   if (channel === 'sms') return (
     <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold bg-blue-100 text-blue-600">{letter}</div>
+  );
+  if (channel === 'portal') return (
+    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold text-white" style={{ backgroundColor: '#1e3a5f' }}>{letter}</div>
   );
   return (
     <div className="w-9 h-9 rounded-full flex items-center justify-center flex-none text-sm font-bold bg-green-100 text-green-600">{letter}</div>
