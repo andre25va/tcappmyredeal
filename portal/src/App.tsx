@@ -384,8 +384,25 @@ function PortalApp() {
     if (refreshData.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...refreshData.portalSettings });
   }, [refreshData]);
 
-  const handleRefresh = () => {
-    window.location.reload();
+  const handleRefresh = async () => {
+    // Clear all service worker caches
+    if ('caches' in window) {
+      try {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      } catch (_) {}
+    }
+    // Unregister any service workers
+    if ('serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      } catch (_) {}
+    }
+    // Force fresh fetch from server via cache-busting query param
+    window.location.href = window.location.pathname + '?v=' + Date.now();
   };
 
   // ── Submit request (TanStack useMutation) ──────────────────────────────────
