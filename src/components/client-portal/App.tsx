@@ -329,7 +329,7 @@ function PortalApp() {
   };
 
   // ── Auto-refresh (TanStack useQuery — every 5 min while logged in) ──────────
-  const { isFetching: isQueryFetching, refetch: refetchDeals } = useQuery({
+  const { isFetching: isQueryFetching, refetch: refetchDeals, data: refreshData } = useQuery({
     queryKey: ['portal-deals', phone, pin],
     queryFn: async () => {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/client-portal-auth`, {
@@ -344,12 +344,15 @@ function PortalApp() {
     enabled: screen !== 'login' && !!phone && !!pin,
     refetchInterval: 5 * 60 * 1000, // every 5 min
     refetchOnWindowFocus: true,
-    onSuccess: (data: any) => {
-      setDeals((data.deals ?? []).filter((d: any) => d.status !== 'archived'));
-      if (data.requestTypes?.length) setAvailableRequestTypes(data.requestTypes);
-      if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
-    },
   });
+
+  // v5: onSuccess removed — use useEffect to react to refreshed data
+  React.useEffect(() => {
+    if (!refreshData) return;
+    setDeals((refreshData.deals ?? []).filter((d: any) => d.status !== 'archived'));
+    if (refreshData.requestTypes?.length) setAvailableRequestTypes(refreshData.requestTypes);
+    if (refreshData.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...refreshData.portalSettings });
+  }, [refreshData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
