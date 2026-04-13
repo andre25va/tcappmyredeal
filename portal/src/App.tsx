@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -36,6 +36,11 @@ import {
   Zap,
   MessageCircle,
   Send,
+  Paperclip,
+  Camera,
+  FileText,
+  X,
+  ImageIcon,
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://alxrmusieuzgssynktxg.supabase.co';
@@ -329,6 +334,13 @@ function PortalApp() {
   const [msgError, setMsgError] = useState('');
   const msgsEndRef = React.useRef<HTMLDivElement>(null);
 
+  // Attachment state
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachPreview, setAttachPreview] = useState<string | null>(null);
+  const [attachUploading, setAttachUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
   const activeDeal = deals.find((d) => d.id === activeDealId) ?? null;
 
   // ── Auth (TanStack useMutation) ────────────────────────────────────────────
@@ -441,11 +453,11 @@ function PortalApp() {
   }, [screen, portalMsgs.length]);
 
   const sendMsgMutation = useMutation({
-    mutationFn: async (body: string) => {
+    mutationFn: async ({ body, metadata }: { body: string; metadata?: any }) => {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-        body: JSON.stringify({ phone, pin, deal_id: activeDealId, body }),
+        body: JSON.stringify({ phone, pin, deal_id: activeDealId, body, ...(metadata ? { metadata } : {}) }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? 'Failed to send');
@@ -454,16 +466,82 @@ function PortalApp() {
     onSuccess: () => {
       setNewMsg('');
       setMsgError('');
+      setAttachFile(null);
+      setAttachPreview(null);
       refetchMsgs();
     },
     onError: (err: Error) => setMsgError(err.message),
   });
 
-  const handleSendMsg = (e: React.FormEvent) => {
+  const handleAttachFile = (file: File) => {
+    if (file.size > 20 * 1024 * 1024) {
+      setMsgError('File too large. Max 20 MB.');
+      return;
+    }
+    setAttachFile(file);
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => setAttachPreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setAttachPreview(null);
+    }
+  };
+
+  const handleSendMsg = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMsg.trim() || sendMsgMutation.isPending) return;
+    if ((!newMsg.trim() && !attachFile) || sendMsgMutation.isPending || attachUploading) return;
     setMsgError('');
-    sendMsgMutation.mutate(newMsg.trim());
+
+    let metadata: any = undefined;
+
+    // Upload attachment if any
+    if (attachFile) {
+      try {
+        setAttachUploading(true);
+
+        // 1. Get signed upload URL from edge fn
+        const urlRes = await fetch(`${SUPABASE_URL}/functions/v1/portal-messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+          body: JSON.stringify({
+            action: 'upload-url',
+            phone,
+            pin,
+            deal_id: activeDealId,
+            filename: attachFile.name,
+            mime_type: attachFile.type,
+          }),
+        });
+        const urlData = await urlRes.json();
+        if (!urlRes.ok || urlData.error) throw new Error(urlData.error ?? 'Upload failed');
+
+        // 2. PUT file to signed URL
+        const uploadRes = await fetch(urlData.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': attachFile.type },
+          body: attachFile,
+        });
+        if (!uploadRes.ok) throw new Error('File upload failed. Please try again.');
+
+        metadata = {
+          attachments: [{
+            path: urlData.path,
+            name: attachFile.name,
+            type: attachFile.type,
+            size: attachFile.size,
+          }],
+        };
+      } catch (err: any) {
+        setMsgError(err.message ?? 'Upload failed');
+        setAttachUploading(false);
+        return;
+      } finally {
+        setAttachUploading(false);
+      }
+    }
+
+    sendMsgMutation.mutate({ body: newMsg.trim() || (attachFile ? `📎 ${attachFile.name}` : ''), metadata });
   };
 
   // ── Submit request (TanStack useMutation) ──────────────────────────────────
@@ -1585,7 +1663,50 @@ function PortalApp() {
                           : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm shadow-sm'
                       }`}
                     >
-                      {msg.body}
+                      {msg.body && !msg.body.startsWith('📎 ') && <p>{msg.body}</p>}
+                      {/* Attachments */}
+                      {msg.metadata?.attachments?.map((att: any, i: number) => {
+                        const isImg = att.type?.startsWith('image/');
+                        const isPdf = att.type === 'application/pdf';
+                        const url = att.signedUrl;
+                        if (!url) return null;
+                        return (
+                          <div key={i} className="mt-2">
+                            {isImg ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={url}
+                                  alt={att.name}
+                                  className="max-w-[240px] max-h-[200px] rounded-xl object-cover border border-white/20 cursor-pointer hover:opacity-90 transition"
+                                />
+                              </a>
+                            ) : isPdf ? (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+                                  isMe
+                                    ? 'border-white/30 text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-[#1B2C5E] hover:bg-gray-50'
+                                }`}
+                              >
+                                <FileText className="w-4 h-4 flex-shrink-0" />
+                                <span className="truncate max-w-[180px]">{att.name}</span>
+                              </a>
+                            ) : (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2 text-xs underline ${isMe ? 'text-white/80' : 'text-blue-600'}`}
+                              >
+                                <Paperclip className="w-3.5 h-3.5" />{att.name}
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <span className="text-[10px] text-gray-400 px-1">
                       {dateStr} · {time}
@@ -1598,6 +1719,23 @@ function PortalApp() {
           <div ref={msgsEndRef} />
         </div>
 
+        {/* Hidden file inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttachFile(f); e.target.value = ''; }}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttachFile(f); e.target.value = ''; }}
+        />
+
         {/* Input */}
         <div className="flex-none bg-white border-t border-gray-200 px-4 py-4 max-w-2xl mx-auto w-full">
           {msgError && (
@@ -1606,11 +1744,54 @@ function PortalApp() {
               {msgError}
             </div>
           )}
-          <form onSubmit={handleSendMsg} className="flex gap-3 items-end">
+
+          {/* Attachment preview */}
+          {attachFile && (
+            <div className="mb-3 flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+              {attachPreview ? (
+                <img src={attachPreview} alt="preview" className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 border border-blue-100">
+                  <FileText className="w-5 h-5 text-[#1B2C5E]" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-700 truncate">{attachFile.name}</p>
+                <p className="text-[10px] text-gray-400">{(attachFile.size / 1024).toFixed(0)} KB</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setAttachFile(null); setAttachPreview(null); }}
+                className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSendMsg} className="flex gap-2 items-end">
+            {/* Attach from gallery */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-none w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-400 hover:border-[#1B2C5E] hover:text-[#1B2C5E] transition"
+              title="Attach file or photo"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+            {/* Camera */}
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="flex-none w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-400 hover:border-[#1B2C5E] hover:text-[#1B2C5E] transition"
+              title="Take a photo"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
             <textarea
               value={newMsg}
               onChange={(e) => setNewMsg(e.target.value)}
-              placeholder="Type a message to your TC..."
+              placeholder={attachFile ? 'Add a message (optional)...' : 'Type a message to your TC...'}
               rows={2}
               className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#F4B942] focus:outline-none text-gray-700 resize-none transition text-sm"
               onKeyDown={(e) => {
@@ -1619,10 +1800,10 @@ function PortalApp() {
             />
             <button
               type="submit"
-              disabled={!newMsg.trim() || sendMsgMutation.isPending}
+              disabled={(!newMsg.trim() && !attachFile) || sendMsgMutation.isPending || attachUploading}
               className="flex-none w-11 h-11 bg-[#1B2C5E] text-white rounded-xl flex items-center justify-center hover:bg-[#0f1a38] transition disabled:opacity-40"
             >
-              {sendMsgMutation.isPending
+              {(sendMsgMutation.isPending || attachUploading)
                 ? <Loader2 className="w-4 h-4 animate-spin" />
                 : <Send className="w-4 h-4" />}
             </button>
