@@ -5,7 +5,7 @@ interface ChangeDiff { field: string; old_value: string; new_value: string; }
 
 export interface ActivityItem {
   id: string;
-  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'contact_update' | 'task_event' | 'status_change' | 'ai_summary';
+  type: 'email' | 'call' | 'call_note' | 'request' | 'request_event' | 'note' | 'activity' | 'sms' | 'whatsapp' | 'portal' | 'contact_update' | 'task_event' | 'status_change' | 'ai_summary';
   timestamp: string;
   title: string;
   body?: string;
@@ -55,7 +55,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
           .from('messages')
           .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id')
           .eq('deal_id', dealId)
-          .in('channel', ['sms', 'whatsapp'])
+          .in('channel', ['sms', 'whatsapp', 'portal'])
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
@@ -158,18 +158,30 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
 
       // SMS / WhatsApp messages
       for (const m of messagesRes.data || []) {
-        const channel = m.channel === 'whatsapp' ? 'whatsapp' : 'sms';
-        const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'SMS';
-        const dirLabel = m.direction === 'inbound' ? '↙ Inbound' : '↗ Outbound';
-        const contact = m.direction === 'inbound' ? m.from_number : m.to_number;
-        normalized.push({
-          id: `msg-${m.id}`,
-          type: channel,
-          timestamp: m.sent_at || m.created_at,
-          title: `${dirLabel} ${channelLabel}${contact ? ` · ${contact}` : ''}`,
-          body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
-          meta: { status: m.status, messageId: m.id },
-        });
+        if (m.channel === 'portal') {
+          const dirLabel = m.direction === 'inbound' ? '↙ Client sent' : '↗ TC replied';
+          normalized.push({
+            id: `msg-${m.id}`,
+            type: 'portal' as const,
+            timestamp: m.sent_at || m.created_at,
+            title: `${dirLabel} via Client Portal`,
+            body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
+            meta: { status: m.status, messageId: m.id, hasAttachment: !!m.metadata?.attachments?.length },
+          });
+        } else {
+          const channel = m.channel === 'whatsapp' ? 'whatsapp' : 'sms';
+          const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'SMS';
+          const dirLabel = m.direction === 'inbound' ? '↙ Inbound' : '↗ Outbound';
+          const contact = m.direction === 'inbound' ? m.from_number : m.to_number;
+          normalized.push({
+            id: `msg-${m.id}`,
+            type: channel,
+            timestamp: m.sent_at || m.created_at,
+            title: `${dirLabel} ${channelLabel}${contact ? ` · ${contact}` : ''}`,
+            body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
+            meta: { status: m.status, messageId: m.id },
+          });
+        }
       }
 
       // Contact change log events

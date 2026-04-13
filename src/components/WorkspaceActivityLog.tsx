@@ -3,7 +3,7 @@ import { useActivityLog, useInvalidateActivityLog, type ActivityItem } from '../
 import {
   Mail, Phone, ClipboardList, MessageSquare, Plus, RefreshCw,
   Activity, ChevronDown, ChevronUp, Smartphone, UserCheck,
-  CheckSquare, ArrowRightLeft, Brain,
+  CheckSquare, ArrowRightLeft, Brain, Home,
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +25,7 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   activity:       <Activity size={13} className="text-base-content/40" />,
   sms:            <Smartphone size={13} className="text-teal-600" />,
   whatsapp:       <Smartphone size={13} className="text-emerald-600" />,
+  portal:         <Home size={13} className="text-[#1B2C5E]" />,
   contact_update: <UserCheck size={13} className="text-amber-600" />,
   task_event:     <CheckSquare size={13} className="text-indigo-600" />,
   status_change:  <ArrowRightLeft size={13} className="text-rose-500" />,
@@ -41,6 +42,7 @@ const TYPE_BG: Record<string, string> = {
   activity:       'bg-base-200',
   sms:            'bg-teal-50',
   whatsapp:       'bg-emerald-50',
+  portal:         'bg-blue-50',
   contact_update: 'bg-amber-50',
   task_event:     'bg-indigo-50',
   status_change:  'bg-rose-50',
@@ -52,6 +54,7 @@ const FILTERS = [
   { value: 'email',          label: '📧 Emails' },
   { value: 'call',           label: '📞 Calls' },
   { value: 'sms',            label: '💬 SMS/Chat' },
+  { value: 'portal',        label: '🏠 Portal' },
   { value: 'request',        label: '📋 Requests' },
   { value: 'task_event',     label: '✅ Tasks' },
   { value: 'status_change',  label: '🔀 Status' },
@@ -97,7 +100,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
         ? items.filter(i => i.type === 'request' || i.type === 'request_event')
         : filter === 'sms'
           ? items.filter(i => i.type === 'sms' || i.type === 'whatsapp')
-          : items.filter(i => i.type === filter);
+          : filter === 'portal'
+            ? items.filter(i => i.type === 'portal')
+            : items.filter(i => i.type === filter);
 
   // Group by date
   const grouped: { date: string; entries: ActivityItem[] }[] = [];
@@ -112,6 +117,7 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
 
   // Filter badge counts
   const smsCount          = items.filter(i => i.type === 'sms' || i.type === 'whatsapp').length;
+  const portalCount       = items.filter(i => i.type === 'portal').length;
   const contactUpdateCount = items.filter(i => i.type === 'contact_update').length;
   const taskEventCount    = items.filter(i => i.type === 'task_event').length;
   const statusChangeCount = items.filter(i => i.type === 'status_change').length;
@@ -156,6 +162,9 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
             {f.label}
             {f.value === 'sms' && smsCount > 0 && (
               <span className="ml-1 badge badge-xs bg-teal-100 text-teal-700 border-teal-200">{smsCount}</span>
+            )}
+            {f.value === 'portal' && portalCount > 0 && (
+              <span className="ml-1 badge badge-xs bg-blue-100 text-[#1B2C5E] border-blue-200">{portalCount}</span>
             )}
             {f.value === 'contact_update' && contactUpdateCount > 0 && (
               <span className="ml-1 badge badge-xs bg-amber-100 text-amber-700 border-amber-200">{contactUpdateCount}</span>
