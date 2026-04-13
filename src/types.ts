@@ -324,6 +324,7 @@ export interface ContactRecord {
   teamName?: string;
   orgId?: string;
   pin?: string;
+  contactNumber?: number;
   deleted_at?: string;
   deleted_by?: string;
 }

@@ -379,6 +379,11 @@ export function ContactsDirectory({ triggerAdd, onTriggerHandled, onDirectoryCha
                         <div className="font-medium text-sm flex items-center gap-1">
                           {c.fullName}
                           {c.isClient && <Star size={12} className="text-amber-500 fill-amber-500" />}
+                          {c.contactNumber != null && (
+                            <span className="text-[10px] font-mono text-base-content/40 bg-base-200 px-1 rounded">
+                              #{String(c.contactNumber).padStart(4, '0')}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-base-content/50">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${roleColor(c.contactType)}`}>
