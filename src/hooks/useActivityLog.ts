@@ -53,7 +53,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
           .limit(100),
         supabase
           .from('messages')
-          .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id')
+          .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id, metadata')
           .eq('deal_id', dealId)
           .in('channel', ['sms', 'whatsapp', 'portal'])
           .order('created_at', { ascending: false })
