@@ -118,7 +118,7 @@ export const WorkspaceOutbox: React.FC<Props> = ({ deal }) => {
           )}
           <button
             className="btn btn-ghost btn-xs btn-square"
-            onClick={load}
+            onClick={() => void load()}
             title="Refresh"
           >
             <RefreshCw size={13} />
