@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDealParticipants, useInvalidateDealParticipants } from '../hooks/useDealParticipants';
 import {
   Plus, Mail, Phone, Bell, BellOff, Trash2, Users, ChevronDown, ChevronRight,
@@ -329,7 +330,19 @@ const ContactPopup: React.FC<{
     company: contact.company || cr?.company || '',
     notes: cr?.notes || '',
   });
-  const [licenseUrl, setLicenseUrl] = useState<string | null>(null);
+  const { data: licenseUrl = null } = useQuery<string | null>({
+    queryKey: ['state-license', dealState],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('state_license_links')
+        .select('lookup_url')
+        .eq('state_code', dealState)
+        .single();
+      return data?.lookup_url || null;
+    },
+    enabled: !!dealState,
+    staleTime: 1000 * 60 * 60, // 1 hour
+  });
   const [emailMenuOpen, setEmailMenuOpen] = useState(false);
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
   const emailMenuRef = useRef<HTMLDivElement>(null);
@@ -347,17 +360,6 @@ const ContactPopup: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  useEffect(() => {
-    if (!dealState) return;
-    supabase
-      .from('state_license_links')
-      .select('lookup_url')
-      .eq('state_code', dealState)
-      .single()
-      .then(({ data }) => {
-        if (data?.lookup_url) setLicenseUrl(data.lookup_url);
-      });
-  }, [dealState]);
 
   const stateMls = dealState && cr?.mlsMemberships?.length
     ? cr.mlsMemberships.filter(m => m.stateCode === dealState)
@@ -869,10 +871,32 @@ const ContactSearchModal: React.FC<{
   onConfirmAdd: (contactId: string, contactName: string, deal_role: string, side: 'buyer' | 'seller' | 'both') => Promise<void>;
 }> = ({ slot, columnSide, dealId, orgId, profileName, onClose, onConfirmAdd }) => {
   const [search, setSearch] = useState('');
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [allContacts, setAllContacts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
+
+  const { data: contactsData, isLoading: loading } = useQuery<{ matched: any[]; all: any[] }>({
+    queryKey: ['contacts-for-slot', slot.contact_type, orgId],
+    queryFn: async () => {
+      const effectiveOrgId = orgId || primaryOrgId?.();
+      const { data: matched } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
+        .eq('contact_type', slot.contact_type)
+        .is('deleted_at', null)
+        .order('first_name')
+        .limit(30);
+      const { data: all } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
+        .is('deleted_at', null)
+        .order('first_name')
+        .limit(100);
+      return { matched: matched || [], all: all || [] };
+    },
+    staleTime: 30_000,
+  });
+  const contacts = contactsData?.matched || [];
+  const allContacts = contactsData?.all || [];
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -885,37 +909,6 @@ const ContactSearchModal: React.FC<{
 
   const { profile, primaryOrgId } = useAuth();
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const effectiveOrgId = orgId || primaryOrgId?.();
-        // Role-matched
-        const { data: matched } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
-          .eq('contact_type', slot.contact_type)
-          .is('deleted_at', null)
-          .order('first_name')
-          .limit(30);
-        setContacts(matched || []);
-
-        // All contacts for fallback
-        const { data: all } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name, full_name, email, phone, company, contact_type')
-          .is('deleted_at', null)
-          .order('first_name')
-          .limit(100);
-        setAllContacts(all || []);
-      } catch (err) {
-        console.error('ContactSearchModal load error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [slot.contact_type, orgId]);
 
   const sideLabel = columnSide === 'buyer' ? 'Buy Side' : 'Sell Side';
 

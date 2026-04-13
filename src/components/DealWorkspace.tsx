@@ -12,6 +12,8 @@ import { Deal, ContactRecord, AppUser, EmailTemplate, ComplianceTemplate } from 
 import { useAuth } from '../contexts/AuthContext';
 import { pendingDocCount } from '../utils/helpers';
 import { useDealEmails } from '../hooks/useDealEmails';
+import { useDealRequests } from '../hooks/useDealRequests';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageIdBadge } from './PageIdBadge';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
@@ -180,7 +182,6 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
     (deal.orgId ? (profile as any)?.orgMemberships?.some((m: any) => m.orgId === deal.orgId && m.roleInOrg === 'team_admin') : false);
   const [tab, setTab] = useState<Tab>(initialTab ?? 'overview');
-  const [activeRequestCount, setActiveRequestCount] = React.useState(0);
   const [internalRequestType, setInternalRequestType] = useState<string | null>(null);
   const [internalTaskId, setInternalTaskId] = useState<string | null>(null);
 
@@ -192,19 +193,11 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     }
   }, [tab]);
 
-  // Fetch active request count for badge
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .from('requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('deal_id', deal.id)
-      .not('status', 'in', '(completed,cancelled,accepted,rejected)')
-      .then(({ count }) => {
-        if (!cancelled) setActiveRequestCount(count || 0);
-      });
-    return () => { cancelled = true; };
-  }, [deal.id]);
+  // Active request count derived from cached useDealRequests data
+  const { data: dealRequestsData } = useDealRequests(deal.id);
+  const activeRequestCount = (dealRequestsData || []).filter(
+    (r: any) => !['completed', 'cancelled', 'accepted', 'rejected'].includes(r.status)
+  ).length;
   const [copied, setCopied] = useState(false);
   const [wsMenuOpen, setWsMenuOpen]     = useState(false);
   const [wsArchiveOpen, setWsArchiveOpen] = useState(false);
@@ -238,6 +231,8 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   const [mlsRerunFirstName, setMlsRerunFirstName] = useState('');
   const [mlsRerunning, setMlsRerunning] = useState(false);
 
+  const queryClient = useQueryClient();
+
   // Fetch deal emails
   const { emails: dealEmails, loading: emailsLoading, stats: emailStats } = useDealEmails(deal);
 
@@ -247,30 +242,32 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
   // Reset to initialTab (or overview) whenever the active deal changes
   useEffect(() => { setTab(initialTab ?? 'overview'); }, [deal.id, initialTab]);
 
-  // Load MLS data from DB when panel opens
+  // Load MLS data from DB when panel opens (via TanStack Query)
+  const { data: mlsQueryData, isLoading: mlsQueryLoading, isError: mlsQueryIsError } = useQuery({
+    queryKey: ['mls-data', deal.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('deals')
+        .select('mls_data, mls_data_fetched_at, mls_data_fetched_by')
+        .eq('id', deal.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: showMlsData,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Sync MLS query result to local state variables
   useEffect(() => {
-    if (!showMlsData) return;
-    const loadMlsData = async () => {
-      setMlsDataLoading(true);
-      setMlsDataError(null);
-      try {
-        const { data, error } = await supabase
-          .from('deals')
-          .select('mls_data, mls_data_fetched_at, mls_data_fetched_by')
-          .eq('id', deal.id)
-          .single();
-        if (error) throw error;
-        setMlsData(data?.mls_data || null);
-        setMlsDataFetchedAt(data?.mls_data_fetched_at || null);
-        setMlsDataFetchedBy(data?.mls_data_fetched_by || null);
-      } catch (err: any) {
-        setMlsDataError('Failed to load MLS data');
-      } finally {
-        setMlsDataLoading(false);
-      }
-    };
-    loadMlsData();
-  }, [showMlsData, deal.id]);
+    if (mlsQueryData) {
+      setMlsData(mlsQueryData.mls_data || null);
+      setMlsDataFetchedAt(mlsQueryData.mls_data_fetched_at || null);
+      setMlsDataFetchedBy(mlsQueryData.mls_data_fetched_by || null);
+    }
+    setMlsDataLoading(mlsQueryLoading);
+    if (mlsQueryIsError) setMlsDataError('Failed to load MLS data');
+  }, [mlsQueryData, mlsQueryLoading, mlsQueryIsError]);
 
   const runMlsSearch = async () => {
     setMlsRerunning(true);
@@ -301,9 +298,11 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
           mls_data_fetched_at: now,
           mls_data_fetched_by: fetchedBy,
         }).eq('id', deal.id);
+        // Optimistic local state update + cache invalidation
         setMlsData(result.data);
         setMlsDataFetchedAt(now);
         setMlsDataFetchedBy(fetchedBy);
+        queryClient.invalidateQueries({ queryKey: ['mls-data', deal.id] });
       } else {
         setMlsDataError('No active listing found for this property.');
       }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ClipboardList, Plus, Send, CheckCircle, Clock,
   FileText, RotateCcw, ChevronDown, ChevronRight, Mail, User, Edit3, Eye, ExternalLink,
@@ -15,7 +15,7 @@ import { supabase } from '../lib/supabase';
 import { DealContactPicker, DealContact } from './DealContactPicker';
 import { EmptyState } from './ui/EmptyState';
 import { Button } from './ui/Button';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDealRequests, useInvalidateDealRequests } from '../hooks/useDealRequests';
 import { useInvalidateDealTasks } from '../hooks/useDealTasks';
 
@@ -216,6 +216,31 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   const { data: rawRequests = [], isLoading: loading } = useDealRequests(deal.id);
   const requests = rawRequests.map(mapRow);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Load inbound messages for the expanded request via TanStack Query
+  const { data: inboundMsgsForExpanded = [], isLoading: inboundMsgsLoading } = useQuery<InboundMessage[]>({
+    queryKey: ['inbound-messages', expandedId],
+    queryFn: async () => {
+      if (!expandedId) return [];
+      const { data, error } = await supabase
+        .from('inbound_messages')
+        .select('id, request_id, from_email, subject, body_text, received_at, classification')
+        .eq('request_id', expandedId)
+        .order('received_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map((m: any): InboundMessage => ({
+        id: m.id,
+        requestId: m.request_id,
+        fromEmail: m.from_email,
+        subject: m.subject,
+        bodyText: m.body_text,
+        receivedAt: m.received_at,
+        classification: m.classification,
+      }));
+    },
+    enabled: !!expandedId,
+    staleTime: 30_000,
+  });
   const [showNewModal, setShowNewModal] = useState(false);
 
   // Auto-open modal when autoOpenType is provided (e.g. from By Task "Send Request" button)
@@ -243,8 +268,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   const [inlineEdits, setInlineEdits] = useState<Record<string, { to: string; subject: string; body: string }>>({});
 
   // Inbound messages per request (for review cards)
-  const [inboundMessages, setInboundMessages] = useState<Record<string, InboundMessage[]>>({});
-  const [loadingMessages, setLoadingMessages] = useState<Record<string, boolean>>({});
 
   // Re-request modal state
   const [reRequestModal, setReRequestModal] = useState<{ request: RequestRecord; recipient: RequestRecipient } | null>(null);
@@ -265,35 +288,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
 
 
 
-  // ── Load inbound messages for a request ─────────────────────────────────────
-  const loadInboundMessages = useCallback(async (requestId: string) => {
-    if (inboundMessages[requestId] !== undefined || loadingMessages[requestId]) return;
-    setLoadingMessages(prev => ({ ...prev, [requestId]: true }));
-    try {
-      const { data, error } = await supabase
-        .from('inbound_messages')
-        .select('id, request_id, from_email, subject, body_text, received_at, classification')
-        .eq('request_id', requestId)
-        .order('received_at', { ascending: false });
-      if (error) throw error;
-      setInboundMessages(prev => ({
-        ...prev,
-        [requestId]: (data || []).map((m: any): InboundMessage => ({
-          id: m.id,
-          requestId: m.request_id,
-          fromEmail: m.from_email,
-          subject: m.subject,
-          bodyText: m.body_text,
-          receivedAt: m.received_at,
-          classification: m.classification,
-        })),
-      }));
-    } catch (err) {
-      console.error('Failed to load inbound messages:', err);
-    } finally {
-      setLoadingMessages(prev => ({ ...prev, [requestId]: false }));
-    }
-  }, [inboundMessages, loadingMessages]);
 
   // ── Rebuild inline email when type or recipients change ─────────────────────
   useEffect(() => {
@@ -342,10 +336,6 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     setExpandedId(newId);
 
     if (newId) {
-      const needsReview = ['reply_received', 'document_received', 'under_review'].includes(req.status);
-      if (needsReview) {
-        loadInboundMessages(req.id);
-      }
       if (req.status === 'draft' && !inlineEdits[req.id]) {
         const content = getDefaultEmailContent(
           req.requestType,
@@ -736,8 +726,8 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         setInlineEdits(prev => ({ ...prev, [req.id]: { ...prev[req.id], [field]: value } }))
       }
       sending={sendingId === req.id}
-      inboundMessages={inboundMessages[req.id] || []}
-      loadingMessages={!!loadingMessages[req.id]}
+      inboundMessages={expandedId === req.id ? inboundMsgsForExpanded : []}
+      loadingMessages={expandedId === req.id ? inboundMsgsLoading : false}
       getTypeLabel={getTypeLabel}
       fmtDate={fmtDate}
     />
