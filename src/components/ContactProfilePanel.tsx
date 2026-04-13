@@ -127,7 +127,14 @@ export function ContactProfilePanel({ contact, onClose, onEdit }: Props) {
             {initials(contact)}
           </div>
           <div className="min-w-0">
-            <h2 className="text-white font-semibold text-base leading-tight truncate">{fullName}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-white font-semibold text-base leading-tight truncate">{fullName}</h2>
+              {contact.contactNumber != null && (
+                <span className="text-[10px] font-mono text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded shrink-0">
+                  #{String(contact.contactNumber).padStart(4, '0')}
+                </span>
+              )}
+            </div>
             {contact.company && (
               <p className="text-gray-400 text-xs truncate">{contact.company}</p>
             )}
