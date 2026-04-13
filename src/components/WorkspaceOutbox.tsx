@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { Send, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, Inbox, Clock, RefreshCw } from 'lucide-react';
 
@@ -25,25 +26,23 @@ interface Props {
 }
 
 export const WorkspaceOutbox: React.FC<Props> = ({ deal }) => {
-  const [notifications, setNotifications] = useState<PendingNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: notifications = [], isLoading: loading, refetch: load } = useQuery<PendingNotification[]>({
+    queryKey: ['pending-notifications', deal.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pending_notifications')
+        .select('*')
+        .eq('deal_id', deal.id)
+        .order('created_at', { ascending: false });
+      return data || [];
+    },
+    staleTime: 30_000,
+  });
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<Record<string, { subject: string; body: string }>>({});
   const [sending, setSending] = useState<Record<string, boolean>>({});
   const [dismissing, setDismissing] = useState<Record<string, boolean>>({});
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('pending_notifications')
-      .select('*')
-      .eq('deal_id', deal.id)
-      .order('created_at', { ascending: false });
-    setNotifications(data || []);
-    setLoading(false);
-  }, [deal.id]);
-
-  useEffect(() => { load(); }, [load]);
 
   const pending = notifications.filter(n => n.status === 'pending');
   const history = notifications.filter(n => n.status !== 'pending');
@@ -72,7 +71,7 @@ export const WorkspaceOutbox: React.FC<Props> = ({ deal }) => {
       if (error || !result?.success) {
         alert(`Send failed: ${error?.message || result?.error || 'Unknown error'}`);
       } else {
-        await load();
+        await queryClient.invalidateQueries({ queryKey: ['pending-notifications', deal.id] });
         // Clear edits for sent item
         setEditing(prev => { const next = { ...prev }; delete next[n.id]; return next; });
       }
@@ -89,7 +88,7 @@ export const WorkspaceOutbox: React.FC<Props> = ({ deal }) => {
       .from('pending_notifications')
       .update({ status: 'dismissed', dismissed_at: new Date().toISOString() })
       .eq('id', n.id);
-    await load();
+    await queryClient.invalidateQueries({ queryKey: ['pending-notifications', deal.id] });
     setDismissing(prev => ({ ...prev, [n.id]: false }));
   };
 

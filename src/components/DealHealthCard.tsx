@@ -7,6 +7,7 @@ import { DealRecord } from '../ai/types';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { generateId } from '../utils/helpers';
+import { useInvalidateActivityLog } from '../hooks/useActivityLog';
 import { DealParticipant } from '../types';
 
 interface Props {
@@ -33,6 +34,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
   const style = LABEL_STYLES[health.label];
   const Icon = style.icon;
 
+  const invalidateActivityLog = useInvalidateActivityLog();
   const [aiResult, setAiResult] = useState<DealHealthAIResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -91,6 +93,7 @@ export const DealHealthCard: React.FC<Props> = ({ dealRecord, deal, onUpdate }) 
         description: `AI Deal Summary emailed to ${recipientName} (${recipientEmail})`,
         performed_by: 'TC Staff',
       });
+      invalidateActivityLog(dealRecord.id);
 
       // Also keep legacy in-memory update for immediate UI refresh
       if (deal && onUpdate) {

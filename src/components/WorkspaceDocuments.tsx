@@ -23,6 +23,7 @@ import { Button } from './ui/Button';
 import { useDealDocuments, useInvalidateDealDocuments } from '../hooks/useDealDocuments';
 import { useDocumentLog, useInvalidateDocumentLog } from '../hooks/useDocumentLog';
 import { useChecklistDocLinks, useInvalidateChecklistDocLinks } from '../hooks/useChecklistDocLinks';
+import { useInvalidateDealTasks } from '../hooks/useDealTasks';
 import { useLinkedEmails } from '../hooks/useLinkedEmails';
 
 // ─── Timeline Fields ──────────────────────────────────────────────────────────
@@ -1092,6 +1093,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [showActivityLog, setShowActivityLog] = useState(false);
   const { data: activityLog = [], isLoading: loadingLog } = useDocumentLog(deal.id, showActivityLog);
   const invalidateLog = useInvalidateDocumentLog();
+  const invalidateDealTasks = useInvalidateDealTasks();
   const [showArchived, setShowArchived] = useState(false);
 
   // Address mismatch / classify state
@@ -1368,6 +1370,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           status: 'pending',
           category: 'document',
         });
+        invalidateDealTasks(deal.id);
       }
 
       // Auto-trigger comparison for contracts, amendments, addendums, and counter offers
@@ -1450,6 +1453,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         status: 'pending',
         category: 'document',
       });
+      invalidateDealTasks(deal.id);
     }
 
     if (docType === 'purchase_contract' || docType === 'amendment' || docType === 'addendum' || docType === 'counter_offer') {
