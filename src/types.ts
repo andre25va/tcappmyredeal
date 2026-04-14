@@ -343,6 +343,7 @@ export interface ChecklistItem {
   id: string;
   title: string;
   completed: boolean;
+  notApplicable?: boolean;  // Item marked as N/A — does not apply to this deal
   dueDate?: string;
   notes?: string;
   completedAt?: string;

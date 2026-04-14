@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom';
 import {
   CheckCircle2, Circle, Plus, Trash2, ClipboardList, Shield,
   Star, AlertCircle, Home, Eye, EyeOff, Pencil, Check, X, Lock, ChevronRight,
-  MoreVertical, StickyNote, User, RotateCcw, GripVertical, Paperclip,
+  MoreVertical, StickyNote, User, RotateCcw, GripVertical, Paperclip, Ban,
 } from 'lucide-react';
 import { Deal, ComplianceTemplate, ChecklistItem, AppUser, ContactRecord } from '../types';
 import { checklistProgress, generateId, formatDate, daysUntil } from '../utils/helpers';
@@ -15,6 +15,9 @@ import { Button } from './ui/Button';
 import { useChecklistDocLinks } from '../hooks/useChecklistDocLinks';
 
 interface ChecklistDocLink { id: string; checklist_item_id: string; document_id: string; file_name?: string; }
+
+// Local extension until types.ts is updated
+type ChecklistItemExt = ChecklistItem & { notApplicable?: boolean };
 
 interface Props { deal: Deal; onUpdate: (d: Deal) => void; users?: AppUser[]; contactRecords?: ContactRecord[]; complianceTemplates?: any[]; }
 
@@ -43,7 +46,7 @@ const MULTIFAMILY_ITEMS: { title: string; required: boolean }[] = [
 
 // ─── Read-only DD Table Row (main view — completion via View All only) ─────────
 const DDTableRow: React.FC<{
-  item: ChecklistItem;
+  item: ChecklistItemExt;
   rowIndex: number;   // 0-based for alternating colour
   rowNum: number;     // display number
   onDelete: () => void;
@@ -51,6 +54,7 @@ const DDTableRow: React.FC<{
   onRename: (title: string) => void;
   onComplete: () => void;
   onUndo: () => void;
+  onNA: () => void;
   showCompleted: boolean;
   dragging?: boolean;
   dragOver?: boolean;
@@ -59,7 +63,7 @@ const DDTableRow: React.FC<{
   onDrop?: () => void;
   onDragEnd?: () => void;
   linkedDocName?: string;
-}> = ({ item, rowIndex, rowNum, onDelete, onNote, onRename, onComplete, onUndo, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
+}> = ({ item, rowIndex, rowNum, onDelete, onNote, onRename, onComplete, onUndo, onNA, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteVal, setNoteVal]   = useState(item.notes ?? '');
   const [editing, setEditing]   = useState(false);
@@ -69,13 +73,15 @@ const DDTableRow: React.FC<{
 
   useEffect(() => { if (editing) editRef.current?.focus(); }, [editing]);
 
-  if (item.completed && !showCompleted) return null;
+  if ((item.completed || item.notApplicable) && !showCompleted) return null;
 
-  const overdue = item.dueDate && !item.completed && daysUntil(item.dueDate) < 0;
-  const dueSoon = item.dueDate && !item.completed && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
-  const daysLeft = item.dueDate && !item.completed ? daysUntil(item.dueDate) : null;
+  const overdue = item.dueDate && !item.completed && !item.notApplicable && daysUntil(item.dueDate) < 0;
+  const dueSoon = item.dueDate && !item.completed && !item.notApplicable && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
+  const daysLeft = item.dueDate && !item.completed && !item.notApplicable ? daysUntil(item.dueDate) : null;
 
-  const rowBg = overdue
+  const rowBg = item.notApplicable
+    ? 'bg-gray-50 opacity-70'
+    : overdue
     ? 'bg-red-50'
     : dueSoon
     ? 'bg-yellow-50'
@@ -107,8 +113,12 @@ const DDTableRow: React.FC<{
           type="checkbox"
           className="checkbox checkbox-sm checkbox-success"
           checked={item.completed}
-          title={item.completed ? `Completed by ${item.completedBy ?? 'TC Staff'} — uncheck to reopen` : 'Mark complete'}
-          onChange={() => item.completed ? onUndo() : onComplete()}
+          title={item.completed ? `Completed by ${item.completedBy ?? 'TC Staff'} — uncheck to reopen` : item.notApplicable ? 'Marked N/A — uncheck to restore' : 'Mark complete'}
+          onChange={() => {
+            if (item.completed) onUndo();
+            else if (item.notApplicable) onUndo();
+            else onComplete();
+          }}
         />
       </div>
       <div className="flex-1 min-w-0 px-3 py-2.5">
@@ -130,11 +140,16 @@ const DDTableRow: React.FC<{
         ) : (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className={`text-sm leading-snug cursor-text text-black ${item.completed ? 'line-through text-gray-400' : ''}`}
+              className={`text-sm leading-snug cursor-text ${item.completed ? 'line-through text-gray-400' : item.notApplicable ? 'line-through text-gray-400' : 'text-black'}`}
               onDoubleClick={() => { setEditVal(item.title); setEditing(true); }}
               title="Double-click to rename"
             >{item.title}</span>
-            {item.required && !item.completed && (
+            {item.notApplicable && (
+              <span className="badge badge-xs bg-gray-200 text-gray-500 border-0 gap-0.5">
+                <Ban size={8} /> N/A
+              </span>
+            )}
+            {item.required && !item.completed && !item.notApplicable && (
               <span className="badge badge-xs badge-error gap-0.5"><Star size={8} /> Req</span>
             )}
             {linkedDocName && (
@@ -178,7 +193,12 @@ const DDTableRow: React.FC<{
         ) : <span className="text-xs text-gray-300">—</span>}
       </div>
       <div className="w-32 flex-none flex flex-col justify-center px-2 border-l border-gray-200 text-xs">
-        {item.completed ? (
+        {item.notApplicable ? (
+          <>
+            <span className="text-gray-400 font-medium text-xs truncate">{item.completedBy ?? 'TC Staff'}</span>
+            <span className="text-gray-400 text-[10px]">Marked N/A</span>
+          </>
+        ) : item.completed ? (
           <>
             <span className="text-success font-medium truncate">{item.completedBy ?? 'TC Staff'}</span>
             {item.completedAt && <span className="text-gray-400 text-[10px]">{new Date(item.completedAt).toLocaleDateString()}</span>}
@@ -191,6 +211,7 @@ const DDTableRow: React.FC<{
         onNote={() => setNoteOpen(v => !v)}
         onDelete={() => setConfirmDelete(true)}
         onUndo={onUndo}
+        onNA={onNA}
       />
       <ConfirmModal
         isOpen={confirmDelete}
@@ -205,12 +226,13 @@ const DDTableRow: React.FC<{
 };
 
 const DDRowMenu: React.FC<{
-  item: ChecklistItem;
+  item: ChecklistItemExt;
   onRename: () => void;
   onNote: () => void;
   onDelete: () => void;
   onUndo: () => void;
-}> = ({ item, onRename, onNote, onDelete, onUndo }) => {
+  onNA: () => void;
+}> = ({ item, onRename, onNote, onDelete, onUndo, onNA }) => {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -250,12 +272,12 @@ const DDRowMenu: React.FC<{
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999, boxShadow: '0 8px 28px rgba(0,0,0,0.22)', backgroundColor: '#ffffff' }}
           className="border border-gray-300 rounded-lg py-1 min-w-[185px]"
         >
-          {item.completed ? (
+          {item.completed || item.notApplicable ? (
             <div className="px-3 py-2 border-b border-gray-100 mb-1">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Completed By</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{item.notApplicable ? 'Marked N/A By' : 'Completed By'}</p>
               <div className="flex items-center gap-1.5">
-                <User size={11} className="text-success flex-none" />
-                <span className="text-xs text-success font-medium truncate">{item.completedBy ?? 'TC Staff'}</span>
+                <User size={11} className={item.notApplicable ? "text-gray-400 flex-none" : "text-success flex-none"} />
+                <span className={`text-xs font-medium truncate ${item.notApplicable ? 'text-gray-500' : 'text-success'}`}>{item.completedBy ?? 'TC Staff'}</span>
               </div>
               {item.completedAt && (
                 <p className="text-xs text-gray-400 mt-0.5 pl-4">{new Date(item.completedAt).toLocaleDateString()}</p>
@@ -263,8 +285,8 @@ const DDRowMenu: React.FC<{
             </div>
           ) : (
             <div className="px-3 py-2 border-b border-gray-100 mb-1">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Completed By</p>
-              <p className="text-xs text-gray-400 italic">Not yet completed</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Status</p>
+              <p className="text-xs text-gray-400 italic">Pending</p>
             </div>
           )}
           {item.completed && (
@@ -275,6 +297,16 @@ const DDRowMenu: React.FC<{
           <button className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-black hover:bg-gray-50" onClick={() => { setOpen(false); onRename(); }}>
             <Pencil size={12} /> Edit Title
           </button>
+          {!item.completed && !item.notApplicable && (
+            <button className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => { setOpen(false); onNA(); }}>
+              <Ban size={12} /> Mark N/A
+            </button>
+          )}
+          {item.notApplicable && (
+            <button className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-50 font-medium" onClick={() => { setOpen(false); onUndo(); }}>
+              <RotateCcw size={12} /> Restore to Pending
+            </button>
+          )}
           <button className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-black hover:bg-gray-50" onClick={() => { setOpen(false); onNote(); }}>
             <StickyNote size={12} /> {item.notes ? 'Edit Note' : 'Add Note'}
           </button>
@@ -302,12 +334,13 @@ const TableHeader: React.FC<{ actionColWidth?: string }> = ({ actionColWidth = '
 );
 
 const ComplianceRowMenu: React.FC<{
-  item: ChecklistItem;
+  item: ChecklistItemExt;
   onRename: () => void;
   onNote: () => void;
   onDelete: () => void;
   onToggle: () => void;
-}> = ({ item, onRename, onNote, onDelete, onToggle }) => {
+  onNA: () => void;
+}> = ({ item, onRename, onNote, onDelete, onToggle, onNA }) => {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -340,9 +373,21 @@ const ComplianceRowMenu: React.FC<{
       </button>
       {open && ReactDOM.createPortal(
         <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999, minWidth: 176 }} className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 text-sm">
-          <button className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left ${item.completed ? 'text-amber-600' : 'text-green-700'}`} onClick={() => { onToggle(); setOpen(false); }}>
-            {item.completed ? <><RotateCcw size={13} /> Mark Incomplete</> : <><CheckCircle2 size={13} /> Mark Complete</>}
-          </button>
+          {!item.completed && !item.notApplicable && (
+            <button className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left text-green-700`} onClick={() => { onToggle(); setOpen(false); }}>
+              <CheckCircle2 size={13} /> Mark Complete
+            </button>
+          )}
+          {!item.completed && !item.notApplicable && (
+            <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left text-gray-500" onClick={() => { onNA(); setOpen(false); }}>
+              <Ban size={13} /> Mark N/A
+            </button>
+          )}
+          {(item.completed || item.notApplicable) && (
+            <button className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-amber-50 text-left text-amber-600`} onClick={() => { onToggle(); setOpen(false); }}>
+              <RotateCcw size={13} /> {item.notApplicable ? 'Restore to Pending' : 'Mark Incomplete'}
+            </button>
+          )}
           <div className="border-t border-gray-100 my-1" />
           <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left text-black" onClick={() => { onRename(); setOpen(false); }}><Pencil size={13} /> Edit Title</button>
           <button className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left text-black" onClick={() => { onNote(); setOpen(false); }}><AlertCircle size={13} />{item.notes ? 'Edit Note' : 'Add Note'}</button>
@@ -356,8 +401,9 @@ const ComplianceRowMenu: React.FC<{
 };
 
 const ItemRow: React.FC<{
-  item: ChecklistItem;
+  item: ChecklistItemExt;
   onToggle: () => void;
+  onNA: () => void;
   onDelete: () => void;
   onNote: (note: string) => void;
   onRename: (title: string) => void;
@@ -369,7 +415,7 @@ const ItemRow: React.FC<{
   onDrop?: () => void;
   onDragEnd?: () => void;
   linkedDocName?: string;
-}> = ({ item, onToggle, onDelete, onNote, onRename, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
+}> = ({ item, onToggle, onNA, onDelete, onNote, onRename, showCompleted, dragging, dragOver, onDragStart, onDragOver, onDrop, onDragEnd, linkedDocName }) => {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteVal, setNoteVal]   = useState(item.notes ?? '');
   const [editing, setEditing]   = useState(false);
@@ -379,19 +425,20 @@ const ItemRow: React.FC<{
 
   useEffect(() => { if (editing) editRef.current?.focus(); }, [editing]);
 
-  if (item.completed && !showCompleted) return null;
+  if ((item.completed || item.notApplicable) && !showCompleted) return null;
 
-  const overdue  = item.dueDate && !item.completed && daysUntil(item.dueDate) < 0;
-  const dueSoon  = item.dueDate && !item.completed && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
-  const daysLeft = item.dueDate && !item.completed ? daysUntil(item.dueDate) : null;
+  const overdue  = item.dueDate && !item.completed && !item.notApplicable && daysUntil(item.dueDate) < 0;
+  const dueSoon  = item.dueDate && !item.completed && !item.notApplicable && daysUntil(item.dueDate) <= 3 && daysUntil(item.dueDate) >= 0;
+  const daysLeft = item.dueDate && !item.completed && !item.notApplicable ? daysUntil(item.dueDate) : null;
 
   return (
     <div
       className={`rounded-lg border transition-all group ${
-        item.completed ? 'bg-base-100 border-base-200 opacity-50' :
-        overdue        ? 'bg-error/5 border-error/30' :
-        dueSoon        ? 'bg-warning/5 border-warning/30' :
-                         'bg-base-100 border-base-300 hover:border-primary/30'
+        item.notApplicable  ? 'bg-gray-50 border-gray-200 opacity-70' :
+        item.completed      ? 'bg-base-100 border-base-200 opacity-50' :
+        overdue             ? 'bg-error/5 border-error/30' :
+        dueSoon             ? 'bg-warning/5 border-warning/30' :
+                              'bg-base-100 border-base-300 hover:border-primary/30'
       } ${dragging ? 'opacity-40' : ''} ${dragOver ? 'border-t-2 border-blue-500' : ''}`}
       draggable={true}
       onDragStart={onDragStart}
@@ -404,7 +451,7 @@ const ItemRow: React.FC<{
           <GripVertical size={13} />
         </div>
         <input type="checkbox" className="checkbox checkbox-sm checkbox-success flex-none mt-0.5" checked={item.completed}
-          title={item.completed ? `Completed by ${item.completedBy ?? "TC Staff"} — uncheck to reopen` : "Mark complete"}
+          title={item.completed ? `Completed by ${item.completedBy ?? "TC Staff"} — uncheck to reopen` : item.notApplicable ? 'Marked N/A — uncheck to restore' : "Mark complete"}
           onChange={() => onToggle()} />
         <div className="flex-1 min-w-0">
           {editing ? (
@@ -420,9 +467,14 @@ const ItemRow: React.FC<{
             </div>
           ) : (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`text-sm leading-snug cursor-text ${item.completed ? 'line-through text-base-content/40' : 'text-base-content'}`}
+              <span className={`text-sm leading-snug cursor-text ${item.completed ? 'line-through text-base-content/40' : item.notApplicable ? 'line-through text-gray-400' : 'text-base-content'}`}
                 onDoubleClick={() => { setEditVal(item.title); setEditing(true); }} title="Double-click to rename">{item.title}</span>
-              {item.required && !item.completed && <span className="badge badge-xs badge-error gap-0.5"><Star size={8} /> Req</span>}
+              {item.notApplicable && (
+                <span className="badge badge-xs bg-gray-200 text-gray-500 border-0 gap-0.5">
+                  <Ban size={8} /> N/A
+                </span>
+              )}
+              {item.required && !item.completed && !item.notApplicable && <span className="badge badge-xs badge-error gap-0.5"><Star size={8} /> Req</span>}
             </div>
           )}
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -433,7 +485,8 @@ const ItemRow: React.FC<{
                 {daysLeft < 0 ? `⚠ ${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? '⏰ Due today' : `📅 ${daysLeft}d left`}
               </span>
             )}
-            {item.completedBy && <span className="text-xs text-success/70">✓ {item.completedBy}</span>}
+            {item.notApplicable && item.completedBy && <span className="text-xs text-gray-400">N/A by {item.completedBy}</span>}
+            {!item.notApplicable && item.completedBy && <span className="text-xs text-success/70">✓ {item.completedBy}</span>}
             {linkedDocName && <span className="text-xs flex items-center gap-0.5 text-primary/70 bg-primary/8 px-1 rounded"><Paperclip size={9} /> {linkedDocName}</span>}
             {item.notes && !noteOpen && <span className="text-xs text-base-content/40 italic truncate max-w-48">{item.notes}</span>}
           </div>
@@ -450,7 +503,7 @@ const ItemRow: React.FC<{
             </div>
           )}
         </div>
-        <ComplianceRowMenu item={item} onToggle={onToggle} onRename={() => { setEditVal(item.title); setEditing(true); }} onNote={() => setNoteOpen(v => !v)} onDelete={() => setConfirmDelete(true)} />
+        <ComplianceRowMenu item={item} onToggle={onToggle} onNA={onNA} onRename={() => { setEditVal(item.title); setEditing(true); }} onNote={() => setNoteOpen(v => !v)} onDelete={() => setConfirmDelete(true)} />
       </div>
       <ConfirmModal isOpen={confirmDelete} title="Delete Checklist Item?" message="Delete this checklist item? This cannot be undone." confirmLabel="Delete"
         onConfirm={() => { setConfirmDelete(false); onDelete(); }} onCancel={() => setConfirmDelete(false)} />
@@ -459,16 +512,17 @@ const ItemRow: React.FC<{
 };
 
 const ComplianceSection: React.FC<{
-  items: ChecklistItem[];
+  items: ChecklistItemExt[];
   showCompleted: boolean;
   onToggle: (id: string) => void;
+  onNA: (id: string) => void;
   onAdd: (title: string, dueDate: string) => void;
   onDelete: (id: string) => void;
   onNote: (id: string, note: string) => void;
   onRename: (id: string, title: string) => void;
   onReorder?: (dragId: string, dropId: string) => void;
   bare?: boolean;
-}> = ({ items, showCompleted, onToggle, onAdd, onDelete, onNote, onRename, onReorder, bare }) => {
+}> = ({ items, showCompleted, onToggle, onNA, onAdd, onDelete, onNote, onRename, onReorder, bare }) => {
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate]   = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -498,7 +552,7 @@ const ComplianceSection: React.FC<{
         )}
         {[...items].sort((a, b) => Number(a.completed) - Number(b.completed)).map(item => (
           <ItemRow key={item.id} item={item} showCompleted={showCompleted}
-            onToggle={() => onToggle(item.id)} onDelete={() => onDelete(item.id)}
+            onToggle={() => onToggle(item.id)} onNA={() => onNA(item.id)} onDelete={() => onDelete(item.id)}
             onNote={(note) => onNote(item.id, note)} onRename={(title) => onRename(item.id, title)}
             dragging={compDragId.current === item.id} dragOver={compOverId === item.id}
             onDragStart={() => { compDragId.current = item.id; }}
@@ -539,6 +593,7 @@ const ComplianceTabPanel: React.FC<{
   contactRecords: ContactRecord[];
   showCompleted: boolean;
   onToggle: (id: string) => void;
+  onNA: (id: string) => void;
   onAdd: (title: string, dueDate: string) => void;
   onDelete: (id: string) => void;
   onNote: (id: string, note: string) => void;
@@ -546,9 +601,11 @@ const ComplianceTabPanel: React.FC<{
   onLoadTemplate: (tplId: string) => void;
   onSetTemplateId: (tplId: string) => void;
   onReorder?: (dragId: string, dropId: string) => void;
-}> = ({ deal, complianceTemplates, contactRecords, showCompleted, onToggle, onAdd, onDelete, onNote, onRename, onLoadTemplate, onSetTemplateId, onReorder }) => {
+}> = ({ deal, complianceTemplates, contactRecords, showCompleted, onToggle, onNA, onAdd, onDelete, onNote, onRename, onLoadTemplate, onSetTemplateId, onReorder }) => {
   const [listOpen, setListOpen] = useState(true);
   const [confirmLoad, setConfirmLoad] = useState<{ tplId: string; name: string } | null>(null);
+
+  const compItems = deal.complianceChecklist as ChecklistItemExt[];
 
   const autoTpl = (complianceTemplates ?? []).find((t) =>
     (t.agentClientIds ?? (t.agentClientId ? [t.agentClientId] : [])).includes(deal.agentClientId ?? '')
@@ -608,7 +665,7 @@ const ComplianceTabPanel: React.FC<{
         </button>
         {listOpen && (
           <div className="p-3">
-            <ComplianceSection items={deal.complianceChecklist} showCompleted={showCompleted} onToggle={onToggle} onAdd={onAdd} onDelete={onDelete} onNote={onNote} onRename={onRename} onReorder={onReorder} bare />
+            <ComplianceSection items={compItems} showCompleted={showCompleted} onToggle={onToggle} onNA={onNA} onAdd={onAdd} onDelete={onDelete} onNote={onNote} onRename={onRename} onReorder={onReorder} bare />
           </div>
         )}
       </div>
@@ -635,25 +692,8 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
   const userName = profile?.name || 'TC Staff';
   const userFirstName = (profile?.name || 'TC Staff').split(' ')[0];
 
-  const [pendingConfirm, setPendingConfirm] = useState<{ id: string; type: 'dd' | 'compliance'; title: string } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ id: string; type: 'dd' | 'compliance'; action: 'complete' | 'incomplete' | 'na'; title: string } | null>(null);
   const [confirmInput, setConfirmInput] = useState('');
-
-  const handleConfirmComplete = () => {
-    if (!pendingConfirm) return;
-    if (pendingConfirm.type === 'dd') {
-      completeDDFromModal(pendingConfirm.id);
-    } else {
-      const item = deal.complianceChecklist.find(i => i.id === pendingConfirm.id)!;
-      onUpdate(log({
-        ...deal,
-        complianceChecklist: deal.complianceChecklist.map(i =>
-          i.id === pendingConfirm.id ? { ...i, completed: true, completedAt: new Date().toISOString(), completedBy: userName } : i
-        ),
-      }, `Compliance: "${item.title}" completed by ${userName}`));
-    }
-    setPendingConfirm(null);
-    setConfirmInput('');
-  };
 
   const { data: docLinks = [] } = useChecklistDocLinks(deal.id);
 
@@ -727,6 +767,44 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
     updatedAt: new Date().toISOString(),
   });
 
+  const handleConfirmStatusChange = () => {
+    if (!pendingConfirm) return;
+    const { id, type, action } = pendingConfirm;
+    const now = new Date().toISOString();
+
+    if (type === 'dd') {
+      const item = deal.dueDiligenceChecklist.find(i => i.id === id)!;
+      onUpdate(log({
+        ...deal,
+        dueDiligenceChecklist: deal.dueDiligenceChecklist.map(i =>
+          i.id === id
+            ? action === 'complete'
+              ? { ...i, completed: true, notApplicable: false, completedAt: now, completedBy: confirmInput }
+              : action === 'na'
+              ? { ...i, completed: false, notApplicable: true, completedAt: now, completedBy: confirmInput }
+              : { ...i, completed: false, notApplicable: false, completedAt: undefined, completedBy: undefined }
+            : i
+        ),
+      }, `DD: "${item.title}" marked ${action === 'complete' ? 'complete' : action === 'na' ? 'N/A' : 'incomplete'} by ${confirmInput}`));
+    } else {
+      const item = deal.complianceChecklist.find(i => i.id === id)!;
+      onUpdate(log({
+        ...deal,
+        complianceChecklist: deal.complianceChecklist.map(i =>
+          i.id === id
+            ? action === 'complete'
+              ? { ...i, completed: true, notApplicable: false, completedAt: now, completedBy: confirmInput }
+              : action === 'na'
+              ? { ...i, completed: false, notApplicable: true, completedAt: now, completedBy: confirmInput }
+              : { ...i, completed: false, notApplicable: false, completedAt: undefined, completedBy: undefined }
+            : i
+        ),
+      }, `Compliance: "${item.title}" marked ${action === 'complete' ? 'complete' : action === 'na' ? 'N/A' : 'incomplete'} by ${confirmInput}`));
+    }
+    setPendingConfirm(null);
+    setConfirmInput('');
+  };
+
   const completeDDFromModal = (id: string) => {
     const item = deal.dueDiligenceChecklist.find(i => i.id === id)!;
     const dateStr = completionDate || new Date().toISOString().split('T')[0];
@@ -769,17 +847,6 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
     onUpdate(log({ ...deal, dueDiligenceChecklist: deal.dueDiligenceChecklist.map(i => i.id === id ? { ...i, title: title.trim() } : i) }, `DD item renamed: "${title}"`));
   };
 
-  const toggleComp = (id: string) => {
-    const item = deal.complianceChecklist.find(i => i.id === id)!;
-    const completed = !item.completed;
-    onUpdate(log({
-      ...deal,
-      complianceChecklist: deal.complianceChecklist.map(i =>
-        i.id === id ? { ...i, completed, completedAt: completed ? new Date().toISOString() : undefined, completedBy: completed ? userName : undefined } : i
-      ),
-    }, `Compliance: "${item.title}" marked ${completed ? 'complete ✓' : 'incomplete'}`));
-  };
-
   const addComp = (title: string, dueDate: string) => {
     onUpdate(log({ ...deal, complianceChecklist: [...deal.complianceChecklist, { id: generateId(), title, completed: false, dueDate: dueDate || undefined }] }, `Compliance item added: "${title}"`));
   };
@@ -803,15 +870,17 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
   const ddRequiredPending   = deal.dueDiligenceChecklist.filter(i => i.required && !i.completed).length;
   const compRequiredPending = deal.complianceChecklist.filter(i => i.required && !i.completed).length;
 
-  const standardItems  = deal.dueDiligenceChecklist.filter(i => !i.autoGenerated);
-  const autoCondoItems = deal.dueDiligenceChecklist.filter(i => i.source === 'auto-condo');
-  const autoMultiItems = deal.dueDiligenceChecklist.filter(i => i.source === 'auto-multifamily');
+  const ddItems = deal.dueDiligenceChecklist as ChecklistItemExt[];
 
-  const sortIncompleteFirst = (arr: ChecklistItem[]) => [...arr].sort((a, b) => Number(a.completed) - Number(b.completed));
+  const standardItems  = ddItems.filter(i => !i.autoGenerated);
+  const autoCondoItems = ddItems.filter(i => i.source === 'auto-condo');
+  const autoMultiItems = ddItems.filter(i => i.source === 'auto-multifamily');
 
-  const visibleStandard = sortIncompleteFirst(showCompleted ? standardItems  : standardItems.filter(i => !i.completed));
-  const visibleCondo    = sortIncompleteFirst(showCompleted ? autoCondoItems : autoCondoItems.filter(i => !i.completed));
-  const visibleMulti    = sortIncompleteFirst(showCompleted ? autoMultiItems : autoMultiItems.filter(i => !i.completed));
+  const sortIncompleteFirst = (arr: ChecklistItemExt[]) => [...arr].sort((a, b) => Number(a.completed) - Number(b.completed));
+
+  const visibleStandard = sortIncompleteFirst(showCompleted ? standardItems  : standardItems.filter(i => !i.completed && !i.notApplicable));
+  const visibleCondo    = sortIncompleteFirst(showCompleted ? autoCondoItems : autoCondoItems.filter(i => !i.completed && !i.notApplicable));
+  const visibleMulti    = sortIncompleteFirst(showCompleted ? autoMultiItems : autoMultiItems.filter(i => !i.completed && !i.notApplicable));
 
   const modalAll        = deal.dueDiligenceChecklist;
   const modalStandard   = modalAll.filter(i => !i.autoGenerated);
@@ -829,7 +898,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
   const modalTotalDone = modalAll.filter(i => i.completed).length;
   const modalTotalLeft = modalAll.filter(i => !i.completed).length;
 
-  const renderTableBlock = (items: ChecklistItem[], allItems: ChecklistItem[], label: string, labelBg: string, rowOffset: number) => {
+  const renderTableBlock = (items: ChecklistItemExt[], allItems: ChecklistItemExt[], label: string, labelBg: string, rowOffset: number) => {
     let visibleCount = 0;
     return (
       <div className="border border-gray-300 rounded-xl overflow-hidden flex-none">
@@ -844,7 +913,9 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
           return (
             <DDTableRow key={item.id} item={item} rowIndex={visibleCount - 1} rowNum={rowOffset + visibleCount}
               onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
-              onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', title: item.title })} onUndo={() => uncompleteDD(item.id)}
+              onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
+              onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
+              onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
               showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
               onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
               onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
@@ -933,7 +1004,9 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                 return (
                   <DDTableRow key={item.id} item={item} rowIndex={rowCount - 1} rowNum={rowCount}
                     onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
-                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', title: item.title })} onUndo={() => uncompleteDD(item.id)}
+                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
+                    onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
+                    onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
                     showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
                     onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                     onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
@@ -981,7 +1054,9 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                 (() => { let c = 0; return visibleCondo.map(item => { c++; return (
                   <DDTableRow key={item.id} item={item} rowIndex={c - 1} rowNum={c}
                     onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
-                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', title: item.title })} onUndo={() => uncompleteDD(item.id)}
+                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
+                    onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
+                    onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
                     showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
                     onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                     onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
@@ -1005,7 +1080,9 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                 (() => { let c = 0; return visibleMulti.map(item => { c++; return (
                   <DDTableRow key={item.id} item={item} rowIndex={c - 1} rowNum={c}
                     onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
-                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', title: item.title })} onUndo={() => uncompleteDD(item.id)}
+                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
+                    onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
+                    onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
                     showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
                     onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
                     onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
@@ -1023,7 +1100,16 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
           onToggle={(id: string) => {
             const item = deal.complianceChecklist.find(i => i.id === id);
             if (!item) return;
-            if (item.completed) { toggleComp(id); } else { setPendingConfirm({ id, type: 'compliance', title: item.title }); }
+            if ((item as ChecklistItemExt).completed || (item as ChecklistItemExt).notApplicable) {
+              setPendingConfirm({ id, type: 'compliance', action: 'incomplete', title: item.title });
+            } else {
+              setPendingConfirm({ id, type: 'compliance', action: 'complete', title: item.title });
+            }
+          }}
+          onNA={(id: string) => {
+            const item = deal.complianceChecklist.find(i => i.id === id);
+            if (!item) return;
+            setPendingConfirm({ id, type: 'compliance', action: 'na', title: item.title });
           }}
           onAdd={addComp} onDelete={deleteComp} onNote={noteComp} onRename={renameComp}
           onLoadTemplate={(tplId: string) => {
@@ -1049,32 +1135,45 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
       )}
     </div>
 
-    {/* Confirm Complete Modal */}
-    {pendingConfirm && (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-          <h3 className="font-bold text-base text-black mb-1">Mark Item Complete</h3>
-          <p className="text-sm text-gray-600 mb-4 leading-snug line-clamp-2">"{pendingConfirm.title}"</p>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-4 flex items-center gap-2">
-            <User size={14} className="text-gray-400 flex-none" />
-            <span className="text-sm text-gray-700">Signed by: <strong>{profile?.name || 'TC Staff'}</strong></span>
-          </div>
-          <label className="text-xs text-gray-500 block mb-1.5">Type your first name to confirm</label>
-          <input type="text" className="input input-bordered input-sm w-full mb-4" placeholder={userFirstName} value={confirmInput} autoFocus
-            onChange={e => setConfirmInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && confirmInput.toLowerCase() === userFirstName.toLowerCase()) handleConfirmComplete();
-              if (e.key === 'Escape') { setPendingConfirm(null); setConfirmInput(''); }
-            }} />
-          <div className="flex gap-2 justify-end">
-            <Button variant="ghost" onClick={() => { setPendingConfirm(null); setConfirmInput(''); }}>Cancel</Button>
-            <button className="btn btn-success btn-sm" disabled={confirmInput.toLowerCase() !== userFirstName.toLowerCase()} onClick={handleConfirmComplete}>
-              <Check size={13} /> Confirm
-            </button>
+    {/* Confirm Status Change Modal */}
+    {pendingConfirm && (() => {
+      const actionLabel = pendingConfirm.action === 'complete' ? 'Complete'
+        : pendingConfirm.action === 'na' ? 'Not Applicable'
+        : 'Incomplete';
+      const actionColor = pendingConfirm.action === 'complete' ? 'btn-success'
+        : pendingConfirm.action === 'na' ? 'btn-neutral'
+        : 'btn-warning';
+      const actionIcon = pendingConfirm.action === 'complete' ? <Check size={13} />
+        : pendingConfirm.action === 'na' ? <Ban size={13} />
+        : <RotateCcw size={13} />;
+      return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-base text-black mb-1">
+              Mark as {actionLabel}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4 leading-snug line-clamp-2">"{pendingConfirm.title}"</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-4 flex items-center gap-2">
+              <User size={14} className="text-gray-400 flex-none" />
+              <span className="text-sm text-gray-700">Signed by: <strong>{profile?.name || 'TC Staff'}</strong></span>
+            </div>
+            <label className="text-xs text-gray-500 block mb-1.5">Type your first name to confirm</label>
+            <input type="text" className="input input-bordered input-sm w-full mb-4" placeholder={userFirstName} value={confirmInput} autoFocus
+              onChange={e => setConfirmInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && confirmInput.trim().length >= 2) handleConfirmStatusChange();
+                if (e.key === 'Escape') { setPendingConfirm(null); setConfirmInput(''); }
+              }} />
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => { setPendingConfirm(null); setConfirmInput(''); }}>Cancel</Button>
+              <button className={`btn ${actionColor} btn-sm`} disabled={confirmInput.trim().length < 2} onClick={handleConfirmStatusChange}>
+                {actionIcon} Mark {actionLabel}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      );
+    })()}
 
     {/* DD View All Modal */}
     {showViewModal && (
@@ -1125,7 +1224,7 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
                             </button>
                           )}
                           {!item.completed && isConfirming && <Button variant="ghost" size="xs" className="text-gray-400" onClick={() => setCompletingId(null)}>Cancel</Button>}
-                          {item.completed && <button className="btn btn-xs btn-ghost text-gray-400" onClick={() => uncompleteDD(item.id)} title="Mark incomplete"><X size={11}/> Undo</button>}
+                          {item.completed && <button className="btn btn-xs btn-ghost text-gray-400" onClick={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })} title="Mark incomplete"><X size={11}/> Undo</button>}
                         </div>
                       </div>
                       {isConfirming && (
