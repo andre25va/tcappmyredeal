@@ -392,7 +392,7 @@ function AppInner() {
   const handleArchiveDeal = (dealId: string, reason: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
-    const updated = { ...deal, milestone: 'archived' as DealMilestone, archiveReason: reason };
+    const updated = { ...deal, milestone: 'archived' as DealMilestone, status: 'archived' as DealStatus, archiveReason: reason };
     setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
     // Deselect the deal so the workspace doesn't keep showing an archived deal
@@ -405,7 +405,7 @@ function AppInner() {
   const handleRestoreDeal = (dealId: string) => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
-    const updated = { ...deal, milestone: 'contract-received' as DealMilestone, archiveReason: undefined };
+    const updated = { ...deal, milestone: 'contract-received' as DealMilestone, status: 'contract' as DealStatus, archiveReason: undefined };
     setDeals(prev => prev.map(d => d.id === dealId ? updated : d));
     saveSingleDeal(updated).catch(console.error);
   };
