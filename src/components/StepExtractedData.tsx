@@ -17,6 +17,7 @@ interface FieldDef {
   type: FieldType;
   options?: string[];
   section: string;
+  hint?: string;
 }
 
 interface StepExtractedDataProps {
@@ -27,8 +28,10 @@ interface StepExtractedDataProps {
 }
 
 // --- Field Definitions ---
+// Sections: Property | Transaction | Financing | Key Dates | Inspection | Appraisal | Title & HOA | Home Warranty | Parties
 const FIELD_DEFS: FieldDef[] = [
-  // Property
+
+  // ── Property ──────────────────────────────────────────────────────────────
   { key: 'address',             label: 'Street Address',      type: 'text',    section: 'Property' },
   { key: 'city',                label: 'City',                type: 'text',    section: 'Property' },
   { key: 'state',               label: 'State',               type: 'text',    section: 'Property' },
@@ -39,37 +42,97 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'mlsBoard',            label: 'MLS Board',           type: 'text',    section: 'Property' },
   { key: 'legalDescription',    label: 'Legal Description',   type: 'text',    section: 'Property' },
 
-  // Transaction
-  { key: 'transactionType',     label: 'Transaction Type',    type: 'select',  section: 'Transaction',
+  // ── Transaction ───────────────────────────────────────────────────────────
+  { key: 'transactionType',       label: 'Transaction Type',        type: 'select',  section: 'Transaction',
     options: ['buyer', 'seller', 'both'] },
-  { key: 'salePrice',           label: 'Sale Price',          type: 'money',   section: 'Transaction' },
-  { key: 'earnestMoney',        label: 'Earnest Money',       type: 'money',   section: 'Transaction' },
-  { key: 'sellerCredit',        label: 'Seller Credit',       type: 'money',   section: 'Transaction' },
-  { key: 'downPayment',         label: 'Down Payment',        type: 'money',   section: 'Transaction' },
-  { key: 'downPaymentPercent',  label: 'Down Payment %',      type: 'number',  section: 'Transaction' },
+  { key: 'contractPrice',          label: 'Sale / Contract Price',   type: 'money',   section: 'Transaction' },
+  { key: 'earnestMoney',          label: 'Earnest Money',           type: 'money',   section: 'Transaction' },
+  { key: 'earnestMoneyHolder',    label: 'Earnest Money Holder',    type: 'text',    section: 'Transaction' },
+  { key: 'additionalEarnestMoney',label: 'Additional Earnest Money',type: 'money',   section: 'Transaction' },
+  { key: 'sellerCredit',          label: 'Seller Credit / Concessions', type: 'money', section: 'Transaction',
+    hint: 'Price concessions — separate from closing cost contribution' },
+  { key: 'sellerPaidClosingCosts',label: 'Seller Paid Closing Costs', type: 'money', section: 'Transaction',
+    hint: 'Amount seller contributes toward buyer closing costs' },
+  { key: 'repairsNotToExceed',    label: 'Repairs Not to Exceed',   type: 'money',   section: 'Transaction' },
+  { key: 'downPaymentAmount',     label: 'Down Payment',            type: 'money',   section: 'Transaction' },
+  { key: 'downPaymentPercent',    label: 'Down Payment %',          type: 'number',  section: 'Transaction' },
+  { key: 'commissionReceived',    label: 'Commission Received',     type: 'money',   section: 'Transaction' },
+  { key: 'buyerAgentCommission',  label: 'Buyer Agent Commission',  type: 'text',    section: 'Transaction' },
+  { key: 'listingAgentCommission',label: 'Listing Agent Commission',type: 'text',    section: 'Transaction' },
 
-  // Financing
+  // ── Financing ─────────────────────────────────────────────────────────────
   { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
     options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'] },
   { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
   { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing' },
   { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing' },
+  { key: 'loanApplicationDue',  label: 'Loan Application Due',type: 'text',    section: 'Financing',
+    hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
+  { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due', type: 'text', section: 'Financing',
+    hint: 'Date or relative formula, e.g. "5 calendar days before Closing Date"' },
 
-  // Dates
-  { key: 'closingDate',            label: 'Closing Date',        type: 'date', section: 'Dates' },
-  { key: 'inspectionDate',         label: 'Inspection Deadline', type: 'date', section: 'Dates' },
-  { key: 'financeDeadline',        label: 'Finance Deadline',    type: 'date', section: 'Dates' },
-  { key: 'possessionDate',         label: 'Possession Date',     type: 'date', section: 'Dates' },
-  { key: 'listingExpirationDate',  label: 'Listing Expiration',  type: 'date', section: 'Dates' },
+  // ── Key Dates ─────────────────────────────────────────────────────────────
+  { key: 'contractDate',        label: 'Effective Date',      type: 'date',    section: 'Key Dates' },
+  { key: 'closingDate',         label: 'Closing Date',        type: 'date',    section: 'Key Dates' },
+  { key: 'possessionDate',      label: 'Possession Date',     type: 'date',    section: 'Key Dates' },
+  { key: 'surveyDeadline',      label: 'Survey Deadline',     type: 'text',    section: 'Key Dates',
+    hint: 'Date or relative formula, e.g. "10 calendar days before Closing Date"' },
+  { key: 'earnestMoneyDueDate', label: 'Earnest Money Due',   type: 'text',    section: 'Key Dates',
+    hint: 'Date or relative formula, e.g. "3 calendar days after Effective Date"' },
+  { key: 'additionalEarnestMoneyDue', label: 'Additional EM Due', type: 'text', section: 'Key Dates',
+    hint: 'Date or relative formula' },
+  { key: 'listingExpirationDate', label: 'Listing Expiration', type: 'date',   section: 'Key Dates' },
 
-  // Parties
+  // ── Inspection ────────────────────────────────────────────────────────────
+  { key: 'inspectionDate',          label: 'Inspection Period Ends',       type: 'text', section: 'Inspection',
+    hint: 'Date or relative formula, e.g. "11 calendar days after Effective Date"' },
+  { key: 'buyerInspectionNoticeDue',label: 'Buyer Inspection Notice Due',  type: 'text', section: 'Inspection',
+    hint: 'Date or relative formula, e.g. "0 calendar days after Inspection Period Ends"' },
+  { key: 'renegotiationPeriod',     label: 'Renegotiation Period',         type: 'text', section: 'Inspection',
+    hint: 'e.g. "5 calendar days after Buyer Inspection Notice Due"' },
+  { key: 'financeDeadline',         label: 'Finance / Contingency Deadline', type: 'date', section: 'Inspection' },
+
+  // ── Appraisal ─────────────────────────────────────────────────────────────
+  { key: 'appraisalDeliveryDate',     label: 'Appraisal Report Delivery',     type: 'text', section: 'Appraisal',
+    hint: 'Date or relative formula' },
+  { key: 'appraisalDueToSeller',      label: 'Appraisal Report Due to Seller',type: 'text', section: 'Appraisal',
+    hint: 'e.g. "5 calendar days after Appraisal Report Delivery Date"' },
+  { key: 'appraisalNegotiationPeriod',label: 'Appraisal Negotiation Period',  type: 'text', section: 'Appraisal',
+    hint: 'e.g. "5 calendar days after Appraisal Report Due to Seller"' },
+
+  // ── Title & HOA ───────────────────────────────────────────────────────────
+  { key: 'titleCommitmentDeliveryDate',label: 'Title Commitment Delivery', type: 'text', section: 'Title & HOA',
+    hint: 'Date or relative formula' },
+  { key: 'titleObjectionPeriod',       label: 'Title Objection Period',    type: 'text', section: 'Title & HOA',
+    hint: 'e.g. "5 calendar days after Title Commitment Delivery Date"' },
+  { key: 'hoaDocumentDeliveryDeadline',label: 'HOA Document Delivery',     type: 'text', section: 'Title & HOA',
+    hint: 'Date or relative formula' },
+  { key: 'buyerHoaReviewDeadline',     label: 'Buyer HOA Review Deadline', type: 'text', section: 'Title & HOA',
+    hint: 'e.g. "5 calendar days after HOA Document Delivery Deadline"' },
+
+  // ── Home Warranty ─────────────────────────────────────────────────────────
+  { key: 'homeWarrantyPaidBy',  label: 'Home Warranty Paid By',  type: 'text',   section: 'Home Warranty',
+    hint: 'e.g. BUYER, SELLER, BUYER waives, N/A' },
+  { key: 'homeWarrantyAmount',  label: 'Home Warranty Amount',   type: 'money',  section: 'Home Warranty' },
+  { key: 'homeWarrantyCompany', label: 'Home Warranty Company',  type: 'text',   section: 'Home Warranty' },
+
+  // ── Parties ───────────────────────────────────────────────────────────────
   { key: 'buyerAgentName',      label: "Buyer's Agent",       type: 'contact', section: 'Parties' },
   { key: 'sellerAgentName',     label: "Seller's Agent",      type: 'contact', section: 'Parties' },
   { key: 'titleCompany',        label: 'Title Company',       type: 'contact', section: 'Parties' },
-  { key: 'homeWarrantyCompany', label: 'Warranty Company',    type: 'text',    section: 'Parties' },
 ];
 
-const SECTIONS = ['Property', 'Transaction', 'Financing', 'Dates', 'Parties'];
+const SECTIONS = [
+  'Property',
+  'Transaction',
+  'Financing',
+  'Key Dates',
+  'Inspection',
+  'Appraisal',
+  'Title & HOA',
+  'Home Warranty',
+  'Parties',
+];
 
 // --- Contact Typeahead ---
 const ContactTypeahead: React.FC<{
@@ -266,9 +329,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
       </p>
 
       {/* Sectioned Table */}
-      <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1 -mr-1">
+      <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 -mr-1">
         {SECTIONS.map(section => {
           const fields = FIELD_DEFS.filter(f => f.section === section);
+          // Only render section if at least one field was found OR it's a primary section
+          const primarySections = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties'];
+          const sectionHasData = fields.some(f => {
+            const raw = extractedData?.[f.key];
+            return raw !== null && raw !== undefined && raw !== '';
+          });
+          if (!primarySections.includes(section) && !sectionHasData) return null;
+
           return (
             <div key={section} className="rounded-xl border border-base-300 overflow-hidden">
               <div className="bg-base-200/60 px-3 py-1.5 border-b border-base-300">
@@ -283,17 +354,22 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                   return (
                     <div
                       key={field.key}
-                      className={`flex items-center gap-3 px-3 py-2 ${
+                      className={`flex items-start gap-3 px-3 py-2 ${
                         !wasFound ? 'bg-red-50/60 dark:bg-red-900/10' : ''
                       }`}
                     >
                       {/* Label */}
-                      <div className="w-36 flex-none flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-base-content/60 leading-tight">
-                          {field.label}
-                        </span>
-                        {!wasFound && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
+                      <div className="w-40 flex-none pt-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-base-content/60 leading-tight">
+                            {field.label}
+                          </span>
+                          {!wasFound && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
+                          )}
+                        </div>
+                        {field.hint && (
+                          <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>
                         )}
                       </div>
 
