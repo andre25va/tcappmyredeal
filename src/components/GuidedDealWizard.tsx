@@ -6,7 +6,7 @@ import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
   ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
-import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ComplianceMasterItem, ChecklistItem, ContactMlsMembership } from '../types';
+import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ComplianceMasterItem, ChecklistItem, ContactMlsMembership, RequiredBy } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { generateId, propertyTypeLabel, docTypeConfig, calcCommissionAmount, calcCommissionPct, calculateDownPayment } from '../utils/helpers';
 import { MLS_BY_STATE } from '../utils/mlsData';
@@ -58,7 +58,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 6;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -208,6 +208,38 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     titleContactId: '', titleContactEmail: '', introEmailSubject: '', introEmailBody: '', emHeldWith: '', titleSide: '' as 'buy' | 'sell' | '', titleCompanySide: '' as 'buy' | 'sell' | 'both' | '',
     legalDescription: '',
     hasCounterOffer: false,
+    // 15 new value fields (from AI extraction)
+    additionalEarnestMoney: '',
+    additionalEarnestMoneyDue: '',
+    sellerPaidClosingCosts: '',
+    repairsNotToExceed: '',
+    commissionReceived: '',
+    homeWarrantyAmount: '',
+    homeWarrantyPaidBy: '' as '' | 'buyer' | 'seller',
+    appraisalDeliveryDate: '',
+    loanApplicationDue: '',
+    finalLoanApprovalDue: '',
+    buyerInspectionNoticeDue: '',
+    renegotiationPeriod: '',
+    titleCommitmentDeliveryDate: '',
+    surveyDeadline: '',
+    hoaDocumentDeliveryDeadline: '',
+    // Formula fields (stored as text, e.g. "Effective Date + 5 days")
+    closingDateFormula: '',
+    possessionDateFormula: '',
+    earnestMoneyDueDateFormula: '',
+    additionalEarnestMoneyDueFormula: '',
+    appraisalDeliveryDateFormula: '',
+    loanApplicationDueFormula: '',
+    finalLoanApprovalDueFormula: '',
+    buyerInspectionNoticeDueFormula: '',
+    renegotiationPeriodFormula: '',
+    titleCommitmentDeliveryDateFormula: '',
+    surveyDeadlineFormula: '',
+    hoaDocumentDeliveryDeadlineFormula: '',
+    inspectionDateFormula: '',
+    financeDeadlineFormula: '',
+    titleDateFormula: '',
   });
   const [error, setError] = useState('');
   const [aiReview, setAiReview] = useState<AIReview | null>(null);
@@ -296,6 +328,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   // Pre-generate deal ID so Step 8 intro email can be linked to the deal before it's created
   const [preDealId] = useState<string>(() => generateId());
   const [introEmailSkipped, setIntroEmailSkipped] = useState(false);
+  // Checklist preview state (Step 6)
+  const [previewDDItems, setPreviewDDItems] = useState<DDMasterItem[]>([]);
+  const [previewComplianceItems, setPreviewComplianceItems] = useState<any[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [changedDateFields, setChangedDateFields] = useState<Set<string>>(new Set());
   const titleSearchRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const [clientSearch, setClientSearch] = useState('');
@@ -398,9 +435,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Auto-populate wizard contacts when reaching step 3 (contacts hub)
+  // Auto-populate wizard contacts when reaching step 5 (contacts hub)
   useEffect(() => {
-    if (step === 3 && wizardParticipants.length === 0) {
+    if (step === 5 && wizardParticipants.length === 0) {
       const parts: WizardParticipant[] = [];
       const parseNames = (str: string, role: WizardParticipant['role'], side: WizardParticipant['side']) => {
         str.split(/[&,]|\band\b/i).map((n: string) => n.trim()).filter(Boolean).forEach((name: string) => {
@@ -498,6 +535,25 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   // Scroll content back to top whenever the step changes
   useEffect(() => {
     contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [step]);
+
+  // Load checklist preview when reaching step 6
+  useEffect(() => {
+    if (step !== 6) return;
+    setPreviewLoading(true);
+    Promise.all([
+      loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null, form.loanType || null),
+      loadMergedChecklistItems('compliance', form.mlsEntryId || null, form.agentClientId || null, form.loanType || null),
+    ])
+      .then(([dd, compliance]) => {
+        setPreviewDDItems(dd as DDMasterItem[]);
+        setPreviewComplianceItems(compliance);
+      })
+      .catch(() => {
+        setPreviewDDItems(ddMasterItems ?? []);
+        setPreviewComplianceItems(complianceMasterItems ?? []);
+      })
+      .finally(() => setPreviewLoading(false));
   }, [step]);
 
   const handleClientCreateModalSaved = (saved: SavedContact) => {
@@ -718,13 +774,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const canAdvance = (): boolean => {
     switch (step) {
       case 1: return !!(form.address.trim() && form.city.trim() && form.mlsBoard);
-      case 2: return true; // AI Review step — always allow advance
-      case 3: return true; // Deal Contacts — always allow advance (contacts optional)
-      case 4: return isDuplex ? form.duplexAddressCount !== '' : true;
-      case 5: return true;
-      case 6: return !!form.closingDate;
-      case 7: return !!form.agentClientId;
-      case 8: return true;
+      case 2: return true; // AI Verify step — always allow advance
+      case 3: return !!(form.propertyType); // Deal Info
+      case 4: return !!(form.closingDate); // Key Dates — closing date required
+      case 5: return true; // Parties — optional
+      case 6: return true; // Checklist Preview — just shows items
       default: return true;
     }
   };
@@ -733,13 +787,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setError('');
     if (!canAdvance()) {
       if (step === 1) setError('Address, city, and MLS Board are required.');
-      if (step === 4) setError('Please select whether this duplex has 1 or 2 addresses.');
-      if (step === 6) setError('Closing date is required.');
-      if (step === 7) setError('Please select a client to continue.');
+      if (step === 4) setError('Closing date is required.');
       return;
     }
-    if (step === 9) runAIReview();
-    // When advancing from step 1: go to AI Review if extraction exists, else skip to Property Type
+    // When advancing from step 1: go to AI Review if extraction exists, else skip to Deal Info
     if (step === 1) {
       setStep(extractedRawData ? 2 : 3);
       return;
@@ -1110,7 +1161,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       hasCounterOffer: form.hasCounterOffer || undefined,
-      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as DDMasterItem).required ?? false, category: (m as DDMasterItem).category })),
+      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as DDMasterItem).required ?? false, category: (m as DDMasterItem).category, required_by: (m as DDMasterItem).required_by ?? 'optional' })),
       complianceChecklist: mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required })),
       documentRequests: autoDocRequests,
       reminders: [],
@@ -1155,16 +1206,25 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       // Priority: form values (TC-verified) first, then raw extractedRawData as fallback.
       // Non-blocking — never prevents deal creation from completing.
       try {
-        type TLEntry = { milestone: string; label: string; due_date: string; sort_order: number };
+        type TLEntry = { milestone: string; label: string; due_date: string; sort_order: number; formula?: string | null };
         const tlEntries: TLEntry[] = [];
-        const seedDate = (milestone: string, label: string, sort_order: number, date: string | undefined | null) => {
-          if (date) tlEntries.push({ milestone, label, sort_order, due_date: date });
+        const seedDate = (milestone: string, label: string, sort_order: number, date: string | undefined | null, formula?: string | null) => {
+          if (date) tlEntries.push({ milestone, label, sort_order, due_date: date, formula: formula || null });
         };
-        seedDate('contract',      'Contract Received', 10, form.contractDate        || extractedRawData?.contractDate);
-        seedDate('emd',           'EMD Due',           20, form.earnestMoneyDueDate || extractedRawData?.earnestMoneyDueDate);
-        seedDate('inspection',    'Inspection Period', 30, form.inspectionDate      || extractedRawData?.inspectionDate);
-        seedDate('clear_to_close','Clear to Close',    40, form.financeDeadline     || extractedRawData?.financeDeadline);
-        seedDate('closing',       'Closing Day',       50, form.closingDate         || extractedRawData?.closingDate);
+        seedDate('contract',      'Contract Received',       10, form.contractDate           || extractedRawData?.contractDate);
+        seedDate('emd',           'EMD Due',                 20, form.earnestMoneyDueDate     || extractedRawData?.earnestMoneyDueDate,    form.earnestMoneyDueDateFormula || extractedRawData?.earnestMoneyDueDateFormula);
+        seedDate('inspection',    'Inspection Deadline',     30, form.inspectionDate          || extractedRawData?.inspectionDate,         form.inspectionDateFormula || extractedRawData?.inspectionDateFormula);
+        seedDate('inspection_notice', 'Buyer Inspection Notice', 35, form.buyerInspectionNoticeDue || extractedRawData?.buyerInspectionNoticeDue, form.buyerInspectionNoticeDueFormula);
+        seedDate('loan_app',      'Loan Application Due',    38, form.loanApplicationDue      || extractedRawData?.loanApplicationDue,     form.loanApplicationDueFormula);
+        seedDate('appraisal',     'Appraisal Delivery',      42, form.appraisalDeliveryDate   || extractedRawData?.appraisalDeliveryDate,  form.appraisalDeliveryDateFormula);
+        seedDate('final_loan',    'Final Loan Approval',     45, form.finalLoanApprovalDue    || extractedRawData?.finalLoanApprovalDue,   form.finalLoanApprovalDueFormula);
+        seedDate('clear_to_close','Finance Deadline',        48, form.financeDeadline         || extractedRawData?.financeDeadline,        form.financeDeadlineFormula);
+        seedDate('title_commit',  'Title Commitment',        50, form.titleCommitmentDeliveryDate || extractedRawData?.titleCommitmentDeliveryDate, form.titleCommitmentDeliveryDateFormula);
+        seedDate('survey',        'Survey Deadline',         55, form.surveyDeadline          || extractedRawData?.surveyDeadline,         form.surveyDeadlineFormula);
+        seedDate('hoa_docs',      'HOA Document Delivery',   58, form.hoaDocumentDeliveryDeadline || extractedRawData?.hoaDocumentDeliveryDeadline, form.hoaDocumentDeliveryDeadlineFormula);
+        seedDate('title',         'Title / Clear to Close',  60, form.titleDate               || extractedRawData?.titleDate,              form.titleDateFormula);
+        seedDate('possession',    'Possession Date',         65, (form.possessionAtClosing ? form.closingDate : form.possessionDate) || extractedRawData?.possessionDate, form.possessionDateFormula);
+        seedDate('closing',       'Closing Day',             70, form.closingDate             || extractedRawData?.closingDate,            form.closingDateFormula);
         if (tlEntries.length > 0) {
           await supabase.from('deal_timeline').insert(
             tlEntries.map(e => ({
@@ -1172,6 +1232,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               milestone:  e.milestone,
               label:      e.label,
               due_date:   e.due_date,
+              formula:    e.formula ?? null,
               status:     'pending',
               sort_order: e.sort_order,
               created_at: new Date().toISOString(),
@@ -1397,7 +1458,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setIsCreating(false);
   };
 
-  const stepTitles = ['', 'Property Address', 'AI Review', 'Deal Contacts', 'Property Type', 'Financials', 'Key Dates', 'Our Client', 'Title & Escrow', 'AI Review'];
+  const stepTitles = ['', 'Upload Contract', 'Verify Data', 'Deal Info', 'Key Dates', 'Parties', 'Checklist Preview'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -1406,6 +1467,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   };
 
   const selectedClient = allAgentClients.find(c => c.id === form.agentClientId) ?? null;
+  const selectedTitleContact =
+    allContacts.find(c => c.id === form.titleContactId) ??
+    (form.titleContactEmail && titleParticipantFallback ? titleParticipantFallback as any : null);
+  const filteredContacts = allContacts.filter(c =>
+    !titleSearch.trim() ||
+    c.fullName.toLowerCase().includes(titleSearch.toLowerCase()) ||
+    (c.company || '').toLowerCase().includes(titleSearch.toLowerCase())
+  );
 
   return (
     <>
@@ -1622,8 +1691,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 const s = i + 1;
                 const isCompleted = s < step;
                 const isCurrent = s === step;
-                // Steps 2 & 3 are skipped when no contract was uploaded
-                const isSkipped = !contractFile && (s === 2 || s === 3);
+                // Step 2 is skipped when no contract was uploaded
+                const isSkipped = !contractFile && (s === 2);
                 return (
                   <React.Fragment key={s}>
                     <div
@@ -2098,118 +2167,36 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             )}
 
             {step === 3 && (
-              <StepDealContacts
-                participants={wizardParticipants}
-                onChange={setWizardParticipants}
-                transactionType={form.transactionType as 'buyer' | 'seller'}
-                orgId={undefined}
-                allContacts={allOrgContacts ?? []}
-                agentClientId={form.agentClientId || undefined}
-              />
-            )}
+              <div className="space-y-6">
+                <h3 className="text-lg font-bold text-base-content">Deal Info</h3>
 
-            {step === 4 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold text-base-content">What type of property?</h3>
-                {/* MLS Property Data Card */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">System Found</label>
-                  
-                  {/* Disclaimer */}
-                  <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
-                    <AlertTriangle size={13} className="mt-0.5 flex-none" />
-                    <span>This information is sourced from public MLS listings and may not be accurate or up to date. Always verify with official sources before use.</span>
+                {/* ── Property Type ── */}
+                <div>
+                  <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-2 block">Property Type</label>
+                  <div className="grid grid-cols-4 gap-3">
+                    {PROP_TYPES.map(pt => (
+                      <button
+                        key={pt.type}
+                        onClick={() => handlePropertyTypeChange(pt.type)}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-semibold text-sm transition-all ${
+                          form.propertyType === pt.type
+                            ? 'bg-primary/10 border-primary text-primary'
+                            : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
+                        }`}
+                      >
+                        {pt.icon}
+                        <span>{pt.label}</span>
+                      </button>
+                    ))}
                   </div>
-
-                  {mlsPropertyData ? (
-                    <div className="rounded-xl border border-info/30 bg-info/5 p-4 space-y-3">
-                      {/* Status + Type row */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {mlsPropertyData.listingStatus && (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            mlsPropertyData.listingStatus === 'Active' ? 'bg-green-100 text-green-700' :
-                            mlsPropertyData.listingStatus === 'Pending' ? 'bg-amber-100 text-amber-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>{mlsPropertyData.listingStatus}</span>
-                        )}
-                        {mlsPropertyData.propertyType && (
-                          <span className="text-sm font-semibold text-base-content">{mlsPropertyData.propertyType}</span>
-                        )}
-                        {mlsPropertyData.daysOnMarket != null && (
-                          <span className="text-xs text-base-content/50 ml-auto">DOM: {mlsPropertyData.daysOnMarket} days</span>
-                        )}
-                      </div>
-
-                      {/* MLS Number */}
-                      {mlsPropertyData.mlsNumber && (
-                        <div className="text-xs text-base-content/50">MLS #: <span className="font-mono font-semibold text-base-content">{mlsPropertyData.mlsNumber}</span></div>
-                      )}
-
-                      {/* Price */}
-                      {mlsPropertyData.listPrice != null && (
-                        <div className="text-xl font-bold text-base-content">
-                          ${mlsPropertyData.listPrice.toLocaleString()}
-                        </div>
-                      )}
-
-                      {/* Beds / Baths / Sqft / Year */}
-                      <div className="flex flex-wrap gap-3 text-sm text-base-content/70">
-                        {mlsPropertyData.bedrooms != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.bedrooms}</span> bed</span>}
-                        {mlsPropertyData.bathrooms != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.bathrooms}</span> bath</span>}
-                        {mlsPropertyData.sqftLiving != null && <span><span className="font-semibold text-base-content">{mlsPropertyData.sqftLiving.toLocaleString()}</span> sqft</span>}
-                        {mlsPropertyData.yearBuilt != null && <span>Built <span className="font-semibold text-base-content">{mlsPropertyData.yearBuilt}</span></span>}
-                      </div>
-
-                      {/* Subdivision / HOA / Garage / Pool */}
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60">
-                        {mlsPropertyData.subdivision && <span>📍 {mlsPropertyData.subdivision}</span>}
-                        {mlsPropertyData.hoaFee != null && <span>HOA: ${mlsPropertyData.hoaFee}/mo</span>}
-                        {mlsPropertyData.garage && <span>🚗 {mlsPropertyData.garage}</span>}
-                        {mlsPropertyData.pool === true && <span>🏊 Pool</span>}
-                      </div>
-
-                      {/* Listing Agent / Office */}
-                      {(mlsPropertyData.listingAgentName || mlsPropertyData.listingOfficeName) && (
-                        <div className="pt-2 border-t border-info/20 text-xs text-base-content/50">
-                          {mlsPropertyData.listingAgentName && <span>Agent: <span className="text-base-content/70 font-medium">{mlsPropertyData.listingAgentName}</span></span>}
-                          {mlsPropertyData.listingAgentName && mlsPropertyData.listingOfficeName && <span className="mx-2">·</span>}
-                          {mlsPropertyData.listingOfficeName && <span>Office: <span className="text-base-content/70 font-medium">{mlsPropertyData.listingOfficeName}</span></span>}
-                        </div>
-                      )}
-                    </div>
-                  ) : mlsFetchStatus === 'not_found' ? (
-                    <div className="px-4 py-2.5 rounded-lg border bg-base-200 border-base-300 text-sm text-base-content/40 italic">
-                      No active listing found
-                    </div>
-                  ) : (
-                    <div className="px-4 py-2.5 rounded-lg border bg-base-200 border-base-300 text-sm text-base-content/40 italic">
-                      Run MLS lookup on Step 1 to populate
+                  {isMF && (
+                    <div className="alert alert-warning py-2 text-sm gap-2 mt-3">
+                      <AlertTriangle size={14} /> Multi-Family selected — a Multi-Family Addendum alert will be auto-created.
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-4 gap-3">
-                  {PROP_TYPES.map(pt => (
-                    <button
-                      key={pt.type}
-                      onClick={() => handlePropertyTypeChange(pt.type)}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 font-semibold text-sm transition-all ${
-                        form.propertyType === pt.type
-                          ? 'bg-primary/10 border-primary text-primary'
-                          : 'bg-base-100 border-base-300 text-base-content/70 hover:border-primary/40'
-                      }`}
-                    >
-                      {pt.icon}
-                      <span>{pt.label}</span>
-                    </button>
-                  ))}
-                </div>
 
-                {isMF && (
-                  <div className="alert alert-warning py-2 text-sm gap-2">
-                    <AlertTriangle size={14} /> Multi-Family selected — a Multi-Family Addendum alert will be auto-created.
-                  </div>
-                )}
-
+                {/* ── Duplex address section ── */}
                 {isDuplex && (
                   <div className="space-y-4 pt-3 border-t border-base-300">
                     <div>
@@ -2270,20 +2257,38 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {step === 5 && (
-              <div style={form.isHeartlandMls ? {display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',alignItems:'start'} : {}}>
-              <div className="space-y-5">
-                <h3 className="text-lg font-bold text-base-content">Financial Details</h3>
-                {(form.mlsBoard || form.mlsNumber) && (
-                  <div className="flex items-center gap-3 px-3 py-2 bg-base-200 rounded-lg text-xs text-base-content/60">
-                    {form.mlsBoard && <span><span className="font-medium text-base-content/80">MLS Board:</span> {form.mlsBoard}</span>}
-                    {form.mlsNumber && <span><span className="font-medium text-base-content/80">MLS #:</span> {form.mlsNumber}</span>}
-                    {form.isHeartlandMls && <span className="ml-auto text-amber-600 font-medium">Heartland MLS rule active</span>}
+                {/* ── Transaction side ── */}
+                <div>
+                  <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-2 block">Transaction Side</label>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setForm(p => ({ ...p, transactionType: 'buyer' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'buyer' ? 'bg-blue-500 border-blue-500 text-white' : 'bg-blue-50 border-blue-200 text-blue-600 hover:border-blue-400'
+                      }`}><ShoppingCart size={18} />Buyer Side</button>
+                    <button type="button" onClick={() => setForm(p => ({ ...p, transactionType: 'seller' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'seller' ? 'bg-orange-500 border-orange-500 text-white' : 'bg-orange-50 border-orange-200 text-orange-600 hover:border-orange-400'
+                      }`}><Tag size={18} />Seller Side</button>
                   </div>
-                )}
+                </div>
+
+                {/* ── Loan Type ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-2 block font-semibold uppercase tracking-wide">Loan Type</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(['conventional','fha','va','usda','cash','other'] as const).map(lt => (
+                      <button key={lt} type="button"
+                        onClick={() => setForm(p => ({ ...p, loanType: p.loanType === lt ? '' : lt }))}
+                        className={`btn btn-sm rounded-full font-medium ${form.loanType === lt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                      >
+                        {lt === 'fha' ? 'FHA' : lt === 'va' ? 'VA' : lt === 'usda' ? 'USDA' : lt.charAt(0).toUpperCase() + lt.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Prices ── */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-base-content/50 mb-1 block">List Price</label>
@@ -2294,21 +2299,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     <input className="input input-bordered w-full no-spinner" value={form.purchasePrice} onChange={fWithRecalc('purchasePrice')} placeholder="540000" type="number" />
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs text-base-content/50 mb-2 block">Loan Type</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(['conventional','fha','va','usda','cash','other'] as const).map(lt => (
-                      <button
-                        key={lt}
-                        type="button"
-                        onClick={() => setForm(p => ({ ...p, loanType: p.loanType === lt ? '' : lt }))}
-                        className={`btn btn-sm rounded-full font-medium ${form.loanType === lt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                      >
-                        {lt === 'fha' ? 'FHA' : lt === 'va' ? 'VA' : lt === 'usda' ? 'USDA' : lt.charAt(0).toUpperCase() + lt.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
+                {/* ── Loan fields (financed only) ── */}
                 {form.loanType && form.loanType !== 'cash' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -2341,12 +2333,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                           const loan = parseFloat(form.loanAmount) || 0;
                           const em = form.isHeartlandMls ? (parseFloat(form.earnestMoney) || 0) : 0;
                           if (price > 0 && pct) {
-                            // Contract price known: amount = price × %
                             const totalAmt = calcCommissionAmount(price, parseFloat(pct));
                             const amt = Math.max(0, totalAmt - em).toFixed(0);
                             setForm(p => ({ ...p, downPaymentPercent: pct, downPaymentAmount: amt }));
                           } else if (loan > 0 && pct) {
-                            // No contract price: derive it from loan / (1 - %)
                             const derivedPrice = loan / (1 - parseFloat(pct) / 100);
                             const totalDown = derivedPrice * (parseFloat(pct) / 100);
                             const amt = Math.max(0, totalDown - em).toFixed(0);
@@ -2359,341 +2349,329 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   </div>
                 )}
+
+                {/* ── Earnest Money ── */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money $</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.earnestMoney}
-                      onChange={e => {
-                        const em = e.target.value;
-                        if (form.isHeartlandMls) {
-                          const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
-                          const dp = parseFloat(form.downPaymentAmount) || 0;
-                          const total = dp + (parseFloat(em) || 0);
-                          const pct = price > 0 && (dp || parseFloat(em)) ? ((total / price) * 100).toFixed(1) : form.downPaymentPercent;
-                          setForm(p => ({ ...p, earnestMoney: em, downPaymentPercent: pct }));
-                        } else {
-                          setForm(p => ({ ...p, earnestMoney: em }));
-                        }
-                      }}
-                      placeholder="0" type="number" />
-                    <p className="text-xs text-base-content/40 mt-1">EM due date set in Key Dates step</p>
+                    <label className="text-xs text-base-content/50 mb-1 block">Earnest Money ($)</label>
+                    <input className="input input-bordered w-full no-spinner" value={form.earnestMoney} onChange={f('earnestMoney')} placeholder="5000" type="number" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Seller Concessions ($)</label>
+                    <input className="input input-bordered w-full no-spinner" value={form.sellerConcessions} onChange={f('sellerConcessions')} placeholder="0" type="number" />
                   </div>
                 </div>
-                {form.isHeartlandMls && form.downPaymentAmount && form.earnestMoney && (() => {
-                  const dp = parseFloat(form.downPaymentAmount) || 0;
-                  const em = parseFloat(form.earnestMoney) || 0;
-                  const total = dp + em;
-                  const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
-                  const pct = price > 0 ? ((total / price) * 100).toFixed(1) : null;
-                  return (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm flex items-center gap-3 flex-wrap">
-                      <span className="text-amber-700 font-semibold">Heartland MLS — Effective Down Payment:</span>
-                      <span className="text-amber-800 font-bold">${total.toLocaleString()}</span>
-                      {pct && <span className="text-amber-700">({pct}% of purchase price)</span>}
-                      <span className="text-amber-600 text-xs ml-auto">${dp.toLocaleString()} down + ${em.toLocaleString()} EM</span>
-                    </div>
-                  );
-                })()}
 
+                {/* ── Commission ── */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Commission Amount ($)</label>
+                    <input className="input input-bordered w-full no-spinner" value={form.commissionAmount} onChange={f('commissionAmount')} type="number" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-base-content/50 mb-1 block">Commission %</label>
+                    <input className="input input-bordered w-full no-spinner" value={form.clientAgentCommissionPct} onChange={f('clientAgentCommissionPct')} type="number" step="0.1" />
+                  </div>
+                </div>
 
-                {/* Client Agent Commission */}
-                <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Client Agent Commission</p>
-                  <div className="grid grid-cols-2 gap-3">
+                {/* ── As-Is / Inspection Waived toggles ── */}
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="checkbox checkbox-sm" checked={form.asIsSale} onChange={e => setForm(p => ({ ...p, asIsSale: e.target.checked }))} />
+                    <span className="text-sm text-base-content/70">As-Is Sale</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="checkbox checkbox-sm" checked={form.inspectionWaived} onChange={e => setForm(p => ({ ...p, inspectionWaived: e.target.checked }))} />
+                    <span className="text-sm text-base-content/70">Inspection Waived</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="checkbox checkbox-sm" checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
+                    <span className="text-sm text-base-content/70">Home Warranty</span>
+                  </label>
+                </div>
+                {form.homeWarranty && (
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs text-base-content/40 mb-1 block">Commission $</label>
-                      <div className="join w-full">
-                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">$</span>
-                        <input className="input input-bordered join-item w-full no-spinner" value={form.commissionAmount}
-                          onChange={e => {
-                            const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
-                            const pct = price > 0 && raw ? (calcCommissionPct(price, parseFloat(raw))).toFixed(1) : '';
-                            setForm(p => ({ ...p, commissionAmount: raw, clientAgentCommissionPct: pct }));
-                          }}
-                          onBlur={e => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) setForm(p => ({ ...p, commissionAmount: val.toFixed(2) }));
-                          }}
-                          placeholder="0.00" type="text" inputMode="decimal" />
-                      </div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Warranty Company</label>
+                      <input className="input input-bordered w-full" value={form.homeWarrantyCompany} onChange={f('homeWarrantyCompany')} />
                     </div>
                     <div>
-                      <label className="text-xs text-base-content/40 mb-1 block">Commission % of Purchase Price</label>
-                      <div className="join w-full">
-                        <input className="input input-bordered join-item w-full no-spinner" value={form.clientAgentCommissionPct}
-                          onChange={e => {
-                            const raw = e.target.value.replace(/[^0-9.]/g, '');
-                            const price = parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0;
-                            const amt = price > 0 && raw ? calcCommissionAmount(price, parseFloat(raw)).toFixed(2) : '';
-                            setForm(p => ({ ...p, clientAgentCommissionPct: raw, commissionAmount: amt }));
-                          }}
-                          onBlur={e => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) setForm(p => ({ ...p, clientAgentCommissionPct: val.toFixed(1) }));
-                          }}
-                          placeholder="0.0" type="text" inputMode="decimal" />
-                        <span className="join-item bg-base-200 border border-base-300 px-3 flex items-center text-sm font-medium">%</span>
-                      </div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Warranty Amount ($)</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.homeWarrantyAmount} onChange={f('homeWarrantyAmount')} type="number" />
                     </div>
                   </div>
+                )}
+
+                {/* ── Legal Description ── */}
+                <div>
+                  <label className="text-xs text-base-content/50 mb-1 block">Legal Description <span className="text-base-content/30">(optional)</span></label>
+                  <input className="input input-bordered w-full" value={form.legalDescription} onChange={f('legalDescription')} />
                 </div>
 
-                <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Contract Conditions</p>
-                  <div className="space-y-2">
-                    {([
-                      { key: 'asIsSale', label: 'As-Is Sale' },
-                      { key: 'inspectionWaived', label: 'Inspection Waived' },
-                    ] as const).map(({ key, label }) => (
-                      <label key={key} className="flex items-center gap-3 cursor-pointer py-1">
-                        <input type="checkbox" className="toggle toggle-primary toggle-sm"
-                          checked={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
-                        <span className="text-sm">{label}</span>
-                      </label>
-                    ))}
-                    <label className="flex items-center gap-3 cursor-pointer py-1">
-                      <input type="checkbox" className="toggle toggle-primary toggle-sm"
-                        checked={form.homeWarranty} onChange={e => setForm(p => ({ ...p, homeWarranty: e.target.checked }))} />
-                      <span className="text-sm">Home Warranty</span>
-                    </label>
-                    {form.homeWarranty && (
-                      <input className="input input-bordered w-full input-sm mt-1" value={form.homeWarrantyCompany}
-                        onChange={f('homeWarrantyCompany')} placeholder="Warranty company name" />
-                    )}
+                {/* ── MLS data card (if loaded) ── */}
+                {mlsPropertyData && (
+                  <div className="rounded-xl border border-info/30 bg-info/5 p-4 text-sm text-base-content/70">
+                    <p className="text-xs font-semibold text-base-content/50 uppercase mb-2">MLS Data</p>
+                    {mlsPropertyData.listingStatus && <span className="badge badge-sm mr-2">{mlsPropertyData.listingStatus}</span>}
+                    {mlsPropertyData.listPrice && <span className="font-bold text-base-content">${mlsPropertyData.listPrice.toLocaleString()}</span>}
                   </div>
-                </div>
-              </div>
-              {/* Heartland Contract Reference Panel */}
-                {form.isHeartlandMls && (
-                  <ContractReferencePanel
-                    contractPrice={form.purchasePrice}
-                    listPrice={form.listPrice}
-                    loanAmount={form.loanAmount}
-                    earnestMoney={form.earnestMoney}
-                    downPaymentAmount={form.downPaymentAmount}
-                    downPaymentPercent={form.extractedDpPct || form.downPaymentPercent}
-                    loanType={form.loanType}
-                    clientAgentCommission={form.commissionAmount}
-                    clientAgentCommissionPct={form.clientAgentCommissionPct}
-                    sellerConcessions={form.sellerConcessions}
-                    sellerCredit={form.sellerCredit || ''}
-                    additionalSellerCosts={form.additionalSellerCosts || ''}
-                  />
                 )}
               </div>
             )}
 
-            {step === 6 && (() => {
-              const presetBtn = (label: string, field: keyof typeof form, days: number) => (
-                <button key={label} type="button"
-                  className={`btn btn-xs ${form[field] === calcDate(form.contractDate, days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                  onClick={() => setForm(p => ({ ...p, [field]: calcDate(p.contractDate, days) }))}
-                  disabled={!form.contractDate}
-                >{label}</button>
-              );
-              const dateRow = (
+            {step === 4 && (() => {
+              const formulaPill = (formula: string) => formula ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-base-200 border border-base-300 text-xs text-base-content/50 italic font-normal select-none">
+                  <span className="text-base-content/30">📐</span> {formula}
+                </span>
+              ) : null;
+
+              const dateCard = (
                 field: keyof typeof form,
+                formulaField: keyof typeof form,
                 label: string,
                 presets: { label: string; days: number }[],
-              ) => (
-                <div className="space-y-1">
-                  <label className="text-xs text-base-content/50 font-semibold block">{label}</label>
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {presets.map(p => presetBtn(p.label, field, p.days))}
+                required?: boolean,
+                showIf?: boolean,
+              ) => {
+                if (showIf === false) return null;
+                const isChanged = changedDateFields.has(field as string);
+                return (
+                  <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl border ${isChanged ? 'border-amber-400 bg-amber-50' : 'border-base-200 bg-base-100'}`}>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-base-content/60 block">
+                        {label}{required && <span className="text-error ml-1">*</span>}
+                      </label>
+                      {formulaPill(form[formulaField] as string)}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {presets.map(p => (
+                          <button key={p.label} type="button"
+                            className={`btn btn-xs ${(form[field] as string) === calcDate(form.contractDate, p.days) ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                            onClick={() => {
+                              setChangedDateFields(prev => new Set([...prev, field as string]));
+                              setForm(prev => ({ ...prev, [field]: calcDate(prev.contractDate, p.days) }));
+                            }}
+                            disabled={!form.contractDate}
+                          >{p.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <input type="date" className={`input input-bordered w-full input-sm ${isChanged ? 'border-amber-400' : ''}`}
+                        value={form[field] as string}
+                        onChange={e => {
+                          setChangedDateFields(prev => new Set([...prev, field as string]));
+                          setForm(prev => ({ ...prev, [field]: e.target.value }));
+                        }}
+                      />
+                      {(form[field] as string) && <p className="text-xs text-base-content/40">{formatDisplayDate(form[field] as string)}</p>}
+                    </div>
                   </div>
-                  <input type="date" className="input input-bordered w-full input-sm"
-                    value={form[field] as string}
-                    onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                  />
-                  {(form[field] as string) && <p className="text-xs text-base-content/40">{formatDisplayDate(form[field] as string)}</p>}
-                </div>
-              );
+                );
+              };
+
               return (
-                <div className="space-y-5">
-                  <h3 className="text-lg font-bold text-base-content">Key Dates</h3>
-                  {/* Contract + Closing side by side — anchor dates */}
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-base-content">Key Dates</h3>
+                    {changedDateFields.size > 0 && (
+                      <span className="text-xs text-amber-600 font-medium">{changedDateFields.size} date{changedDateFields.size > 1 ? 's' : ''} modified</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-base-content/40">Preset buttons count from Contract Date. Formula shows what the AI extracted.</p>
+
+                  {/* Contract Date + Closing Date — anchor dates at top */}
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-xl border border-base-300 bg-base-100">
                     <div>
-                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Contract Date</label>
+                      <label className="text-xs font-semibold text-base-content/60 block mb-1">Contract Date (Effective)</label>
                       <input type="date" className="input input-bordered w-full input-sm" value={form.contractDate}
                         onChange={e => {
                           const cd = e.target.value;
-                          setForm(p => ({
-                            ...p, contractDate: cd,
+                          setChangedDateFields(new Set()); // reset highlights on anchor change
+                          setForm(p => ({ ...p, contractDate: cd,
                             possessionDate: p.possessionAtClosing ? p.closingDate : p.possessionDate,
                           }));
-                        }} />
+                        }}
+                      />
                       {form.contractDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.contractDate)}</p>}
                     </div>
                     <div>
-                      <label className="text-xs text-base-content/50 font-semibold block mb-1">Closing Date *</label>
-                      <input type="date" className="input input-bordered w-full input-sm" value={form.closingDate}
+                      <label className="text-xs font-semibold text-base-content/60 block mb-1">Closing Date <span className="text-error">*</span></label>
+                      {formulaPill(form.closingDateFormula)}
+                      <input type="date" className="input input-bordered w-full input-sm mt-1" value={form.closingDate}
                         onChange={e => {
                           const cd = e.target.value;
-                          setForm(p => ({
-                            ...p, closingDate: cd,
-                            possessionDate: p.possessionAtClosing ? cd : p.possessionDate,
-                          }));
-                        }} />
+                          setChangedDateFields(prev => new Set([...prev, 'closingDate']));
+                          setForm(p => ({ ...p, closingDate: cd, possessionDate: p.possessionAtClosing ? cd : p.possessionDate }));
+                        }}
+                      />
                       {form.closingDate && <p className="text-xs text-base-content/40 mt-1">{formatDisplayDate(form.closingDate)}</p>}
                     </div>
                   </div>
-                  <p className="text-xs text-base-content/40 -mt-2">All calculated dates are counted from Contract Date</p>
 
-                  {/* EM Date */}
-                  {dateRow('earnestMoneyDueDate', 'EM Due Date', [
+                  {/* Earnest Money Due */}
+                  {dateCard('earnestMoneyDueDate', 'earnestMoneyDueDateFormula', 'EM Due Date', [
                     { label: '1d', days: 1 }, { label: '3d', days: 3 }, { label: '5d', days: 5 }, { label: '7d', days: 7 },
                   ])}
 
                   {/* Inspection */}
-                  {dateRow('inspectionDate', 'Inspection Date', [
+                  {dateCard('inspectionDate', 'inspectionDateFormula', 'Inspection Deadline', [
                     { label: '7d', days: 7 }, { label: '10d', days: 10 }, { label: '14d', days: 14 },
                   ])}
 
-                  {/* Loan Commitment */}
-                  {form.loanType && form.loanType !== 'cash' && dateRow('financeDeadline', 'Finance Deadline', [
-                    { label: '21d', days: 21 }, { label: '30d', days: 30 },
+                  {/* Buyer Inspection Notice */}
+                  {!form.inspectionWaived && dateCard('buyerInspectionNoticeDue', 'buyerInspectionNoticeDueFormula', 'Buyer Inspection Notice Due', [
+                    { label: '8d', days: 8 }, { label: '10d', days: 10 }, { label: '12d', days: 12 },
                   ])}
 
-                  {/* Title Date */}
-                  {dateRow('titleDate', 'Title / Clear to Close', [
+                  {/* Finance deadlines — financed only */}
+                  {form.loanType && form.loanType !== 'cash' && (
+                    <>
+                      {dateCard('loanApplicationDue', 'loanApplicationDueFormula', 'Loan Application Due', [
+                        { label: '3d', days: 3 }, { label: '5d', days: 5 }, { label: '7d', days: 7 },
+                      ])}
+                      {dateCard('appraisalDeliveryDate', 'appraisalDeliveryDateFormula', 'Appraisal Delivery', [
+                        { label: '21d', days: 21 }, { label: '25d', days: 25 }, { label: '30d', days: 30 },
+                      ])}
+                      {dateCard('finalLoanApprovalDue', 'finalLoanApprovalDueFormula', 'Final Loan Approval', [
+                        { label: '21d', days: 21 }, { label: '25d', days: 25 }, { label: '30d', days: 30 },
+                      ])}
+                      {dateCard('financeDeadline', 'financeDeadlineFormula', 'Finance Deadline', [
+                        { label: '21d', days: 21 }, { label: '30d', days: 30 },
+                      ])}
+                    </>
+                  )}
+
+                  {/* Title commitment */}
+                  {dateCard('titleCommitmentDeliveryDate', 'titleCommitmentDeliveryDateFormula', 'Title Commitment Delivery', [
+                    { label: '15d', days: 15 }, { label: '20d', days: 20 }, { label: '25d', days: 25 },
+                  ])}
+
+                  {/* Survey */}
+                  {dateCard('surveyDeadline', 'surveyDeadlineFormula', 'Survey Deadline', [
+                    { label: '10d', days: 10 }, { label: '15d', days: 15 }, { label: '20d', days: 20 },
+                  ])}
+
+                  {/* HOA */}
+                  {dateCard('hoaDocumentDeliveryDeadline', 'hoaDocumentDeliveryDeadlineFormula', 'HOA Document Delivery', [
+                    { label: '7d', days: 7 }, { label: '10d', days: 10 },
+                  ])}
+
+                  {/* Title / Clear to Close */}
+                  {dateCard('titleDate', 'titleDateFormula', 'Title / Clear to Close', [
                     { label: '14d', days: 14 }, { label: '21d', days: 21 }, { label: '30d', days: 30 },
                   ])}
 
-                  {/* Possession Date — manual or At Closing */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-base-content/50 font-semibold block">Possession Date</label>
-                    <div className="flex gap-2 mb-1">
-                      <button type="button"
-                        className={`btn btn-xs ${form.possessionAtClosing ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-                        onClick={() => setForm(p => ({ ...p, possessionAtClosing: !p.possessionAtClosing, possessionDate: !p.possessionAtClosing ? p.closingDate : p.possessionDate }))}
-                      >At Closing</button>
+                  {/* Possession Date */}
+                  <div className="p-3 rounded-xl border border-base-200 bg-base-100 space-y-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-base-content/60 block mb-1">Possession Date</label>
+                        {formulaPill(form.possessionDateFormula)}
+                        <button type="button"
+                          className={`btn btn-xs mt-1 ${form.possessionAtClosing ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                          onClick={() => setForm(p => ({ ...p, possessionAtClosing: !p.possessionAtClosing, possessionDate: !p.possessionAtClosing ? p.closingDate : p.possessionDate }))}
+                        >At Closing</button>
+                      </div>
+                      <div>
+                        <input type="date" className="input input-bordered w-full input-sm"
+                          value={form.possessionAtClosing ? form.closingDate : form.possessionDate}
+                          disabled={form.possessionAtClosing}
+                          onChange={e => setForm(p => ({ ...p, possessionDate: e.target.value }))}
+                        />
+                        {(form.possessionAtClosing ? form.closingDate : form.possessionDate) &&
+                          <p className="text-xs text-base-content/40 mt-1">{form.possessionAtClosing ? 'Same as closing date' : formatDisplayDate(form.possessionDate)}</p>}
+                      </div>
                     </div>
-                    <input type="date" className="input input-bordered w-full input-sm"
-                      value={form.possessionAtClosing ? form.closingDate : form.possessionDate}
-                      disabled={form.possessionAtClosing}
-                      onChange={e => setForm(p => ({ ...p, possessionDate: e.target.value }))}
-                    />
-                    {(form.possessionAtClosing ? form.closingDate : form.possessionDate) &&
-                      <p className="text-xs text-base-content/40">{form.possessionAtClosing ? 'Same as closing date' : formatDisplayDate(form.possessionDate)}</p>}
                   </div>
                 </div>
               );
             })()}
 
-            {step === 7 && (
+            {step === 5 && (
               <div className="space-y-5">
-                <h3 className="text-lg font-bold text-base-content">Our Client &amp; Parties</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John &amp; Jane Doe" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.titleCompany} onChange={e => setForm(p => ({ ...p, titleCompany: e.target.value, emHeldWith: e.target.value }))} placeholder="ABC Title Co." />
-                    {form.titleCompany && (
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className="text-xs text-base-content/50">Side:</span>
-                        <div className="join">
-                          {(['buy', 'sell', 'both'] as const).map(s => {
-                            const effective = form.titleCompanySide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
-                            return (
-                              <button
-                                key={s}
-                                type="button"
-                                className={`join-item btn btn-xs ${effective === s ? 'btn-primary' : 'btn-outline'}`}
-                                onClick={() => setForm(p => ({ ...p, titleCompanySide: s }))}
-                              >{s === 'buy' ? 'Buy' : s === 'sell' ? 'Sell' : 'Both'}</button>
-                            );
-                          })}
-                        </div>
-                        {!form.titleCompanySide && <span className="text-xs text-base-content/40 italic">auto</span>}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
-                    <input className="input input-bordered w-full no-spinner" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
-                  </div>
-                </div>
-                <div className="border-t border-base-300 pt-4">
-                  <p className="text-xs text-base-content/50 font-semibold uppercase mb-3">Agent Client</p>
-                </div>
-                <div>
-                  {selectedClient ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
-                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-700 flex-none">
-                          {selectedClient.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-base-content truncate">{selectedClient.fullName}</p>
-                          {selectedClient.company && <p className="text-xs text-base-content/50 truncate">{selectedClient.company}</p>}
-                        </div>
-                        <CheckCircle2 size={16} className="text-green-500 flex-none" />
-                      </div>
-  
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
-                      No agent client selected — go back to Deal Contacts (Step 3) to add a buyer or seller.
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
-                    <FileText size={12} /> Special Notes
-                    <span className="text-base-content/30 ml-1">(optional)</span>
-                  </label>
-                  <textarea
-                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
-                      form.specialNotes.trim()
-                        ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]'
-                        : ''
-                    }`}
-                    rows={4}
-                    value={form.specialNotes}
-                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
-                    placeholder="Any special instructions for this transaction that the TC team should know about..."
-                  />
-                  <p className="text-xs text-base-content/30 mt-1">These notes will be visible on the deal and help guide your TC team.</p>
-                </div>
-              </div>
-            )}
+                <h3 className="text-lg font-bold text-base-content">Parties</h3>
 
-            {/* ── Step 8: Title & Escrow ── */}
-            {step === 8 && (() => {
-              const selectedTitleContact =
-                allContacts.find(c => c.id === form.titleContactId) ??
-                (form.titleContactEmail && titleParticipantFallback ? titleParticipantFallback as any : null);
-              const filteredContacts = allContacts.filter(c =>
-                !titleSearch.trim() ||
-                c.fullName.toLowerCase().includes(titleSearch.toLowerCase()) ||
-                (c.company || '').toLowerCase().includes(titleSearch.toLowerCase())
-              );
-              return (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <BuildingIcon size={18} className="text-primary" />
-                    <h3 className="text-lg font-bold text-base-content">Title &amp; Escrow</h3>
-                  </div>
-                  <p className="text-sm text-base-content/60">Select the title or escrow company for this deal. You can also send them an intro email right now.</p>
+                {/* ── Deal Contacts ── */}
+                <StepDealContacts
+                  participants={wizardParticipants}
+                  onChange={setWizardParticipants}
+                  transactionType={form.transactionType as 'buyer' | 'seller'}
+                  orgId={undefined}
+                  allContacts={allOrgContacts ?? []}
+                  agentClientId={form.agentClientId || undefined}
+                />
 
-                  {/* Title contacts added in Step 3 — shown as quick-select cards */}
+                {/* ── Buyer / Seller Names ── */}
+                <div className="border-t border-base-300 pt-4 space-y-4">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Names on Contract</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.buyerNames} onChange={f('buyerNames')} placeholder="John &amp; Jane Doe" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.sellerNames} onChange={f('sellerNames')} placeholder="Bob Smith" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Buyer Agent</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.buyerAgentName} onChange={f('buyerAgentName')} placeholder="Agent Name" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Seller Agent</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.sellerAgentName} onChange={f('sellerAgentName')} placeholder="Agent Name" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Title & Lender ── */}
+                <div className="border-t border-base-300 pt-4 space-y-4">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Title &amp; Lender</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">EM Held With</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.titleCompany}
+                        onChange={e => setForm(p => ({ ...p, titleCompany: e.target.value, emHeldWith: e.target.value }))}
+                        placeholder="ABC Title Co." />
+                      {form.titleCompany && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span className="text-xs text-base-content/50">Side:</span>
+                          <div className="join">
+                            {(['buy', 'sell', 'both'] as const).map(s => {
+                              const effective = form.titleCompanySide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
+                              return (
+                                <button key={s} type="button"
+                                  className={`join-item btn btn-xs ${effective === s ? 'btn-primary' : 'btn-outline'}`}
+                                  onClick={() => setForm(p => ({ ...p, titleCompanySide: s }))}
+                                >{s === 'buy' ? 'Buy' : s === 'sell' ? 'Sell' : 'Both'}</button>
+                              );
+                            })}
+                          </div>
+                          {!form.titleCompanySide && <span className="text-xs text-base-content/40 italic">auto</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs text-base-content/50 mb-1 block">Lender / Loan Officer</label>
+                      <input className="input input-bordered w-full no-spinner" value={form.loanOfficer} onChange={f('loanOfficer')} placeholder="Jane Smith – First Bank" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Title Contact search + Intro Email ── */}
+                <div className="border-t border-base-300 pt-4 space-y-4">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Title Contact</p>
+
+                  {/* Title contacts added in Deal Contacts — shown as quick-select cards */}
                   {(() => {
                     const titleParts = wizardParticipants.filter(p => p.role === 'title_officer' && !selectedTitleContact);
                     if (titleParts.length === 0) return null;
                     return (
                       <div className="space-y-2">
-                        <p className="text-xs text-base-content/50 font-semibold uppercase tracking-wide">From Step 3</p>
+                        <p className="text-xs text-base-content/50 font-semibold uppercase tracking-wide">From Deal Contacts</p>
                         {titleParts.map(p => {
                           const fullName = [p.firstName, p.lastName].filter(Boolean).join(' ');
                           const initials = fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -2710,18 +2688,17 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     ...prev,
                                     titleContactId: p.contactId!,
                                     titleContactEmail: contactInDb.email || '',
-                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    introEmailSubject: `${addr} \u2013 Introduction from TC Team`,
                                     emHeldWith: contactInDb.company || prev.emHeldWith || '',
                                     introEmailBody: resolveIntroBody(`Hi ${contactInDb.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: contactInDb.company || prev.emHeldWith || '', loanOfficer: prev.loanOfficer }),
                                   }));
                                 } else {
-                                  // Participant not yet in allContacts (e.g. AI-extracted, no contactId)
                                   setTitleParticipantFallback({ fullName, company: p.company, email: p.email });
                                   setForm(prev => ({
                                     ...prev,
                                     titleContactId: '',
                                     titleContactEmail: p.email || '',
-                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    introEmailSubject: `${addr} \u2013 Introduction from TC Team`,
                                     emHeldWith: p.company || prev.emHeldWith || '',
                                     introEmailBody: resolveIntroBody(`Hi ${fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: p.company || prev.emHeldWith || '', loanOfficer: prev.loanOfficer }),
                                   }));
@@ -2747,7 +2724,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     );
                   })()}
 
-                  {/* Side selector — auto-matches transaction side from step 3 */}
+                  {/* Side selector */}
                   {(() => {
                     const effectiveSide = form.titleSide || (form.transactionType === 'buyer' ? 'buy' : 'sell');
                     return (
@@ -2812,7 +2789,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                                     ...p,
                                     titleContactId: c.id,
                                     titleContactEmail: c.email || '',
-                                    introEmailSubject: `${addr} – Introduction from TC Team`,
+                                    introEmailSubject: `${addr} \u2013 Introduction from TC Team`,
                                     emHeldWith: c.company || form.emHeldWith || '',
                                     introEmailBody: resolveIntroBody(`Hi ${c.fullName},\n\nI'm reaching out to introduce myself as the transaction coordinator for the following file:\n\nProperty: {{address}}, {{city}}, {{state}}\n\nRepresenting Agent: {{agentName}}\nPhone: {{agentPhone}}\nEmail: {{agentEmail}}\nLender / Loan Officer: {{loanOfficer}}\nEM Held With: {{emHeldWith}}\n\nI'll be your main point of contact throughout this transaction. Please don't hesitate to reach out with any questions or documents needed.\n\nLooking forward to working together!\n\n{{tcTeamSignature}}`, { emHeldWith: c.company || form.emHeldWith || '', loanOfficer: form.loanOfficer }),
                                   }));
@@ -2844,7 +2821,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
 
-                  {/* Intro email compose — shows when contact with email is selected */}
+                  {/* Intro email compose */}
                   {selectedTitleContact && (
                     <div className="border-t border-base-300 pt-4 space-y-3">
                       <p className="text-xs text-base-content/50 font-semibold uppercase">Intro Email</p>
@@ -2858,7 +2835,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                         </div>
                       ) : (
                         <>
-                          {/* To / CC recipients display */}
                           <div className="space-y-1 text-sm">
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-base-content/50 w-6 shrink-0">To:</span>
@@ -2899,6 +2875,149 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   )}
                 </div>
 
+                {/* ── Agent Client ── */}
+                <div className="border-t border-base-300 pt-4 space-y-3">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Agent Client</p>
+                  {selectedClient ? (
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-700 flex-none">
+                        {selectedClient.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-base-content truncate">{selectedClient.fullName}</p>
+                        {selectedClient.company && <p className="text-xs text-base-content/50 truncate">{selectedClient.company}</p>}
+                      </div>
+                      <CheckCircle2 size={16} className="text-green-500 flex-none" />
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
+                      No agent client selected yet — add one via the Deal Contacts section above.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Special Notes ── */}
+                <div className="border-t border-base-300 pt-4">
+                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Special Notes <span className="text-base-content/30 ml-1">(optional)</span>
+                  </label>
+                  <textarea
+                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
+                      form.specialNotes.trim() ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]' : ''
+                    }`}
+                    rows={4}
+                    value={form.specialNotes}
+                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
+                    placeholder="Any special instructions for this transaction..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 6 && (() => {
+              const REQUIRED_BY_CONFIG: Record<RequiredBy, { label: string; color: string; dot: string }> = {
+                state:     { label: 'State Required',     color: 'text-red-700 bg-red-50 border-red-200',    dot: '\ud83d\udd34' },
+                mls:       { label: 'MLS Required',       color: 'text-orange-700 bg-orange-50 border-orange-200', dot: '\ud83d\udfe0' },
+                brokerage: { label: 'Brokerage Standard', color: 'text-blue-700 bg-blue-50 border-blue-200', dot: '\ud83d\udd35' },
+                team:      { label: 'Team Standard',      color: 'text-purple-700 bg-purple-50 border-purple-200', dot: '\ud83d\udfe3' },
+                optional:  { label: 'Optional',           color: 'text-gray-600 bg-gray-50 border-gray-200', dot: '\u26aa' },
+              };
+
+              const selectedAgentClient = (agentClients ?? []).find(c => c.id === form.agentClientId);
+              const isTeamClient = (selectedAgentClient as any)?.accountType === 'team' || (selectedAgentClient as any)?.account_type === 'team';
+              const isCash = form.loanType === 'cash';
+
+              const renderSection = (title: string, items: any[], type: 'dd' | 'compliance') => {
+                if (items.length === 0) return null;
+                const ORDER: RequiredBy[] = ['state', 'mls', 'brokerage', 'team', 'optional'];
+                const grouped = ORDER.reduce((acc, key) => {
+                  const filtered = items.filter((item: any) => (item.required_by || 'optional') === key);
+                  if (filtered.length > 0) acc[key] = filtered;
+                  return acc;
+                }, {} as Partial<Record<RequiredBy, any[]>>);
+
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-base-content text-sm">{title}</span>
+                      <span className="badge badge-sm badge-ghost">{items.length}</span>
+                      {type === 'dd' && isCash && (
+                        <span className="text-xs text-base-content/40 italic ml-auto">Financing items hidden (Cash deal)</span>
+                      )}
+                    </div>
+                    {(ORDER as RequiredBy[]).map(key => {
+                      const group = grouped[key];
+                      if (!group || group.length === 0) return null;
+                      if (key === 'team' && !isTeamClient) return null;
+                      const cfg = REQUIRED_BY_CONFIG[key];
+                      const isLocked = key === 'state' || key === 'mls';
+                      return (
+                        <div key={key} className={`rounded-xl border p-3 space-y-1.5 ${cfg.color}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span>{cfg.dot}</span>
+                              <span className="text-xs font-semibold uppercase tracking-wide">{cfg.label}</span>
+                              <span className="text-xs font-bold">({group.length})</span>
+                              {isLocked && <span className="text-xs font-semibold text-red-600 ml-1">— Cannot remove</span>}
+                            </div>
+                          </div>
+                          <div className="space-y-0.5 pl-5">
+                            {group.map((item: any) => (
+                              <div key={item.id || item.title} className="flex items-center gap-2 text-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50 flex-none" />
+                                <span>{item.title}</span>
+                                {item.category && (
+                                  <span className="ml-auto text-[10px] opacity-50 uppercase">{item.category}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              };
+
+              return (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-base-content">Checklist Preview</h3>
+                    <p className="text-sm text-base-content/50 mt-1">
+                      These items will be seeded when the deal is created. Items marked State or MLS cannot be removed.
+                    </p>
+                  </div>
+
+                  {previewLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 size={24} className="animate-spin text-primary" />
+                      <span className="ml-3 text-base-content/50">Loading checklist...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {renderSection('\ud83d\udccb Due Diligence', previewDDItems, 'dd')}
+                      {renderSection('\u2705 Compliance', previewComplianceItems, 'compliance')}
+                      {previewDDItems.length === 0 && previewComplianceItems.length === 0 && (
+                        <div className="text-center py-8 text-base-content/40 text-sm">
+                          No checklist items found. Select a client and MLS board to load template items.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Summary bar */}
+                  {!previewLoading && (previewDDItems.length > 0 || previewComplianceItems.length > 0) && (
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-base-200 text-sm text-base-content/60">
+                      <span>Total: <strong className="text-base-content">{previewDDItems.length + previewComplianceItems.length}</strong> items</span>
+                      <span>·</span>
+                      <span>DD: <strong className="text-base-content">{previewDDItems.length}</strong></span>
+                      <span>·</span>
+                      <span>Compliance: <strong className="text-base-content">{previewComplianceItems.length}</strong></span>
+                      {isTeamClient && <><span>·</span><span className="text-purple-600 font-medium">Team items included</span></>}
+                      {isCash && <><span>·</span><span className="text-base-content/40">Cash deal</span></>}
+                    </div>
+                  )}
+                </div>
               );
             })()}
 
@@ -2913,7 +3032,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               onSaved={handleClientCreateModalSaved}
             />
 
-            {/* ContactModal — create new title contact from Step 9 */}
+            {/* ContactModal — create new title contact from Step 5 */}
             <ContactModal
               isOpen={showTitleContactModal}
               contact={null}
@@ -2922,110 +3041,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               onClose={() => setShowTitleContactModal(false)}
               onSaved={handleTitleContactModalSaved}
             />
-
-            {step === 9 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles size={18} className="text-primary" />
-                  <h3 className="text-lg font-bold text-base-content">AI Review</h3>
-                </div>
-                {aiLoading && (
-                  <LoadingSpinner label="AI is reviewing your deal data..." />
-                )}
-                {aiError && (
-                  <div className="alert alert-error text-sm py-2 mb-3">
-                    {aiError}
-                    <Button variant="ghost" size="xs" onClick={runAIReview}>Retry</Button>
-                  </div>
-                )}
-                {aiReview && (
-                  <>
-                    <div className="bg-base-100 rounded-lg p-3 border border-base-300">
-                      <p className="text-sm text-base-content">{aiReview.summary}</p>
-                    </div>
-                    {aiReview.suggestions.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold text-base-content/60 uppercase">Suggestions</p>
-                        {aiReview.suggestions.map((s, i) => {
-                          const cfg = severityConfig[s.severity];
-                          return (
-                            <div key={i} className={`flex items-start gap-2.5 p-3 rounded-lg border ${cfg.bg}`}>
-                              <div className="flex-none mt-0.5">{cfg.icon}</div>
-                              <div>
-                                <p className={`text-sm font-semibold ${cfg.text}`}>{s.field}</p>
-                                <p className={`text-xs ${cfg.text} opacity-80`}>{s.issue}</p>
-                                <p className="text-xs text-base-content/60 mt-1">💡 {s.suggestion}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <CheckCircle2 size={16} className="text-green-500" />
-                        <p className="text-sm text-green-700 font-medium">Everything looks good! No issues found.</p>
-                      </div>
-                    )}
-                  </>
-                )}
-                {!aiLoading && !aiReview && !aiError && (
-                  <div className="text-center py-8 text-base-content/40 text-sm">
-                    <p>AI review will run automatically...</p>
-                  </div>
-                )}
-                <div className="bg-base-100 rounded-lg p-4 border border-base-300 space-y-2">
-                  <p className="text-xs font-semibold text-base-content/50 uppercase mb-2">Deal Summary</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                    <span className="text-base-content/50">Address:</span>
-                    <span className="font-medium">{form.address}, {form.city} {form.state} {form.zipCode}</span>
-                    {hasTwoAddresses && form.secondaryAddress && (
-                      <>
-                        <span className="text-base-content/50">Second Unit:</span>
-                        <span className="font-medium">{form.secondaryAddress}</span>
-                      </>
-                    )}
-                    <span className="text-base-content/50">Type:</span>
-                    <span className="font-medium">{propertyTypeLabel(form.propertyType)}{isDuplex ? ` (${form.duplexAddressCount === '2' ? '2 addresses' : '1 address'})` : ''}</span>
-                    <span className="text-base-content/50">Side:</span>
-                    <span className="font-medium capitalize">{form.transactionType}</span>
-                    {form.mlsNumber && <><span className="text-base-content/50">MLS#:</span><span className="font-medium">{form.mlsNumber}</span></>}
-                    {form.listPrice && <><span className="text-base-content/50">List Price:</span><span className="font-medium">${Number(form.listPrice).toLocaleString()}</span></>}
-                    {form.purchasePrice && <><span className="text-base-content/50">Contract Price:</span><span className="font-medium">${Number(form.purchasePrice).toLocaleString()}</span></>}
-                    <span className="text-base-content/50">Contract Date:</span>
-                    <span className="font-medium">{formatDisplayDate(form.contractDate)}</span>
-                    <span className="text-base-content/50">Closing Date:</span>
-                    <span className="font-medium">{formatDisplayDate(form.closingDate)}</span>
-                    {selectedClient && (
-                      <><span className="text-base-content/50">Our Client:</span><span className="font-medium">{selectedClient.fullName}{selectedClient.company ? ` — ${selectedClient.company}` : ''}</span></>
-                    )}
-                    {(form.buyerIsCompany ? form.buyerCompanyName : form.buyerNames) && <><span className="text-base-content/50">Buyer(s):</span><span className="font-medium">{form.buyerIsCompany ? form.buyerCompanyName : form.buyerNames}</span></>}
-                    {(form.sellerIsCompany ? form.sellerCompanyName : form.sellerNames) && <><span className="text-base-content/50">Seller(s):</span><span className="font-medium">{form.sellerIsCompany ? form.sellerCompanyName : form.sellerNames}</span></>}
-                    {form.loanType && <><span className="text-base-content/50">Loan Type:</span><span className="font-medium capitalize">{form.loanType}</span></>}
-                    {form.earnestMoney && <><span className="text-base-content/50">Earnest Money:</span><span className="font-medium">${Number(form.earnestMoney).toLocaleString()}</span></>}
-                    {form.earnestMoney && form.downPaymentAmount && form.isHeartlandMls && (() => {
-                      const total = (parseFloat(form.downPaymentAmount) || 0) + (parseFloat(form.earnestMoney) || 0);
-                      return <><span className="text-base-content/50 text-amber-600 font-semibold">Total Down (incl. EM):</span><span className="font-bold text-amber-700">${total.toLocaleString()}</span></>;
-                    })()}
-                    {form.earnestMoneyDueDate && <><span className="text-base-content/50">EM Due:</span><span className="font-medium">{formatDisplayDate(form.earnestMoneyDueDate)}</span></>}
-                    {form.inspectionDate && <><span className="text-base-content/50">Inspection:</span><span className="font-medium">{formatDisplayDate(form.inspectionDate)}</span></>}
-                    {form.financeDeadline && <><span className="text-base-content/50">Loan Commit:</span><span className="font-medium">{formatDisplayDate(form.financeDeadline)}</span></>}
-                    {form.titleDate && <><span className="text-base-content/50">Title / CTC:</span><span className="font-medium">{formatDisplayDate(form.titleDate)}</span></>}
-                    {(form.possessionDate || form.possessionAtClosing) && <><span className="text-base-content/50">Possession:</span><span className="font-medium">{form.possessionAtClosing ? 'At Closing' : formatDisplayDate(form.possessionDate)}</span></>}
-                    {(form.asIsSale || form.inspectionWaived || form.homeWarranty) && (
-                      <><span className="text-base-content/50">Conditions:</span><span className="font-medium">{[form.asIsSale && 'As-Is', form.inspectionWaived && 'Insp. Waived', form.homeWarranty && 'Home Warranty'].filter(Boolean).join(' · ')}</span></>
-                    )}
-                  </div>
-                  {form.specialNotes.trim() && (
-                    <div className="pt-3 border-t border-base-300">
-                      <p className="text-xs font-semibold text-base-content/50 uppercase mb-1 flex items-center gap-1">
-                        <FileText size={11} /> Special Notes
-                      </p>
-                      <p className="text-sm text-base-content/70 whitespace-pre-wrap">{form.specialNotes.trim()}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
           {showPdfPanel && contractObjectUrl && (
             <div className="flex-1 bg-gray-900 overflow-hidden flex flex-col">
@@ -3048,7 +3063,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               {step === 1 ? 'Cancel' : <><ChevronLeft size={14} /> Back</>}
             </button>
             <span className="hidden sm:inline font-mono text-[9px] text-base-content/30 select-all tracking-wide">
-              {PAGE_IDS[`WIZARD_STEP_${step}` as keyof typeof PAGE_IDS] || `wizard-step-${step}`} · step {step} of 9
+              {PAGE_IDS[`WIZARD_STEP_${step}` as keyof typeof PAGE_IDS] || `wizard-step-${step}`} · step {step} of {TOTAL_STEPS}
             </span>
             <div className="flex gap-2">
               {step < TOTAL_STEPS && (
