@@ -35,6 +35,7 @@ interface Milestone {
   extended_to: string | null;
   notes: string | null;
   sort_order: number;
+  formula: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -435,6 +436,11 @@ export default function WorkspaceTimeline({ deal }: Props) {
                           <span className={`font-medium ${URGENCY_TEXT_COLOR[urgency]}`}>{days}</span>
                         )}
                       </div>
+                      {m.formula && (
+                        <p className="text-xs text-base-content/40 italic mt-0.5">
+                          📐 {m.formula}
+                        </p>
+                      )}
                       {m.notes && (
                         <p className="text-xs text-base-content/50 mt-1 whitespace-pre-wrap">{m.notes}</p>
                       )}
