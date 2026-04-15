@@ -38,12 +38,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({ fields: [], raw_text_preview: '', error: 'PDF text extraction failed' });
     }
 
-    const textForGPT = extractedText.slice(0, 6000);
+    // Increased from 6000 → 12000 chars to capture dates buried in longer contracts
+    const textForGPT = extractedText.slice(0, 12000);
     if (!textForGPT.trim()) {
       return res.json({ fields: [], raw_text_preview: '' });
     }
 
-    // 3. Call GPT-4o-mini to extract structured contract fields
+    // 3. Call GPT-4o to extract structured contract fields
+    // NOTE: All keys here must exactly match FIELD_DEAL_MAP keys in contractExtraction.ts
     const prompt = `You are a real estate transaction coordinator AI. Extract key contract fields from this purchase agreement text.
 
 Return ONLY valid JSON with this exact structure (no markdown, no explanation):
@@ -59,13 +61,18 @@ Return ONLY valid JSON with this exact structure (no markdown, no explanation):
     { "key": "loanType", "label": "Loan Type", "value": "conventional", "confidence": "high" },
     { "key": "loanAmount", "label": "Loan Amount", "value": "432000", "confidence": "medium" },
     { "key": "downPaymentAmount", "label": "Down Payment", "value": "108000", "confidence": "medium" },
-    { "key": "sellerConcessions", "label": "Seller Concessions / Add'l Seller Paid Costs (Para 4 f.2)", "value": "5000", "confidence": "medium" },
-    { "key": "costsNotPayableByBuyer", "label": "Costs Not Payable by Buyer (Para 4 f.3)", "value": "1000", "confidence": "medium" },
-    { "key": "inspectionDeadline", "label": "Inspection Deadline", "value": "2024-03-22", "confidence": "high" },
-    { "key": "loanCommitmentDate", "label": "Loan Commitment Date", "value": "2024-04-10", "confidence": "medium" },
+    { "key": "downPaymentPercent", "label": "Down Payment %", "value": "20", "confidence": "medium" },
+    { "key": "sellerCredit", "label": "Seller Concessions / Add'l Seller Paid Costs", "value": "5000", "confidence": "medium" },
+    { "key": "additionalSellerCosts", "label": "Additional Seller Paid Costs", "value": "1000", "confidence": "medium" },
+    { "key": "inspectionDate", "label": "Inspection Deadline", "value": "2024-03-22", "confidence": "high" },
+    { "key": "financeDeadline", "label": "Loan Commitment / Finance Deadline", "value": "2024-04-10", "confidence": "medium" },
     { "key": "possessionDate", "label": "Possession Date", "value": "2024-04-30", "confidence": "medium" },
     { "key": "buyerNames", "label": "Buyer Names", "value": "John & Jane Doe", "confidence": "high" },
     { "key": "sellerNames", "label": "Seller Names", "value": "Bob Smith", "confidence": "high" },
+    { "key": "buyerAgentName", "label": "Buyer Agent Name", "value": "Sarah Johnson", "confidence": "medium" },
+    { "key": "sellerAgentName", "label": "Seller/Listing Agent Name", "value": "Mike Williams", "confidence": "medium" },
+    { "key": "buyerAgentCommission", "label": "Buyer Agent Commission", "value": "3%", "confidence": "medium" },
+    { "key": "listingAgentCommission", "label": "Listing Agent Commission", "value": "3%", "confidence": "medium" },
     { "key": "titleCompany", "label": "Title Company", "value": "ABC Title Co", "confidence": "medium" },
     { "key": "loanOfficer", "label": "Loan Officer", "value": "Jane Smith - First Bank", "confidence": "low" },
     { "key": "asIsSale", "label": "As-Is Sale", "value": "false", "confidence": "high" },
@@ -80,6 +87,8 @@ Rules:
 - Money values are numbers only (no $ or commas): "540000" not "$540,000"
 - Loan type must be one of: conventional, fha, va, usda, cash, other
 - Boolean fields (asIsSale, inspectionWaived, homeWarranty): use "true" or "false"
+- Commission fields: use percentage if stated as % (e.g. "3%"), otherwise dollar amount
+- Down payment percent: number only, no % symbol (e.g. "20" for 20%)
 - confidence levels: "high" (clearly stated), "medium" (inferred), "low" (uncertain)
 - Skip fields you cannot find — do not guess
 ${deal_address ? `- The property address is: ${deal_address}` : ''}
@@ -88,9 +97,9 @@ Contract text:
 ${textForGPT}`;
 
     const aiResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1500,
+      max_tokens: 2000,
       temperature: 0.1,
     });
 
