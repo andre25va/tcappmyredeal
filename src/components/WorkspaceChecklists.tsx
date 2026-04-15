@@ -986,59 +986,85 @@ export const WorkspaceChecklists: React.FC<Props> = ({ deal, onUpdate, users = [
             </div>
           </div>
 
-          {/* Standard DD items */}
-          <div className="border border-gray-300 rounded-xl overflow-hidden flex-none">
-            <div className="px-3 py-1.5 flex items-center gap-2 border-b border-gray-300 bg-gray-100">
-              <ClipboardList size={12} className="text-gray-600" />
-              <span className="text-xs font-bold text-black uppercase tracking-wide">Due Diligence Items</span>
-              <span className="text-xs text-gray-500 ml-auto">{standardItems.filter(i => i.completed).length}/{standardItems.length} complete</span>
+          {/* Category-grouped DD items */}
+          {(() => {
+            const CAT_ORDER = ['Documentation', 'Property', 'Financial', 'Inspection', 'Financing', 'Closing'];
+            const CAT_BG: Record<string, string> = {
+              'Documentation': 'bg-blue-50',
+              'Property':      'bg-green-50',
+              'Financial':     'bg-amber-50',
+              'Inspection':    'bg-purple-50',
+              'Financing':     'bg-orange-50',
+              'Closing':       'bg-rose-50',
+              'General':       'bg-gray-100',
+            };
+            const cats = [...new Set(standardItems.map(i => i.category ?? 'General'))].sort((a, b) => {
+              const ai = CAT_ORDER.indexOf(a), bi = CAT_ORDER.indexOf(b);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+            let globalRow = 0;
+            return cats.map(cat => {
+              const groupItems = standardItems.filter(i => (i.category ?? 'General') === cat);
+              const visibleGroup = sortIncompleteFirst(showCompleted ? groupItems : groupItems.filter(i => !i.completed && !i.notApplicable));
+              const groupDone = groupItems.filter(i => i.completed || i.notApplicable).length;
+              const bg = CAT_BG[cat] ?? 'bg-gray-100';
+              return (
+                <div key={cat} className="border border-gray-300 rounded-xl overflow-hidden flex-none">
+                  <div className={`px-3 py-1.5 flex items-center gap-2 border-b border-gray-300 ${bg}`}>
+                    <span className="text-xs font-bold text-black uppercase tracking-wide">{cat}</span>
+                    <span className="text-xs text-gray-500 ml-auto">{groupDone}/{groupItems.length} complete</span>
+                  </div>
+                  <TableHeader />
+                  {visibleGroup.length === 0 && (
+                    <div className="py-5 text-center text-xs text-gray-400">
+                      {groupDone >= groupItems.length && groupItems.length > 0 ? '🎉 All done!' : 'No items'}
+                    </div>
+                  )}
+                  {visibleGroup.map(item => {
+                    globalRow++;
+                    const rn = globalRow;
+                    return (
+                      <DDTableRow key={item.id} item={item} rowIndex={rn - 1} rowNum={rn}
+                        onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
+                        onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
+                        onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
+                        onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
+                        showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
+                        onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
+                        onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
+                        onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
+                        linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name} />
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
+
+          {/* Add item — standalone below all category groups */}
+          {!addOpen ? (
+            <div className="flex border border-gray-300 rounded-xl overflow-hidden flex-none bg-white">
+              <div className="w-9 border-r border-gray-200" />
+              <div className="w-9 border-r border-gray-200" />
+              <button className="flex-1 btn btn-ghost btn-xs gap-1 text-gray-400 hover:text-primary justify-start px-3 rounded-none" onClick={() => setAddOpen(true)}>
+                <Plus size={11} /> Add item to this deal's checklist
+              </button>
             </div>
-            <TableHeader />
-            {visibleStandard.length === 0 && (
-              <div className="py-5 text-center text-xs text-gray-400">{standardItems.length > 0 ? '🎉 All items complete!' : 'No items yet'}</div>
-            )}
-            {(() => {
-              let rowCount = 0;
-              return visibleStandard.map(item => {
-                rowCount++;
-                return (
-                  <DDTableRow key={item.id} item={item} rowIndex={rowCount - 1} rowNum={rowCount}
-                    onDelete={() => deleteDD(item.id)} onNote={(note) => noteDD(item.id, note)} onRename={(title) => renameDD(item.id, title)}
-                    onComplete={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'complete', title: item.title })}
-                    onUndo={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'incomplete', title: item.title })}
-                    onNA={() => setPendingConfirm({ id: item.id, type: 'dd', action: 'na', title: item.title })}
-                    showCompleted={showCompleted} dragging={ddDragId.current === item.id} dragOver={ddOverId === item.id}
-                    onDragStart={() => { ddDragId.current = item.id; }} onDragOver={(e) => { e.preventDefault(); setDdOverId(item.id); }}
-                    onDrop={() => { if (ddDragId.current) reorderDD(ddDragId.current, item.id); setDdOverId(null); }}
-                    onDragEnd={() => { ddDragId.current = null; setDdOverId(null); }}
-                    linkedDocName={docLinks.find(l => l.checklist_item_id === item.id)?.file_name} />
-                );
-              });
-            })()}
-            {!addOpen ? (
-              <div className="flex border-t border-gray-200 bg-white">
-                <div className="w-9 border-r border-gray-200" />
-                <div className="w-9 border-r border-gray-200" />
-                <button className="flex-1 btn btn-ghost btn-xs gap-1 text-gray-400 hover:text-primary justify-start px-3 rounded-none" onClick={() => setAddOpen(true)}>
-                  <Plus size={11} /> Add item to this deal's checklist
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-t border-gray-300">
-                <input ref={addRef} className="input input-bordered input-xs flex-1" placeholder="New DD item..." value={addTitle}
-                  onChange={e => setAddTitle(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && addTitle.trim()) addDD(addTitle, addReq);
-                    if (e.key === 'Escape') { setAddOpen(false); setAddTitle(''); }
-                  }} />
-                <label className="flex items-center gap-1 text-xs cursor-pointer select-none whitespace-nowrap text-black">
-                  <input type="checkbox" className="checkbox checkbox-xs checkbox-error" checked={addReq} onChange={e => setAddReq(e.target.checked)} /> Required
-                </label>
-                <Button variant="primary" size="xs" onClick={() => { if (addTitle.trim()) addDD(addTitle, addReq); }}>Add</Button>
-                <Button variant="ghost" size="xs" square onClick={() => { setAddOpen(false); setAddTitle(''); }}><X size={11} /></Button>
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl flex-none">
+              <input ref={addRef} className="input input-bordered input-xs flex-1" placeholder="New DD item..." value={addTitle}
+                onChange={e => setAddTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && addTitle.trim()) addDD(addTitle, addReq);
+                  if (e.key === 'Escape') { setAddOpen(false); setAddTitle(''); }
+                }} />
+              <label className="flex items-center gap-1 text-xs cursor-pointer select-none whitespace-nowrap text-black">
+                <input type="checkbox" className="checkbox checkbox-xs checkbox-error" checked={addReq} onChange={e => setAddReq(e.target.checked)} /> Required
+              </label>
+              <Button variant="primary" size="xs" onClick={() => { if (addTitle.trim()) addDD(addTitle, addReq); }}>Add</Button>
+              <Button variant="ghost" size="xs" square onClick={() => { setAddOpen(false); setAddTitle(''); }}><X size={11} /></Button>
+            </div>
+          )}
 
           {/* HOA / Condo items */}
           {autoCondoItems.length > 0 && (

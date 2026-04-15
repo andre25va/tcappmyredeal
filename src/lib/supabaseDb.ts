@@ -954,7 +954,7 @@ export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
   const { data, error } = templateId
     ? await supabase
         .from('checklist_template_items')
-        .select('id, title, is_required, sort_order')
+        .select('id, title, is_required, sort_order, category')
         .eq('template_id', templateId)
         .order('sort_order', { ascending: true })
     : { data: [], error: null };
@@ -974,6 +974,7 @@ export async function loadMasterItems(type: 'compliance' | 'dd'): Promise<
     title: row.title as string,
     required: (row as any).is_required as boolean,
     order: (row as any).sort_order as number,
+    category: (row as any).category as string | undefined,
   })) as DDMasterItem[];
 }
 
@@ -1024,6 +1025,7 @@ export async function saveMasterItems(
     title: item.title,
     is_required: (item as DDMasterItem).required ?? false,
     sort_order: item.order ?? idx,
+    category: (item as DDMasterItem).category ?? null,
   }));
 
   const { error } = await supabase.from('checklist_template_items').insert(rows);
@@ -2275,7 +2277,7 @@ export async function loadMergedChecklistItems(
   if (mlsId) {
     const { data: mlsRow } = await supabase
       .from('checklist_templates')
-      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order, category )')
       .eq('checklist_type', type)
       .eq('mls_id', mlsId)
       .is('contact_id', null)
@@ -2286,7 +2288,7 @@ export async function loadMergedChecklistItems(
       const mlsItems = ((mlsRow.checklist_template_items ?? []) as any[]).sort((a, b) => a.sort_order - b.sort_order);
       for (const item of mlsItems) {
         const key = item.title.toLowerCase().trim();
-        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem); }
+        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length, category: item.category ?? undefined } as DDMasterItem); }
       }
     }
   }
@@ -2294,7 +2296,7 @@ export async function loadMergedChecklistItems(
   if (contactId) {
     const { data: clientRow } = await supabase
       .from('checklist_templates')
-      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order, category )')
       .eq('checklist_type', type)
       .eq('contact_id', contactId)
       .is('mls_id', null)
@@ -2305,7 +2307,7 @@ export async function loadMergedChecklistItems(
       const clientItems = ((clientRow.checklist_template_items ?? []) as any[]).sort((a, b) => a.sort_order - b.sort_order);
       for (const item of clientItems) {
         const key = item.title.toLowerCase().trim();
-        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem); }
+        if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length, category: item.category ?? undefined } as DDMasterItem); }
       }
     }
   }
@@ -2316,7 +2318,7 @@ export async function loadMergedChecklistItems(
   if (loanType && loanType !== 'cash' && loanType !== 'other' && loanType !== '') {
     const { data: loanRow } = await supabase
       .from('checklist_templates')
-      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order, category )')
       .eq('checklist_type', type)
       .eq('loan_type', 'financed')
       .is('mls_id', null)
@@ -2331,7 +2333,7 @@ export async function loadMergedChecklistItems(
         const key = item.title.toLowerCase().trim();
         if (!seen.has(key)) {
           seen.add(key);
-          merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem);
+          merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length, category: item.category ?? undefined } as DDMasterItem);
         }
       }
     }

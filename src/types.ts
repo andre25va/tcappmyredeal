@@ -51,6 +51,7 @@ export interface DDMasterItem {
   title: string;
   required: boolean;
   order: number;
+  category?: string;
 }
 
 export interface AppUser {

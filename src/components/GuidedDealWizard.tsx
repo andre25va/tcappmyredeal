@@ -1110,7 +1110,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       sellerAgentName: form.sellerAgentName || undefined,
       legalDescription: form.legalDescription.trim() || undefined,
       hasCounterOffer: form.hasCounterOffer || undefined,
-      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false })),
+      dueDiligenceChecklist: mergedDDItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as DDMasterItem).required ?? false, category: (m as DDMasterItem).category })),
       complianceChecklist: mergedComplianceItems.map(m => ({ id: generateId(), title: m.title, completed: false, required: (m as any).required })),
       documentRequests: autoDocRequests,
       reminders: [],
