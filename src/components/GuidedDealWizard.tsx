@@ -988,8 +988,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     const isMF = form.propertyType === 'multi-family';
 
     // Load merged checklist items: master + MLS-specific + client-specific
-    const mergedDDItems = await loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null).catch(() => ddMasterItems ?? []);
-    const mergedComplianceItems = await loadMergedChecklistItems('compliance', form.mlsEntryId || null, form.agentClientId || null).catch(() => complianceMasterItems ?? []);
+    const mergedDDItems = await loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null, form.loanType || null).catch(() => ddMasterItems ?? []);
+    const mergedComplianceItems = await loadMergedChecklistItems('compliance', form.mlsEntryId || null, form.agentClientId || null, form.loanType || null).catch(() => complianceMasterItems ?? []);
 
     const autoDocRequests: DocumentRequest[] = isMF ? [{
       id: generateId(),

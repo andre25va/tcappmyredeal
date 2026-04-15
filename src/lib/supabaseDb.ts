@@ -2265,7 +2265,8 @@ export async function loadDealAccessGrants(dealId: string): Promise<{ id: string
 export async function loadMergedChecklistItems(
   type: 'dd' | 'compliance',
   mlsId?: string | null,
-  contactId?: string | null
+  contactId?: string | null,
+  loanType?: string | null
 ): Promise<(DDMasterItem | ComplianceMasterItem)[]> {
   const masterItems = (await loadMasterItems(type)) as (DDMasterItem | ComplianceMasterItem)[];
   const seen = new Set(masterItems.map(i => i.title.toLowerCase().trim()));
@@ -2305,6 +2306,33 @@ export async function loadMergedChecklistItems(
       for (const item of clientItems) {
         const key = item.title.toLowerCase().trim();
         if (!seen.has(key)) { seen.add(key); merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem); }
+      }
+    }
+  }
+
+  // ── Loan-type specific additions ──────────────────────────────────────────
+  // Financed deals (conventional, fha, va, usda) get extra finance-specific items.
+  // Cash and "other" deals use the base template only.
+  if (loanType && loanType !== 'cash' && loanType !== 'other' && loanType !== '') {
+    const { data: loanRow } = await supabase
+      .from('checklist_templates')
+      .select('id, checklist_template_items ( id, title, is_required, sort_order )')
+      .eq('checklist_type', type)
+      .eq('loan_type', 'financed')
+      .is('mls_id', null)
+      .is('contact_id', null)
+      .is('org_id', null)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+    if (loanRow) {
+      const loanItems = ((loanRow.checklist_template_items ?? []) as any[]).sort((a, b) => a.sort_order - b.sort_order);
+      for (const item of loanItems) {
+        const key = item.title.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push({ id: item.id, title: item.title, required: item.is_required ?? false, order: merged.length } as DDMasterItem);
+        }
       }
     }
   }
