@@ -1150,6 +1150,39 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       } catch (sessErr) {
         console.warn('[GuidedDealWizard] Failed to create import_session (non-blocking):', sessErr);
       }
+
+      // ── Seed deal_timeline from verified extraction + form dates ─────────────
+      // Priority: form values (TC-verified) first, then raw extractedRawData as fallback.
+      // Non-blocking — never prevents deal creation from completing.
+      try {
+        type TLEntry = { milestone: string; label: string; due_date: string; sort_order: number };
+        const tlEntries: TLEntry[] = [];
+        const seedDate = (milestone: string, label: string, sort_order: number, date: string | undefined | null) => {
+          if (date) tlEntries.push({ milestone, label, sort_order, due_date: date });
+        };
+        seedDate('contract',      'Contract Received', 10, form.contractDate        || extractedRawData?.contractDate);
+        seedDate('emd',           'EMD Due',           20, form.earnestMoneyDueDate || extractedRawData?.earnestMoneyDueDate);
+        seedDate('inspection',    'Inspection Period', 30, form.inspectionDate      || extractedRawData?.inspectionDate);
+        seedDate('clear_to_close','Clear to Close',    40, form.financeDeadline     || extractedRawData?.financeDeadline);
+        seedDate('closing',       'Closing Day',       50, form.closingDate         || extractedRawData?.closingDate);
+        if (tlEntries.length > 0) {
+          await supabase.from('deal_timeline').insert(
+            tlEntries.map(e => ({
+              deal_id:    deal.id,
+              milestone:  e.milestone,
+              label:      e.label,
+              due_date:   e.due_date,
+              status:     'pending',
+              sort_order: e.sort_order,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }))
+          );
+          console.log(`[GuidedDealWizard] Seeded ${tlEntries.length} deal_timeline rows for deal ${deal.id}`);
+        }
+      } catch (tlErr) {
+        console.warn('[GuidedDealWizard] Failed to seed deal_timeline (non-blocking):', tlErr);
+      }
     } catch (saveErr: any) {
       console.error('[GuidedDealWizard] Failed to save deal to DB:', saveErr);
       setError(`Failed to create deal: ${saveErr.message}`);
