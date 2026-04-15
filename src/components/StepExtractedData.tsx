@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, RefreshCw, Search, ChevronRight } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw, Search, ChevronRight, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // --- Types ---
@@ -134,6 +134,39 @@ const SECTIONS = [
   'Parties',
 ];
 
+// --- Formula pattern detection ---
+const FORMULA_PATTERN = /\d+\s+(calendar|business)?\s*days?\s+(after|before|from)/i;
+const FORMULA_PHRASES = [
+  'after effective date',
+  'before closing',
+  'after inspection',
+  'business days',
+  'after closing',
+  'before effective date',
+  'after contract date',
+];
+
+function isFormulaValue(val: string): boolean {
+  if (!val) return false;
+  if (FORMULA_PATTERN.test(val)) return true;
+  const lower = val.toLowerCase();
+  return FORMULA_PHRASES.some(phrase => lower.includes(phrase));
+}
+
+function isDateValue(val: string): boolean {
+  if (!val) return false;
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return true;
+  // MM/DD/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val)) return true;
+  return false;
+}
+
+function isPlainNumber(val: string): boolean {
+  if (!val) return false;
+  return /^\d+(\.\d+)?$/.test(val.trim());
+}
+
 // --- Contact Typeahead ---
 const ContactTypeahead: React.FC<{
   value: string;
@@ -226,6 +259,17 @@ const ContactTypeahead: React.FC<{
   );
 };
 
+// --- Tier classification helpers ---
+type Tier = 1 | 2 | 3;
+
+function getFieldTier(field: FieldDef, extractedData: Record<string, unknown> | null): Tier {
+  const raw = extractedData?.[field.key];
+  const wasFound = raw !== null && raw !== undefined && raw !== '';
+  if (!wasFound) return 1;
+  if (!!field.hint) return 2;
+  return 3;
+}
+
 // --- Main Component ---
 const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   extractedData,
@@ -263,6 +307,32 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
     const raw = extractedData?.[key];
     return raw !== null && raw !== undefined && raw !== '';
   }).length;
+
+  const reviewCount = FIELD_DEFS.filter(({ key, hint }) => {
+    const raw = extractedData?.[key];
+    const wasFound = raw !== null && raw !== undefined && raw !== '';
+    return wasFound && !!hint;
+  }).length;
+
+  // --- Accordion state ---
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    SECTIONS.forEach(section => {
+      const fields = FIELD_DEFS.filter(f => f.section === section);
+      const hasAttention = fields.some(f => {
+        const raw = extractedData?.[f.key];
+        const wasFound = raw !== null && raw !== undefined && raw !== '';
+        const isTier1 = !wasFound;
+        const isTier2 = wasFound && !!f.hint;
+        return isTier1 || isTier2;
+      });
+      init[section] = hasAttention;
+    });
+    return init;
+  });
+
+  const toggleSection = (section: string) =>
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
 
   const handleConfirm = () => {
     const verified: Record<string, unknown> = { ...(extractedData || {}) };
@@ -324,129 +394,194 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
       <p className="text-sm text-base-content/60">
         {foundCount} of {FIELD_DEFS.length} fields found.{' '}
-        <span className="text-red-400 font-medium">Red rows</span> were not found — fill them in or leave blank.
-        Edit anything that looks wrong, then confirm.
+        {reviewCount > 0 && (
+          <><span className="text-amber-600 font-medium">{reviewCount} formula fields</span> need review. </>
+        )}
+        <span className="text-red-400 font-medium">{FIELD_DEFS.length - foundCount} not found</span> — fill in or leave blank.
       </p>
 
       {/* Sectioned Table */}
       <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 -mr-1">
         {SECTIONS.map(section => {
-          const fields = FIELD_DEFS.filter(f => f.section === section);
+          const allFields = FIELD_DEFS.filter(f => f.section === section);
+
           // Only render section if at least one field was found OR it's a primary section
           const primarySections = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties'];
-          const sectionHasData = fields.some(f => {
+          const sectionHasData = allFields.some(f => {
             const raw = extractedData?.[f.key];
             return raw !== null && raw !== undefined && raw !== '';
           });
           if (!primarySections.includes(section) && !sectionHasData) return null;
 
+          // Classify fields into tiers
+          const tier1Fields = allFields.filter(f => getFieldTier(f, extractedData) === 1);
+          const tier2Fields = allFields.filter(f => getFieldTier(f, extractedData) === 2);
+          const tier3Fields = allFields.filter(f => getFieldTier(f, extractedData) === 3);
+
+          const tier1Count = tier1Fields.length;
+          const tier2Count = tier2Fields.length;
+
+          // Ordered fields: tier1 first, then tier2, then tier3
+          const orderedFields = [...tier1Fields, ...tier2Fields, ...tier3Fields];
+
+          const isOpen = openSections[section] ?? true;
+
           return (
             <div key={section} className="rounded-xl border border-base-300 overflow-hidden">
-              <div className="bg-base-200/60 px-3 py-1.5 border-b border-base-300">
-                <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">{section}</p>
-              </div>
-              <div className="divide-y divide-base-200">
-                {fields.map(field => {
-                  const originalRaw = extractedData?.[field.key];
-                  const wasFound = originalRaw !== null && originalRaw !== undefined && originalRaw !== '';
-                  const currentVal = values[field.key] ?? '';
+              {/* Section Header — clickable toggle */}
+              <button
+                onClick={() => toggleSection(section)}
+                className="w-full bg-base-200/60 px-3 py-1.5 border-b border-base-300 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">{section}</p>
+                  {tier1Count > 0 && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
+                      🔴 {tier1Count} missing
+                    </span>
+                  )}
+                  {tier2Count > 0 && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-semibold">
+                      🟡 {tier2Count} review
+                    </span>
+                  )}
+                  {tier1Count === 0 && tier2Count === 0 && (
+                    <span className="text-[10px] text-green-600 font-medium">✅ {allFields.length} verified</span>
+                  )}
+                </div>
+                {/* Chevron */}
+                <ChevronDown size={14} className={`text-base-content/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                  return (
-                    <div
-                      key={field.key}
-                      className={`flex items-start gap-3 px-3 py-2 ${
-                        !wasFound ? 'bg-red-50/60 dark:bg-red-900/10' : ''
-                      }`}
-                    >
-                      {/* Label */}
-                      <div className="w-40 flex-none pt-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium text-base-content/60 leading-tight">
-                            {field.label}
-                          </span>
-                          {!wasFound && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
+              {/* Section Fields — hidden when collapsed */}
+              {isOpen && (
+                <div className="divide-y divide-base-200">
+                  {orderedFields.map(field => {
+                    const originalRaw = extractedData?.[field.key];
+                    const wasFound = originalRaw !== null && originalRaw !== undefined && originalRaw !== '';
+                    const currentVal = values[field.key] ?? '';
+                    const tier = getFieldTier(field, extractedData);
+
+                    // Determine row background
+                    const rowBg =
+                      tier === 1 ? 'bg-red-50/60 dark:bg-red-900/10' :
+                      tier === 2 ? 'bg-amber-50/40 dark:bg-amber-900/10' :
+                      '';
+
+                    // Formula pill logic: only for tier 2 (hint fields) that have a value
+                    const showFormulaPill =
+                      tier === 2 &&
+                      wasFound &&
+                      currentVal &&
+                      isFormulaValue(currentVal) &&
+                      !isDateValue(currentVal) &&
+                      !isPlainNumber(currentVal);
+
+                    return (
+                      <div
+                        key={field.key}
+                        className={`flex items-start gap-3 px-3 py-2 ${rowBg}`}
+                      >
+                        {/* Label */}
+                        <div className="w-40 flex-none pt-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-base-content/60 leading-tight">
+                              {field.label}
+                            </span>
+                            {!wasFound && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
+                            )}
+                          </div>
+                          {field.hint && (
+                            <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>
                           )}
                         </div>
-                        {field.hint && (
-                          <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>
-                        )}
-                      </div>
 
-                      {/* Input */}
-                      <div className="flex-1 min-w-0">
-                        {field.type === 'select' && (
-                          <select
-                            value={currentVal}
-                            onChange={e => setValue(field.key, e.target.value)}
-                            className="select select-sm select-bordered w-full text-sm"
-                          >
-                            <option value="">— not set —</option>
-                            {field.options!.map(opt => (
-                              <option key={opt} value={opt}>
-                                {opt.charAt(0).toUpperCase() + opt.slice(1)}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        {/* Input */}
+                        <div className="flex-1 min-w-0">
+                          {/* Formula pill — rendered above input for tier 2 formula values */}
+                          {showFormulaPill && (
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium italic border border-amber-200">
+                                📐 {currentVal}
+                              </span>
+                              <span className="text-[10px] text-base-content/40">AI extracted — edit below to override</span>
+                            </div>
+                          )}
 
-                        {field.type === 'date' && (
-                          <input
-                            type="date"
-                            value={currentVal}
-                            onChange={e => setValue(field.key, e.target.value)}
-                            className="input input-sm input-bordered w-full text-sm"
-                          />
-                        )}
+                          {field.type === 'select' && (
+                            <select
+                              value={currentVal}
+                              onChange={e => setValue(field.key, e.target.value)}
+                              className="select select-sm select-bordered w-full text-sm"
+                            >
+                              <option value="">— not set —</option>
+                              {field.options!.map(opt => (
+                                <option key={opt} value={opt}>
+                                  {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          )}
 
-                        {field.type === 'money' && (
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-base-content/40 pointer-events-none">$</span>
+                          {field.type === 'date' && (
+                            <input
+                              type="date"
+                              value={currentVal}
+                              onChange={e => setValue(field.key, e.target.value)}
+                              className="input input-sm input-bordered w-full text-sm"
+                            />
+                          )}
+
+                          {field.type === 'money' && (
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-base-content/40 pointer-events-none">$</span>
+                              <input
+                                type="number"
+                                value={currentVal}
+                                onChange={e => setValue(field.key, e.target.value)}
+                                className="input input-sm input-bordered w-full pl-6 text-sm"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          )}
+
+                          {field.type === 'number' && (
                             <input
                               type="number"
                               value={currentVal}
                               onChange={e => setValue(field.key, e.target.value)}
-                              className="input input-sm input-bordered w-full pl-6 text-sm"
+                              className="input input-sm input-bordered w-full text-sm"
                               min="0"
                               step="0.01"
-                              placeholder="0.00"
+                              placeholder="0"
                             />
-                          </div>
-                        )}
+                          )}
 
-                        {field.type === 'number' && (
-                          <input
-                            type="number"
-                            value={currentVal}
-                            onChange={e => setValue(field.key, e.target.value)}
-                            className="input input-sm input-bordered w-full text-sm"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                          />
-                        )}
+                          {field.type === 'contact' && (
+                            <ContactTypeahead
+                              value={currentVal}
+                              onChange={val => setValue(field.key, val)}
+                            />
+                          )}
 
-                        {field.type === 'contact' && (
-                          <ContactTypeahead
-                            value={currentVal}
-                            onChange={val => setValue(field.key, val)}
-                          />
-                        )}
-
-                        {field.type === 'text' && (
-                          <input
-                            type="text"
-                            value={currentVal}
-                            onChange={e => setValue(field.key, e.target.value)}
-                            className="input input-sm input-bordered w-full text-sm"
-                            placeholder={!wasFound ? 'Not found — type to fill in' : ''}
-                          />
-                        )}
+                          {field.type === 'text' && (
+                            <input
+                              type="text"
+                              value={currentVal}
+                              onChange={e => setValue(field.key, e.target.value)}
+                              className="input input-sm input-bordered w-full text-sm"
+                              placeholder={!wasFound ? 'Not found — type to fill in' : ''}
+                            />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
