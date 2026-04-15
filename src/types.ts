@@ -46,12 +46,15 @@ export interface DealTask {
 }
 
 export type UserRole = 'admin' | 'tc' | 'staff';
+export type RequiredBy = 'state' | 'mls' | 'brokerage' | 'team' | 'optional';
+
 export interface DDMasterItem {
   id: string;
   title: string;
   required: boolean;
   order: number;
   category?: string;
+  required_by?: RequiredBy;
 }
 
 export interface AppUser {

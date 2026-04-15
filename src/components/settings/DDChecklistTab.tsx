@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Star, AlertCircle, Globe, User, Zap } from 'lucide-react';
-import { DDMasterItem } from '../../types';
+import { DDMasterItem, RequiredBy } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
 import { Button } from '../ui/Button';
@@ -9,6 +9,18 @@ import { ChecklistClientSubTab } from './ChecklistClientSubTab';
 import { ChecklistLoanTypeSubTab } from './ChecklistLoanTypeSubTab';
 
 type SubTab = 'master' | 'mls' | 'client' | 'loan-type';
+
+const REQUIRED_BY_OPTIONS: { value: RequiredBy; label: string; emoji: string; badgeClass: string }[] = [
+  { value: 'state',     label: 'State',     emoji: '🔴', badgeClass: 'bg-red-100 text-red-700 border-red-300' },
+  { value: 'mls',       label: 'MLS',       emoji: '🟠', badgeClass: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { value: 'brokerage', label: 'Brokerage', emoji: '🔵', badgeClass: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { value: 'team',      label: 'Team',      emoji: '🟣', badgeClass: 'bg-purple-100 text-purple-700 border-purple-300' },
+  { value: 'optional',  label: 'Optional',  emoji: '⚪', badgeClass: 'bg-gray-100 text-gray-500 border-gray-300' },
+];
+
+function getRequiredByConfig(val: RequiredBy | undefined) {
+  return REQUIRED_BY_OPTIONS.find(o => o.value === (val ?? 'optional')) ?? REQUIRED_BY_OPTIONS[4];
+}
 
 interface DDChecklistTabProps {
   items: DDMasterItem[];
@@ -24,6 +36,12 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
   const [editVal, setEditVal] = useState('');
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const dragIdRef = useRef<string | null>(null);
+  const [openRequiredById, setOpenRequiredById] = useState<string | null>(null);
+
+  const setRequiredBy = (id: string, value: RequiredBy) => {
+    onSave(items.map(i => i.id === id ? { ...i, required_by: value, required: value !== 'optional' } : i));
+    setOpenRequiredById(null);
+  };
 
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
@@ -31,7 +49,7 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [openMenuId]);
 
-  const addItem = () => { const t = newTitle.trim(); if (!t) return; onSave([...items, { id: generateId(), title: t, required: false, order: items.length }]); setNewTitle(''); };
+  const addItem = () => { const t = newTitle.trim(); if (!t) return; onSave([...items, { id: generateId(), title: t, required: false, required_by: 'optional', order: items.length }]); setNewTitle(''); };
   const deleteItem = (id: string) => onSave(items.filter(i => i.id !== id));
   const toggleRequired = (id: string) => onSave(items.map(i => i.id === id ? { ...i, required: !i.required } : i));
   const renameItem = (id: string, title: string) => onSave(items.map(i => i.id === id ? { ...i, title } : i));
@@ -98,7 +116,7 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
                 <th className="w-6 px-2 py-2.5"></th>
                 <th className="w-8 px-3 py-2.5 text-left text-xs font-semibold text-black/50">#</th>
                 <th className="px-3 py-2.5 text-left text-xs font-semibold text-black/50">Item</th>
-                <th className="w-20 px-3 py-2.5 text-center text-xs font-semibold text-black/50">Required</th>
+                <th className="w-32 px-3 py-2.5 text-center text-xs font-semibold text-black/50">Required By</th>
                 <th className="w-16 px-3 py-2.5 text-right text-xs font-semibold text-black/50">Actions</th>
               </tr></thead>
               <tbody>
@@ -117,9 +135,28 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
                       ) : <span className="text-xs font-medium">{item.title}</span>}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <button onClick={() => toggleRequired(item.id)} className={`btn btn-xs rounded-full px-2 ${item.required ? 'btn-error text-white' : 'btn-ghost border border-base-300'}`}>
-                        {item.required ? '★ Req' : '☆ Opt'}
-                      </button>
+                      <div className="relative inline-block">
+                        <button
+                          onClick={() => setOpenRequiredById(openRequiredById === item.id ? null : item.id)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium cursor-pointer ${getRequiredByConfig(item.required_by).badgeClass}`}
+                        >
+                          {getRequiredByConfig(item.required_by).emoji} {getRequiredByConfig(item.required_by).label}
+                        </button>
+                        {openRequiredById === item.id && (
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[300] min-w-36 py-1" onMouseDown={e => e.stopPropagation()}>
+                            {REQUIRED_BY_OPTIONS.map(opt => (
+                              <button
+                                key={opt.value}
+                                className={`w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-xs ${item.required_by === opt.value ? 'font-semibold' : ''}`}
+                                onClick={() => setRequiredBy(item.id, opt.value)}
+                              >
+                                <span className="text-sm">{opt.emoji}</span> {opt.label}
+                                {item.required_by === opt.value && <span className="ml-auto text-green-500">✓</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="relative inline-flex justify-end w-full">
@@ -127,7 +164,7 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
                         {openMenuId === item.id && (
                           <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[200] min-w-36 py-1 text-sm" onMouseDown={e => e.stopPropagation()}>
                             <button className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2" onClick={() => { setEditingId(item.id); setEditVal(item.title); setOpenMenuId(null); }}><Pencil size={12} /> Edit Title</button>
-                            <button className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2" onClick={() => { toggleRequired(item.id); setOpenMenuId(null); }}><Star size={12} /> {item.required ? 'Mark Optional' : 'Mark Required'}</button>
+
                             <div className="border-t border-gray-100 my-1" />
                             <button className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2" onClick={() => { setDeleteItemId(item.id); setOpenMenuId(null); }}><Trash2 size={12} /> Delete</button>
                           </div>
