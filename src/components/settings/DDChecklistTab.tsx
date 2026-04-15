@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Star, AlertCircle, Globe, User } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, GripVertical, MoreVertical, Star, AlertCircle, Globe, User, Zap } from 'lucide-react';
 import { DDMasterItem } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { ConfirmModal } from '../ConfirmModal';
 import { Button } from '../ui/Button';
 import { ChecklistMlsSubTab } from './ChecklistMlsSubTab';
 import { ChecklistClientSubTab } from './ChecklistClientSubTab';
+import { ChecklistLoanTypeSubTab } from './ChecklistLoanTypeSubTab';
 
-type SubTab = 'master' | 'mls' | 'client';
+type SubTab = 'master' | 'mls' | 'client' | 'loan-type';
 
 interface DDChecklistTabProps {
   items: DDMasterItem[];
@@ -49,6 +50,7 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
     { id: 'master', label: 'Master', icon: <AlertCircle size={13} /> },
     { id: 'mls', label: 'MLS Templates', icon: <Globe size={13} /> },
     { id: 'client', label: 'Client Templates', icon: <User size={13} /> },
+    { id: 'loan-type', label: 'Loan Type', icon: <Zap size={13} /> },
   ];
 
   return (
@@ -75,6 +77,9 @@ export function DDChecklistTab({ items, onSave }: DDChecklistTabProps) {
 
       {/* Client sub-tab */}
       {subTab === 'client' && <ChecklistClientSubTab checklistType="dd" />}
+
+      {/* Loan Type sub-tab */}
+      {subTab === 'loan-type' && <ChecklistLoanTypeSubTab />}
 
       {/* Master sub-tab */}
       {subTab === 'master' && (
