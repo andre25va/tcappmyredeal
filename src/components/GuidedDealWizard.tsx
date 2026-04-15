@@ -2058,7 +2058,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
             {step === 2 && (
               <StepExtractedData
                 extractedData={extractedRawData}
-                onConfirm={() => setStep(3)}
+                onConfirm={(verified) => { setExtractedRawData(verified); setStep(3); }}
                 onEdit={() => setStep(3)}
                 onReExtract={() => setStep(1)}
               />
