@@ -343,6 +343,30 @@ function PortalApp() {
 
   const activeDeal = deals.find((d) => d.id === activeDealId) ?? null;
 
+  // ── Closing confirmation state ─────────────────────────────────────────────
+  const [closingRespSubmitting, setClosingRespSubmitting] = useState<string | null>(null);
+  const [closingNewDate, setClosingNewDate] = useState<Record<string, string>>({});
+  const [closingRespDone, setClosingRespDone] = useState<Set<string>>(new Set());
+
+  const handleClosingResponse = async (token: string, response: string) => {
+    const proposedDate = response === 'new_date' ? closingNewDate[token] : undefined;
+    if (response === 'new_date' && !proposedDate) return;
+    setClosingRespSubmitting(token + ':' + response);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/handle-closing-response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, response, proposed_date: proposedDate }),
+      });
+      if (res.ok) {
+        setClosingRespDone(prev => new Set([...prev, token]));
+        queryClient.invalidateQueries({ queryKey: ['portal-messages', activeDealId, phone, pin] });
+      }
+    } finally {
+      setClosingRespSubmitting(null);
+    }
+  };
+
   // ── Auth (TanStack useMutation) ────────────────────────────────────────────
   const loginMutation = useMutation({
     mutationFn: async ({ phone, pin }: { phone: string; pin: string }) => {
@@ -1707,6 +1731,54 @@ function PortalApp() {
                           </div>
                         );
                       })}
+                      {/* Closing confirmation action buttons */}
+                      {msg.metadata?.type === 'closing_confirmation' && !msg.metadata?.responded && !closingRespDone.has(msg.metadata?.token) && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold text-gray-500 mb-2">What is the closing status?</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { response: 'yes', label: '✅ Yes, We Are Closing', bg: 'bg-emerald-600' },
+                              { response: 'new_date', label: '📅 New Closing Date', bg: 'bg-blue-600' },
+                              { response: 'not_sure', label: '🤷 Not Sure Yet', bg: 'bg-amber-500' },
+                              { response: 'dead', label: '💀 Deal Is Dead', bg: 'bg-red-600' },
+                            ].map(({ response: r, label, bg }) => (
+                              <button
+                                key={r}
+                                onClick={() => r !== 'new_date' && handleClosingResponse(msg.metadata.token, r)}
+                                disabled={closingRespSubmitting !== null}
+                                className={`${bg} text-white text-xs font-semibold py-2.5 px-2 rounded-lg text-center leading-tight disabled:opacity-50 transition hover:opacity-90 ${r === 'new_date' ? 'cursor-default' : 'cursor-pointer'}`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          {/* New date picker */}
+                          <div className="mt-2 space-y-2">
+                            <label className="text-xs text-gray-500 font-medium">New date:</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={closingNewDate[msg.metadata?.token] || ''}
+                                onChange={e => setClosingNewDate(prev => ({ ...prev, [msg.metadata.token]: e.target.value }))}
+                                className="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleClosingResponse(msg.metadata.token, 'new_date')}
+                                disabled={!closingNewDate[msg.metadata?.token] || closingRespSubmitting !== null}
+                                className="bg-blue-600 text-white text-xs font-semibold px-3 py-2 rounded-lg disabled:opacity-40 hover:bg-blue-700 transition"
+                              >
+                                Submit
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {/* Already responded */}
+                      {msg.metadata?.type === 'closing_confirmation' && (msg.metadata?.responded || closingRespDone.has(msg.metadata?.token)) && (
+                        <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                          <span>✅</span> Response submitted — your TC has been notified
+                        </div>
+                      )}
                     </div>
                     <span className="text-[10px] text-gray-400 px-1">
                       {dateStr} · {time}
