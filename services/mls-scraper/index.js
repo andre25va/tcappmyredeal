@@ -1,333 +1,295 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
-
+const nodemailer = require('nodemailer');
 const app = express();
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json());
 
-const MLS_USERNAME = process.env.MLS_USERNAME || '360602553';
-const MLS_PASSWORD = process.env.MLS_PASSWORD || 'Chicago60459.312';
+const PORT = process.env.PORT || 3000;
+const MATRIX_BASE = 'https://hmls.mlsmatrix.com';
 
-async function scrapeMatrixDocs(mlsNumber) {
-  const browser = await puppeteer.launch({
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-    headless: 'new',
-    ignoreHTTPSErrors: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--ignore-certificate-errors',
-      '--ignore-ssl-errors',
-      '--window-size=1280,900',
-    ],
-  });
+// ── Parse cookie string into array of cookie objects ─────────────────────────
+function parseCookieString(cookieStr) {
+  return cookieStr.split(';').map(part => {
+    const [name, ...rest] = part.trim().split('=');
+    return {
+      name: name.trim(),
+      value: rest.join('=').trim(),
+      domain: 'hmls.mlsmatrix.com',
+      path: '/',
+    };
+  }).filter(c => c.name && c.value);
+}
 
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
+// ── Health ────────────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'mls-scraper' });
+});
 
-  // Intercept PDF downloads via response
+// ── Scrape ────────────────────────────────────────────────────────────────────
+app.post('/scrape', async (req, res) => {
+  const { mlsNumber } = req.body || {};
+  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
+
+  const cookieStr = process.env.MATRIX_COOKIES;
+  if (!cookieStr) return res.status(500).json({ error: 'MATRIX_COOKIES env var not set' });
+
   const logs = [];
   const log = (msg) => { console.log(msg); logs.push(msg); };
 
+  let browser;
   try {
-    // ── Step 1: Login ──────────────────────────────────────────────
-    log('Navigating to Matrix login...');
-    await page.goto('https://matrix.heartlandmls.com', {
-      waitUntil: 'networkidle2',
-      timeout: 45000,
+    browser = await puppeteer.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--ignore-certificate-errors',
+      ],
+      headless: true,
     });
 
-    log(`Pre-login URL: ${page.url()}`);
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900 });
 
-    // Try to fill the login form (might be on Clareity SSO or Matrix)
-    const usernameSelectors = ['#username', '#UserName', 'input[name="username"]', 'input[name="UserName"]', 'input[type="text"]:not([type="hidden"])'];
-    const passwordSelectors = ['#password', '#Password', 'input[name="password"]', 'input[name="Password"]', 'input[type="password"]'];
+    // ── Step 1: Inject cookies directly ──────────────────────────────────────
+    log('Setting Matrix session cookies...');
+    const cookies = parseCookieString(cookieStr);
+    log(`Parsed ${cookies.length} cookies`);
 
-    let usernameField = null;
-    for (const sel of usernameSelectors) {
+    // Navigate to Matrix first so we can set cookies on the right domain
+    await page.goto(MATRIX_BASE + '/Matrix/Home', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
+
+    await page.setCookie(...cookies);
+    log('Cookies injected — reloading Matrix...');
+
+    // ── Step 2: Reload Matrix home with injected cookies ──────────────────────
+    await page.goto(MATRIX_BASE + '/Matrix/Home', {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    const url = page.url();
+    log(`After cookie reload — URL: ${url}`);
+
+    // Check we're actually inside Matrix (not redirected to login)
+    if (url.includes('clareity') || url.includes('/idp/login')) {
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      await browser.close();
+      return res.status(401).json({
+        success: false,
+        message: 'Cookies expired — need to refresh MATRIX_COOKIES env var',
+        debugScreenshot: screenshot,
+        logs,
+      });
+    }
+
+    // ── Step 3: Search for MLS number ─────────────────────────────────────────
+    log(`Searching for MLS# ${mlsNumber}...`);
+    const searchUrl = `${MATRIX_BASE}/Matrix/Search/ResidentialSale?ReturnUrl=%2fMatrix%2fSearch%2fResidentialSale`;
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // Try quick search box (top of page)
+    try {
+      await page.waitForSelector('input[id*="Txt_Keyword"], input[name*="keyword"], #Txt_Keyword_0', { timeout: 8000 });
+      const searchBox = await page.$('input[id*="Txt_Keyword"], input[name*="keyword"], #Txt_Keyword_0');
+      if (searchBox) {
+        await searchBox.click({ clickCount: 3 });
+        await searchBox.type(mlsNumber);
+        await page.keyboard.press('Return');
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+        log(`Quick search done — URL: ${page.url()}`);
+      }
+    } catch (e) {
+      log('Quick search box not found, trying top bar search...');
+      // Fall back to top bar MLS# search
       try {
-        await page.waitForSelector(sel, { timeout: 3000 });
-        usernameField = await page.$(sel);
-        if (usernameField) { log(`Found username: ${sel}`); break; }
-      } catch (_) {}
+        await page.waitForSelector('input[placeholder*="MLS"], input[placeholder*="Shorthand"]', { timeout: 5000 });
+        const topSearch = await page.$('input[placeholder*="MLS"], input[placeholder*="Shorthand"]');
+        if (topSearch) {
+          await topSearch.click({ clickCount: 3 });
+          await topSearch.type(mlsNumber);
+          await page.keyboard.press('Return');
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+          log(`Top search done — URL: ${page.url()}`);
+        }
+      } catch (e2) {
+        log('Trying direct URL search...');
+        // Direct listing search URL
+        await page.goto(
+          `${MATRIX_BASE}/Matrix/Search/ResidentialSale?ReturnUrl=%2fMatrix%2fSearch%2fResidentialSale&search_type=detailsearch&mls_number=${mlsNumber}`,
+          { waitUntil: 'networkidle2', timeout: 30000 }
+        );
+      }
     }
 
-    if (!usernameField) throw new Error('Could not find username field on login page');
+    log(`Search result URL: ${page.url()}`);
 
-    let passwordField = null;
-    for (const sel of passwordSelectors) {
-      passwordField = await page.$(sel);
-      if (passwordField) { log(`Found password: ${sel}`); break; }
+    // ── Step 4: Find listing link and click into it ───────────────────────────
+    log('Looking for listing result...');
+    let listingFound = false;
+
+    // Try to click on the first result row
+    try {
+      await page.waitForSelector('a[id*="lnkSummary"], .MatrixResultsRow a, table.SearchResultsTable a', { timeout: 10000 });
+      const link = await page.$('a[id*="lnkSummary"], .MatrixResultsRow a, table.SearchResultsTable a');
+      if (link) {
+        await link.click();
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+        log(`Listing page URL: ${page.url()}`);
+        listingFound = true;
+      }
+    } catch (e) {
+      log('No listing link found via standard selector');
     }
-    if (!passwordField) throw new Error('Could not find password field on login page');
 
-    await usernameField.click({ clickCount: 3 });
-    await usernameField.type(MLS_USERNAME, { delay: 50 });
-    await passwordField.click({ clickCount: 3 });
-    await passwordField.type(MLS_PASSWORD, { delay: 50 });
-
-    log('Submitting login...');
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-      page.keyboard.press('Enter'),
-    ]);
-
-    log(`Post-login URL: ${page.url()}`);
-
-    // ── Step 2: Navigate into Matrix via Clareity app launcher ───────
-    if (!page.url().includes('matrix.heartlandmls.com')) {
-      log('On Clareity portal — looking for Matrix app link...');
-
-      // Look for Matrix link in the Clareity app launcher
-      const matrixClicked = await page.evaluate(() => {
-        const elements = Array.from(document.querySelectorAll('a, button, [role="link"], div, span'));
-        for (const el of elements) {
-          const text = (el.textContent || '').trim().toLowerCase();
-          const href = (el.href || '').toLowerCase();
-          if (
-            text === 'matrix' ||
-            text.includes('matrix mls') ||
-            href.includes('matrix.heartlandmls') ||
-            el.id?.toLowerCase().includes('matrix') ||
-            el.className?.toLowerCase().includes('matrix')
-          ) {
-            el.click();
-            return `Clicked: "${el.textContent?.trim()}" (${el.tagName})`;
+    // Alternative: try the MLS# as a shorthand search in the top bar
+    if (!listingFound) {
+      log('Trying top shorthand search bar...');
+      try {
+        await page.goto(MATRIX_BASE + '/Matrix/Home', { waitUntil: 'networkidle2', timeout: 20000 });
+        const topInput = await page.$('input[placeholder*="MLS"], input[placeholder*="Shorthand"], input.searchBar');
+        if (topInput) {
+          await topInput.click({ clickCount: 3 });
+          await topInput.type(mlsNumber);
+          await page.keyboard.press('Return');
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+          log(`After shorthand search: ${page.url()}`);
+          // Click first result
+          const link = await page.$('a[id*="lnkSummary"], .MatrixResultsRow a, .resultsRow a').catch(() => null);
+          if (link) {
+            await link.click();
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+            log(`Listing page: ${page.url()}`);
+            listingFound = true;
           }
         }
-        return null;
+      } catch (e) {
+        log('Shorthand search also failed');
+      }
+    }
+
+    if (!listingFound) {
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      await browser.close();
+      return res.json({
+        success: false,
+        message: 'Could not find listing for MLS# ' + mlsNumber,
+        debugScreenshot: screenshot,
+        logs,
+      });
+    }
+
+    // ── Step 5: Click "View Documents" / Supplements ──────────────────────────
+    log('Looking for Documents tab...');
+    let docsFound = false;
+    try {
+      // Look for a "Documents" or "Supplements" link on the listing detail page
+      await page.waitForSelector('a[href*="Document"], a[href*="Supplement"], a:contains("Document")', { timeout: 10000 }).catch(() => {});
+
+      const docsLink = await page.evaluateHandle(() => {
+        const links = Array.from(document.querySelectorAll('a'));
+        return links.find(l =>
+          l.textContent.trim().toLowerCase().includes('document') ||
+          l.textContent.trim().toLowerCase().includes('supplement')
+        );
       });
 
-      if (matrixClicked) {
-        log(matrixClicked);
-        // Wait for navigation to Matrix
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-        log(`After Matrix click: ${page.url()}`);
-      } else {
-        // Try navigating to Matrix directly — session might work if same top-level domain session
-        log('No Matrix app link found — trying direct Matrix URL...');
-        await page.goto('https://matrix.heartlandmls.com', {
-          waitUntil: 'networkidle2',
-          timeout: 20000,
-        });
-        log(`Direct Matrix URL: ${page.url()}`);
-
-        // If still redirected to login, try clicking via page screenshot for debug
-        if (page.url().includes('login') || page.url().includes('heartland.clareity.net')) {
-          // Take screenshot for debugging
-          const shot = await page.screenshot({ encoding: 'base64', fullPage: false });
-          return {
-            success: false,
-            message: 'Could not navigate from Clareity to Matrix — SSO redirect failed',
-            logs,
-            debugScreenshot: shot,
-          };
-        }
+      if (docsLink && docsLink.asElement()) {
+        await docsLink.asElement().click();
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+        log(`Documents page URL: ${page.url()}`);
+        docsFound = true;
       }
+    } catch (e) {
+      log('Documents tab not found via link: ' + e.message);
     }
 
-    // If still on Clareity login, something failed
-    if (page.url().includes('clareity.net') && page.url().includes('login')) {
-      throw new Error('Login failed — credentials may be incorrect');
-    }
-
-    // ── Step 3: Search for MLS number ─────────────────────────────
-    log(`Searching MLS# ${mlsNumber}...`);
-
-    // Try the Matrix quick search box
-    const searchSelectors = [
-      '#m_upQS_m_tbSearchText',
-      '#QuickSearchBox',
-      'input[placeholder*="MLS"]',
-      'input[placeholder*="Search"]',
-      'input[id*="Search"]',
-      'input[id*="search"]',
-    ];
-
-    let searchField = null;
-    for (const sel of searchSelectors) {
-      try {
-        await page.waitForSelector(sel, { timeout: 4000 });
-        searchField = await page.$(sel);
-        if (searchField) { log(`Found search: ${sel}`); break; }
-      } catch (_) {}
-    }
-
-    if (searchField) {
-      await searchField.click({ clickCount: 3 });
-      await searchField.type(mlsNumber, { delay: 50 });
-      await page.keyboard.press('Enter');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-      log(`After search URL: ${page.url()}`);
-    } else {
-      // Try direct search URL
-      log('No search field — trying direct URL...');
-      await page.goto(
-        `https://matrix.heartlandmls.com/matrix/search/residential?${mlsNumber}`,
-        { waitUntil: 'networkidle2', timeout: 20000 }
-      );
-      log(`Direct search URL: ${page.url()}`);
-    }
-
-    // ── Step 4: Find listing link and click it ─────────────────────
-    log('Looking for listing link...');
-
-    // If on a results page, click first result
-    const listingSelectors = [
-      `a[href*="${mlsNumber}"]`,
-      '.gridMain a',
-      '.results a',
-      'td.col-MLS_Listing_MLS_Number a',
-      '#listingDetailsTabs_header',
-    ];
-
-    for (const sel of listingSelectors) {
-      const link = await page.$(sel);
-      if (link) {
-        log(`Clicking listing: ${sel}`);
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {}),
-          link.click(),
-        ]);
-        break;
-      }
-    }
-
-    log(`Listing page URL: ${page.url()}`);
-
-    // ── Step 5: Find and click Documents tab ──────────────────────
-    log('Looking for Documents tab...');
-    await page.waitForTimeout(1500);
-
-    const clicked = await page.evaluate(() => {
-      const all = Array.from(document.querySelectorAll('a, button, li, span, div'));
-      for (const el of all) {
-        const txt = (el.textContent || '').trim().toLowerCase();
-        if (txt === 'documents' || txt === 'supplements' || txt === 'view documents' || txt.includes('supplement')) {
-          el.click();
-          return `Clicked: "${el.textContent?.trim()}" (${el.tagName})`;
-        }
-      }
-      return null;
-    });
-
-    if (clicked) {
-      log(clicked);
-      await page.waitForTimeout(2500);
-    } else {
-      log('No Documents tab found — scanning current page for doc links');
-    }
-
-    // ── Step 6: Collect document links ────────────────────────────
-    log('Collecting document links...');
-    await page.waitForTimeout(1000);
-
-    const docLinks = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a[href]'));
-      return links
-        .filter(a => {
-          const href = (a.href || '').toLowerCase();
-          const text = (a.textContent || '').toLowerCase();
-          return (
-            href.includes('.pdf') ||
-            href.includes('getdoc') ||
-            href.includes('document') ||
-            href.includes('supplement') ||
-            href.includes('download') ||
-            text.includes('.pdf') ||
-            text.includes('supplement')
-          );
-        })
-        .slice(0, 10)
-        .map(a => ({ href: a.href, text: (a.textContent || '').trim() }));
-    });
-
-    log(`Found ${docLinks.length} doc link(s): ${JSON.stringify(docLinks)}`);
-
-    if (docLinks.length === 0) {
-      // Screenshot for debugging
-      const shot = await page.screenshot({ encoding: 'base64', fullPage: false });
-      return {
+    if (!docsFound) {
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      await browser.close();
+      return res.json({
         success: false,
-        message: 'No documents found for this MLS listing',
+        message: 'Could not find Documents tab for this listing',
+        debugScreenshot: screenshot,
         logs,
-        debugScreenshot: shot,
-      };
+      });
     }
 
-    // ── Step 7: Download each PDF ──────────────────────────────────
-    const pdfs = [];
+    // ── Step 6: Download PDFs ─────────────────────────────────────────────────
+    log('Finding PDF links...');
+    const pdfLinks = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a[href*=".pdf"], a[href*="Download"], a[href*="document"]'))
+        .map(a => ({ href: a.href, text: a.textContent.trim() }))
+        .filter(l => l.href);
+    });
 
-    for (const { href, text } of docLinks) {
+    log(`Found ${pdfLinks.length} PDF links`);
+
+    const pdfs = [];
+    for (const link of pdfLinks.slice(0, 10)) { // cap at 10
       try {
-        log(`Fetching: ${href}`);
-        const response = await page.goto(href, { waitUntil: 'networkidle2', timeout: 20000 });
-        if (response) {
-          const contentType = response.headers()['content-type'] || '';
-          if (contentType.includes('pdf') || href.toLowerCase().includes('.pdf')) {
-            const buffer = await response.buffer();
-            const safeName = (text || `supplement-${pdfs.length + 1}`)
-              .replace(/[^a-zA-Z0-9_\-. ]/g, '_')
-              .trim();
-            pdfs.push({
-              filename: safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`,
-              content: buffer.toString('base64'),
-              size: buffer.length,
-            });
-            log(`Downloaded: ${safeName} (${buffer.length} bytes)`);
+        const response = await page.evaluate(async (url) => {
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) return null;
+          const buffer = await res.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
           }
+          return {
+            data: btoa(binary),
+            type: res.headers.get('content-type') || 'application/pdf',
+          };
+        }, link.href);
+
+        if (response && response.data) {
+          const filename = link.text.replace(/[^a-z0-9]/gi, '_').slice(0, 50) + '.pdf';
+          pdfs.push({
+            filename,
+            data: response.data,
+            size: Math.round(response.data.length * 0.75),
+          });
+          log(`Downloaded: ${filename}`);
         }
-      } catch (err) {
-        log(`Error downloading ${href}: ${err.message}`);
+      } catch (e) {
+        log(`Failed to download ${link.href}: ${e.message}`);
       }
     }
+
+    await browser.close();
 
     if (pdfs.length === 0) {
-      return { success: false, message: 'Found doc links but could not download PDFs', logs };
+      return res.json({
+        success: false,
+        message: 'No PDFs found for MLS# ' + mlsNumber,
+        logs,
+      });
     }
 
-    return { success: true, pdfs, pdfCount: pdfs.length, logs };
+    return res.json({
+      success: true,
+      pdfCount: pdfs.length,
+      mlsNumber,
+      pdfs: pdfs.map(p => ({ filename: p.filename, size: p.size, data: p.data })),
+      logs,
+    });
 
-  } finally {
-    await browser.close();
-  }
-}
-
-// ── Routes ─────────────────────────────────────────────────────────
-
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'mls-scraper' }));
-
-// Module 1: scrape and return PDFs (n8n handles email)
-app.post('/scrape', async (req, res) => {
-  const { mlsNumber } = req.body;
-  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber is required' });
-
-  console.log(`Scraping MLS# ${mlsNumber}`);
-  try {
-    const result = await scrapeMatrixDocs(mlsNumber);
-    return res.json(result);
   } catch (err) {
+    if (browser) await browser.close().catch(() => {});
     console.error('Scrape error:', err);
-    return res.status(500).json({ error: err.message, logs: [] });
+    return res.status(500).json({ success: false, error: err.message, logs });
   }
 });
 
-// Convenience alias used by n8n workflow
-app.post('/scrape-and-email', async (req, res) => {
-  // Now just runs the scrape — n8n handles the email
-  const { mlsNumber } = req.body;
-  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber is required' });
-
-  console.log(`Scraping MLS# ${mlsNumber}`);
-  try {
-    const result = await scrapeMatrixDocs(mlsNumber);
-    return res.json(result);
-  } catch (err) {
-    console.error('Scrape error:', err);
-    return res.status(500).json({ error: err.message });
-  }
+app.listen(PORT, () => {
+  console.log(`MLS scraper listening on port ${PORT}`);
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`MLS scraper running on port ${PORT}`));
