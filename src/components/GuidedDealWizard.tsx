@@ -191,7 +191,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     duplexAddressCount: '' as '' | '1' | '2',
     propertyType: 'single-family' as PropertyType,
     transactionType: 'buyer' as TransactionType,
-    mlsNumber: '', mlsBoard: '', isHeartlandMls: false, mlsEntryId: '', listPrice: '', purchasePrice: '',
+    mlsNumber: '', mlsBoard: '', isHeartlandMls: false, mlsEntryId: '', listPrice: '', purchasePrice: '', transaction_folder_email: '',
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
@@ -1096,6 +1096,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       mlsNumber: form.mlsNumber.trim(),
       isHeartlandMls: form.isHeartlandMls,
       mlsId: form.mlsEntryId || undefined,
+      transaction_folder_email: form.transaction_folder_email.trim() || undefined,
       listPrice: parseFloat(form.listPrice) || 0,
       contractPrice: parseFloat(form.purchasePrice) || parseFloat(form.listPrice) || 0,
       propertyType: form.propertyType,
@@ -2112,6 +2113,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <p className="text-xs text-success mt-1">Searched both unit addresses</p>
                     )}
                   </div>
+                  {form.mlsNumber?.trim() && (
+                    <div className="col-span-2">
+                      <label className="text-xs text-base-content/50 mb-1 block">Transaction Folder Email</label>
+                      <input
+                        className="input input-bordered w-full"
+                        value={form.transaction_folder_email}
+                        onChange={e => setForm(p => ({ ...p, transaction_folder_email: e.target.value }))}
+                        placeholder="e.g. loop+abc123@dotloop.com"
+                      />
+                      <p className="text-xs text-base-content/40 mt-0.5">Supplements will be emailed here automatically when fetched</p>
+                    </div>
+                  )}
                 </div>
                 {mlsBoardDetectedSource && form.mlsBoard && (
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${mlsBoardDetectedSource === 'mls' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
