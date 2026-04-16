@@ -1144,7 +1144,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   }));
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
-  const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['category']>('purchase_contract');
+  const [docTypeForUpload, setDocTypeForUpload] = useState<NonNullable<DealDocument['category']>>('purchase_contract');
   const [uploadDisplayName, setUploadDisplayName] = useState<string>(SUGGESTED_NAMES['purchase_contract'][0]);
 
   // Auto-suggest name when type changes
@@ -1935,7 +1935,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           <select
             className="select select-xs select-bordered"
             value={docTypeForUpload}
-            onChange={e => setDocTypeForUpload(e.target.value as DealDocument['category'])}
+            onChange={e => setDocTypeForUpload(e.target.value as NonNullable<DealDocument['category']>)}
           >
             <option value="purchase_contract">📄 Purchase Contract</option>
             <option value="counter_offer">🔄 Counter Offer</option>
@@ -1948,7 +1948,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           </select>
           {/* Document name: datalist for suggestions, fully editable */}
           <datalist id="doc-name-suggestions">
-            {(SUGGESTED_NAMES[docTypeForUpload] ?? []).map(name => (
+            {(SUGGESTED_NAMES[docTypeForUpload] ?? []).map((name: string) => (
               <option key={name} value={name} />
             ))}
           </datalist>
