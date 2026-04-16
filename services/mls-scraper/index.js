@@ -1,29 +1,26 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
-const nodemailer = require('nodemailer');
+
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const MATRIX_BASE = 'https://hmls.mlsmatrix.com';
 
-// ── Parse cookie string into array of cookie objects ─────────────────────────
+// ── Parse "name=value; name=value; ..." into Puppeteer cookie objects ─────────
 function parseCookieString(cookieStr) {
   return cookieStr.split(';').map(part => {
-    const [name, ...rest] = part.trim().split('=');
-    return {
-      name: name.trim(),
-      value: rest.join('=').trim(),
-      domain: 'hmls.mlsmatrix.com',
-      path: '/',
-    };
-  }).filter(c => c.name && c.value);
+    const idx = part.indexOf('=');
+    if (idx < 0) return null;
+    const name = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!name || !value) return null;
+    return { name, value, domain: 'hmls.mlsmatrix.com', path: '/' };
+  }).filter(Boolean);
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'mls-scraper' });
-});
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'mls-scraper' }));
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
 app.post('/scrape', async (req, res) => {
@@ -56,232 +53,163 @@ app.post('/scrape', async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
 
-    // ── Step 1: Set cookies on about:blank BEFORE navigating to Matrix ───────
-    log('Setting Matrix session cookies before any navigation...');
+    // ── Step 1: Inject session cookies ────────────────────────────────────────
+    log('Injecting Matrix session cookies...');
     const cookies = parseCookieString(cookieStr);
     log(`Parsed ${cookies.length} cookies`);
-
-    // Start on blank page so setCookie works cleanly with explicit domain
     await page.goto('about:blank');
     await page.setCookie(...cookies);
-    log('Cookies set on hmls.mlsmatrix.com domain — navigating to Matrix...');
 
-    // ── Step 2: Navigate to Matrix home with cookies pre-loaded ───────────────
+    // ── Step 2: Navigate to Matrix Home ───────────────────────────────────────
+    log('Navigating to Matrix Home...');
     await page.goto(MATRIX_BASE + '/Matrix/Home', {
       waitUntil: 'networkidle2',
-      timeout: 30000,
+      timeout: 45000,
     });
 
-    const url = page.url();
-    log(`After cookie reload — URL: ${url}`);
+    const homeUrl = page.url();
+    log(`Home URL: ${homeUrl}`);
 
-    // Check we're actually inside Matrix (not redirected to login)
-    if (url.includes('clareity') || url.includes('/idp/login')) {
+    if (homeUrl.includes('clareity') || homeUrl.includes('/idp/login') || homeUrl.includes('login')) {
       const screenshot = await page.screenshot({ encoding: 'base64' });
-      await browser.close();
       return res.status(401).json({
         success: false,
-        message: 'Cookies expired — need to refresh MATRIX_COOKIES env var',
+        message: 'Cookies expired — need to refresh MATRIX_COOKIES',
         debugScreenshot: screenshot,
         logs,
       });
     }
 
-    // ── Step 3: Search for MLS number ─────────────────────────────────────────
+    // ── Step 3: Search for MLS# using the top shorthand bar ───────────────────
     log(`Searching for MLS# ${mlsNumber}...`);
-    const searchUrl = `${MATRIX_BASE}/Matrix/Search/ResidentialSale?ReturnUrl=%2fMatrix%2fSearch%2fResidentialSale`;
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Try quick search box (top of page)
+    // The top shorthand search bar has placeholder "Enter Shorthand or MLS#"
+    await page.waitForSelector(
+      'input[placeholder*="Shorthand"], input[placeholder*="MLS#"], input[placeholder*="MLS"]',
+      { timeout: 20000 }
+    );
+    const searchInput = await page.$(
+      'input[placeholder*="Shorthand"], input[placeholder*="MLS#"], input[placeholder*="MLS"]'
+    );
+    if (!searchInput) throw new Error('Search input not found on Matrix home');
+
+    await searchInput.click({ clickCount: 3 });
+    await searchInput.type(String(mlsNumber));
+    await page.keyboard.press('Return');
+
+    // Wait for results page to load
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+    log(`Results URL: ${page.url()}`);
+
+    // ── Step 4: Find the "View Documents" link ────────────────────────────────
+    // The link has data-original-title="To Documents" and text "View Documents"
+    log('Waiting for "View Documents" link...');
+    let viewDocsLink = null;
+
     try {
-      await page.waitForSelector('input[id*="Txt_Keyword"], input[name*="keyword"], #Txt_Keyword_0', { timeout: 8000 });
-      const searchBox = await page.$('input[id*="Txt_Keyword"], input[name*="keyword"], #Txt_Keyword_0');
-      if (searchBox) {
-        await searchBox.click({ clickCount: 3 });
-        await searchBox.type(mlsNumber);
-        await page.keyboard.press('Return');
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-        log(`Quick search done — URL: ${page.url()}`);
-      }
+      await page.waitForSelector('a[data-original-title="To Documents"]', { timeout: 20000 });
+      viewDocsLink = await page.$('a[data-original-title="To Documents"]');
     } catch (e) {
-      log('Quick search box not found, trying top bar search...');
-      // Fall back to top bar MLS# search
-      try {
-        await page.waitForSelector('input[placeholder*="MLS"], input[placeholder*="Shorthand"]', { timeout: 5000 });
-        const topSearch = await page.$('input[placeholder*="MLS"], input[placeholder*="Shorthand"]');
-        if (topSearch) {
-          await topSearch.click({ clickCount: 3 });
-          await topSearch.type(mlsNumber);
-          await page.keyboard.press('Return');
-          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-          log(`Top search done — URL: ${page.url()}`);
-        }
-      } catch (e2) {
-        log('Trying direct URL search...');
-        // Direct listing search URL
-        await page.goto(
-          `${MATRIX_BASE}/Matrix/Search/ResidentialSale?ReturnUrl=%2fMatrix%2fSearch%2fResidentialSale&search_type=detailsearch&mls_number=${mlsNumber}`,
-          { waitUntil: 'networkidle2', timeout: 30000 }
-        );
-      }
+      // fallback: find by text
+      viewDocsLink = await page.evaluateHandle(() => {
+        return Array.from(document.querySelectorAll('a'))
+          .find(a => a.textContent.trim() === 'View Documents') || null;
+      });
+      if (viewDocsLink && !(await viewDocsLink.asElement())) viewDocsLink = null;
     }
 
-    log(`Search result URL: ${page.url()}`);
-
-    // ── Step 4: Find listing link and click into it ───────────────────────────
-    log('Looking for listing result...');
-    let listingFound = false;
-
-    // Try to click on the first result row
-    try {
-      await page.waitForSelector('a[id*="lnkSummary"], .MatrixResultsRow a, table.SearchResultsTable a', { timeout: 10000 });
-      const link = await page.$('a[id*="lnkSummary"], .MatrixResultsRow a, table.SearchResultsTable a');
-      if (link) {
-        await link.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-        log(`Listing page URL: ${page.url()}`);
-        listingFound = true;
-      }
-    } catch (e) {
-      log('No listing link found via standard selector');
-    }
-
-    // Alternative: try the MLS# as a shorthand search in the top bar
-    if (!listingFound) {
-      log('Trying top shorthand search bar...');
-      try {
-        await page.goto(MATRIX_BASE + '/Matrix/Home', { waitUntil: 'networkidle2', timeout: 20000 });
-        const topInput = await page.$('input[placeholder*="MLS"], input[placeholder*="Shorthand"], input.searchBar');
-        if (topInput) {
-          await topInput.click({ clickCount: 3 });
-          await topInput.type(mlsNumber);
-          await page.keyboard.press('Return');
-          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-          log(`After shorthand search: ${page.url()}`);
-          // Click first result
-          const link = await page.$('a[id*="lnkSummary"], .MatrixResultsRow a, .resultsRow a').catch(() => null);
-          if (link) {
-            await link.click();
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-            log(`Listing page: ${page.url()}`);
-            listingFound = true;
-          }
-        }
-      } catch (e) {
-        log('Shorthand search also failed');
-      }
-    }
-
-    if (!listingFound) {
+    if (!viewDocsLink) {
       const screenshot = await page.screenshot({ encoding: 'base64' });
-      await browser.close();
       return res.json({
         success: false,
-        message: 'Could not find listing for MLS# ' + mlsNumber,
+        message: `No "View Documents" link found for MLS# ${mlsNumber} — listing may have no supplements`,
         debugScreenshot: screenshot,
         logs,
       });
     }
 
-    // ── Step 5: Click "View Documents" / Supplements ──────────────────────────
-    log('Looking for Documents tab...');
-    let docsFound = false;
-    try {
-      // Look for a "Documents" or "Supplements" link on the listing detail page
-      await page.waitForSelector('a[href*="Document"], a[href*="Supplement"], a:contains("Document")', { timeout: 10000 }).catch(() => {});
+    log('Found "View Documents" link — opening documents popup...');
 
-      const docsLink = await page.evaluateHandle(() => {
-        const links = Array.from(document.querySelectorAll('a'));
-        return links.find(l =>
-          l.textContent.trim().toLowerCase().includes('document') ||
-          l.textContent.trim().toLowerCase().includes('supplement')
-        );
+    // ── Step 5: Click "View Documents" and capture the popup ──────────────────
+    // Matrix opens a window.open() popup — capture it via targetcreated
+    const popupPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Popup did not open within 20s')), 20000);
+      browser.once('targetcreated', async (target) => {
+        clearTimeout(timeout);
+        const popupPage = await target.page();
+        resolve(popupPage);
       });
-
-      if (docsLink && docsLink.asElement()) {
-        await docsLink.asElement().click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-        log(`Documents page URL: ${page.url()}`);
-        docsFound = true;
-      }
-    } catch (e) {
-      log('Documents tab not found via link: ' + e.message);
-    }
-
-    if (!docsFound) {
-      const screenshot = await page.screenshot({ encoding: 'base64' });
-      await browser.close();
-      return res.json({
-        success: false,
-        message: 'Could not find Documents tab for this listing',
-        debugScreenshot: screenshot,
-        logs,
-      });
-    }
-
-    // ── Step 6: Download PDFs ─────────────────────────────────────────────────
-    log('Finding PDF links...');
-    const pdfLinks = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('a[href*=".pdf"], a[href*="Download"], a[href*="document"]'))
-        .map(a => ({ href: a.href, text: a.textContent.trim() }))
-        .filter(l => l.href);
     });
 
-    log(`Found ${pdfLinks.length} PDF links`);
+    if (viewDocsLink.asElement) {
+      await viewDocsLink.asElement().click();
+    } else {
+      await viewDocsLink.click();
+    }
 
-    const pdfs = [];
-    for (const link of pdfLinks.slice(0, 10)) { // cap at 10
+    const popup = await popupPromise;
+    log(`Popup opened: ${popup.url()}`);
+
+    // ── Step 6: Extract PDF links from popup ──────────────────────────────────
+    log('Waiting for PDF links in popup...');
+    await popup.waitForSelector('a[href*="GetMedia.ashx"]', { timeout: 20000 });
+
+    const pdfLinks = await popup.evaluate(() => {
+      return Array.from(document.querySelectorAll('a[href*="GetMedia.ashx"]')).map(a => ({
+        href: a.href,
+        name: (a.textContent.trim() || a.getAttribute('title') || 'document.pdf'),
+      }));
+    });
+
+    log(`Found ${pdfLinks.length} PDF link(s): ${pdfLinks.map(l => l.name).join(', ')}`);
+
+    if (pdfLinks.length === 0) {
+      return res.json({ success: true, files: [], message: 'No PDF documents found in listing', logs });
+    }
+
+    // ── Step 7: Download PDFs using in-page fetch (cookies included) ───────────
+    log('Downloading PDFs...');
+    const files = [];
+
+    for (const link of pdfLinks.slice(0, 15)) {
       try {
-        const response = await page.evaluate(async (url) => {
+        log(`Downloading: ${link.name}`);
+        const base64 = await popup.evaluate(async (url) => {
           const res = await fetch(url, { credentials: 'include' });
-          if (!res.ok) return null;
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const buffer = await res.arrayBuffer();
           const bytes = new Uint8Array(buffer);
           let binary = '';
           for (let i = 0; i < bytes.byteLength; i++) {
             binary += String.fromCharCode(bytes[i]);
           }
-          return {
-            data: btoa(binary),
-            type: res.headers.get('content-type') || 'application/pdf',
-          };
+          return btoa(binary);
         }, link.href);
 
-        if (response && response.data) {
-          const filename = link.text.replace(/[^a-z0-9]/gi, '_').slice(0, 50) + '.pdf';
-          pdfs.push({
-            filename,
-            data: response.data,
-            size: Math.round(response.data.length * 0.75),
-          });
-          log(`Downloaded: ${filename}`);
-        }
+        files.push({
+          name: link.name,
+          data: base64,
+          mimeType: 'application/pdf',
+        });
+        log(`✓ Downloaded ${link.name} (${Math.round(base64.length * 0.75 / 1024)}KB)`);
       } catch (e) {
-        log(`Failed to download ${link.href}: ${e.message}`);
+        log(`✗ Failed ${link.name}: ${e.message}`);
       }
     }
 
     await browser.close();
 
-    if (pdfs.length === 0) {
-      return res.json({
-        success: false,
-        message: 'No PDFs found for MLS# ' + mlsNumber,
-        logs,
-      });
-    }
-
     return res.json({
       success: true,
-      pdfCount: pdfs.length,
       mlsNumber,
-      pdfs: pdfs.map(p => ({ filename: p.filename, size: p.size, data: p.data })),
+      pdfCount: files.length,
+      files,
       logs,
     });
 
   } catch (err) {
     if (browser) await browser.close().catch(() => {});
-    console.error('Scrape error:', err);
+    console.error('Scraper error:', err);
     return res.status(500).json({ success: false, error: err.message, logs });
   }
 });
