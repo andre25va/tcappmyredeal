@@ -1,4 +1,4 @@
-// mls-email-supplements Edge Function
+// mls-email-supplements Edge Function v2
 // Calls Railway MLS scraper → sends PDFs via Gmail API to tc@myredeal.com
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -36,8 +36,19 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-function base64UrlEncode(str: string): string {
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+// UTF-8 safe base64 encoding (handles emoji, em-dash, etc.)
+function toBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Gmail API requires base64url (not standard base64)
+function toBase64Url(str: string): string {
+  return toBase64(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function buildMimeWithAttachments(
@@ -49,10 +60,13 @@ function buildMimeWithAttachments(
   const outerB = `outer_${crypto.randomUUID().replace(/-/g, '')}`;
   const innerB = `inner_${crypto.randomUUID().replace(/-/g, '')}`;
 
+  // Encode subject as RFC 2047 to handle non-ASCII safely
+  const encodedSubject = `=?UTF-8?B?${toBase64(subject)}?=`;
+
   const lines: string[] = [
     `From: TC Command <tc@myredeal.com>`,
     `To: ${to.join(', ')}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${outerB}"`,
     '',
@@ -63,7 +77,7 @@ function buildMimeWithAttachments(
     'Content-Type: text/html; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
     '',
-    btoa(unescape(encodeURIComponent(htmlBody))),
+    toBase64(htmlBody),
     `--${innerB}--`,
   ];
 
@@ -74,7 +88,7 @@ function buildMimeWithAttachments(
       `Content-Disposition: attachment; filename="${att.filename}"`,
       'Content-Transfer-Encoding: base64',
       '',
-      att.data,
+      att.data, // already base64 from scraper
       '',
     );
   }
@@ -94,7 +108,7 @@ serve(async (req: Request) => {
 
     const recipient = toEmail || 'tc@myredeal.com';
 
-    // ── Step 1: Call Railway scraper ──────────────────────────────────────────
+    // Step 1: Call Railway scraper
     console.log(`Calling scraper for MLS# ${mlsNumber}...`);
     const scraperRes = await fetch(RAILWAY_SCRAPER_URL, {
       method: 'POST',
@@ -114,7 +128,7 @@ serve(async (req: Request) => {
       return jsonResponse({
         success: false,
         cookiesExpired: true,
-        message: 'Matrix session cookies expired — refresh MATRIX_COOKIES in Railway',
+        message: 'Matrix session cookies expired - refresh MATRIX_COOKIES in Railway',
       });
     }
 
@@ -128,7 +142,7 @@ serve(async (req: Request) => {
       return jsonResponse({ success: true, pdfCount: 0, emailSent: false, message: 'No supplement PDFs found for this listing' });
     }
 
-    // ── Step 2: Send email via Gmail API ──────────────────────────────────────
+    // Step 2: Send email via Gmail API
     console.log(`Sending email to ${recipient} with ${files.length} attachment(s)...`);
 
     const attachments = files.map(f => ({
@@ -141,7 +155,7 @@ serve(async (req: Request) => {
     const htmlBody = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;">
         <div style="background:#0f172a;border-radius:10px;padding:20px 24px;margin-bottom:24px;">
-          <div style="font-size:20px;font-weight:800;color:#fff;">🏠 TC Command</div>
+          <div style="font-size:20px;font-weight:800;color:#fff;">TC Command</div>
           <div style="font-size:13px;color:#94a3b8;margin-top:4px;">MLS Supplement Documents</div>
         </div>
         <h2 style="color:#0f172a;margin:0 0 8px;">MLS# ${mlsNumber}</h2>
@@ -151,11 +165,11 @@ serve(async (req: Request) => {
         <ol style="color:#334155;padding-left:20px;">
           ${files.map(f => `<li style="margin-bottom:6px;">${f.name}</li>`).join('')}
         </ol>
-        <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by TC Command · tc@myredeal.com</p>
+        <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by TC Command - tc@myredeal.com</p>
       </div>
     `;
 
-    const subject = `MLS Supplements — ${mlsNumber} (${pdfCount} doc${pdfCount !== 1 ? 's' : ''})`;
+    const subject = `MLS Supplements - ${mlsNumber} (${pdfCount} doc${pdfCount !== 1 ? 's' : ''})`;
 
     let accessToken: string;
     try {
@@ -165,7 +179,7 @@ serve(async (req: Request) => {
     }
 
     const mimeMessage = buildMimeWithAttachments([recipient], subject, htmlBody, attachments);
-    const encodedMessage = base64UrlEncode(mimeMessage);
+    const encodedMessage = toBase64Url(mimeMessage);
 
     const sendRes = await fetch(GMAIL_SEND_URL, {
       method: 'POST',
