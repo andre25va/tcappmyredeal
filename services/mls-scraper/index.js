@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const nodemailer = require('nodemailer');
 const path = require('path');
 
@@ -23,6 +23,7 @@ const transporter = nodemailer.createTransport({
 
 async function scrapeMatrixDocs(mlsNumber) {
   const browser = await puppeteer.launch({
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
     headless: 'new',
     args: [
       '--no-sandbox',
@@ -272,7 +273,7 @@ async function scrapeMatrixDocs(mlsNumber) {
 
 // ── Routes ─────────────────────────────────────────────────────────
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'mls-scraper' }));
 
 app.post('/scrape-and-email', async (req, res) => {
   const { mlsNumber, toEmail } = req.body;
