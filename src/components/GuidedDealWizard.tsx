@@ -669,7 +669,27 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const data = await res.json();
       if (data.found && data.data) {
         const d = data.data;
-        if (d.mlsNumber) setForm(p => ({ ...p, mlsNumber: d.mlsNumber }));
+        // Map MLS propertyType string to form PropertyType
+        const mlsPropTypeMap: Record<string, string> = {
+          'single family': 'single-family',
+          'condo': 'condo',
+          'townhouse': 'townhouse',
+          'multi-family': 'multi-family',
+          'land': 'land',
+          'commercial': 'commercial',
+        };
+        const mappedPropType = d.propertyType
+          ? mlsPropTypeMap[(d.propertyType as string).toLowerCase().trim()] || null
+          : null;
+
+        // Batch all form updates from MLS fetch
+        setForm(p => ({
+          ...p,
+          ...(d.mlsNumber ? { mlsNumber: d.mlsNumber } : {}),
+          ...(d.listPrice && !p.listPrice ? { listPrice: String(d.listPrice) } : {}),
+          ...(mappedPropType && !p.propertyType || p.propertyType === 'single-family' ? { propertyType: mappedPropType as any } : {}),
+        }));
+
         // Auto-select/confirm MLS board from MLS fetch result
         if (d.mlsBoardName) {
           const fetchedBoard = (d.mlsBoardName as string).toLowerCase().trim();
