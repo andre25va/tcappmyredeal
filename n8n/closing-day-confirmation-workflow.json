@@ -1,0 +1,24 @@
+{
+  "name": "Closing Day Confirmation — 7am Daily",
+  "id": "fNmaWMBrH3AV5fiq",
+  "description": "Fires daily at 7am CST. Calls send-closing-confirmation edge function which finds all deals closing today and sends branded confirmation emails to buyer/listing agents with 4-button response. Responses captured by handle-closing-response edge function which immediately notifies TC.",
+  "active": true,
+  "schedule": "0 12 * * * (= 7am CST)",
+  "nodes": [
+    {
+      "name": "Every Day at 7am CST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "cron": "0 12 * * *"
+    },
+    {
+      "name": "Send Closing Confirmations",
+      "type": "n8n-nodes-base.httpRequest",
+      "url": "https://alxrmusieuzgssynktxg.supabase.co/functions/v1/send-closing-confirmation",
+      "method": "POST"
+    },
+    {
+      "name": "Log Result",
+      "type": "n8n-nodes-base.set"
+    }
+  ]
+}
