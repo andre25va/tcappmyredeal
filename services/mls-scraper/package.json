@@ -1,17 +1,13 @@
 {
   "name": "mls-scraper",
   "version": "1.0.0",
-  "description": "Heartland Matrix MLS document scraper",
+  "description": "Heartland Matrix supplement scraper",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "puppeteer-core": "^21.0.0",
-    "nodemailer": "^6.9.7"
-  },
-  "engines": {
-    "node": "20.x"
+    "puppeteer-core": "^21.0.0"
   }
 }

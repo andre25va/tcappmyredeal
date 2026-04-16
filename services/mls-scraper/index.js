@@ -1,25 +1,12 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
-const nodemailer = require('nodemailer');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const PORT = process.env.PORT || 3000;
 const MATRIX_BASE = 'https://hmls.mlsmatrix.com';
-
-// ── Gmail SMTP transporter ────────────────────────────────────────────────────
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // STARTTLS
-    auth: {
-      user: process.env.GMAIL_USER || 'tc@myredeal.com',
-      pass: process.env.GMAIL_PASS,
-    },
-  });
-}
+const SUPABASE_EMAIL_FN = 'https://alxrmusieuzgssynktxg.supabase.co/functions/v1/mls-email-supplements';
 
 // ── Parse "name=value; name=value; ..." into Puppeteer cookie objects ─────────
 function parseCookieString(cookieStr) {
@@ -36,7 +23,7 @@ function parseCookieString(cookieStr) {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'mls-scraper' }));
 
-// ── Core scrape logic (shared by both endpoints) ──────────────────────────────
+// ── Core scrape logic ─────────────────────────────────────────────────────────
 async function scrapeMLS(mlsNumber) {
   const cookieStr = process.env.MATRIX_COOKIES;
   if (!cookieStr) throw new Error('MATRIX_COOKIES env var not set');
@@ -91,7 +78,7 @@ async function scrapeMLS(mlsNumber) {
       };
     }
 
-    // ── Step 3: Search for MLS# using the top shorthand bar ───────────────────
+    // ── Step 3: Search for MLS# ───────────────────────────────────────────────
     log(`Searching for MLS# ${mlsNumber}...`);
     await page.waitForSelector(
       'input[placeholder*="Shorthand"], input[placeholder*="MLS#"], input[placeholder*="MLS"]',
@@ -109,7 +96,7 @@ async function scrapeMLS(mlsNumber) {
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
     log(`Results URL: ${page.url()}`);
 
-    // ── Step 4: Find the "View Documents" link ────────────────────────────────
+    // ── Step 4: Find "View Documents" link ────────────────────────────────────
     log('Waiting for "View Documents" link...');
     let viewDocsLink = null;
 
@@ -125,19 +112,17 @@ async function scrapeMLS(mlsNumber) {
     }
 
     if (!viewDocsLink) {
-      const screenshot = await page.screenshot({ encoding: 'base64' });
       await browser.close();
       return {
         success: false,
         message: `No "View Documents" link found for MLS# ${mlsNumber} — listing may have no supplements`,
-        debugScreenshot: screenshot,
         logs,
       };
     }
 
     log('Found "View Documents" link — opening documents popup...');
 
-    // ── Step 5: Click "View Documents" and capture the popup ──────────────────
+    // ── Step 5: Click and capture popup ──────────────────────────────────────
     const popupPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Popup did not open within 20s')), 20000);
       browser.once('targetcreated', async (target) => {
@@ -153,7 +138,7 @@ async function scrapeMLS(mlsNumber) {
     const popup = await popupPromise;
     log(`Popup opened: ${popup.url()}`);
 
-    // ── Step 6: Extract PDF links from popup ──────────────────────────────────
+    // ── Step 6: Extract PDF links ──────────────────────────────────────────────
     log('Waiting for PDF links in popup...');
     await popup.waitForSelector('a[href*="GetMedia.ashx"]', { timeout: 20000 });
 
@@ -171,7 +156,7 @@ async function scrapeMLS(mlsNumber) {
       return { success: true, files: [], message: 'No PDF documents found in listing', logs };
     }
 
-    // ── Step 7: Download PDFs using in-page fetch ──────────────────────────────
+    // ── Step 7: Download PDFs via in-page fetch ────────────────────────────────
     log('Downloading PDFs...');
     const files = [];
 
@@ -190,11 +175,8 @@ async function scrapeMLS(mlsNumber) {
           return btoa(binary);
         }, link.href);
 
-        files.push({
-          name: link.name,
-          data: base64,
-          mimeType: 'application/pdf',
-        });
+        const ext = link.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
+        files.push({ name: link.name, data: base64, mimeType: ext });
         log(`✓ Downloaded ${link.name} (${Math.round(base64.length * 0.75 / 1024)}KB)`);
       } catch (e) {
         log(`✗ Failed ${link.name}: ${e.message}`);
@@ -210,7 +192,7 @@ async function scrapeMLS(mlsNumber) {
   }
 }
 
-// ── GET /scrape — returns base64 PDFs (for n8n/external use) ─────────────────
+// ── POST /scrape — returns base64 PDFs (for direct use) ──────────────────────
 app.post('/scrape', async (req, res) => {
   const { mlsNumber } = req.body || {};
   if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
@@ -224,69 +206,75 @@ app.post('/scrape', async (req, res) => {
   }
 });
 
-// ── POST /scrape-and-send — scrapes AND emails the PDFs to tc@myredeal.com ───
+// ── POST /scrape-and-send — scrapes PDFs + calls Supabase to email ───────────
+// n8n calls this with { mlsNumber, emailTo? } — no large data passes through n8n
 app.post('/scrape-and-send', async (req, res) => {
-  const { mlsNumber, toEmail } = req.body || {};
+  const { mlsNumber, emailTo } = req.body || {};
   if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
 
-  const recipient = toEmail || process.env.GMAIL_USER || 'tc@myredeal.com';
+  const recipient = emailTo || 'tc@myredeal.com';
 
-  let result;
+  let scrapeResult;
   try {
-    result = await scrapeMLS(mlsNumber);
+    scrapeResult = await scrapeMLS(mlsNumber);
   } catch (err) {
     console.error('Scrape error:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 
-  if (!result.success) {
-    return res.json(result);
+  if (!scrapeResult.success) {
+    return res.json(scrapeResult);
   }
 
-  if (!result.files || result.files.length === 0) {
-    return res.json({ ...result, emailSent: false, emailNote: 'No PDFs to send' });
+  if (!scrapeResult.files || scrapeResult.files.length === 0) {
+    return res.json({ ...scrapeResult, files: undefined, emailSent: false, emailNote: 'No PDFs found' });
   }
 
-  // Send email with PDF attachments
+  // ── Call Supabase edge fn to send email (no SMTP needed) ────────────────────
   try {
-    const transporter = createTransporter();
-
-    const attachments = result.files.map(f => ({
-      filename: f.name,
-      content: f.data,
-      encoding: 'base64',
-      contentType: f.mimeType || 'application/pdf',
-    }));
-
-    const fileList = result.files.map((f, i) => `${i + 1}. ${f.name}`).join('\n');
-
-    await transporter.sendMail({
-      from: `TC Command <${process.env.GMAIL_USER || 'tc@myredeal.com'}>`,
-      to: recipient,
-      subject: `MLS Supplements — ${mlsNumber} (${result.pdfCount} doc${result.pdfCount !== 1 ? 's' : ''})`,
-      text: `Hi Andre,\n\nHere are the supplement documents for MLS# ${mlsNumber}:\n\n${fileList}\n\n— TC Command`,
-      attachments,
+    log_console(`Calling Supabase to email ${scrapeResult.pdfCount} PDF(s) to ${recipient}...`);
+    const supaRes = await fetch(SUPABASE_EMAIL_FN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mlsNumber,
+        emailTo: recipient,
+        files: scrapeResult.files,
+      }),
     });
 
-    result.logs.push(`✓ Email sent to ${recipient} with ${result.pdfCount} attachment(s)`);
-    console.log(`Email sent to ${recipient}`);
+    const supaData = await supaRes.json();
+
+    if (!supaRes.ok || !supaData.success) {
+      return res.json({
+        success: false,
+        emailSent: false,
+        emailError: supaData.error || 'Supabase email fn error',
+        logs: scrapeResult.logs,
+      });
+    }
 
     return res.json({
-      ...result,
-      files: undefined, // don't return large base64 in /scrape-and-send response
+      success: true,
+      mlsNumber,
+      pdfCount: scrapeResult.pdfCount,
       emailSent: true,
       emailTo: recipient,
+      messageId: supaData.messageId,
+      logs: scrapeResult.logs,
     });
   } catch (emailErr) {
-    console.error('Email error:', emailErr);
+    console.error('Email dispatch error:', emailErr);
     return res.json({
-      ...result,
-      files: undefined,
+      success: false,
       emailSent: false,
       emailError: emailErr.message,
+      logs: scrapeResult.logs,
     });
   }
 });
+
+function log_console(msg) { console.log(msg); }
 
 app.listen(PORT, () => {
   console.log(`MLS scraper listening on port ${PORT}`);
