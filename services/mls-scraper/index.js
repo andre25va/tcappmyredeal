@@ -75,20 +75,61 @@ async function scrapeMatrixDocs(mlsNumber) {
 
     log(`Post-login URL: ${page.url()}`);
 
-    // ── Step 2: Navigate into Matrix from Clareity SSO ─────────────
-    // If we landed on Clareity portal (not Matrix), go back to Matrix
+    // ── Step 2: Navigate into Matrix via Clareity app launcher ───────
     if (!page.url().includes('matrix.heartlandmls.com')) {
-      log('On Clareity SSO portal — navigating to Matrix search...');
-      await page.goto('https://matrix.heartlandmls.com/matrix/search/residential', {
-        waitUntil: 'networkidle2',
-        timeout: 30000,
+      log('On Clareity portal — looking for Matrix app link...');
+
+      // Look for Matrix link in the Clareity app launcher
+      const matrixClicked = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('a, button, [role="link"], div, span'));
+        for (const el of elements) {
+          const text = (el.textContent || '').trim().toLowerCase();
+          const href = (el.href || '').toLowerCase();
+          if (
+            text === 'matrix' ||
+            text.includes('matrix mls') ||
+            href.includes('matrix.heartlandmls') ||
+            el.id?.toLowerCase().includes('matrix') ||
+            el.className?.toLowerCase().includes('matrix')
+          ) {
+            el.click();
+            return `Clicked: "${el.textContent?.trim()}" (${el.tagName})`;
+          }
+        }
+        return null;
       });
-      log(`Matrix URL: ${page.url()}`);
+
+      if (matrixClicked) {
+        log(matrixClicked);
+        // Wait for navigation to Matrix
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+        log(`After Matrix click: ${page.url()}`);
+      } else {
+        // Try navigating to Matrix directly — session might work if same top-level domain session
+        log('No Matrix app link found — trying direct Matrix URL...');
+        await page.goto('https://matrix.heartlandmls.com', {
+          waitUntil: 'networkidle2',
+          timeout: 20000,
+        });
+        log(`Direct Matrix URL: ${page.url()}`);
+
+        // If still redirected to login, try clicking via page screenshot for debug
+        if (page.url().includes('login') || page.url().includes('heartland.clareity.net')) {
+          // Take screenshot for debugging
+          const shot = await page.screenshot({ encoding: 'base64', fullPage: false });
+          return {
+            success: false,
+            message: 'Could not navigate from Clareity to Matrix — SSO redirect failed',
+            logs,
+            debugScreenshot: shot,
+          };
+        }
+      }
     }
 
-    // Check if we got redirected to login again (session not carried)
-    if (page.url().includes('login') || page.url().includes('Login')) {
-      throw new Error('Session not carried to Matrix — MLS credentials may need renewal');
+    // If still on Clareity login, something failed
+    if (page.url().includes('clareity.net') && page.url().includes('login')) {
+      throw new Error('Login failed — credentials may be incorrect');
     }
 
     // ── Step 3: Search for MLS number ─────────────────────────────
