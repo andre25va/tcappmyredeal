@@ -7,6 +7,7 @@ app.use(express.json({ limit: '50mb' }));
 const PORT = process.env.PORT || 3000;
 const MATRIX_BASE = 'https://hmls.mlsmatrix.com';
 const SUPABASE_EMAIL_FN = 'https://alxrmusieuzgssynktxg.supabase.co/functions/v1/mls-email-supplements';
+const TC_EMAIL = 'tc@myredeal.com';
 
 // ── Parse "name=value; name=value; ..." into Puppeteer cookie objects ─────────
 function parseCookieString(cookieStr) {
@@ -206,13 +207,20 @@ app.post('/scrape', async (req, res) => {
   }
 });
 
-// ── POST /scrape-and-send — scrapes PDFs + calls Supabase to email ───────────
-// n8n calls this with { mlsNumber, emailTo? } — no large data passes through n8n
+// ── POST /scrape-and-send ─────────────────────────────────────────────────────
+// Accepts { mlsNumber, toEmail?, folderEmail? }
+// Always emails tc@myredeal.com; also emails folderEmail if provided.
+// On cookie expiry → emails TC a notification instead of silently failing.
 app.post('/scrape-and-send', async (req, res) => {
-  const { mlsNumber, emailTo } = req.body || {};
+  const { mlsNumber, toEmail, folderEmail } = req.body || {};
   if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
 
-  const recipient = emailTo || 'tc@myredeal.com';
+  // Build unique recipient list — TC always first
+  const primary = toEmail || TC_EMAIL;
+  const toEmails = [primary];
+  if (folderEmail && folderEmail.trim() && folderEmail.trim() !== primary) {
+    toEmails.push(folderEmail.trim());
+  }
 
   let scrapeResult;
   try {
@@ -220,6 +228,26 @@ app.post('/scrape-and-send', async (req, res) => {
   } catch (err) {
     console.error('Scrape error:', err);
     return res.status(500).json({ success: false, error: err.message });
+  }
+
+  // ── Cookie expiry: notify TC instead of silent failure ────────────────────
+  if (!scrapeResult.success && scrapeResult.cookiesExpired) {
+    log_console('Cookies expired — sending notification to TC...');
+    try {
+      await fetch(SUPABASE_EMAIL_FN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mlsNumber,
+          toEmails: [TC_EMAIL],
+          files: [],
+          cookiesExpired: true,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to send cookie expiry notification:', e.message);
+    }
+    return res.json(scrapeResult);
   }
 
   if (!scrapeResult.success) {
@@ -230,15 +258,15 @@ app.post('/scrape-and-send', async (req, res) => {
     return res.json({ ...scrapeResult, files: undefined, emailSent: false, emailNote: 'No PDFs found' });
   }
 
-  // ── Call Supabase edge fn to send email (no SMTP needed) ────────────────────
+  // ── Call Supabase edge fn — sends to all recipients in one email ──────────
   try {
-    log_console(`Calling Supabase to email ${scrapeResult.pdfCount} PDF(s) to ${recipient}...`);
+    log_console(`Calling Supabase to email ${scrapeResult.pdfCount} PDF(s) to: ${toEmails.join(', ')}...`);
     const supaRes = await fetch(SUPABASE_EMAIL_FN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mlsNumber,
-        emailTo: recipient,
+        toEmails,
         files: scrapeResult.files,
       }),
     });
@@ -259,7 +287,7 @@ app.post('/scrape-and-send', async (req, res) => {
       mlsNumber,
       pdfCount: scrapeResult.pdfCount,
       emailSent: true,
-      emailTo: recipient,
+      emailTo: toEmails.join(', '),
       messageId: supaData.messageId,
       logs: scrapeResult.logs,
     });

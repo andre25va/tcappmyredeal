@@ -50,14 +50,12 @@ function buildMimeMessage(opts: {
   // Attachments
   for (const file of opts.files) {
     const ct = file.mimeType || "application/octet-stream";
-    // RFC 2047 encode the filename
     const encodedName = encodeSubject(file.name);
     lines.push(`--${boundary}`);
     lines.push(`Content-Type: ${ct}; name="${encodedName}"`);
     lines.push("Content-Transfer-Encoding: base64");
     lines.push(`Content-Disposition: attachment; filename="${encodedName}"`);
     lines.push("");
-    // Chunk base64 at 76 chars per line (MIME standard)
     const b64 = file.data.replace(/\s/g, "");
     for (let i = 0; i < b64.length; i += 76) {
       lines.push(b64.slice(i, i + 76));
@@ -69,6 +67,48 @@ function buildMimeMessage(opts: {
   return lines.join("\r\n");
 }
 
+// Get Gmail access token via OAuth2 refresh
+async function getAccessToken(): Promise<string> {
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GMAIL_CLIENT_ID,
+      client_secret: GMAIL_CLIENT_SECRET,
+      refresh_token: GMAIL_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) {
+    throw new Error("Failed to get Gmail access token: " + JSON.stringify(tokenData));
+  }
+  return tokenData.access_token;
+}
+
+// Send one email via Gmail API
+async function sendEmail(accessToken: string, to: string, subject: string, bodyText: string, files: { name: string; data: string; mimeType: string }[]): Promise<string> {
+  const mimeMsg = buildMimeMessage({ to, subject, bodyText, files });
+  const b64url = btoa(mimeMsg).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  const sendRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ raw: b64url }),
+    }
+  );
+  const sendData = await sendRes.json();
+  if (!sendRes.ok) {
+    throw new Error("Gmail send failed: " + JSON.stringify(sendData));
+  }
+  return sendData.id;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type" } });
@@ -76,17 +116,48 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { mlsNumber, emailTo, files } = body;
+    const { mlsNumber, emailTo, toEmails: toEmailsRaw, files, cookiesExpired } = body;
 
     if (!mlsNumber) {
       return new Response(JSON.stringify({ error: "mlsNumber required" }), { status: 400 });
     }
 
-    const toEmail = emailTo || FROM_EMAIL;
+    // Resolve recipients — accept toEmails (array) or emailTo (string), fallback to TC
+    const recipients: string[] = Array.isArray(toEmailsRaw) && toEmailsRaw.length > 0
+      ? toEmailsRaw
+      : [emailTo || FROM_EMAIL];
 
-    // If files not provided, call Railway scraper to fetch them
+    const toAddress = recipients.join(", ");
+
+    // ── Cookie expiry notification ────────────────────────────────────────────
+    if (cookiesExpired) {
+      const accessToken = await getAccessToken();
+      const subject = `⚠️ Matrix Session Expired — MLS# ${mlsNumber} supplements not fetched`;
+      const bodyText = [
+        `Your Matrix MLS session has expired.`,
+        ``,
+        `Supplements could not be automatically fetched for MLS# ${mlsNumber}.`,
+        ``,
+        `To fix this:`,
+        `1. Log into Matrix at https://hmls.mlsmatrix.com (your normal 2FA login)`,
+        `2. Open DevTools → Application → Cookies → hmls.mlsmatrix.com`,
+        `3. Run this in the Console tab to copy all cookies:`,
+        `   document.cookie`,
+        `4. Paste the result into the TC Command chat`,
+        ``,
+        `TC Command will update the scraper automatically — takes about 30 seconds.`,
+      ].join("\n");
+
+      await sendEmail(accessToken, FROM_EMAIL, subject, bodyText, []);
+      return new Response(JSON.stringify({ success: true, notificationType: "cookiesExpired" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Normal supplement delivery ─────────────────────────────────────────────
     let pdfFiles: { name: string; data: string; mimeType: string }[] = files || [];
 
+    // Fallback: scrape if no files provided (edge fn called directly)
     if (!files || files.length === 0) {
       const RAILWAY_URL = "https://mls-scraper-production-79d9.up.railway.app/scrape";
       const scrapeRes = await fetch(RAILWAY_URL, {
@@ -95,13 +166,9 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({ mlsNumber }),
         signal: AbortSignal.timeout(90000),
       });
-      if (!scrapeRes.ok) {
-        throw new Error(`Scraper error: ${scrapeRes.status}`);
-      }
+      if (!scrapeRes.ok) throw new Error(`Scraper error: ${scrapeRes.status}`);
       const scrapeData = await scrapeRes.json();
-      if (!scrapeData.success) {
-        throw new Error(scrapeData.error || "Scraper returned failure");
-      }
+      if (!scrapeData.success) throw new Error(scrapeData.error || "Scraper returned failure");
       pdfFiles = scrapeData.files || [];
     }
 
@@ -109,21 +176,7 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: false, error: "No documents found for this MLS#" }), { status: 200 });
     }
 
-    // Get Gmail access token
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: GMAIL_CLIENT_ID,
-        client_secret: GMAIL_CLIENT_SECRET,
-        refresh_token: GMAIL_REFRESH_TOKEN,
-        grant_type: "refresh_token",
-      }),
-    });
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      throw new Error("Failed to get Gmail access token: " + JSON.stringify(tokenData));
-    }
+    const accessToken = await getAccessToken();
 
     const docCount = pdfFiles.length;
     const subject = `MLS Supplements - ${mlsNumber} (${docCount} doc${docCount !== 1 ? "s" : ""})`;
@@ -137,28 +190,8 @@ Deno.serve(async (req: Request) => {
       "Upload these to the transaction folder for this deal.",
     ].join("\n");
 
-    const mimeMsg = buildMimeMessage({ to: toEmail, subject, bodyText, files: pdfFiles });
-
-    // MIME message is pure ASCII (all content is base64-encoded in parts)
-    // Use single btoa() call — O(n) vs the O(n²) loop approach
-    const b64url = btoa(mimeMsg).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-    const sendRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${tokenData.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ raw: b64url }),
-      }
-    );
-    const sendData = await sendRes.json();
-
-    if (!sendRes.ok) {
-      throw new Error("Gmail send failed: " + JSON.stringify(sendData));
-    }
+    // Send to all recipients in one email (comma-separated To: header)
+    const messageId = await sendEmail(accessToken, toAddress, subject, bodyText, pdfFiles);
 
     return new Response(
       JSON.stringify({
@@ -166,8 +199,8 @@ Deno.serve(async (req: Request) => {
         mlsNumber,
         pdfCount: pdfFiles.length,
         emailSent: true,
-        emailTo: toEmail,
-        messageId: sendData.id,
+        emailTo: toAddress,
+        messageId,
       }),
       { headers: { "Content-Type": "application/json" } }
     );
