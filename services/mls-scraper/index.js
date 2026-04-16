@@ -95,7 +95,7 @@ app.post('/scrape', async (req, res) => {
 
     await searchInput.click({ clickCount: 3 });
     await searchInput.type(String(mlsNumber));
-    await page.keyboard.press('Return');
+    await page.keyboard.press('Enter');
 
     // Wait for results page to load
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
