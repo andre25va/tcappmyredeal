@@ -1,11 +1,25 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const MATRIX_BASE = 'https://hmls.mlsmatrix.com';
+
+// ── Gmail SMTP transporter ────────────────────────────────────────────────────
+function createTransporter() {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // STARTTLS
+    auth: {
+      user: process.env.GMAIL_USER || 'tc@myredeal.com',
+      pass: process.env.GMAIL_PASS,
+    },
+  });
+}
 
 // ── Parse "name=value; name=value; ..." into Puppeteer cookie objects ─────────
 function parseCookieString(cookieStr) {
@@ -22,13 +36,10 @@ function parseCookieString(cookieStr) {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'mls-scraper' }));
 
-// ── Scrape ────────────────────────────────────────────────────────────────────
-app.post('/scrape', async (req, res) => {
-  const { mlsNumber } = req.body || {};
-  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
-
+// ── Core scrape logic (shared by both endpoints) ──────────────────────────────
+async function scrapeMLS(mlsNumber) {
   const cookieStr = process.env.MATRIX_COOKIES;
-  if (!cookieStr) return res.status(500).json({ error: 'MATRIX_COOKIES env var not set' });
+  if (!cookieStr) throw new Error('MATRIX_COOKIES env var not set');
 
   const logs = [];
   const log = (msg) => { console.log(msg); logs.push(msg); };
@@ -71,19 +82,17 @@ app.post('/scrape', async (req, res) => {
     log(`Home URL: ${homeUrl}`);
 
     if (homeUrl.includes('clareity') || homeUrl.includes('/idp/login') || homeUrl.includes('login')) {
-      const screenshot = await page.screenshot({ encoding: 'base64' });
-      return res.status(401).json({
+      await browser.close();
+      return {
         success: false,
+        cookiesExpired: true,
         message: 'Cookies expired — need to refresh MATRIX_COOKIES',
-        debugScreenshot: screenshot,
         logs,
-      });
+      };
     }
 
     // ── Step 3: Search for MLS# using the top shorthand bar ───────────────────
     log(`Searching for MLS# ${mlsNumber}...`);
-
-    // The top shorthand search bar has placeholder "Enter Shorthand or MLS#"
     await page.waitForSelector(
       'input[placeholder*="Shorthand"], input[placeholder*="MLS#"], input[placeholder*="MLS"]',
       { timeout: 20000 }
@@ -97,12 +106,10 @@ app.post('/scrape', async (req, res) => {
     await searchInput.type(String(mlsNumber));
     await page.keyboard.press('Enter');
 
-    // Wait for results page to load
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
     log(`Results URL: ${page.url()}`);
 
     // ── Step 4: Find the "View Documents" link ────────────────────────────────
-    // The link has data-original-title="To Documents" and text "View Documents"
     log('Waiting for "View Documents" link...');
     let viewDocsLink = null;
 
@@ -110,7 +117,6 @@ app.post('/scrape', async (req, res) => {
       await page.waitForSelector('a[data-original-title="To Documents"]', { timeout: 20000 });
       viewDocsLink = await page.$('a[data-original-title="To Documents"]');
     } catch (e) {
-      // fallback: find by text
       viewDocsLink = await page.evaluateHandle(() => {
         return Array.from(document.querySelectorAll('a'))
           .find(a => a.textContent.trim() === 'View Documents') || null;
@@ -120,18 +126,18 @@ app.post('/scrape', async (req, res) => {
 
     if (!viewDocsLink) {
       const screenshot = await page.screenshot({ encoding: 'base64' });
-      return res.json({
+      await browser.close();
+      return {
         success: false,
         message: `No "View Documents" link found for MLS# ${mlsNumber} — listing may have no supplements`,
         debugScreenshot: screenshot,
         logs,
-      });
+      };
     }
 
     log('Found "View Documents" link — opening documents popup...');
 
     // ── Step 5: Click "View Documents" and capture the popup ──────────────────
-    // Matrix opens a window.open() popup — capture it via targetcreated
     const popupPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Popup did not open within 20s')), 20000);
       browser.once('targetcreated', async (target) => {
@@ -141,11 +147,8 @@ app.post('/scrape', async (req, res) => {
       });
     });
 
-    if (viewDocsLink.asElement) {
-      await viewDocsLink.asElement().click();
-    } else {
-      await viewDocsLink.click();
-    }
+    const el = viewDocsLink.asElement ? viewDocsLink.asElement() : viewDocsLink;
+    await el.click();
 
     const popup = await popupPromise;
     log(`Popup opened: ${popup.url()}`);
@@ -164,10 +167,11 @@ app.post('/scrape', async (req, res) => {
     log(`Found ${pdfLinks.length} PDF link(s): ${pdfLinks.map(l => l.name).join(', ')}`);
 
     if (pdfLinks.length === 0) {
-      return res.json({ success: true, files: [], message: 'No PDF documents found in listing', logs });
+      await browser.close();
+      return { success: true, files: [], message: 'No PDF documents found in listing', logs };
     }
 
-    // ── Step 7: Download PDFs using in-page fetch (cookies included) ───────────
+    // ── Step 7: Download PDFs using in-page fetch ──────────────────────────────
     log('Downloading PDFs...');
     const files = [];
 
@@ -198,19 +202,89 @@ app.post('/scrape', async (req, res) => {
     }
 
     await browser.close();
-
-    return res.json({
-      success: true,
-      mlsNumber,
-      pdfCount: files.length,
-      files,
-      logs,
-    });
+    return { success: true, mlsNumber, pdfCount: files.length, files, logs };
 
   } catch (err) {
     if (browser) await browser.close().catch(() => {});
-    console.error('Scraper error:', err);
-    return res.status(500).json({ success: false, error: err.message, logs });
+    throw err;
+  }
+}
+
+// ── GET /scrape — returns base64 PDFs (for n8n/external use) ─────────────────
+app.post('/scrape', async (req, res) => {
+  const { mlsNumber } = req.body || {};
+  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
+
+  try {
+    const result = await scrapeMLS(mlsNumber);
+    return res.json(result);
+  } catch (err) {
+    console.error('Scrape error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /scrape-and-send — scrapes AND emails the PDFs to tc@myredeal.com ───
+app.post('/scrape-and-send', async (req, res) => {
+  const { mlsNumber, toEmail } = req.body || {};
+  if (!mlsNumber) return res.status(400).json({ error: 'mlsNumber required' });
+
+  const recipient = toEmail || process.env.GMAIL_USER || 'tc@myredeal.com';
+
+  let result;
+  try {
+    result = await scrapeMLS(mlsNumber);
+  } catch (err) {
+    console.error('Scrape error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+
+  if (!result.success) {
+    return res.json(result);
+  }
+
+  if (!result.files || result.files.length === 0) {
+    return res.json({ ...result, emailSent: false, emailNote: 'No PDFs to send' });
+  }
+
+  // Send email with PDF attachments
+  try {
+    const transporter = createTransporter();
+
+    const attachments = result.files.map(f => ({
+      filename: f.name,
+      content: f.data,
+      encoding: 'base64',
+      contentType: f.mimeType || 'application/pdf',
+    }));
+
+    const fileList = result.files.map((f, i) => `${i + 1}. ${f.name}`).join('\n');
+
+    await transporter.sendMail({
+      from: `TC Command <${process.env.GMAIL_USER || 'tc@myredeal.com'}>`,
+      to: recipient,
+      subject: `MLS Supplements — ${mlsNumber} (${result.pdfCount} doc${result.pdfCount !== 1 ? 's' : ''})`,
+      text: `Hi Andre,\n\nHere are the supplement documents for MLS# ${mlsNumber}:\n\n${fileList}\n\n— TC Command`,
+      attachments,
+    });
+
+    result.logs.push(`✓ Email sent to ${recipient} with ${result.pdfCount} attachment(s)`);
+    console.log(`Email sent to ${recipient}`);
+
+    return res.json({
+      ...result,
+      files: undefined, // don't return large base64 in /scrape-and-send response
+      emailSent: true,
+      emailTo: recipient,
+    });
+  } catch (emailErr) {
+    console.error('Email error:', emailErr);
+    return res.json({
+      ...result,
+      files: undefined,
+      emailSent: false,
+      emailError: emailErr.message,
+    });
   }
 });
 
