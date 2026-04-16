@@ -56,21 +56,17 @@ app.post('/scrape', async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
 
-    // ── Step 1: Inject cookies directly ──────────────────────────────────────
-    log('Setting Matrix session cookies...');
+    // ── Step 1: Set cookies on about:blank BEFORE navigating to Matrix ───────
+    log('Setting Matrix session cookies before any navigation...');
     const cookies = parseCookieString(cookieStr);
     log(`Parsed ${cookies.length} cookies`);
 
-    // Navigate to Matrix first so we can set cookies on the right domain
-    await page.goto(MATRIX_BASE + '/Matrix/Home', {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000,
-    });
-
+    // Start on blank page so setCookie works cleanly with explicit domain
+    await page.goto('about:blank');
     await page.setCookie(...cookies);
-    log('Cookies injected — reloading Matrix...');
+    log('Cookies set on hmls.mlsmatrix.com domain — navigating to Matrix...');
 
-    // ── Step 2: Reload Matrix home with injected cookies ──────────────────────
+    // ── Step 2: Navigate to Matrix home with cookies pre-loaded ───────────────
     await page.goto(MATRIX_BASE + '/Matrix/Home', {
       waitUntil: 'networkidle2',
       timeout: 30000,
