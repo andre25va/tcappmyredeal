@@ -5,6 +5,7 @@ import {
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
   Paperclip, Lock, ArrowRight, ChevronUp, MapPin, Table2,
+  Pencil, Shield,
 } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
@@ -57,6 +58,18 @@ const TIMELINE_TYPE_LABEL: Record<string, string> = {
   addendum:          'Addendum',
   as_is:             'As-Is',
   other:             'Other',
+};
+
+// ─── Suggested Document Names (by category) ──────────────────────────────────
+const SUGGESTED_NAMES: Record<string, string[]> = {
+  purchase_contract: ['Purchase Contract', 'FAR/BAR AS-IS Contract', 'CRSP Contract', 'Executed Contract', 'Signed Contract'],
+  counter_offer: ['Counter Offer', 'Seller Counter Offer', 'Buyer Counter Offer', 'Counter Offer #1', 'Counter Offer #2'],
+  amendment: ['Amendment #1', 'Price Amendment', 'Closing Date Amendment', 'Extension Amendment', 'Amendment #2'],
+  addendum: ['Addendum', 'HOA Addendum', 'Lead Paint Addendum', 'Short Sale Addendum', 'Seller Disclosure Addendum'],
+  as_is: ['AS-IS Rider', 'AS-IS Addendum', 'AS-IS Addendum to Contract'],
+  inspection_notice: ['Inspection Notice', 'CINSP Notice', 'Inspection Report', 'BINSR'],
+  unacceptable_conditions: ['Unacceptable Conditions Notice', 'Notice of Unacceptable Conditions'],
+  other: ['Proof of Funds', 'Pre-Approval Letter', 'HOA Documents', 'Survey', 'Title Commitment', 'Closing Disclosure', 'Settlement Statement', 'Wire Instructions', 'Lender Instructions', 'Insurance Policy', 'Warranty Deed'],
 };
 
 // ─── Changes Timeline Modal ───────────────────────────────────────────────────
@@ -911,11 +924,15 @@ interface DocRowProps {
   onArchive: (doc: DealDocument) => void;
   onSummary: (doc: DealDocument) => void;
   onFinancialChanges: (doc: DealDocument) => void;
+  onRename: (doc: DealDocument, newName: string) => void;
   onReviewChanges?: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onReviewChanges }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onRename, onReviewChanges }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(doc.display_name || doc.file_name);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
 
@@ -933,7 +950,26 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.display_name || doc.file_name}</p>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              autoFocus
+              className="input input-xs input-bordered text-sm font-medium text-base-content max-w-xs"
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              onBlur={() => {
+                setIsRenaming(false);
+                onRename(doc, renameValue);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { setIsRenaming(false); onRename(doc, renameValue); }
+                if (e.key === 'Escape') { setIsRenaming(false); setRenameValue(doc.display_name || doc.file_name); }
+              }}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <p className="text-sm font-medium text-base-content truncate max-w-xs">{doc.display_name || doc.file_name}</p>
+          )}
           {doc.doc_id && (
             <span className="text-xs px-1.5 py-0.5 rounded font-mono bg-base-300/60 text-base-content/40 border border-base-300">
               {doc.doc_id}
@@ -988,6 +1024,24 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
 
       {/* Actions — visible on hover */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-none">
+        {/* Rename */}
+        <button
+          onClick={() => { setIsRenaming(true); setTimeout(() => renameInputRef.current?.select(), 50); }}
+          className="btn btn-ghost btn-xs btn-circle"
+          title="Rename document"
+        >
+          <Pencil size={13} />
+        </button>
+
+        {/* Compliance Check — stub for future */}
+        <button
+          disabled
+          className="btn btn-ghost btn-xs btn-circle opacity-40 cursor-not-allowed"
+          title="Compliance check — coming soon"
+        >
+          <Shield size={13} />
+        </button>
+
         {/* Preview — always available for PDFs */}
         {isPdf && (
           <button onClick={() => onPreview(doc)} className="btn btn-ghost btn-xs btn-circle" title="Preview document">
@@ -1033,6 +1087,12 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
               className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
             >
               <Paperclip size={12} /> Link to Checklist
+            </button>
+            <button
+              onClick={() => { setIsRenaming(true); setTimeout(() => renameInputRef.current?.select(), 50); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-base-200 flex items-center gap-2"
+            >
+              <Pencil size={12} /> Rename
             </button>
             <button
               onClick={() => onDownload(doc)}
@@ -1085,6 +1145,13 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [docTypeForUpload, setDocTypeForUpload] = useState<DealDocument['category']>('purchase_contract');
+  const [uploadDisplayName, setUploadDisplayName] = useState<string>(SUGGESTED_NAMES['purchase_contract'][0]);
+
+  // Auto-suggest name when type changes
+  useEffect(() => {
+    setUploadDisplayName(SUGGESTED_NAMES[docTypeForUpload]?.[0] ?? '');
+  }, [docTypeForUpload]);
+
   // Option C: Source-of-Truth replacement lock
   const [sotPending, setSotPending] = useState<{ file: File; docType: DealDocument['category'] } | null>(null);
   const [showDocRequests, setShowDocRequests] = useState(true);
@@ -1323,6 +1390,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       const rec = {
         deal_id: deal.id,
         file_name: file_name || file.name,
+        display_name: uploadDisplayName.trim() || null,
         storage_path: path,
         file_size_bytes: file_size,
         category: docType,
@@ -1382,6 +1450,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     } finally {
       setUploading(false);
       setUploadProgress('');
+      setUploadDisplayName(SUGGESTED_NAMES[docTypeForUpload]?.[0] ?? '');
     }
   };
 
@@ -1407,6 +1476,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     const rec = {
       deal_id: deal.id,
       file_name: file.name,
+      display_name: uploadDisplayName.trim() || null,
       storage_path: path,
       file_size_bytes: file.size,
       category: docType,
@@ -1565,6 +1635,22 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
       .eq('id', doc.id);
     invalidateDocs(deal.id);
     await logDocumentAction(doc.doc_id, doc.id, 'archived', undefined, `Archived by ${userName}`);
+    invalidateLog(deal.id);
+  };
+
+  const handleRename = async (doc: DealDocument, newName: string) => {
+    if (!newName.trim() || newName.trim() === (doc.display_name || doc.file_name)) return;
+    await supabase
+      .from('deal_documents')
+      .update({ display_name: newName.trim() })
+      .eq('id', doc.id);
+    invalidateDocs(deal.id);
+    await logDocumentAction(
+      doc.doc_id,
+      doc.id,
+      'renamed',
+      { display_name: { from: doc.display_name || doc.file_name, to: newName.trim() } },
+    );
     invalidateLog(deal.id);
   };
 
@@ -1860,6 +1946,20 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
             <option value="unacceptable_conditions">⚠️ Unacceptable Conditions</option>
             <option value="other">📋 Other</option>
           </select>
+          {/* Document name: datalist for suggestions, fully editable */}
+          <datalist id="doc-name-suggestions">
+            {(SUGGESTED_NAMES[docTypeForUpload] ?? []).map(name => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <input
+            type="text"
+            list="doc-name-suggestions"
+            className="input input-xs input-bordered w-44"
+            placeholder="Document name…"
+            value={uploadDisplayName}
+            onChange={e => setUploadDisplayName(e.target.value)}
+          />
           <button
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-sm btn-primary gap-1"
@@ -1914,6 +2014,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onRename={handleRename}
                   />
                 ))}
               </div>
@@ -1943,6 +2044,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onRename={handleRename}
                     onReviewChanges={setComparisonDoc}
                   />
                 ))}
@@ -1973,6 +2075,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onRename={handleRename}
                     onReviewChanges={(doc.category === 'amendment' || doc.category === 'addendum') ? setComparisonDoc : undefined}
                   />
                 ))}
@@ -2003,6 +2106,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onRename={handleRename}
                   />
                 ))}
               </div>
@@ -2030,6 +2134,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onArchive={handleArchive}
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
+                    onRename={handleRename}
                   />
                 ))}
               </div>
