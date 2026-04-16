@@ -691,7 +691,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         }));
 
         // Auto-select/confirm MLS board from MLS fetch result
-        if (d.mlsBoardName) {
+        if (d.mlsBoard || d.mlsBoardName) {
           const fetchedBoard = (d.mlsBoardName as string).toLowerCase().trim();
           const stateKey = form.state.toUpperCase();
           const boardsForState = MLS_BY_STATE[stateKey] || [];
@@ -958,8 +958,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         return updated;
       });
       // Auto-detect MLS board from extracted mlsBoardName + state
-      if (d.mlsBoardName) {
-        const extractedBoard = (d.mlsBoardName as string).toLowerCase().trim();
+      if (d.mlsBoard || d.mlsBoardName) {
+        const extractedBoard = ((d.mlsBoard || d.mlsBoardName) as string).toLowerCase().trim();
         const stateKey = (d.state || '').toUpperCase();
         const boardsForState = MLS_BY_STATE[stateKey] || [];
         // Find best match: prefer boards in the form's state, fallback to all states
