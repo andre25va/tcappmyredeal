@@ -14,6 +14,8 @@ import {
   ChevronDown,
   X,
   Loader2,
+  CalendarDays,
+  ArrowRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +24,62 @@ import type { Deal } from '../types';
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------ */
+/*  Formula utilities (inline — no separate import needed)             */
+/* ------------------------------------------------------------------ */
+
+function addCalDays(date: Date, delta: number): Date {
+  const r = new Date(date); r.setDate(r.getDate() + delta); return r;
+}
+
+function addBizDays(date: Date, delta: number): Date {
+  const r = new Date(date);
+  const dir = delta >= 0 ? 1 : -1;
+  let rem = Math.abs(delta);
+  while (rem > 0) {
+    r.setDate(r.getDate() + dir);
+    const day = r.getDay();
+    if (day !== 0 && day !== 6) rem--;
+  }
+  return r;
+}
+
+function toYMD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function fromYMD(str: string): Date {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Compute a date from a formula string.
+ * Supported: "Effective Date + 5 days", "Closing Date - 3 business days", etc.
+ */
+function computeFormula(
+  formula: string | null | undefined,
+  effectiveDate: string | null | undefined,
+  closingDate: string | null | undefined
+): string | null {
+  if (!formula) return null;
+  const norm = formula.trim().toLowerCase();
+  const match = norm.match(
+    /^(effective date|closing date)\s*([+-])\s*(\d+)\s*(business\s+days?|days?)$/
+  );
+  if (!match) return null;
+  const anchorStr = match[1] === 'effective date' ? effectiveDate : closingDate;
+  if (!anchorStr) return null;
+  const anchor = fromYMD(anchorStr);
+  const delta = match[2] === '+' ? parseInt(match[3]) : -parseInt(match[3]);
+  const isBiz = match[4].startsWith('business');
+  return toYMD(isBiz ? addBizDays(anchor, delta) : addCalDays(anchor, delta));
+}
 
 interface Milestone {
   id: string;
@@ -172,6 +230,13 @@ export default function WorkspaceTimeline({ deal }: Props) {
   const [extendingId, setExtendingId] = useState<string | null>(null);
   const [extendDate, setExtendDate] = useState('');
 
+  // Shift Dates panel state
+  const [showShiftPanel, setShowShiftPanel] = useState(false);
+  const [shiftEffective, setShiftEffective] = useState('');
+  const [shiftClosing, setShiftClosing] = useState('');
+  const [shiftSaving, setShiftSaving] = useState(false);
+
+
   /* ---- Seed from deal dates ---- */
   const seedMilestones = async () => {
     setSeeding(true);
@@ -303,6 +368,64 @@ export default function WorkspaceTimeline({ deal }: Props) {
       setAddDate('');
     }
     setAddSaving(false);
+  };
+
+
+  /* ---- Shift Dates (cascade) ---- */
+  const d = deal as Record<string, any>;
+  const currentEffective: string | null = d.contractDate ?? d.contract_date ?? null;
+  const currentClosing: string | null = d.closingDate ?? d.closing_date ?? null;
+
+  const formulaMilestones = milestones.filter((m) => !!m.formula);
+
+  const shiftPreviews = formulaMilestones.map((m) => {
+    const newDate = computeFormula(
+      m.formula,
+      shiftEffective || currentEffective,
+      shiftClosing || currentClosing
+    );
+    const oldDate = computeFormula(m.formula, currentEffective, currentClosing) ?? m.due_date;
+    return {
+      id: m.id,
+      label: m.label,
+      formula: m.formula!,
+      oldDate,
+      newDate,
+      changed: newDate !== oldDate,
+    };
+  });
+
+  const changedCount = shiftPreviews.filter((p) => p.changed).length;
+
+  const submitShift = async () => {
+    setShiftSaving(true);
+    setError(null);
+    try {
+      // Bulk update formula milestones in deal_timeline
+      const updates = shiftPreviews.filter((p) => p.changed && p.newDate);
+      for (const u of updates) {
+        await supabase
+          .from('deal_timeline')
+          .update({ due_date: u.newDate })
+          .eq('id', u.id);
+      }
+
+      // Sync anchor dates back to deals table
+      const dealUpdates: Record<string, string> = {};
+      if (shiftEffective) dealUpdates['contract_date'] = shiftEffective;
+      if (shiftClosing) dealUpdates['closing_date'] = shiftClosing;
+      if (Object.keys(dealUpdates).length > 0) {
+        await supabase.from('deals').update(dealUpdates).eq('id', deal.id);
+      }
+
+      await invalidateDealTimeline(deal.id);
+      setShowShiftPanel(false);
+      setShiftEffective('');
+      setShiftClosing('');
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to shift dates');
+    }
+    setShiftSaving(false);
   };
 
   /* ---- Summary ---- */
@@ -538,9 +661,23 @@ export default function WorkspaceTimeline({ deal }: Props) {
 
       {/* Add milestone */}
       {milestones.length > 0 && !showAdd && (
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(true)}>
-          <Plus className="w-4 h-4" /> Add Milestone
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(true)}>
+            <Plus className="w-4 h-4" /> Add Milestone
+          </button>
+          {formulaMilestones.length > 0 && (
+            <button
+              className="btn btn-ghost btn-sm text-warning"
+              onClick={() => {
+                setShiftEffective(currentEffective ?? '');
+                setShiftClosing(currentClosing ?? '');
+                setShowShiftPanel(true);
+              }}
+            >
+              <CalendarDays className="w-4 h-4" /> Shift Dates
+            </button>
+          )}
+        </div>
       )}
 
       {showAdd && (
@@ -599,6 +736,105 @@ export default function WorkspaceTimeline({ deal }: Props) {
           </div>
         </div>
       )}
+
+      {/* Shift Dates Panel */}
+      {showShiftPanel && (
+        <div className="card bg-base-200 border border-warning/40 shadow-lg">
+          <div className="card-body p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-warning" />
+                Shift Anchor Dates
+              </h4>
+              <button
+                className="btn btn-ghost btn-xs btn-square"
+                onClick={() => { setShowShiftPanel(false); setShiftEffective(''); setShiftClosing(''); }}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+
+            <p className="text-xs text-base-content/60">
+              Enter new anchor dates. All formula-based milestones will recompute automatically.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label py-0 mb-1">
+                  <span className="label-text text-xs font-medium">Effective Date</span>
+                </label>
+                <input
+                  type="date"
+                  className="input input-bordered input-sm w-full"
+                  value={shiftEffective}
+                  onChange={(e) => setShiftEffective(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label py-0 mb-1">
+                  <span className="label-text text-xs font-medium">Closing Date</span>
+                </label>
+                <input
+                  type="date"
+                  className="input input-bordered input-sm w-full"
+                  value={shiftClosing}
+                  onChange={(e) => setShiftClosing(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Preview table */}
+            {shiftPreviews.length > 0 && (shiftEffective || shiftClosing) && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-base-content/70">Preview</p>
+                <div className="rounded-lg border border-base-300 overflow-hidden">
+                  {shiftPreviews.map((p) => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center gap-2 px-3 py-2 text-xs border-b border-base-300 last:border-0 ${
+                        p.changed ? 'bg-warning/10' : 'bg-base-100'
+                      }`}
+                    >
+                      <div className="flex-1 font-medium truncate">{p.label}</div>
+                      <div className="flex items-center gap-1.5 text-base-content/60 shrink-0">
+                        <span>{p.oldDate ? fmtDate(p.oldDate) : '—'}</span>
+                        <ArrowRight className="w-3 h-3" />
+                        <span className={p.changed ? 'text-warning font-semibold' : ''}>
+                          {p.newDate ? fmtDate(p.newDate) : '—'}
+                        </span>
+                      </div>
+                      {p.changed && (
+                        <span className="badge badge-warning badge-xs">updated</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-base-content/50">
+                  {changedCount} milestone{changedCount !== 1 ? 's' : ''} will update
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                className="btn btn-warning btn-sm"
+                onClick={submitShift}
+                disabled={shiftSaving || (!shiftEffective && !shiftClosing) || changedCount === 0}
+              >
+                {shiftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarDays className="w-4 h-4" />}
+                Apply {changedCount > 0 ? `${changedCount} Update${changedCount !== 1 ? 's' : ''}` : 'Changes'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setShowShiftPanel(false); setShiftEffective(''); setShiftClosing(''); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
