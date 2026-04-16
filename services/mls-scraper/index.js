@@ -25,11 +25,14 @@ async function scrapeMatrixDocs(mlsNumber) {
   const browser = await puppeteer.launch({
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
     headless: 'new',
+    ignoreHTTPSErrors: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--ignore-certificate-errors',
+      '--ignore-ssl-errors',
       '--window-size=1280,900',
     ],
   });
