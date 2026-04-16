@@ -139,13 +139,9 @@ Deno.serve(async (req: Request) => {
 
     const mimeMsg = buildMimeMessage({ to: toEmail, subject, bodyText, files: pdfFiles });
 
-    // Base64url encode for Gmail API
-    const mimeBytes = new TextEncoder().encode(mimeMsg);
-    let b64url = "";
-    for (let i = 0; i < mimeBytes.length; i += 3) {
-      b64url += btoa(String.fromCharCode(...mimeBytes.slice(i, i + 3)));
-    }
-    b64url = b64url.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    // MIME message is pure ASCII (all content is base64-encoded in parts)
+    // Use single btoa() call — O(n) vs the O(n²) loop approach
+    const b64url = btoa(mimeMsg).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
     const sendRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
