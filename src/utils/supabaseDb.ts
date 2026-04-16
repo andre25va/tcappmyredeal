@@ -172,7 +172,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       seller_concessions, total_seller_credits,
       as_is_sale, inspection_waived, home_warranty, home_warranty_amount,
       home_warranty_paid_by, home_warranty_company, commission_paid_by,
-      org_id, deal_ref, mls_id
+      org_id, deal_ref, mls_id, transaction_folder_email
     `)
     .order('created_at', { ascending: false });
 
@@ -276,6 +276,7 @@ export async function loadDeals(orgId?: string): Promise<Deal[]> {
       archiveReason: (dd.archiveReason as string) ?? undefined,
       orgId: row.org_id as string | undefined,
       dealRef: row.deal_ref as string | undefined,
+      transaction_folder_email: row.transaction_folder_email || (dd.transaction_folder_email as string) || undefined,
       createdAt: row.created_at || (dd.createdAt as string) || new Date().toISOString(),
       updatedAt: row.updated_at || (dd.updatedAt as string) || new Date().toISOString(),
     };
@@ -407,6 +408,7 @@ export async function saveSingleDeal(deal: Deal, createdByUserId?: string): Prom
       home_warranty_company: deal.homeWarrantyCompany || null,
       commission_paid_by: deal.commissionPaidBy || null,
       org_id: deal.orgId ?? null,
+      transaction_folder_email: deal.transaction_folder_email || null,
       deal_data: dealToJsonBackup(deal),
       updated_at: new Date().toISOString(),
     },

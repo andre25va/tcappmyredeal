@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { pendingDocCount } from '../utils/helpers';
 import { useDealEmails } from '../hooks/useDealEmails';
 import { useDealRequests } from '../hooks/useDealRequests';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { PageIdBadge } from './PageIdBadge';
 
 const copyToClipboard = (text: string, onSuccess?: () => void): void => {
@@ -314,6 +314,25 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       setMlsRerunFirstName('');
     }
   };
+  const fetchSupplements = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('https://tcmyredealapp.app.n8n.cloud/webhook/mls-supplements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mlsNumber: deal.mlsNumber,
+          toEmail: 'tc@myredeal.com',
+          folderEmail: deal.transaction_folder_email || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      setTimeout(() => fetchSupplements.reset(), 3000);
+    },
+  });
+
   const pendingDocs = pendingDocCount(deal.documentRequests);
   const overdueTasks = (deal.tasks ?? []).filter(t => !t.completedAt && t.dueDate < new Date().toISOString().slice(0, 10)).length;
 
@@ -441,6 +460,30 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
               <Database size={13} />
               <span className="hidden sm:inline text-xs">MLS Data</span>
             </button>
+            {deal.mlsNumber && (
+              <button
+                className={`btn btn-sm gap-1.5 border ${
+                  fetchSupplements.isSuccess
+                    ? 'btn-success btn-outline'
+                    : fetchSupplements.isError
+                    ? 'btn-error btn-outline'
+                    : 'btn-ghost border-gray-300 text-black hover:bg-gray-100'
+                }`}
+                onClick={() => fetchSupplements.mutate()}
+                disabled={fetchSupplements.isPending}
+                title={fetchSupplements.isError ? (fetchSupplements.error as Error)?.message : 'Fetch MLS supplements and email to TC'}
+              >
+                {fetchSupplements.isPending ? (
+                  <><span className="loading loading-spinner loading-xs" /><span className="hidden sm:inline text-xs">Fetching...</span></>
+                ) : fetchSupplements.isSuccess ? (
+                  <><Check size={13} /><span className="hidden sm:inline text-xs">Sent!</span></>
+                ) : fetchSupplements.isError ? (
+                  <><span className="text-xs">Failed</span></>
+                ) : (
+                  <><Inbox size={13} /><span className="hidden sm:inline text-xs">Fetch Supplements</span></>
+                )}
+              </button>
+            )}
             {!isViewer && (
               <button
                 onClick={() => { setTab('overview'); setEditTrigger(n => n + 1); }}

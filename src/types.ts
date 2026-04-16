@@ -412,6 +412,7 @@ export interface Deal {
   mlsNumber: string;
   isHeartlandMls?: boolean;
   mlsId?: string;
+  transaction_folder_email?: string;
   listPrice: number;
   contractPrice: number;
   propertyType: PropertyType;
