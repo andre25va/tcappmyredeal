@@ -384,26 +384,36 @@ const extractDealSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    // ── Property ─────────────────────────────────────────────────────────────
     address: { type: 'string' },
     city: { type: 'string' },
     state: { type: 'string' },
     zipCode: { type: 'string' },
-    listPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    purchasePrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    propertyType: { type: 'string', enum: ['single-family', 'multi-family', 'duplex', 'condo', 'townhouse', 'land', 'commercial'] },
     mlsNumber: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    contractDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    inspectionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    financeDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    possessionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    mlsBoard: { anyOf: [{ type: 'string' }, { type: 'null' }] },         // primary (replaces mlsBoardName)
+    mlsBoardName: { anyOf: [{ type: 'string' }, { type: 'null' }] },    // kept for backward compat — same value as mlsBoard
+    legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Transaction ───────────────────────────────────────────────────────────
+    transactionType: { type: 'string', enum: ['buyer', 'seller'] },
+    listPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },   // primary (replaces purchasePrice)
+    purchasePrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },   // kept for backward compat — same value as contractPrice
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    earnestMoneyDueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    sellerConcessions: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    commissionAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
-    loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    earnestMoneyHolder: { anyOf: [{ type: 'string' }, { type: 'null' }] }, // who holds the EM (same as emHeldWith)
+    emHeldWith: { anyOf: [{ type: 'string' }, { type: 'null' }] },      // kept for backward compat — same as earnestMoneyHolder
+    additionalEarnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },    // primary (replaces sellerConcessions)
+    sellerConcessions: { anyOf: [{ type: 'string' }, { type: 'null' }] }, // kept for backward compat — same value as sellerCredit
+    sellerPaidClosingCosts: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    repairsNotToExceed: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     downPaymentPercent: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    commissionReceived: { anyOf: [{ type: 'string' }, { type: 'null' }] }, // primary (replaces commissionAmount)
+    commissionAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },  // kept for backward compat — same as commissionReceived
+    buyerAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerNames: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     buyerIsCompany: { type: 'boolean' },
@@ -411,20 +421,56 @@ const extractDealSchema = {
     buyerCompanyName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerCompanyName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    emHeldWith: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    transactionType: { type: 'string', enum: ['buyer', 'seller'] },
-    propertyType: { type: 'string', enum: ['single-family', 'multi-family', 'duplex', 'condo', 'townhouse', 'land', 'commercial'] },
     asIsSale: { type: 'boolean' },
     inspectionWaived: { type: 'boolean' },
     homeWarranty: { type: 'boolean' },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    legalDescription: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    homeWarrantyPaidBy: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    homeWarrantyAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Financing ─────────────────────────────────────────────────────────────
+    loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
+    loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanOfficerCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanApplicationDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    finalLoanApprovalDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Key Dates ─────────────────────────────────────────────────────────────
+    contractDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    closingDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    possessionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    surveyDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    earnestMoneyDueDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    additionalEarnestMoneyDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    listingExpirationDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Inspection ────────────────────────────────────────────────────────────
+    inspectionDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerInspectionNoticeDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    renegotiationPeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    financeDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Appraisal ─────────────────────────────────────────────────────────────
+    appraisalDeliveryDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    appraisalDueToSeller: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    appraisalNegotiationPeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Title & HOA ───────────────────────────────────────────────────────────
+    titleCommitmentDeliveryDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    titleObjectionPeriod: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    hoaDocumentDeliveryDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    buyerHoaReviewDeadline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Parties ───────────────────────────────────────────────────────────────
+    buyerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    sellerAgentName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    listingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] },  // raw label copy (Heartland)
+    sellingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] }, // raw label copy (Heartland)
+
+    // ── Contract meta ─────────────────────────────────────────────────────────
     contractType: { type: 'string', enum: ['residential_sale_contract', 'loi', 'addendum', 'other'] },
-    listingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    sellingLicenseeName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     // licenseeSectionRaw: raw two-column extraction for label-based role resolution in code
-    // GPT copies each column as-is — code finds 'listing'/'selling' label to assign roles
     licenseeSectionRaw: {
       anyOf: [
         {
@@ -459,19 +505,37 @@ const extractDealSchema = {
         { type: 'null' },
       ],
     },
-    mlsBoardName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+
+    // ── Meta ─────────────────────────────────────────────────────────────────
     confidence: { type: 'number' },
     extractedFields: { type: 'array', items: { type: 'string' } },
   },
-  required: ['address', 'city', 'state', 'zipCode', 'listPrice', 'purchasePrice', 'mlsNumber',
-    'contractDate', 'closingDate', 'inspectionDate', 'financeDeadline', 'possessionDate',
-    'earnestMoney', 'earnestMoneyDueDate', 'sellerConcessions', 'commissionAmount', 'loanType', 'loanAmount',
-    'downPaymentAmount', 'downPaymentPercent', 'buyerNames', 'sellerNames',
-    'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
-    'titleCompany', 'emHeldWith', 'loanOfficer',
-    'transactionType', 'propertyType', 'asIsSale', 'inspectionWaived', 'homeWarranty',
-    'homeWarrantyCompany', 'legalDescription', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
-    'licenseeSectionRaw', 'mlsBoardName', 'confidence', 'extractedFields'],
+  required: [
+    // Property
+    'address', 'city', 'state', 'zipCode', 'propertyType', 'mlsNumber', 'mlsBoard', 'mlsBoardName', 'legalDescription',
+    // Transaction
+    'transactionType', 'listPrice', 'contractPrice', 'purchasePrice', 'earnestMoney', 'earnestMoneyHolder', 'emHeldWith',
+    'additionalEarnestMoney', 'sellerCredit', 'sellerConcessions', 'sellerPaidClosingCosts', 'repairsNotToExceed',
+    'downPaymentAmount', 'downPaymentPercent', 'commissionReceived', 'commissionAmount', 'buyerAgentCommission', 'listingAgentCommission',
+    'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
+    'titleCompany', 'asIsSale', 'inspectionWaived', 'homeWarranty', 'homeWarrantyCompany', 'homeWarrantyPaidBy', 'homeWarrantyAmount',
+    // Financing
+    'loanType', 'loanAmount', 'loanOfficer', 'loanOfficerCompany', 'loanApplicationDue', 'finalLoanApprovalDue',
+    // Key Dates
+    'contractDate', 'closingDate', 'possessionDate', 'surveyDeadline', 'earnestMoneyDueDate', 'additionalEarnestMoneyDue', 'listingExpirationDate',
+    // Inspection
+    'inspectionDate', 'buyerInspectionNoticeDue', 'renegotiationPeriod', 'financeDeadline',
+    // Appraisal
+    'appraisalDeliveryDate', 'appraisalDueToSeller', 'appraisalNegotiationPeriod',
+    // Title & HOA
+    'titleCommitmentDeliveryDate', 'titleObjectionPeriod', 'hoaDocumentDeliveryDeadline', 'buyerHoaReviewDeadline',
+    // Parties
+    'buyerAgentName', 'sellerAgentName', 'listingLicenseeName', 'sellingLicenseeName',
+    // Contract meta
+    'contractType', 'licenseeSectionRaw',
+    // Meta
+    'confidence', 'extractedFields',
+  ],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1065,22 +1129,54 @@ async function handleExtractDeal(apiKey: string, body: any) {
   const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
 
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
+For relative deadline fields: when a deadline is expressed as "X calendar/business days after/before [event]", return that formula verbatim (e.g., "11 calendar days after Effective Date", "5 calendar days before Closing Date"). If the document states an explicit date instead, return YYYY-MM-DD.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
 For contractType: identify the document type. Return "residential_sale_contract" for a standard purchase agreement or sale contract, "loi" for a Letter of Intent, "addendum" for an addendum or amendment to an existing contract, "other" for anything else.
+For propertyType: infer from property description. Default to "single-family".
+
+FIELD ALIASES — return the SAME value for both names in each pair:
+- contractPrice AND purchasePrice: the agreed sale/purchase price (numeric string, no formatting).
+- mlsBoard AND mlsBoardName: MLS board/association name (e.g., "Heartland MLS", "KCRAR"). Return null if not found.
+- sellerCredit AND sellerConcessions: seller price concessions/credits to buyer (numeric string). Separate from closing cost contributions.
+- commissionReceived AND commissionAmount: the buyer's agent commission dollar amount. If only % stated, return as "3%" string.
+- earnestMoneyHolder AND emHeldWith: the entity holding the earnest money (usually the title company).
+
+For titleCompany / earnestMoneyHolder / emHeldWith: extract the name of the title company or escrow company holding the earnest money. Look for a line labeled "Deposited with:" anywhere in the earnest money section. On Heartland MLS / KC contracts, this is in section 4.b or 4.c. Return company name only (e.g., "Alliance Title"). Return null if not found.
+For additionalEarnestMoney: second/additional earnest money amount (numeric string). Look in section 4.c or "Additional Earnest Money" clause. Return null if not found.
+For additionalEarnestMoneyDue: due date or formula for additional earnest money. Return null if not found.
+For sellerPaidClosingCosts: dollar amount seller contributes toward buyer's closing costs (numeric string, separate from sellerCredit). Return null if not found.
+For repairsNotToExceed: repair cap agreed in contract (numeric string). Return null if not found.
+For buyerAgentCommission: commission % or $ for buyer's agent (e.g., "3%" or "4950"). Return null if not found.
+For listingAgentCommission: commission % or $ for listing/seller's agent. Return null if not found.
+For loanOfficerCompany: the lender or mortgage company name (not the loan officer's personal name). Return null if not found.
+For loanApplicationDue: loan application deadline (date YYYY-MM-DD or formula). Return null if not found.
+For finalLoanApprovalDue: final loan approval/commitment deadline (date or formula). Return null if not found.
+For surveyDeadline: survey delivery or review deadline (date or formula). Return null if not found.
+For listingExpirationDate: listing expiration date if mentioned (YYYY-MM-DD). Return null if not found.
+For inspectionDate: inspection period end date or formula (e.g., "11 calendar days after Effective Date"). Return null if not found.
+For buyerInspectionNoticeDue: deadline for buyer to deliver inspection notice/objection (date or formula). Return null if not found.
+For renegotiationPeriod: seller response/renegotiation period after buyer's inspection notice (date or formula). Return null if not found.
+For appraisalDeliveryDate: when appraisal report must be delivered to buyer (date or formula). Return null if not found.
+For appraisalDueToSeller: when appraisal report must be delivered to seller (date or formula). Return null if not found.
+For appraisalNegotiationPeriod: period for parties to negotiate after appraisal (date or formula). Return null if not found.
+For titleCommitmentDeliveryDate: when title commitment must be delivered (date or formula). Return null if not found.
+For titleObjectionPeriod: deadline for buyer to object to title (date or formula). Return null if not found.
+For hoaDocumentDeliveryDeadline: when HOA documents must be delivered to buyer (date or formula). Return null if not found.
+For buyerHoaReviewDeadline: buyer's deadline to review and object to HOA documents (date or formula). Return null if not found.
+For homeWarrantyPaidBy: who pays the home warranty — extract exact text (e.g., "BUYER", "SELLER", "BUYER waives", "N/A"). Return null if not mentioned.
+For homeWarrantyAmount: the home warranty cost (numeric string). Return null if not found.
+For buyerAgentName: full personal name of the buyer's representative/agent (not company). On Heartland MLS contracts, typically the "Selling Licensee". Return null if not found.
+For sellerAgentName: full personal name of the seller's/listing agent (not company). On Heartland MLS contracts, typically the "Listing Licensee". Return null if not found.
+
 For listingLicenseeName: MECHANICAL COPY ONLY — do not interpret or reason about roles at all. Find the section or column on this document labeled exactly "Listing Licensee". Copy ONLY the personal name (first + last, NOT a brokerage or company name) that appears inside that labeled section. Do not use any name from a neighboring column or section. Return null if this exact label does not appear on the document.
 For sellingLicenseeName: MECHANICAL COPY ONLY — do not interpret or reason about roles at all. Find the section or column on this document labeled exactly "Selling Licensee". Copy ONLY the personal name (first + last, NOT a brokerage or company name) that appears inside that labeled section. Do not use any name from a neighboring column or section. Return null if this exact label does not appear on the document.
 HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — the LEFT column is labeled "Listing Licensee" and the RIGHT column is labeled "Selling Licensee". Each column contains its own separate name, phone, and email. You must copy the name strictly from WITHIN each labeled column — never borrow from the neighboring column. The role mapping (which side is buyer vs seller) is handled separately — your only job is to copy the name from the correct labeled box.
-For mlsBoardName: extract the MLS board or association name mentioned in the contract (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if not found.
 For licenseeSectionRaw: Find the agent/licensee block (typically the final section of a purchase agreement, showing two side-by-side agent columns). Extract it WITHOUT any role interpretation — just describe what is physically printed in each column:
 - leftColumn: everything in the LEFT/first column — the agent name, their email, their phone, and the column's printed label or header text (e.g., "Listing Licensee", "Selling Licensee", or similar). Set columnLabel to the label text you see printed for that column.
 - rightColumn: everything in the RIGHT/second column — same structure.
 Do NOT decide which column represents buyer or seller — just copy what is there. Return null for licenseeSectionRaw if no two-column agent section exists (e.g., the document is an LOI or addendum with no agent columns).
 For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330 "Principal Amount or LTV ___ ___". Return as a numeric percentage string (e.g., "3" for 3%). If written as a decimal less than 1 (e.g., ".03"), convert to percentage form (multiply by 100, return "3"). Return null if not found.
-For commission: extract the buyer's agent (client agent) commission amount — the dollar amount paid to the buyer's representative. Return as a numeric string without formatting (e.g., "4950" not "$4,950"). If only a percentage is stated (e.g., "3%"), return the raw percentage string (e.g., "3%") and the app will calculate the dollar amount. If both $ and % are present, prefer the $ amount.
-For propertyType: infer from property description. Default to "single-family".
-For titleCompany: extract the name of the title company or escrow company holding the earnest money. Look anywhere in the document for a line labeled "Deposited with:" — the company name filled in there is the title/escrow company. On Heartland MLS / Kansas City contracts, this appears in section 4.b (Earnest Money) or section 4.c (Additional Earnest Money). Return the company name only (e.g., "Alliance Title", "Security 1st Title"). Return null if not found.
-For emHeldWith: same as titleCompany — find the "Deposited with:" field anywhere in the earnest money section. On Heartland MLS / Kansas City contracts this is in section 4.b (NOT Para 5). Also look for lines labeled "Held by:", "Escrow Holder:", or "Deposited with:". Extract the name of the entity holding the earnest money — this is often a title company, escrow company, or the listing broker. Return null if not found.
 For buyerIsCompany / sellerIsCompany / buyerCompanyName / sellerCompanyName: If the buyer or seller field contains a business entity indicator (LLC, Inc., Corp., Ltd., L.L.C., LLP, LP, Co., Company, Trust, Holding, Holdings, Properties, Investments), set buyerIsCompany or sellerIsCompany=true and copy the FULL legal name into buyerCompanyName or sellerCompanyName. Set buyerNames/sellerNames to only the personal name if one appears alongside the company name (e.g., "John Smith / M&M LLC" → buyerNames="John Smith", buyerCompanyName="M&M LLC"). If only the company name appears with no person name, set buyerNames/sellerNames=null.
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
