@@ -625,7 +625,8 @@ const NewTemplateModal: React.FC<{
           </button>
         </div>
       </div>
-    </div>
+    </div>}
+  </div>
   );
 };
 
@@ -923,6 +924,7 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
           </div>
         )}
       </div>
-    </div>
+    </div>}
+  </div>
   );
 };
