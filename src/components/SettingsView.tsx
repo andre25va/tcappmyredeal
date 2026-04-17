@@ -23,6 +23,7 @@ import { MilestonesTab }           from './settings/MilestonesTab';
 import { OrgManagementTab }        from './settings/OrgManagementTab';
 import { ClientPortalTab }         from './settings/ClientPortalTab';
 import { MlsTemplatesTab }         from './settings/MlsTemplatesTab';
+import { ComplianceRulesTab }      from './settings/ComplianceRulesTab';
 import { Button } from './ui/Button';
 
 // -- Props
@@ -43,7 +44,7 @@ interface Props {
   onSaveDdMasterItems: (items: DDMasterItem[]) => void;
 }
 
-type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'org-management' | 'client-portal' | 'mls-templates';
+type SettingsTab = 'team' | 'reports' | 'email-templates' | 'compliance-checklist' | 'dd-checklist' | 'license-links' | 'briefing' | 'milestones' | 'org-management' | 'client-portal' | 'mls-templates' | 'compliance-rules';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
@@ -278,6 +279,7 @@ export const SettingsView: React.FC<Props> = ({
           { id: 'mls-templates' as SettingsTab,          label: 'MLS Templates',        icon: <LayoutTemplate size={14}/> },
           { id: 'dd-checklist' as SettingsTab,          label: 'Due Diligence',        icon: <ClipboardList size={14}/> },
           { id: 'compliance-checklist' as SettingsTab,  label: 'Compliance Checklist', icon: <Shield size={14}/> },
+          { id: 'compliance-rules' as SettingsTab,       label: 'Compliance Rules',     icon: <Shield size={14}/> },
           { id: 'reports' as SettingsTab,               label: 'CSV Reports',          icon: <FileDown size={14}/> },
           { id: 'client-portal' as SettingsTab,         label: 'Client Portal',        icon: <Globe size={14}/> },
         ].map(t => (
@@ -311,6 +313,7 @@ export const SettingsView: React.FC<Props> = ({
         {tab === 'briefing' && <BriefingConfigPanel />}
         {tab === 'milestones' && <MilestonesTab contactRecords={contactRecords} />}
         {tab === 'mls-templates' && <MlsTemplatesTab />}
+        {tab === 'compliance-rules' && <ComplianceRulesTab />}
         {tab === 'client-portal' && <ClientPortalTab />}
         {tab === 'reports' && (
           <div className="max-w-3xl mx-auto flex flex-col gap-5">
