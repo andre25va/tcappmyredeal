@@ -1368,6 +1368,37 @@ ${JSON.stringify(deals, null, 2)}`;
   return result;
 }
 
+
+// ── Signature Check Schema (PR #423) ─────────────────────────────────────────
+
+const signatureCheckSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    platform: { type: 'string', enum: ['docusign', 'dotloop', 'wetink', 'unknown'] },
+    fields: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          field_key: { type: 'string' },
+          page_num: { type: 'number' },
+          detected: { type: 'boolean' },
+          confidence: { type: 'number' },
+          party: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        },
+        required: ['field_key', 'page_num', 'detected', 'confidence', 'party'],
+      },
+    },
+    allSigned: { type: 'boolean' },
+    missingCount: { type: 'number' },
+    passedCount: { type: 'number' },
+    summary: { type: 'string' },
+  },
+  required: ['platform', 'fields', 'allSigned', 'missingCount', 'passedCount', 'summary'],
+};
+
 // ── Evaluate Rules Schema & Handler (Tier 3) ────────────────────────────────
 
 const triggeredRuleItemSchema = {
@@ -1413,6 +1444,108 @@ DEALS (${deals.length}):
 ${JSON.stringify(deals, null, 2)}`;
 
   return callOpenAI(apiKey, systemPrompt, userContent, evaluateRulesSchema, 'evaluate_rules_response', 'gpt-4o');
+}
+
+
+// ── Signature Check Handler (PR #423) ────────────────────────────────────────
+
+async function handleSignatureCheck(apiKey: string, body: any) {
+  const { dealId, formSlug, fileBase64, fileName } = body;
+  if (!fileBase64) throw new Error('Missing fileBase64');
+  if (!formSlug) throw new Error('Missing formSlug');
+
+  // Load expected signature/initial positions from field_coordinates
+  const { data: fields, error: dbErr } = await supabase
+    .from('field_coordinates')
+    .select('field_key, page_num, x, y, is_signature, is_initial, field_type')
+    .eq('form_slug', formSlug)
+    .or('is_signature.eq.true,is_initial.eq.true');
+
+  if (dbErr) throw new Error(`DB error: ${dbErr.message}`);
+
+  if (!fields || fields.length === 0) {
+    return {
+      platform: 'unknown',
+      fields: [],
+      allSigned: false,
+      missingCount: 0,
+      passedCount: 0,
+      summary: `No signature positions mapped for form "${formSlug}". Add coordinates to field_coordinates table to enable signature tracking.`,
+    };
+  }
+
+  // Build a clear description of each expected position for the AI
+  const fieldDesc = fields
+    .sort((a: any, b: any) => a.page_num - b.page_num || a.y - b.y)
+    .map((f: any) =>
+      `- field_key="${f.field_key}" | page ${f.page_num} | position x=${Math.round(f.x)}, y=${Math.round(f.y)} | type=${f.is_signature ? 'SIGNATURE' : 'INITIAL'}`
+    )
+    .join('\n');
+
+  const systemPrompt = `You are examining a real estate contract PDF for signature and initial compliance using vision mode.
+
+PLATFORM DETECTION — identify from page 1 visual style:
+- "docusign": yellow DocuSign stamp with signer name, or "/s/ Name" text, or DocuSign audit certificate page
+- "dotloop": signature image printed on dotted-line field, DotLoop watermark/footer visible
+- "wetink": handwritten name or initials on blank signature line, no digital platform visible
+- "unknown": cannot determine
+
+SIGNATURE/INITIAL DETECTION RULES — for each listed field position:
+- Return detected=true if ANY of these are present at or near the specified (x,y) coordinate on the given page:
+  * Handwritten marks, cursive name, or initials
+  * Typed name or "/s/ Name" text
+  * DocuSign yellow stamp or signature image
+  * DotLoop signature image on the field line
+  * Any ink marks or digital signature element in the field area
+- Return detected=false ONLY if the field area is completely blank with nothing on it
+- Use the x,y coordinate (PDF points, origin top-left) to locate each field on the page
+- confidence: 0.0-1.0 reflecting how certain you are about each field's status
+- party: infer from field_key (e.g. "seller_initial_1" → "Seller", "buyer_initial_2" → "Buyer", null if unclear)
+
+Be thorough. A single mark counts as signed. Only return false for truly empty blank lines.`;
+
+  const sigCheckUrl = 'https://api.openai.com/v1/chat/completions';
+  const sigCheckBody = {
+    model: 'gpt-4o',
+    temperature: 0,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          { type: 'file', file: { filename: fileName || 'contract.pdf', file_data: 'data:application/pdf;base64,' + fileBase64 } },
+          { type: 'text', text: 'Check these ' + fields.length + ' signature/initial positions in the document:\n\n' + fieldDesc + '\n\nReturn EXACTLY one entry per field_key listed above.' },
+        ],
+      },
+    ],
+    response_format: { type: 'json_schema', json_schema: { name: 'signature_check', strict: true, schema: signatureCheckSchema } },
+  };
+  const res = await fetch(sigCheckUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+    body: JSON.stringify(sigCheckBody),
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || 'OpenAI API error');
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content in OpenAI response');
+  const result = JSON.parse(content);
+
+  // Save to compliance_checks if dealId provided
+  if (dealId) {
+    await supabase.from('compliance_checks').insert({
+      deal_id: dealId,
+      run_by: null,
+      passed_count: result.passedCount,
+      warning_count: 0,
+      violation_count: result.missingCount,
+      results: result,
+      notes: 'Signature check — ' + result.platform + ' — ' + (result.allSigned ? 'All signed' : result.missingCount + ' missing'),
+    }).select().single();
+  }
+
+  return result;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1477,6 +1610,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'portfolio-report':
         result = await handlePortfolioReport(apiKey, req.body);
+        break;
+      case 'signature-check':
+        result = await handleSignatureCheck(apiKey, req.body);
         break;
       case 'evaluate-rules':
         result = await handleEvaluateRules(apiKey, req.body);

@@ -6,6 +6,7 @@ import {
 import { Deal } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { WorkspaceSignatureMap } from './WorkspaceSignatureMap';
 import { useDealEmails } from '../hooks/useDealEmails';
 
 /* ─── Types ─── */
@@ -372,6 +373,10 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
               )}
             </div>
           )}
+
+          {/* ─── Signature Map ─── */}
+          <div className="divider text-xs text-base-content/40">Signature Verification</div>
+          <WorkspaceSignatureMap deal={deal} />
 
           {/* ─── PDF Export placeholder ─── */}
           <div className="flex justify-end pt-1">
