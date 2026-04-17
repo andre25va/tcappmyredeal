@@ -3,7 +3,7 @@ import {
   Plus, Pencil, Trash2, X, Save, Globe, MapPin,
   FileText, ArrowLeft, Link, StickyNote,
   FilePlus, CheckCircle2, Circle, MoreVertical,
-  Upload, Loader2, Paperclip,
+  Upload, Loader2, Paperclip, Copy,
 } from 'lucide-react';
 import { MlsEntry, MlsDocument } from '../types';
 // generateId removed - using crypto.randomUUID() for UUID-compatible IDs
@@ -58,6 +58,8 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
   const [editingDoc, setEditingDoc]       = useState<MlsDocument | null>(null);
   const [docForm, setDocForm]             = useState<Omit<MlsDocument, 'id'>>(emptyDoc());
   const [deleteDocId, setDeleteDocId]     = useState<string | null>(null);
+  const [copyDocId, setCopyDocId]         = useState<string | null>(null);
+  const [copyTargetId, setCopyTargetId]   = useState<string>('');
 
   // PDF template upload state
   const [pdfUploading, setPdfUploading]   = useState(false);
@@ -155,6 +157,20 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
     };
     onUpdate(mls.map(m => m.id === updated.id ? updated : m));
     setDeleteDocId(null);
+  };
+
+  /* ── Copy Document to another MLS ── */
+  const copyDocToMls = () => {
+    if (!copyDocId || !copyTargetId || !selectedEntry) return;
+    const doc = selectedEntry.documents.find(d => d.id === copyDocId);
+    if (!doc) return;
+    const target = mls.find(m => m.id === copyTargetId);
+    if (!target) return;
+    const newDoc: MlsDocument = { ...doc, id: crypto.randomUUID() };
+    const updatedTarget = { ...target, documents: [...(target.documents ?? []), newDoc] };
+    onUpdate(mls.map(m => m.id === updatedTarget.id ? updatedTarget : m));
+    setCopyDocId(null);
+    setCopyTargetId('');
   };
 
   /* ── PDF Template Upload ── */
@@ -446,6 +462,13 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
                         <Pencil size={11} />
                       </button>
                       <button
+                        onClick={() => { setCopyDocId(doc.id); setCopyTargetId(''); }}
+                        className="btn btn-ghost btn-xs btn-square text-primary hover:bg-primary/10"
+                        title="Copy to another MLS"
+                      >
+                        <Copy size={11} />
+                      </button>
+                      <button
                         onClick={() => setDeleteDocId(doc.id)}
                         className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
                       >
@@ -661,6 +684,59 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
           </div>
         </div>
       )}
+
+      {/* ── Copy Document to MLS Modal ── */}
+      {copyDocId && selectedEntry && (() => {
+        const doc = selectedEntry.documents.find(d => d.id === copyDocId);
+        const otherMls = mls.filter(m => m.id !== selectedEntry.id);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-sm flex flex-col">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-base-300">
+                <div>
+                  <h2 className="font-bold text-sm">Copy Form to Another MLS</h2>
+                  <p className="text-xs text-base-content/40 mt-0.5 truncate max-w-[240px]">{doc?.name}</p>
+                </div>
+                <button onClick={() => setCopyDocId(null)} className="btn btn-ghost btn-xs btn-square">
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="px-6 py-5">
+                {otherMls.length === 0 ? (
+                  <p className="text-sm text-base-content/50 text-center py-4">No other MLS boards to copy to. Add one first.</p>
+                ) : (
+                  <div>
+                    <label className="label label-text text-xs font-semibold mb-1">Select destination MLS</label>
+                    <select
+                      value={copyTargetId}
+                      onChange={e => setCopyTargetId(e.target.value)}
+                      className="select select-bordered select-sm w-full"
+                    >
+                      <option value="">Choose MLS…</option>
+                      {otherMls.map(m => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.state})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-base-content/40 mt-2">
+                      The form name, category, notes, required flag, and template PDF will all be copied.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 px-6 py-4 border-t border-base-300">
+                <button onClick={() => setCopyDocId(null)} className="btn btn-ghost btn-sm">Cancel</button>
+                <button
+                  onClick={copyDocToMls}
+                  disabled={!copyTargetId}
+                  className="btn btn-primary btn-sm gap-2"
+                >
+                  <Copy size={13} /> Copy Form
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Delete MLS Entry Confirm ── */}
       <ConfirmModal
