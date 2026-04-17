@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Plus, Pencil, Trash2, X, Save, Globe, MapPin,
   FileText, ArrowLeft, Link, StickyNote,
   FilePlus, CheckCircle2, Circle, MoreVertical,
+  Upload, Loader2, Paperclip,
 } from 'lucide-react';
 import { MlsEntry, MlsDocument } from '../types';
 // generateId removed - using crypto.randomUUID() for UUID-compatible IDs
 import { ConfirmModal } from './ConfirmModal';
 import { Button } from './ui/Button';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   mls: MlsEntry[];
@@ -40,7 +42,7 @@ const emptyEntry = (): Omit<MlsEntry, 'id' | 'createdAt' | 'documents'> => ({
 });
 
 const emptyDoc = (): Omit<MlsDocument, 'id'> => ({
-  name: '', category: 'listing', required: false, notes: '',
+  name: '', category: 'listing', required: false, notes: '', template_pdf_path: null,
 });
 
 export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
@@ -54,8 +56,13 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
 
   const [showDocModal, setShowDocModal]   = useState(false);
   const [editingDoc, setEditingDoc]       = useState<MlsDocument | null>(null);
-  const [docForm, setDocForm]             = useState(emptyDoc());
+  const [docForm, setDocForm]             = useState<Omit<MlsDocument, 'id'>>(emptyDoc());
   const [deleteDocId, setDeleteDocId]     = useState<string | null>(null);
+
+  // PDF template upload state
+  const [pdfUploading, setPdfUploading]   = useState(false);
+  const [pdfError, setPdfError]           = useState<string | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   const allStates = Array.from(new Set(mls.map(m => m.state).filter(Boolean))).sort();
   const filtered  = stateFilter === 'all' ? mls : mls.filter(m => m.state === stateFilter);
@@ -98,11 +105,19 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
   const openAddDoc = () => {
     setEditingDoc(null);
     setDocForm(emptyDoc());
+    setPdfError(null);
     setShowDocModal(true);
   };
   const openEditDoc = (doc: MlsDocument) => {
     setEditingDoc(doc);
-    setDocForm({ name: doc.name, category: doc.category, required: doc.required, notes: doc.notes ?? '' });
+    setDocForm({
+      name: doc.name,
+      category: doc.category,
+      required: doc.required,
+      notes: doc.notes ?? '',
+      template_pdf_path: doc.template_pdf_path ?? null,
+    });
+    setPdfError(null);
     setShowDocModal(true);
   };
   const saveDoc = () => {
@@ -140,6 +155,43 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
     };
     onUpdate(mls.map(m => m.id === updated.id ? updated : m));
     setDeleteDocId(null);
+  };
+
+  /* ── PDF Template Upload ── */
+  const handlePdfUpload = async (file: File) => {
+    if (!selectedEntry) return;
+    if (file.type !== 'application/pdf') {
+      setPdfError('Please upload a PDF file.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setPdfError('File too large (max 20MB).');
+      return;
+    }
+
+    setPdfUploading(true);
+    setPdfError(null);
+
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${selectedEntry.id}/${crypto.randomUUID()}/${safeName}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from('form-templates')
+        .upload(storagePath, file, { upsert: true });
+
+      if (uploadErr) throw new Error(uploadErr.message);
+
+      setDocForm(f => ({ ...f, template_pdf_path: storagePath }));
+    } catch (err: any) {
+      setPdfError(err?.message || 'Upload failed. Try again.');
+    } finally {
+      setPdfUploading(false);
+    }
+  };
+
+  const handleRemoveTemplate = () => {
+    setDocForm(f => ({ ...f, template_pdf_path: null }));
   };
 
   /* ── Render ── */
@@ -299,7 +351,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
               <div>
                 <h3 className="font-semibold text-sm text-base-content">Required Documents & PDF Forms</h3>
                 <p className="text-xs text-base-content/40 mt-0.5">
-                  Forms required by this MLS for transactions — used to auto-populate new deal checklists
+                  Forms required by this MLS — upload blank PDF templates to improve AI extraction accuracy
                 </p>
               </div>
               <button onClick={openAddDoc} className="btn btn-primary btn-sm gap-1">
@@ -322,6 +374,11 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
                 <div className="badge badge-error badge-sm gap-1 ml-auto">
                   Required: {selectedEntry.documents.filter(d => d.required).length}
                 </div>
+                {selectedEntry.documents.some(d => d.template_pdf_path) && (
+                  <div className="badge badge-success badge-sm gap-1">
+                    <Paperclip size={9} /> Templates: {selectedEntry.documents.filter(d => d.template_pdf_path).length}
+                  </div>
+                )}
               </div>
             )}
 
@@ -367,9 +424,20 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
                         {doc.required && (
                           <span className="badge badge-error badge-xs">Required</span>
                         )}
+                        {doc.template_pdf_path && (
+                          <span className="badge badge-success badge-xs gap-0.5" title="Blank template PDF uploaded — AI will use this as a reference during extraction">
+                            <Paperclip size={9} /> Template
+                          </span>
+                        )}
                       </div>
                       {doc.notes && (
                         <p className="text-xs text-base-content/50 mt-1">{doc.notes}</p>
+                      )}
+                      {doc.template_pdf_path && (
+                        <p className="text-xs text-success/70 mt-1 flex items-center gap-1">
+                          <Paperclip size={10} />
+                          Blank template uploaded — AI uses this for extraction reference
+                        </p>
                       )}
                     </div>
 
@@ -521,12 +589,70 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
                   <p className="text-xs text-base-content/40 mt-0.5">Required forms trigger an alert if missing from a deal</p>
                 </div>
               </label>
+
+              {/* ── Blank Template PDF Upload ── */}
+              <div className="border border-base-300 rounded-xl p-4 bg-base-200/40">
+                <div className="flex items-start gap-2 mb-3">
+                  <Paperclip size={14} className="text-primary mt-0.5 flex-none" />
+                  <div>
+                    <p className="text-xs font-semibold text-base-content">Blank Template PDF</p>
+                    <p className="text-xs text-base-content/50 mt-0.5">
+                      Upload the blank form so the AI can use it as a reference map during contract extraction
+                    </p>
+                  </div>
+                </div>
+
+                {docForm.template_pdf_path ? (
+                  <div className="flex items-center gap-2 p-2 bg-success/10 border border-success/30 rounded-lg">
+                    <Paperclip size={13} className="text-success flex-none" />
+                    <span className="text-xs text-success font-medium flex-1 truncate">
+                      Template uploaded ✓
+                    </span>
+                    <button
+                      onClick={handleRemoveTemplate}
+                      className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                      title="Remove template"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={pdfInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handlePdfUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <button
+                      onClick={() => pdfInputRef.current?.click()}
+                      disabled={pdfUploading}
+                      className="btn btn-outline btn-sm gap-2 w-full"
+                    >
+                      {pdfUploading ? (
+                        <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+                      ) : (
+                        <><Upload size={13} /> Upload Blank PDF Template</>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {pdfError && (
+                  <p className="text-xs text-error mt-2">{pdfError}</p>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-base-300">
               <Button variant="ghost" onClick={() => setShowDocModal(false)}>Cancel</Button>
               <button
                 onClick={saveDoc}
-                disabled={!docForm.name.trim()}
+                disabled={!docForm.name.trim() || pdfUploading}
                 className="btn btn-primary btn-sm gap-2"
               >
                 <Save size={13} /> {editingDoc ? 'Save Changes' : 'Add Form'}

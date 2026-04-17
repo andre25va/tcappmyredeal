@@ -840,7 +840,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const res = await fetch('/api/ai?action=extract-deal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
+        body: JSON.stringify({ fileBase64: base64, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
       });
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
