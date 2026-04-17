@@ -24,6 +24,7 @@ import { ComplianceTemplate, ComplianceTemplateItem, ContactRecord } from '../ty
 import { generateId } from '../utils/helpers';
 import { ConfirmModal } from './ConfirmModal';
 import { Button } from './ui/Button';
+import { ComplianceDashboard } from './ComplianceDashboard';
 
 interface Props {
   templates: ComplianceTemplate[];
@@ -31,6 +32,7 @@ interface Props {
   deals: { agentClientId?: string }[];
   onSave: (templates: ComplianceTemplate[]) => void;
   masterItems?: import('../types').ComplianceMasterItem[];
+  onOpenDeal?: (dealId: string) => void;
 }
 
 /* ─── Inline rename input ─────────────────────────────────────── */
@@ -59,6 +61,7 @@ const RenameInput: React.FC<{
       <Button variant="ghost" size="xs" square className="text-success" onClick={() => onCommit(v.trim())}><Check size={12} /></Button>
       <Button variant="ghost" size="xs" square className="text-error" onClick={onCancel}><X size={12} /></Button>
     </div>
+      </div>}
   );
 };
 
@@ -627,7 +630,8 @@ const NewTemplateModal: React.FC<{
 };
 
 /* ─── Main ComplianceManager ──────────────────────────────────── */
-export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, deals, onSave, masterItems = [] }) => {
+export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, deals, onSave, masterItems = [], onOpenDeal }) => {
+  const [activeTab, setActiveTab] = useState<'templates' | 'dashboard'>('templates');
   const [selectedId, setSelectedId] = useState<string | null>(
     templates.length > 0 ? templates[0].id : null
   );
@@ -718,7 +722,38 @@ export const ComplianceManager: React.FC<Props> = ({ templates, agentClients, de
   };
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* ── Tab Header ───────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-base-300 bg-base-100 flex-none">
+        <button
+          onClick={() => setActiveTab('templates')}
+          className={`btn btn-sm gap-1.5 ${activeTab === 'templates' ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          📋 Templates
+        </button>
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`btn btn-sm gap-1.5 ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          🛡 Dashboard
+        </button>
+      </div>
+
+      {/* ── Dashboard tab ────────────────────────────────────────── */}
+      {activeTab === 'dashboard' && (
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="max-w-5xl mx-auto">
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-sm font-bold text-base-content">Compliance Dashboard</h2>
+              <span className="text-xs text-base-content/40">— Latest AI compliance check per deal</span>
+            </div>
+            <ComplianceDashboard onOpenDeal={onOpenDeal} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Templates tab ────────────────────────────────────────── */}
+      {activeTab === 'templates' && <div className="flex flex-1 min-h-0 overflow-hidden">
       {showNewModal && (
         <NewTemplateModal
           onConfirm={handleCreate}

@@ -735,6 +735,13 @@ function AppInner() {
                 agentClients={agentClients}
                 deals={deals.map(d => ({ agentClientId: d.agentClientId }))}
                 masterItems={complianceMasterItems}
+                onOpenDeal={(dealId) => {
+                  setPendingWorkspaceTab('compliance');
+                  setPendingWorkspaceRequestType(null);
+                  setSelectedId(dealId);
+                  setTxPanel('workspace');
+                  setView('transactions');
+                }}
               />
             </div>
           )}
