@@ -1125,6 +1125,7 @@ For buyerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Selling
 For sellerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Listing Licensee". Copy the personal name (first + last, not brokerage). Return null if not found.
 HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — "Listing Licensee" (seller's agent) and "Selling Licensee" (buyer's agent). Each column is self-contained. Extract the name from WITHIN each column only — never cross columns.
 For mlsBoard: extract the MLS board or association name (e.g., "Heartland MLS", "KCRAR"). Return null if not found.
+For loanType: look for checked checkboxes or explicit text indicating financing type. Common indicators: "Conventional", "FHA", "VA Loan", "USDA", "Cash", "Other Financing". On KS/Heartland contracts check the financing section (often Para 3 or 4). Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return null if not found.
 For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330. Return as numeric percentage string (e.g., "3" for 3%). Return null if not found.
 For propertyType: infer from property description. Default to "single-family".
 For contractType: "residential_sale_contract" for standard purchase agreements, "loi" for letters of intent, "addendum" for addendums, "other" for anything else.
