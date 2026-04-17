@@ -245,6 +245,7 @@ export interface MlsDocument {
   category: 'listing' | 'disclosure' | 'addendum' | 'contract' | 'compliance' | 'other';
   required: boolean;
   notes?: string;
+  template_pdf_path?: string | null;
 }
 
 export interface MlsEntry {

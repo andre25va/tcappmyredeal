@@ -1083,8 +1083,39 @@ ${JSON.stringify(existingCompTitles || [], null, 2)}`;
 // ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
 
 async function handleExtractDeal(apiKey: string, body: any) {
-  const { fileBase64, fileName } = body;
+  const { fileBase64, fileName, mlsId } = body;
   if (!fileBase64) throw new Error('Missing fileBase64');
+
+  // ── Optionally fetch blank reference template from MLS directory ─────────
+  let templateBase64: string | null = null;
+  let templateName: string | null = null;
+  if (mlsId) {
+    try {
+      const { data: mlsData } = await supabase
+        .from('mls_entries')
+        .select('documents')
+        .eq('id', mlsId)
+        .single();
+      if (mlsData?.documents) {
+        const contractDoc = (mlsData.documents as any[]).find(
+          (d: any) => d.category === 'contract' && d.template_pdf_path
+        );
+        if (contractDoc?.template_pdf_path) {
+          const { data: fileBlob } = await supabase.storage
+            .from('form-templates')
+            .download(contractDoc.template_pdf_path);
+          if (fileBlob) {
+            const arrayBuffer = await fileBlob.arrayBuffer();
+            templateBase64 = Buffer.from(arrayBuffer).toString('base64');
+            templateName = contractDoc.name || 'reference-template.pdf';
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal — proceed without template
+      console.warn('[extract-deal] Template fetch failed, extracting without reference:', e);
+    }
+  }
 
   const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
 
@@ -1134,6 +1165,35 @@ Set confidence 0.0-1.0 based on how clearly the document is a real estate purcha
 Set extractedFields to an array of field names that had non-null values found.
 Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.`;
 
+  // Build user content array — prepend blank template if available
+  const userContent: any[] = [];
+  if (templateBase64 && templateName) {
+    userContent.push({
+      type: 'file',
+      file: {
+        filename: `BLANK_TEMPLATE_${templateName.replace(/[^a-zA-Z0-9._-]/g, '_')}.pdf`,
+        file_data: `data:application/pdf;base64,${templateBase64}`,
+      },
+    });
+    userContent.push({
+      type: 'text',
+      text: 'The FIRST PDF above is a BLANK REFERENCE TEMPLATE (for field location reference only — do not extract values from it). The SECOND PDF below is the actual filled contract to extract data from.',
+    });
+  }
+  userContent.push({
+    type: 'file',
+    file: {
+      filename: fileName || 'contract.pdf',
+      file_data: `data:application/pdf;base64,${fileBase64}`,
+    },
+  });
+  userContent.push({
+    type: 'text',
+    text: templateBase64
+      ? 'Extract all real estate transaction details from the FILLED CONTRACT (second PDF above). Use the blank template (first PDF) only as a field location and label reference.'
+      : 'Extract all real estate transaction details from this document.',
+  });
+
   const res = await fetch(OPENAI_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -1144,16 +1204,7 @@ Set fieldScores to an array of { field, score } objects where score is 0.0–1.0
         { role: 'system', content: systemPrompt },
         {
           role: 'user',
-          content: [
-            {
-              type: 'file',
-              file: {
-                filename: fileName || 'contract.pdf',
-                file_data: `data:application/pdf;base64,${fileBase64}`,
-              },
-            },
-            { type: 'text', text: 'Extract all real estate transaction details from this document.' },
-          ],
+          content: userContent,
         },
       ],
       response_format: {
