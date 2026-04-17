@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Shield, CheckCircle, AlertTriangle, XCircle,
-  RefreshCw, Clock, Download, ChevronDown, ChevronUp,
+  RefreshCw, Clock, Download, ChevronDown, ChevronUp, Info,
 } from 'lucide-react';
 import { Deal } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -10,12 +10,23 @@ import { WorkspaceSignatureMap } from './WorkspaceSignatureMap';
 import { useDealEmails } from '../hooks/useDealEmails';
 
 /* ─── Types ─── */
-interface ComplianceResult {
+interface RuleResult {
+  rule_id: string;
   rule_code: string;
   rule_name: string;
+  description: string | null;
   severity: 'error' | 'warning' | 'info';
-  passed: boolean;
-  message: string;
+  check_type: string;
+  status: 'pass' | 'warning' | 'fail';
+  detail: string;
+}
+
+interface ComplianceCheckResults {
+  rules?: RuleResult[];
+  has_extraction?: boolean;
+  has_signature_check?: boolean;
+  // Legacy AI format (pre-PR#425) — for backward compat
+  [key: string]: any;
 }
 
 interface ComplianceCheck {
@@ -28,62 +39,36 @@ interface ComplianceCheck {
   passed_count: number;
   warning_count: number;
   violation_count: number;
-  results: ComplianceResult[];
+  results: ComplianceCheckResults;
 }
 
 interface Props {
   deal: Deal;
 }
 
-/* ─── Map old AI response → compliance_checks row ─── */
-function mapAiResponseToCheck(
-  dealId: string,
-  dealState: string | null,
-  aiResponse: { status: string; missingItems: string[]; inconsistentItems: string[]; notes: string[]; summary: string },
-): Omit<ComplianceCheck, 'id'> {
-  const results: ComplianceResult[] = [];
+/* ─── Helper: extract rules from check (handles both new + legacy format) ─── */
+function extractRules(check: ComplianceCheck | null): RuleResult[] {
+  if (!check) return [];
+  const results = check.results || {};
 
-  aiResponse.missingItems.forEach((item, i) => {
-    results.push({
-      rule_code: `MISSING_${i}`,
-      rule_name: item,
-      severity: 'error',
-      passed: false,
-      message: item,
-    });
-  });
+  // New format from run-compliance edge function
+  if (Array.isArray(results.rules)) return results.rules;
 
-  aiResponse.inconsistentItems.forEach((item, i) => {
-    results.push({
-      rule_code: `INCONSISTENT_${i}`,
-      rule_name: item,
-      severity: 'warning',
-      passed: false,
-      message: item,
-    });
-  });
+  // Legacy AI format: results was an array directly
+  if (Array.isArray(results)) {
+    return (results as any[]).map((r: any, i: number) => ({
+      rule_id: `legacy_${i}`,
+      rule_code: r.rule_code || `RULE_${i}`,
+      rule_name: r.rule_name || r.message || 'Rule',
+      description: null,
+      severity: r.severity || 'warning',
+      check_type: 'custom',
+      status: r.passed ? 'pass' : r.severity === 'error' ? 'fail' : 'warning',
+      detail: r.message || '',
+    }));
+  }
 
-  aiResponse.notes.forEach((note, i) => {
-    results.push({
-      rule_code: `NOTE_${i}`,
-      rule_name: note,
-      severity: 'info',
-      passed: true,
-      message: note,
-    });
-  });
-
-  return {
-    deal_id: dealId,
-    run_at: new Date().toISOString(),
-    state: dealState,
-    form_type: null,
-    total_rules_checked: results.length,
-    passed_count: results.filter(r => r.passed).length,
-    warning_count: aiResponse.inconsistentItems.length,
-    violation_count: aiResponse.missingItems.length,
-    results,
-  };
+  return [];
 }
 
 /* ─── Component ─── */
@@ -92,7 +77,7 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
   const { emails } = useDealEmails(deal);
   const [showHistory, setShowHistory] = useState(false);
 
-  /* Fetch latest compliance check */
+  /* Fetch latest compliance check (exclude signature-only checks) */
   const { data: latestCheck, isLoading: loadingCheck } = useQuery<ComplianceCheck | null>({
     queryKey: ['compliance-check', deal.id],
     queryFn: async () => {
@@ -101,10 +86,14 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
         .select('*')
         .eq('deal_id', deal.id)
         .order('run_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
       if (error) throw error;
-      return data as ComplianceCheck | null;
+      // Find the first check that has a rules array (not just signature data)
+      const checkWithRules = (data || []).find((c: any) => {
+        const r = c.results || {};
+        return Array.isArray(r.rules) || Array.isArray(r);
+      });
+      return (checkWithRules as ComplianceCheck) ?? null;
     },
   });
 
@@ -114,45 +103,28 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('compliance_checks')
-        .select('id, run_at, violation_count, warning_count, passed_count, total_rules_checked')
+        .select('id, run_at, violation_count, warning_count, passed_count, total_rules_checked, results')
         .eq('deal_id', deal.id)
         .order('run_at', { ascending: false })
         .limit(10);
       if (error) throw error;
-      return data ?? [];
+      // Only show compliance (not signature-only) checks in history
+      return (data ?? []).filter((c: any) => {
+        const r = c.results || {};
+        return Array.isArray(r.rules) || Array.isArray(r);
+      });
     },
   });
 
-  /* Run compliance check */
+  /* Run compliance check via edge function */
   const runCheckMutation = useMutation({
     mutationFn: async () => {
-      const relatedThreads = emails.slice(0, 10).map(e => ({
-        threadId: e.threadId,
-        latest: { subject: e.subject, from: e.from, receivedAt: e.receivedAt, snippet: e.snippet || '' },
-      }));
-
-      const res = await fetch('/api/ai?action=compliance-precheck', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deal, relatedThreads }),
+      const { data, error } = await supabase.functions.invoke('run-compliance', {
+        body: { deal_id: deal.id },
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Compliance check failed' }));
-        throw new Error(err.error || 'Compliance check failed');
-      }
-
-      const aiResponse = await res.json();
-      const checkData = mapAiResponseToCheck(deal.id, deal.state || null, aiResponse);
-
-      const { data: saved, error } = await supabase
-        .from('compliance_checks')
-        .insert([checkData])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return saved as ComplianceCheck;
+      if (error) throw new Error(error.message || 'Compliance check failed');
+      if (data?.error) throw new Error(data.error);
+      return data?.check as ComplianceCheck;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['compliance-check', deal.id] });
@@ -161,21 +133,31 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
   });
 
   /* Derived state */
-  const results: ComplianceResult[] = latestCheck?.results ?? [];
-  const violations = results.filter(r => !r.passed && r.severity === 'error');
-  const warnings = results.filter(r => !r.passed && r.severity === 'warning');
-  const passed = results.filter(r => r.passed);
+  const rules = extractRules(latestCheck ?? null);
+  const violations = rules.filter(r => r.status === 'fail');
+  const warnings = rules.filter(r => r.status === 'warning');
+  const passed = rules.filter(r => r.status === 'pass');
+
   const overallStatus =
     violations.length > 0 ? 'fail'
     : warnings.length > 0 ? 'watch'
     : latestCheck ? 'pass'
     : null;
 
+  const hasExtractionData = latestCheck?.results?.has_extraction ?? false;
+  const hasSigCheck = latestCheck?.results?.has_signature_check ?? false;
+
   const fmt = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit',
     });
+
+  const severityIcon = (s: 'error' | 'warning' | 'info') => {
+    if (s === 'error') return <XCircle size={14} className="text-error flex-none mt-0.5" />;
+    if (s === 'warning') return <AlertTriangle size={14} className="text-warning flex-none mt-0.5" />;
+    return <Info size={14} className="text-info flex-none mt-0.5" />;
+  };
 
   return (
     <div className="p-5 space-y-5 max-w-4xl">
@@ -219,6 +201,14 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
         </div>
       </div>
 
+      {/* ─── Context banner: no extraction data ─── */}
+      {latestCheck && !hasExtractionData && (
+        <div className="alert alert-info text-xs py-2 px-3">
+          <Info size={13} />
+          <span>Compliance check is based on deal fields only. Upload &amp; extract a contract for deeper AI-powered field analysis.</span>
+        </div>
+      )}
+
       {/* ─── Error ─── */}
       {runCheckMutation.isError && (
         <div className="alert alert-error text-sm">
@@ -243,7 +233,7 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
           <div>
             <p className="font-semibold text-base-content/60 text-sm">No compliance check run yet</p>
             <p className="text-xs text-base-content/40 mt-1 max-w-xs mx-auto">
-              Upload a contract and extract data first, then run a compliance check to detect issues.
+              Run a check to validate required fields, dates, and signatures against your compliance rules.
             </p>
           </div>
           <button
@@ -275,7 +265,7 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
           </div>
 
           {/* Results detail */}
-          {results.length > 0 && (
+          {rules.length > 0 && (
             <div className="space-y-4">
               {/* Violations */}
               {violations.length > 0 && (
@@ -285,11 +275,14 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
                   </p>
                   {violations.map(r => (
                     <div key={r.rule_code} className="flex items-start gap-2.5 p-3 bg-error/5 border border-error/20 rounded-lg">
-                      <XCircle size={14} className="text-error flex-none mt-0.5" />
+                      {severityIcon(r.severity)}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-base-content">{r.rule_name}</p>
-                        {r.message !== r.rule_name && (
-                          <p className="text-xs text-base-content/60 mt-0.5">{r.message}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-base-content">{r.rule_name}</p>
+                          <span className="font-mono text-[10px] text-base-content/30 bg-base-300 px-1.5 py-0.5 rounded">{r.rule_code}</span>
+                        </div>
+                        {r.detail && r.detail !== r.rule_name && (
+                          <p className="text-xs text-base-content/60 mt-0.5">{r.detail}</p>
                         )}
                       </div>
                     </div>
@@ -305,11 +298,14 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
                   </p>
                   {warnings.map(r => (
                     <div key={r.rule_code} className="flex items-start gap-2.5 p-3 bg-warning/5 border border-warning/20 rounded-lg">
-                      <AlertTriangle size={14} className="text-warning flex-none mt-0.5" />
+                      {severityIcon(r.severity)}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-base-content">{r.rule_name}</p>
-                        {r.message !== r.rule_name && (
-                          <p className="text-xs text-base-content/60 mt-0.5">{r.message}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-base-content">{r.rule_name}</p>
+                          <span className="font-mono text-[10px] text-base-content/30 bg-base-300 px-1.5 py-0.5 rounded">{r.rule_code}</span>
+                        </div>
+                        {r.detail && r.detail !== r.rule_name && (
+                          <p className="text-xs text-base-content/60 mt-0.5">{r.detail}</p>
                         )}
                       </div>
                     </div>
@@ -317,16 +313,22 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
                 </div>
               )}
 
-              {/* Notes / Passed */}
+              {/* Passed */}
               {passed.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-success uppercase tracking-wide flex items-center gap-1.5">
-                    <CheckCircle size={12} /> Passed / Notes ({passed.length})
+                    <CheckCircle size={12} /> Passed ({passed.length})
                   </p>
                   {passed.map(r => (
                     <div key={r.rule_code} className="flex items-start gap-2.5 p-3 bg-base-200 border border-base-300 rounded-lg">
                       <CheckCircle size={14} className="text-success flex-none mt-0.5" />
-                      <p className="text-sm text-base-content/70">{r.message}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-base-content/70">{r.rule_name}</p>
+                          <span className="font-mono text-[10px] text-base-content/25 bg-base-300 px-1.5 py-0.5 rounded">{r.rule_code}</span>
+                        </div>
+                        {r.detail && <p className="text-xs text-base-content/40 mt-0.5">{r.detail}</p>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -334,7 +336,7 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
             </div>
           )}
 
-          {results.length === 0 && (
+          {rules.length === 0 && (
             <div className="text-center py-6 text-sm text-base-content/40">
               No detailed results available for this check.
             </div>
