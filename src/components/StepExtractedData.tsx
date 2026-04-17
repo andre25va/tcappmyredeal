@@ -303,6 +303,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
       : typeof confidenceRaw === 'string' ? (confidenceRaw as any)
       : undefined;
 
+  // Per-field confidence scores from AI
+  const fieldScoreMap = React.useMemo<Record<string, number>>(() => {
+    const raw = (extractedData as any)?.fieldScores;
+    if (!Array.isArray(raw)) return {};
+    const map: Record<string, number> = {};
+    raw.forEach((item: { field: string; score: number }) => {
+      if (item?.field) map[item.field] = item.score;
+    });
+    return map;
+  }, [extractedData]);
+
   const foundCount = FIELD_DEFS.filter(({ key }) => {
     const raw = extractedData?.[key];
     return raw !== null && raw !== undefined && raw !== '';
@@ -491,6 +502,18 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                             {!wasFound && (
                               <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
                             )}
+                            {wasFound && fieldScoreMap[field.key] !== undefined && (() => {
+                              const s = fieldScoreMap[field.key];
+                              const color = s >= 0.8 ? 'bg-green-400' : s >= 0.5 ? 'bg-amber-400' : 'bg-red-400';
+                              const label = s >= 0.8 ? 'High confidence' : s >= 0.5 ? 'Medium confidence — review' : 'Low confidence — verify manually';
+                              const pct = Math.round(s * 100);
+                              return (
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full flex-none ${color}`}
+                                  title={`${label} (${pct}%)`}
+                                />
+                              );
+                            })()}
                           </div>
                           {field.hint && (
                             <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>
