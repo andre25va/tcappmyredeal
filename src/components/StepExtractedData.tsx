@@ -581,15 +581,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
                           {field.type === 'money' && (
                             <div className="relative">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-base-content/40 pointer-events-none">$</span>
+                              {currentVal && (
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-base-content/40 pointer-events-none">$</span>
+                              )}
                               <input
                                 type="number"
                                 value={currentVal}
                                 onChange={e => setValue(field.key, e.target.value)}
-                                className="input input-sm input-bordered w-full pl-6 text-sm"
+                                className={`input input-sm input-bordered w-full text-sm ${currentVal ? 'pl-6' : ''}`}
                                 min="0"
                                 step="0.01"
-                                placeholder="0.00"
+                                placeholder={!wasFound ? 'Not found — type to fill in' : '0.00'}
                               />
                             </div>
                           )}
