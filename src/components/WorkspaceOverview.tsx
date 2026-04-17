@@ -44,7 +44,7 @@ interface CallStartedData {
   startedAt: string;
 }
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; onGoToRequests?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; contactRecords?: ContactRecord[]; onGoToContacts?: () => void; editTrigger?: number; onGoToEmails?: () => void; onGoToRequests?: () => void; onGoToCompliance?: () => void; allDeals?: any[]; onCallStarted?: (callData: CallStartedData) => void; }
 
 const STATUSES: DealStatus[] = ['contract', 'due-diligence', 'clear-to-close', 'closed', 'terminated'];
 const PROP_TYPES: PropertyType[] = ['single-family', 'multi-family', 'condo', 'townhouse', 'land', 'commercial'];
@@ -670,7 +670,7 @@ const MilestoneStepper: React.FC<{
   );
 };
 
-export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, allDeals = [], onCallStarted }) => {
+export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, onGoToCompliance, allDeals = [], onCallStarted }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
   const agentOptions = (contactRecords || []).filter(c => c.contactType === 'agent');
@@ -865,7 +865,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       <EmailSummaryCard deal={deal} onGoToEmails={onGoToEmails} />
 
       {/* ─── Compliance Pre-Check ─── */}
-      <CompliancePreCheck deal={deal} />
+      <CompliancePreCheck deal={deal} onViewReport={onGoToCompliance} />
 
       {/* ─── Draft Follow-Up ─── */}
       <DraftFollowUp deal={deal} onSwitchToEmail={onGoToEmails} />
