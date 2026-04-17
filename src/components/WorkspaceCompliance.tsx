@@ -527,10 +527,10 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
       )}
 
       {/* ─── Compliance PDF Preview Modal ─────────────────────────────── */}
-      {showPDFModal && currentCheck && (
+      {showPDFModal && latestCheck && (
         <CompliancePDFModal
           deal={deal}
-          check={currentCheck}
+          check={latestCheck}
           onClose={() => setShowPDFModal(false)}
         />
       )}
