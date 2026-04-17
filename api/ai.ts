@@ -1126,7 +1126,34 @@ async function handleExtractDeal(apiKey: string, body: any) {
   const { fileBase64, fileName } = body;
   if (!fileBase64) throw new Error('Missing fileBase64');
 
-  const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
+  const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document. You are operating in VISION MODE — GPT-4o renders each PDF page as an image, giving you the ability to see all visual content including checkboxes, handwriting, underlines, signatures, and stamps.
+
+VISION MODE — CRITICAL VISUAL INSPECTION RULES:
+
+CHECKBOXES (most important — text extraction frequently misses these):
+- Visually identify WHICH checkboxes are physically marked/checked vs empty.
+- Checked indicators: ☑ [X] [✓] (X) filled circle • or any box/circle with ink or marks inside.
+- Unchecked indicators: ☐ □ [ ] ( ) — empty box or circle with nothing inside.
+- loanType: Look for which financing type checkbox is physically checked — Conventional, FHA, VA, USDA, Cash, or Other. Return ONLY the visually checked option. Never guess from context alone.
+- asIsSale: Return true ONLY if an "as-is" or "as is" sale checkbox is visually checked.
+- inspectionWaived: Return true ONLY if a "buyer waives inspection" or "no inspection period" checkbox is visually checked.
+- homeWarranty: Return true ONLY if a home warranty INCLUSION checkbox is checked. If waived or excluded, return false.
+
+UNDERLINED / BLANK LINE FIELDS:
+- Most contract fields use a printed label followed by a blank underline where values are handwritten or typed.
+- The VALUE is whatever appears ON the underline — not the label before it.
+- If a blank line is truly empty with nothing on it, return null for that field.
+- Look carefully for lightly handwritten or small-font typed text on blank lines (e.g., "4/14/26" for a date, cursive names, dollar amounts).
+
+HANDWRITTEN TEXT:
+- Read handwritten dates, names, dollar amounts, and numbers wherever they appear.
+- If handwriting is hard to read, make your best interpretation and reduce your overall confidence score.
+
+SIGNATURES & INITIALS:
+- Observe which signature/initial lines appear signed vs blank as context for your confidence score.
+- Signed = handwritten marks, typed name, DocuSign stamp, or DotLoop signature image present on the line.
+- Blank = empty line with nothing on it.
+- This does NOT affect which fields you extract — it informs your confidence score only.
 
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
 For relative deadline fields: when a deadline is expressed as "X calendar/business days after/before [event]", return that formula verbatim (e.g., "11 calendar days after Effective Date", "5 calendar days before Closing Date"). If the document states an explicit date instead, return YYYY-MM-DD.
