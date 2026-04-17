@@ -61,7 +61,6 @@ const RenameInput: React.FC<{
       <Button variant="ghost" size="xs" square className="text-success" onClick={() => onCommit(v.trim())}><Check size={12} /></Button>
       <Button variant="ghost" size="xs" square className="text-error" onClick={onCancel}><X size={12} /></Button>
     </div>
-      </div>}
   );
 };
 
@@ -625,8 +624,7 @@ const NewTemplateModal: React.FC<{
           </button>
         </div>
       </div>
-    </div>}
-  </div>
+    </div>
   );
 };
 
