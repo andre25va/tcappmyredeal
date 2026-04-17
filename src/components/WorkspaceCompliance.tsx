@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield, CheckCircle, AlertTriangle, XCircle,
-  RefreshCw, Clock, Download, ChevronDown, ChevronUp, Info,
+  RefreshCw, Clock, Download, ChevronDown, ChevronUp, Info, Printer, X as XIcon,
 } from 'lucide-react';
 import { Deal } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +46,138 @@ interface Props {
   deal: Deal;
 }
 
+/* ─── Compliance PDF Preview Modal ──────────────────────────────────────────
+   Reuses the same modal pattern as PdfPreviewModal in WorkspaceDocuments.tsx:
+   - fixed inset-0 z-50 backdrop, m-auto rounded-2xl shadow-2xl
+   - iframe body showing a blob URL of the generated HTML
+   - Print / Save as PDF button triggers window.print() in a clean popup
+── */
+function CompliancePDFModal({ deal, check, onClose }: {
+  deal: Deal;
+  check: ComplianceCheck;
+  onClose: () => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  const buildHTML = (): string => {
+    const rules = extractRules(check);
+    const passed = rules.filter(r => r.status === 'pass').length;
+    const warnings = rules.filter(r => r.status === 'warning').length;
+    const violations = rules.filter(r => r.status === 'fail').length;
+    const runAt = check.run_at ? new Date(check.run_at).toLocaleString() : new Date().toLocaleString();
+    const addr = [
+      (deal as any).propertyAddress,
+      (deal as any).city,
+      (deal as any).state,
+    ].filter(Boolean).join(', ');
+
+    const rows = rules.map(r => {
+      const icon = r.status === 'pass' ? '✅' : r.status === 'warning' ? '🟡' : '🔴';
+      return `
+        <tr style="border-bottom:1px solid #e5e7eb;">
+          <td style="padding:10px 14px;font-size:15px;">${icon}</td>
+          <td style="padding:10px 14px;">
+            <span style="font-weight:600;color:#111;">${r.rule_name ?? '—'}</span>
+            ${r.rule_code ? `<br/><span style="font-size:11px;color:#6b7280;font-family:monospace;">${r.rule_code}</span>` : ''}
+          </td>
+          <td style="padding:10px 14px;color:#374151;font-size:13px;">${r.detail ?? '—'}</td>
+        </tr>`;
+    }).join('');
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<title>Compliance Report — ${addr}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;background:#fff;padding:40px}
+  @media print{body{padding:20px}.no-print{display:none!important}}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .meta{font-size:13px;color:#6b7280;margin-bottom:24px}
+  .summary{display:flex;gap:16px;margin-bottom:28px}
+  .pill{padding:8px 18px;border-radius:20px;font-weight:700;font-size:14px}
+  .pill-pass{background:#dcfce7;color:#166534}
+  .pill-warn{background:#fef9c3;color:#854d0e}
+  .pill-fail{background:#fee2e2;color:#991b1b}
+  table{width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
+  th{background:#f9fafb;padding:10px 14px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb}
+  tr:last-child td{border-bottom:none}
+  .footer{margin-top:28px;font-size:12px;color:#9ca3af;border-top:1px solid #f3f4f6;padding-top:12px}
+</style></head>
+<body>
+  <h1>📋 Compliance Report</h1>
+  <div class="meta">${addr}<br/>Generated: ${runAt}</div>
+  <div class="summary">
+    <div class="pill pill-pass">✅ ${passed} Passed</div>
+    <div class="pill pill-warn">🟡 ${warnings} Warnings</div>
+    <div class="pill pill-fail">🔴 ${violations} Violations</div>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:40px;"></th>
+      <th>Rule</th>
+      <th>Detail</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">TC Command · Compliance Engine · ${runAt}</div>
+</body></html>`;
+  };
+
+  useEffect(() => {
+    const html = buildHTML();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [check]);
+
+  const handlePrint = () => {
+    const html = buildHTML();
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (!win) { alert('Pop-up blocked — allow pop-ups for this site.'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="m-auto bg-base-100 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: '85vw', maxWidth: '1000px', height: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header — same pattern as PdfPreviewModal in WorkspaceDocuments */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-base-300 flex-none">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-primary" />
+            <span className="font-semibold text-sm text-base-content">Compliance Report Preview</span>
+            <span className="badge badge-sm badge-ghost">{(deal as any).propertyAddress}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrint} className="btn btn-ghost btn-xs gap-1">
+              <Printer size={12} /> Print / Save as PDF
+            </button>
+            <button className="btn btn-ghost btn-circle btn-sm" onClick={onClose}>
+              <XIcon size={16} />
+            </button>
+          </div>
+        </div>
+        {/* Body — iframe showing blob URL (same as PdfPreviewModal) */}
+        <div className="flex-1 min-h-0 bg-base-200">
+          {!previewUrl ? (
+            <div className="flex items-center justify-center h-full">
+              <span className="loading loading-spinner loading-md" />
+            </div>
+          ) : (
+            <iframe src={previewUrl} className="w-full h-full" title="Compliance Report Preview" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Helper: extract rules from check (handles both new + legacy format) ─── */
 function extractRules(check: ComplianceCheck | null): RuleResult[] {
   if (!check) return [];
@@ -74,6 +206,7 @@ function extractRules(check: ComplianceCheck | null): RuleResult[] {
 /* ─── Component ─── */
 export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
   const queryClient = useQueryClient();
+  const [showPDFModal, setShowPDFModal] = useState(false);
   const { emails } = useDealEmails(deal);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -380,18 +513,26 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
           <div className="divider text-xs text-base-content/40">Signature Verification</div>
           <WorkspaceSignatureMap deal={deal} />
 
-          {/* ─── PDF Export placeholder ─── */}
+          {/* ─── PDF Export ─── */}
           <div className="flex justify-end pt-1">
             <button
-              disabled
-              title="PDF export coming in a future update"
-              className="btn btn-ghost btn-xs gap-1.5 text-base-content/30 cursor-not-allowed"
+              onClick={() => setShowPDFModal(true)}
+              className="btn btn-ghost btn-xs gap-1.5 text-base-content/60 hover:text-primary"
+              title="Preview & export compliance report as PDF"
             >
               <Download size={12} /> Export PDF
-              <span className="badge badge-xs badge-ghost">Soon</span>
             </button>
           </div>
         </>
+      )}
+
+      {/* ─── Compliance PDF Preview Modal ─────────────────────────────── */}
+      {showPDFModal && currentCheck && (
+        <CompliancePDFModal
+          deal={deal}
+          check={currentCheck}
+          onClose={() => setShowPDFModal(false)}
+        />
       )}
     </div>
   );
