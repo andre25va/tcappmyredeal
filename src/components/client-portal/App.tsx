@@ -89,6 +89,7 @@ interface ClientDeal {
   milestones: Milestone[];
   tasksCompleted: number;
   tasksTotal: number;
+  complianceSummary: { passed: number; warnings: number; violations: number; lastCheckedAt: string } | null;
 }
 
 interface PortalSettings {
@@ -730,6 +731,44 @@ function PortalApp() {
               </div>
             )}
           </div>
+
+          {/* Compliance Summary Card */}
+          {activeDeal.complianceSummary && (
+            <div className="bg-white rounded-2xl shadow p-5">
+              <p className="text-sm font-bold text-[#1B2C5E] mb-3">Contract Review Status</p>
+              <div className="flex gap-3">
+                {activeDeal.complianceSummary.passed > 0 && (
+                  <div className="flex-1 text-center bg-green-50 rounded-xl py-3">
+                    <p className="text-xl font-bold text-green-600">{activeDeal.complianceSummary.passed}</p>
+                    <p className="text-xs text-green-700 mt-0.5">Passed</p>
+                  </div>
+                )}
+                {activeDeal.complianceSummary.warnings > 0 && (
+                  <div className="flex-1 text-center bg-yellow-50 rounded-xl py-3">
+                    <p className="text-xl font-bold text-yellow-600">{activeDeal.complianceSummary.warnings}</p>
+                    <p className="text-xs text-yellow-700 mt-0.5">Review</p>
+                  </div>
+                )}
+                {activeDeal.complianceSummary.violations > 0 && (
+                  <div className="flex-1 text-center bg-red-50 rounded-xl py-3">
+                    <p className="text-xl font-bold text-red-600">{activeDeal.complianceSummary.violations}</p>
+                    <p className="text-xs text-red-700 mt-0.5">Action Needed</p>
+                  </div>
+                )}
+                {activeDeal.complianceSummary.violations === 0 && activeDeal.complianceSummary.warnings === 0 && (
+                  <div className="flex-1 text-center bg-green-50 rounded-xl py-3">
+                    <p className="text-xl font-bold text-green-600">✓</p>
+                    <p className="text-xs text-green-700 mt-0.5">All Clear</p>
+                  </div>
+                )}
+              </div>
+              {activeDeal.complianceSummary.lastCheckedAt && (
+                <p className="text-xs text-gray-400 mt-3">
+                  Last reviewed {new Date(activeDeal.complianceSummary.lastCheckedAt).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Milestone spotlight */}
           {milestones.length > 0 && (lastDone || nextUp) && (

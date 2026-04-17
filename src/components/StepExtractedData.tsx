@@ -21,6 +21,7 @@ interface FieldDef {
 }
 
 interface StepExtractedDataProps {
+  dealId?: string;
   extractedData: Record<string, unknown> | null;
   onConfirm: (verifiedData: Record<string, unknown>) => void;
   onEdit: () => void;
@@ -272,6 +273,7 @@ function getFieldTier(field: FieldDef, extractedData: Record<string, unknown> | 
 
 // --- Main Component ---
 const StepExtractedData: React.FC<StepExtractedDataProps> = ({
+  dealId,
   extractedData,
   onConfirm,
   onEdit,
@@ -286,6 +288,9 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
     });
     return init;
   });
+
+  // Capture original AI-extracted values once (for correction tracking)
+  const initialValuesRef = React.useRef<Record<string, string>>(values);
 
   const setValue = (key: string, val: string) =>
     setValues(prev => ({ ...prev, [key]: val }));
@@ -357,6 +362,24 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         verified[key] = v;
       }
     });
+    // Save AI corrections in background if dealId provided
+    if (dealId) {
+      const corrections = FIELD_DEFS
+        .filter(({ key }) => {
+          const aiVal = initialValuesRef.current[key] ?? '';
+          const userVal = values[key] ?? '';
+          return aiVal !== userVal;
+        })
+        .map(({ key }) => ({
+          deal_id: dealId,
+          field_key: key,
+          ai_value: initialValuesRef.current[key] || null,
+          corrected_value: values[key] || null,
+        }));
+      if (corrections.length > 0) {
+        supabase.from('extraction_corrections').insert(corrections).then(() => {});
+      }
+    }
     onConfirm(verified);
   };
 
