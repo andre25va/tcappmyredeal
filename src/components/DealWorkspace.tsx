@@ -57,12 +57,13 @@ import { WorkspaceEmailTemplate } from './WorkspaceEmailTemplate';
 import WorkspaceEmailCompose from './WorkspaceEmailCompose';
 import { WorkspaceLinkedEmails } from './WorkspaceLinkedEmails';
 import { WorkspaceAmendments } from './WorkspaceAmendments';
+import { WorkspaceCompliance } from './WorkspaceCompliance';
 import { WorkspaceRequests } from './WorkspaceRequests';
 import { DealAccessPanel } from './DealAccessPanel';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/Button';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'pending-outbox' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'pending-outbox' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access' | 'compliance';
 
 interface Props {
   deal: Deal;
@@ -344,6 +345,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'tasks',      label: 'Tasks',      icon: <ListChecks size={13} />, badge: overdueTasks > 0 ? overdueTasks : undefined },
     { id: 'contacts',   label: 'Contacts',   icon: <Users size={13} /> },
     { id: 'documents',  label: 'Documents',  icon: <AlertTriangle size={13} />, badge: pendingDocs },
+    { id: 'compliance', label: 'Compliance', icon: <Shield size={13} /> },
     { id: 'requests',       label: 'Requests',       icon: <ClipboardList size={13} />, badge: activeRequestCount > 0 ? activeRequestCount : undefined },
     { id: 'pending-outbox', label: 'Pending Outbox', icon: <Inbox size={13} /> },
     { id: 'activity',       label: 'Activity',       icon: <Clock size={13} /> },
@@ -729,11 +731,12 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       {/* Tab Content */}
       <div className={`flex-1 min-h-0 flex flex-col ${tab === 'email' || tab === 'ai-emails' || tab === 'ai-chat' || tab === 'comms' || tab === 'checklists' || tab === 'tasks' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
 
-        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} onGoToRequests={() => setTab('requests')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
+        {tab === 'overview'   && <WorkspaceOverview deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onGoToContacts={() => setTab('contacts')} onGoToEmails={() => setTab('ai-emails')} onGoToRequests={() => setTab('requests')} onGoToCompliance={() => setTab('compliance')} editTrigger={editTrigger} allDeals={deals} onCallStarted={onCallStarted} />}
         {tab === 'checklists' && <WorkspaceChecklists deal={deal} onUpdate={onUpdate} users={users} contactRecords={contactRecords} complianceTemplates={complianceTemplates} />}
         {tab === 'tasks'      && <WorkspaceTasks deal={deal} onUpdate={onUpdate} users={users} onSendRequest={(taskId, requestType) => { setInternalTaskId(taskId); setInternalRequestType(requestType); setTab('requests'); }} onGoToRequests={() => setTab('requests')} />}
         {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
+        {tab === 'compliance'  && <WorkspaceCompliance deal={deal} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
         {tab === 'email'      && <WorkspaceEmailCompose deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} currentUser={profile?.name} />}
         {tab === 'timeline'   && <DealTimeline deal={deal} />}
