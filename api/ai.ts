@@ -478,6 +478,19 @@ const extractDealSchema = {
         required: ['field', 'score'],
       },
     },
+    allCheckboxes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          label: { type: 'string' },
+          checked: { type: 'boolean' },
+          section: { type: 'string' },
+        },
+        required: ['label', 'checked', 'section'],
+      },
+    },
   },
   required: [
     'address', 'city', 'state', 'zipCode', 'propertyType', 'mlsNumber', 'mlsBoard', 'legalDescription',
@@ -494,7 +507,7 @@ const extractDealSchema = {
     'titleCompany',
     'asIsSale', 'inspectionWaived', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
     'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
-    'confidence', 'extractedFields', 'fieldScores',
+    'confidence', 'extractedFields', 'fieldScores', 'allCheckboxes',
   ],
 };
 
@@ -1163,7 +1176,8 @@ For contractType: "residential_sale_contract" for standard purchase agreements, 
 Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
 Set extractedFields to an array of field names that had non-null values found.
-Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.`;
+Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.
+For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.`;
 
   // Build user content array — prepend blank template if available
   const userContent: any[] = [];
@@ -1237,6 +1251,7 @@ Set fieldScores to an array of { field, score } objects where score is 0.0–1.0
   // ── Return with backward-compat aliases for any wizard code using old keys ──
   return {
     ...parsed,
+    templateUsed: !!templateBase64,
     buyerAgentName,
     sellerAgentName,
     // Old key aliases
