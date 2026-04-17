@@ -71,6 +71,113 @@ function extractRules(check: ComplianceCheck | null): RuleResult[] {
   return [];
 }
 
+
+/* ─── PDF Export ─── */
+function generateCompliancePDF(deal: Deal, check: ComplianceCheck | null | undefined, rules: RuleResult[]) {
+  const property = (deal as any).property_address || deal.address || 'Unknown Property';
+  const runAt = check
+    ? new Date(check.run_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+    : '—';
+
+  const violationRows = rules.filter(r => r.status === 'fail');
+  const warningRows   = rules.filter(r => r.status === 'warning');
+  const passedRows    = rules.filter(r => r.status === 'pass');
+
+  const ruleHtml = (r: RuleResult, color: string, icon: string) => `
+    <tr>
+      <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-family:monospace;background:#f0f0f0;color:#666;margin-right:8px;">${r.rule_code}</span>
+        <span style="font-weight:500;color:#1a1a1a;">${r.rule_name}</span>
+        ${r.detail && r.detail !== r.rule_name ? `<br/><span style="font-size:11px;color:#666;padding-left:2px;">${r.detail}</span>` : ''}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:18px;">${icon}</td>
+    </tr>`;
+
+  const sectionsHtml = [
+    violationRows.length > 0 ? `
+      <h3 style="font-size:13px;font-weight:700;color:#dc2626;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;">❌ Violations (${violationRows.length})</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #fecaca;border-radius:8px;overflow:hidden;">
+        ${violationRows.map(r => ruleHtml(r, '#dc2626', '❌')).join('')}
+      </table>` : '',
+    warningRows.length > 0 ? `
+      <h3 style="font-size:13px;font-weight:700;color:#d97706;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;">⚠️ Warnings (${warningRows.length})</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #fde68a;border-radius:8px;overflow:hidden;">
+        ${warningRows.map(r => ruleHtml(r, '#d97706', '⚠️')).join('')}
+      </table>` : '',
+    passedRows.length > 0 ? `
+      <h3 style="font-size:13px;font-weight:700;color:#16a34a;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.06em;">✅ Passed (${passedRows.length})</h3>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #bbf7d0;border-radius:8px;overflow:hidden;">
+        ${passedRows.map(r => ruleHtml(r, '#16a34a', '✅')).join('')}
+      </table>` : '',
+  ].filter(Boolean).join('');
+
+  const overallLabel = violationRows.length > 0
+    ? '<span style="color:#dc2626;font-weight:700;">⛔ Violations Found</span>'
+    : warningRows.length > 0
+      ? '<span style="color:#d97706;font-weight:700;">⚠️ Warnings Present</span>'
+      : '<span style="color:#16a34a;font-weight:700;">✅ All Rules Passed</span>';
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Compliance Report — ${property}</title>
+  <style>
+    @page { margin: 20mm 18mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a1a; margin: 0; padding: 0; }
+    @media print { button { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div style="max-width:720px;margin:0 auto;padding:24px;">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1B2C5E;padding-bottom:16px;margin-bottom:20px;">
+      <div>
+        <h1 style="margin:0;font-size:20px;font-weight:700;color:#1B2C5E;">Compliance Report</h1>
+        <p style="margin:4px 0 0;font-size:13px;color:#555;">${property}</p>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#888;">
+        <div>Generated: ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+        <div>Last check: ${runAt}</div>
+        <div style="margin-top:6px;font-size:13px;">${overallLabel}</div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#16a34a;">${check?.passed_count ?? 0}</div>
+        <div style="font-size:11px;color:#16a34a;font-weight:600;margin-top:2px;">PASSED</div>
+      </div>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#d97706;">${check?.warning_count ?? 0}</div>
+        <div style="font-size:11px;color:#d97706;font-weight:600;margin-top:2px;">WARNINGS</div>
+      </div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#dc2626;">${check?.violation_count ?? 0}</div>
+        <div style="font-size:11px;color:#dc2626;font-weight:600;margin-top:2px;">VIOLATIONS</div>
+      </div>
+    </div>
+
+    <!-- Rule Results -->
+    ${sectionsHtml || '<p style="color:#888;text-align:center;padding:20px 0;">No rule results available.</p>'}
+
+    <!-- Footer -->
+    <div style="margin-top:30px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center;">
+      Generated by MyRedeal TC App · Compliance Engine v1 · ${new Date().getFullYear()}
+    </div>
+  </div>
+  <script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  }
+}
+
 /* ─── Component ─── */
 export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
   const queryClient = useQueryClient();
@@ -380,15 +487,13 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
           <div className="divider text-xs text-base-content/40">Signature Verification</div>
           <WorkspaceSignatureMap deal={deal} />
 
-          {/* ─── PDF Export placeholder ─── */}
+          {/* ─── PDF Export ─── */}
           <div className="flex justify-end pt-1">
             <button
-              disabled
-              title="PDF export coming in a future update"
-              className="btn btn-ghost btn-xs gap-1.5 text-base-content/30 cursor-not-allowed"
+              onClick={() => generateCompliancePDF(deal, latestCheck, rules)}
+              className="btn btn-ghost btn-xs gap-1.5 text-base-content/60 hover:text-base-content"
             >
               <Download size={12} /> Export PDF
-              <span className="badge badge-xs badge-ghost">Soon</span>
             </button>
           </div>
         </>
