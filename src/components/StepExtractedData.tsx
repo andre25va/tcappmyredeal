@@ -20,6 +20,12 @@ interface FieldDef {
   hint?: string;
 }
 
+interface ExtractedCheckbox {
+  label: string;
+  checked: boolean;
+  section: string;
+}
+
 interface StepExtractedDataProps {
   dealId?: string;
   extractedData: Record<string, unknown> | null;
@@ -426,6 +432,30 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         )}
       </div>
 
+      {/* Template-assisted / Vision-only banner */}
+      {(() => {
+        const templateUsed = (extractedData as any)?.templateUsed;
+        return (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
+            templateUsed
+              ? 'bg-blue-50 border-blue-200 text-blue-700'
+              : 'bg-base-200 border-base-300 text-base-content/50'
+          }`}>
+            {templateUsed ? (
+              <>
+                <span>🧠</span>
+                <span><strong>Template-assisted extraction</strong> — blank reference form used to improve field accuracy</span>
+              </>
+            ) : (
+              <>
+                <span>👁️</span>
+                <span><strong>Vision only</strong> — no blank template found for this MLS (upload one in Settings → MLS Directory to improve accuracy)</span>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       <p className="text-sm text-base-content/60">
         {foundCount} of {FIELD_DEFS.length} fields found.{' '}
         {reviewCount > 0 && (
@@ -633,6 +663,46 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
             </div>
           );
         })}
+        {/* ── Checkboxes discovered in contract ─────────────────────────── */}
+        {(() => {
+          const checkboxes: ExtractedCheckbox[] = (extractedData as any)?.allCheckboxes || [];
+          if (checkboxes.length === 0) return null;
+          // Group by section
+          const groups: Record<string, ExtractedCheckbox[]> = {};
+          checkboxes.forEach(cb => {
+            const key = cb.section || 'Other';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(cb);
+          });
+          const checkedCount = checkboxes.filter(cb => cb.checked).length;
+          return (
+            <div className="rounded-xl border border-base-300 overflow-hidden">
+              <div className="bg-base-200/60 px-3 py-1.5 border-b border-base-300 flex items-center gap-2">
+                <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Checkboxes &amp; Options</p>
+                <span className="text-[10px] text-base-content/40">{checkedCount} of {checkboxes.length} checked</span>
+              </div>
+              <div className="divide-y divide-base-200">
+                {Object.entries(groups).map(([groupName, items]) => (
+                  <div key={groupName} className="px-3 py-2">
+                    <p className="text-[10px] font-semibold text-base-content/40 uppercase tracking-wide mb-1.5">{groupName}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                      {items.map((cb, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <span className={`text-sm flex-none ${cb.checked ? 'text-green-600' : 'text-base-content/25'}`}>
+                            {cb.checked ? '☑' : '☐'}
+                          </span>
+                          <span className={`text-xs leading-tight ${cb.checked ? 'text-base-content font-medium' : 'text-base-content/40'}`}>
+                            {cb.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Actions */}
