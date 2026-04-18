@@ -375,23 +375,27 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
   // Group fields by page number from fieldSources (or by section as fallback)
   const pageGroups = React.useMemo(() => {
-    const hasSources = Object.values(fieldSources).some(s => s?.page);
-    if (hasSources) {
-      const groups: Record<string, { label: string; fields: typeof FIELD_DEFS }> = {};
-      FIELD_DEFS.forEach(field => {
-        const src = fieldSources[field.key];
-        const pageKey = src?.page ? String(src.page) : '0';
-        const label = src?.page ? `Page ${src.page}` : 'Other Fields';
-        if (!groups[pageKey]) groups[pageKey] = { label, fields: [] };
-        groups[pageKey].fields.push(field);
-      });
-      return Object.entries(groups)
-        .sort(([a], [b]) => {
-          const numA = parseInt(a); const numB = parseInt(b);
-          if (numA === 0) return 1; if (numB === 0) return -1;
-          return numA - numB;
-        })
-        .map(([pageKey, group]) => ({ key: pageKey, ...group }));
+    try {
+      const hasSources = fieldSources && Object.values(fieldSources).some((s: any) => s?.page);
+      if (hasSources) {
+        const groups: Record<string, { label: string; fields: FieldDef[] }> = {};
+        FIELD_DEFS.forEach(field => {
+          const src = (fieldSources as any)[field.key];
+          const pageKey = src?.page ? String(src.page) : '0';
+          const label = src?.page ? `Page ${src.page}` : 'Other Fields';
+          if (!groups[pageKey]) groups[pageKey] = { label, fields: [] };
+          groups[pageKey].fields.push(field);
+        });
+        return Object.entries(groups)
+          .sort(([a], [b]) => {
+            const numA = parseInt(a, 10); const numB = parseInt(b, 10);
+            if (numA === 0) return 1; if (numB === 0) return -1;
+            return numA - numB;
+          })
+          .map(([pageKey, group]) => ({ key: pageKey, ...group }));
+      }
+    } catch (e) {
+      // fallthrough to section-based grouping
     }
     // Fallback: group by section
     return SECTIONS.map(section => ({
@@ -555,8 +559,8 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
       {/* Sectioned Table */}
       <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 -mr-1">
-        {pageGroups.map(group => {
-          const allFields = group.fields;
+        {(Array.isArray(pageGroups) ? pageGroups : []).map(group => {
+          const allFields = (group?.fields) || [];
 
           // Skip empty groups (no data and not a primary group)
           const primaryLabels = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties', 'Page 1', 'Page 2'];
