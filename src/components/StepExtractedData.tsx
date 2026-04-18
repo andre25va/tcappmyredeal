@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, RefreshCw, Search, ChevronRight, ChevronDown } from 'lucide-react';
+import { CheckCircle2, AlertCircle, RefreshCw, Search, ChevronRight, ChevronDown, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // --- Types ---
@@ -32,6 +32,7 @@ interface StepExtractedDataProps {
   onConfirm: (verifiedData: Record<string, unknown>) => void;
   onEdit: () => void;
   onReExtract: () => void;
+  onJumpToPage?: (page: number) => void;
 }
 
 // --- Field Definitions ---
@@ -278,12 +279,70 @@ function getFieldTier(field: FieldDef, extractedData: Record<string, unknown> | 
 }
 
 // --- Main Component ---
+
+// --- Source Badge ---
+function SourceBadge({ fieldKey, fieldSources, onJumpToPage }: {
+  fieldKey: string;
+  fieldSources: Record<string, { page: number; line?: number; text: string }>;
+  onJumpToPage?: (page: number) => void;
+}) {
+  const source = fieldSources[fieldKey];
+  const [open, setOpen] = React.useState(false);
+  if (!source) return null;
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        className="text-primary/40 hover:text-primary transition-colors"
+        title="View contract source"
+      >
+        <Info size={11} />
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 bottom-full left-0 mb-1 w-72 bg-base-100 border border-base-300 rounded-xl shadow-xl p-3 text-xs"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="font-semibold text-primary text-[11px]">
+              📄 Page {source.page}{source.line ? ` · Line ${source.line}` : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              {onJumpToPage && (
+                <button
+                  type="button"
+                  onClick={() => { onJumpToPage(source.page); setOpen(false); }}
+                  className="text-primary text-[11px] underline hover:no-underline"
+                >
+                  Jump →
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="text-base-content/30 hover:text-base-content text-[11px]"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <p className="text-base-content/60 italic leading-relaxed text-[11px] break-words">
+            "{source.text}"
+          </p>
+        </div>
+      )}
+    </span>
+  );
+}
+
 const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   dealId,
   extractedData,
   onConfirm,
   onEdit,
   onReExtract,
+  onJumpToPage,
 }) => {
   const [values, setValues] = useState<Record<string, string>>(() => {
     if (!extractedData) return {};
@@ -435,6 +494,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
       {/* Template-assisted / Vision-only banner */}
       {(() => {
         const templateUsed = (extractedData as any)?.templateUsed;
+        const fieldSources: Record<string, { page: number; line?: number; text: string }> = (extractedData as any)?.fieldSources || {};
         return (
           <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
             templateUsed
@@ -567,6 +627,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                                 />
                               );
                             })()}
+                            <SourceBadge fieldKey={field.key} fieldSources={fieldSources} onJumpToPage={onJumpToPage} />
                           </div>
                           {field.hint && (
                             <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>

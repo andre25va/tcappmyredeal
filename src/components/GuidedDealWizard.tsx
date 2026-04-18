@@ -254,6 +254,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [isCreating, setIsCreating] = useState(false);
   const [contractObjectUrl, setContractObjectUrl] = useState<string | null>(null);
   const [showPdfPanel, setShowPdfPanel] = useState(false);
+  const [pdfJumpPage, setPdfJumpPage] = useState<number | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
@@ -2197,6 +2198,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 onConfirm={(verified) => { setExtractedRawData(verified); setStep(3); }}
                 onEdit={() => setStep(3)}
                 onReExtract={() => setStep(1)}
+                onJumpToPage={(page) => {
+                  if (!showPdfPanel) setShowPdfPanel(true);
+                  setPdfJumpPage(page);
+                }}
               />
             )}
 
@@ -3087,7 +3092,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   <X size={12} /> Close PDF
                 </button>
               </div>
-              <iframe src={contractObjectUrl} className="flex-1 w-full border-0" title="Contract Preview" />
+              <iframe
+                key={pdfJumpPage ?? 0}
+                src={contractObjectUrl ? `${contractObjectUrl}${pdfJumpPage ? `#page=${pdfJumpPage}` : ''}` : ''}
+                className="flex-1 w-full border-0"
+                title="Contract Preview"
+                onLoad={() => setPdfJumpPage(null)}
+              />
             </div>
           )}
           </div>
