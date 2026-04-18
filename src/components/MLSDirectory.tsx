@@ -3,13 +3,14 @@ import {
   Plus, Pencil, Trash2, X, Save, Globe, MapPin,
   FileText, ArrowLeft, Link, StickyNote,
   FilePlus, CheckCircle2, Circle, MoreVertical,
-  Upload, Loader2, Paperclip, Copy,
+  Upload, Loader2, Paperclip, Copy, TableProperties,
 } from 'lucide-react';
 import { MlsEntry, MlsDocument } from '../types';
 // generateId removed - using crypto.randomUUID() for UUID-compatible IDs
 import { ConfirmModal } from './ConfirmModal';
 import { Button } from './ui/Button';
 import { supabase } from '../lib/supabase';
+import { FormSchemaViewer } from './FormSchemaViewer';
 
 interface Props {
   mls: MlsEntry[];
@@ -45,6 +46,8 @@ const emptyDoc = (): Omit<MlsDocument, 'id'> => ({
   name: '', category: 'listing', required: false, notes: '', template_pdf_path: null,
 });
 
+type RightTab = 'documents' | 'schema';
+
 export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
   const [selected, setSelected]         = useState<string | null>(null);
   const [stateFilter, setStateFilter]   = useState('all');
@@ -53,6 +56,7 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
   const [entryForm, setEntryForm]       = useState(emptyEntry());
   const [deleteId, setDeleteId]         = useState<string | null>(null);
   const [mlsMenuId, setMlsMenuId]       = useState<string | null>(null);
+  const [rightTab, setRightTab]         = useState<RightTab>('documents');
 
   const [showDocModal, setShowDocModal]   = useState(false);
   const [editingDoc, setEditingDoc]       = useState<MlsDocument | null>(null);
@@ -361,125 +365,157 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
             </div>
           )}
 
-          {/* Documents section */}
-          <div className="flex-1 overflow-auto px-6 py-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-sm text-base-content">Required Documents & PDF Forms</h3>
-                <p className="text-xs text-base-content/40 mt-0.5">
-                  Forms required by this MLS — upload blank PDF templates to improve AI extraction accuracy
-                </p>
-              </div>
-              <button onClick={openAddDoc} className="btn btn-primary btn-sm gap-1">
-                <FilePlus size={13} /> Add Form
-              </button>
+          {/* ── Tab bar ── */}
+          <div className="flex border-b border-base-300 flex-none px-6 gap-1 pt-1">
+            <button
+              onClick={() => setRightTab('documents')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition-colors
+                ${rightTab === 'documents'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-base-content/50 hover:text-base-content'}`}
+            >
+              <FileText size={12} /> Documents
+              {(selectedEntry.documents?.length ?? 0) > 0 && (
+                <span className="badge badge-xs badge-ghost">{selectedEntry.documents.length}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setRightTab('schema')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition-colors
+                ${rightTab === 'schema'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-base-content/50 hover:text-base-content'}`}
+            >
+              <TableProperties size={12} /> Form Schema
+            </button>
+          </div>
+
+          {/* ── Tab content ── */}
+          {rightTab === 'schema' ? (
+            <div className="flex-1 overflow-hidden">
+              <FormSchemaViewer />
             </div>
-
-            {/* Stats row */}
-            {(selectedEntry.documents?.length ?? 0) > 0 && (
-              <div className="flex gap-3 mb-4 flex-wrap">
-                {DOC_CATEGORIES.map(cat => {
-                  const count = selectedEntry.documents.filter(d => d.category === cat.value).length;
-                  if (!count) return null;
-                  return (
-                    <div key={cat.value} className={`badge ${cat.color} badge-sm gap-1`}>
-                      {cat.label}: {count}
-                    </div>
-                  );
-                })}
-                <div className="badge badge-error badge-sm gap-1 ml-auto">
-                  Required: {selectedEntry.documents.filter(d => d.required).length}
-                </div>
-                {selectedEntry.documents.some(d => d.template_pdf_path) && (
-                  <div className="badge badge-success badge-sm gap-1">
-                    <Paperclip size={9} /> Templates: {selectedEntry.documents.filter(d => d.template_pdf_path).length}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Document list */}
-            {(selectedEntry.documents?.length ?? 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 gap-3 text-base-content/30 border-2 border-dashed border-base-300 rounded-2xl">
-                <FileText size={36} strokeWidth={1} />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-base-content/40">No forms added yet</p>
-                  <p className="text-xs mt-1">Add PDF forms required by {selectedEntry.name} for transactions</p>
+          ) : (
+            /* ── Documents tab (existing content) ── */
+            <div className="flex-1 overflow-auto px-6 py-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-sm text-base-content">Required Documents & PDF Forms</h3>
+                  <p className="text-xs text-base-content/40 mt-0.5">
+                    Forms required by this MLS — upload blank PDF templates to improve AI extraction accuracy
+                  </p>
                 </div>
                 <button onClick={openAddDoc} className="btn btn-primary btn-sm gap-1">
-                  <FilePlus size={13} /> Add First Form
+                  <FilePlus size={13} /> Add Form
                 </button>
               </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {selectedEntry.documents.map(doc => (
-                  <div
-                    key={doc.id}
-                    className={`flex items-start gap-3 p-4 rounded-xl border transition-colors
-                      ${doc.required
-                        ? 'border-error/30 bg-error/5'
-                        : 'border-base-300 bg-base-200/50'}`}
-                  >
-                    {/* Required toggle */}
-                    <button
-                      onClick={() => toggleRequired(doc.id)}
-                      className={`flex-none mt-0.5 transition-colors ${doc.required ? 'text-error' : 'text-base-content/25 hover:text-base-content/50'}`}
-                      title={doc.required ? 'Mark as optional' : 'Mark as required'}
-                    >
-                      {doc.required
-                        ? <CheckCircle2 size={18} />
-                        : <Circle size={18} />}
-                    </button>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-base-content">{doc.name}</span>
-                        <span className={`badge ${getCatStyle(doc.category)} badge-xs`}>
-                          {getCatLabel(doc.category)}
-                        </span>
-                        {doc.required && (
-                          <span className="badge badge-error badge-xs">Required</span>
+              {/* Stats row */}
+              {(selectedEntry.documents?.length ?? 0) > 0 && (
+                <div className="flex gap-3 mb-4 flex-wrap">
+                  {DOC_CATEGORIES.map(cat => {
+                    const count = selectedEntry.documents.filter(d => d.category === cat.value).length;
+                    if (!count) return null;
+                    return (
+                      <div key={cat.value} className={`badge ${cat.color} badge-sm gap-1`}>
+                        {cat.label}: {count}
+                      </div>
+                    );
+                  })}
+                  <div className="badge badge-error badge-sm gap-1 ml-auto">
+                    Required: {selectedEntry.documents.filter(d => d.required).length}
+                  </div>
+                  {selectedEntry.documents.some(d => d.template_pdf_path) && (
+                    <div className="badge badge-success badge-sm gap-1">
+                      <Paperclip size={9} /> Templates: {selectedEntry.documents.filter(d => d.template_pdf_path).length}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Document list */}
+              {(selectedEntry.documents?.length ?? 0) === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3 text-base-content/30 border-2 border-dashed border-base-300 rounded-2xl">
+                  <FileText size={36} strokeWidth={1} />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-base-content/40">No forms added yet</p>
+                    <p className="text-xs mt-1">Add PDF forms required by {selectedEntry.name} for transactions</p>
+                  </div>
+                  <button onClick={openAddDoc} className="btn btn-primary btn-sm gap-1">
+                    <FilePlus size={13} /> Add First Form
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {selectedEntry.documents.map(doc => (
+                    <div
+                      key={doc.id}
+                      className={`flex items-start gap-3 p-4 rounded-xl border transition-colors
+                        ${doc.required
+                          ? 'border-error/30 bg-error/5'
+                          : 'border-base-300 bg-base-200/50'}`}
+                    >
+                      {/* Required toggle */}
+                      <button
+                        onClick={() => toggleRequired(doc.id)}
+                        className={`flex-none mt-0.5 transition-colors ${doc.required ? 'text-error' : 'text-base-content/25 hover:text-base-content/50'}`}
+                        title={doc.required ? 'Mark as optional' : 'Mark as required'}
+                      >
+                        {doc.required
+                          ? <CheckCircle2 size={18} />
+                          : <Circle size={18} />}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-base-content">{doc.name}</span>
+                          <span className={`badge ${getCatStyle(doc.category)} badge-xs`}>
+                            {getCatLabel(doc.category)}
+                          </span>
+                          {doc.required && (
+                            <span className="badge badge-error badge-xs">Required</span>
+                          )}
+                          {doc.template_pdf_path && (
+                            <span className="badge badge-success badge-xs gap-0.5" title="Blank template PDF uploaded — AI will use this as a reference during extraction">
+                              <Paperclip size={9} /> Template
+                            </span>
+                          )}
+                        </div>
+                        {doc.notes && (
+                          <p className="text-xs text-base-content/50 mt-1">{doc.notes}</p>
                         )}
                         {doc.template_pdf_path && (
-                          <span className="badge badge-success badge-xs gap-0.5" title="Blank template PDF uploaded — AI will use this as a reference during extraction">
-                            <Paperclip size={9} /> Template
-                          </span>
+                          <p className="text-xs text-success/70 mt-1 flex items-center gap-1">
+                            <Paperclip size={10} />
+                            Blank template uploaded — AI uses this for extraction reference
+                          </p>
                         )}
                       </div>
-                      {doc.notes && (
-                        <p className="text-xs text-base-content/50 mt-1">{doc.notes}</p>
-                      )}
-                      {doc.template_pdf_path && (
-                        <p className="text-xs text-success/70 mt-1 flex items-center gap-1">
-                          <Paperclip size={10} />
-                          Blank template uploaded — AI uses this for extraction reference
-                        </p>
-                      )}
-                    </div>
 
-                    <div className="flex gap-1 flex-none">
-                      <button onClick={() => openEditDoc(doc)} className="btn btn-ghost btn-xs btn-square">
-                        <Pencil size={11} />
-                      </button>
-                      <button
-                        onClick={() => { setCopyDocId(doc.id); setCopyTargetId(''); }}
-                        className="btn btn-ghost btn-xs btn-square text-primary hover:bg-primary/10"
-                        title="Copy to another MLS"
-                      >
-                        <Copy size={11} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteDocId(doc.id)}
-                        className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      <div className="flex gap-1 flex-none">
+                        <button onClick={() => openEditDoc(doc)} className="btn btn-ghost btn-xs btn-square">
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={() => { setCopyDocId(doc.id); setCopyTargetId(''); }}
+                          className="btn btn-ghost btn-xs btn-square text-primary hover:bg-primary/10"
+                          title="Copy to another MLS"
+                        >
+                          <Copy size={11} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteDocId(doc.id)}
+                          className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         /* Empty state when nothing selected (desktop) */
