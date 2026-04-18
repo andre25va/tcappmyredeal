@@ -492,16 +492,18 @@ const extractDealSchema = {
       },
     },
     fieldSources: {
-      type: 'object',
-      description: 'Source location for each extracted field',
-      additionalProperties: {
+      type: 'array',
+      description: 'Source location for each extracted field. One entry per extracted field.',
+      items: {
         type: 'object',
+        additionalProperties: false,
         properties: {
+          field: { type: 'string' },
           page: { type: 'number' },
-          line: { type: 'number' },
+          line: { type: ['number', 'null'] },
           text: { type: 'string' },
         },
-        required: ['page', 'text'],
+        required: ['field', 'page', 'line', 'text'],
       },
     },
   },
@@ -1191,7 +1193,7 @@ Set confidence 0.0-1.0 based on how clearly the document is a real estate purcha
 Set extractedFields to an array of field names that had non-null values found.
 Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.
 For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.
-For fieldSources: for EVERY field you extract with a non-null value, include an entry keyed by the exact field name. Each entry: page (PDF page number 1-indexed), line (printed line number in contract if visible, otherwise omit), text (exact raw sentence from the contract — copy verbatim, max 200 chars). Example: { buyerAgentCommission: { page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... 9420' } }. This lets the TC verify each extracted value directly against the contract.`;
+For fieldSources: output an ARRAY. For EVERY field you extract with a non-null value, push an entry: { field: 'exactFieldName', page: (PDF page number 1-indexed), line: (printed line number if visible, otherwise null), text: 'exact raw sentence from contract — verbatim, max 200 chars' }. Example: [{ field: 'buyerAgentCommission', page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... $9,420' }]. This lets the TC verify each extracted value directly against the contract.`;
 
   // Build user content array — prepend blank template if available
   const userContent: any[] = [];
@@ -1266,7 +1268,10 @@ For fieldSources: for EVERY field you extract with a non-null value, include an 
   return {
     ...parsed,
     templateUsed: !!templateBase64,
-    fieldSources: (parsed.fieldSources as Record<string, { page: number; line?: number; text: string }>) || {},
+    fieldSources: (() => {
+      const arr = (parsed.fieldSources as Array<{ field: string; page: number; line?: number | null; text: string }>) || [];
+      return Object.fromEntries(arr.map(s => [s.field, { page: s.page, line: s.line ?? undefined, text: s.text }]));
+    })(),
     buyerAgentName,
     sellerAgentName,
     // Old key aliases
