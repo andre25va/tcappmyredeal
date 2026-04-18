@@ -169,7 +169,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
   useEffect(() => {
     // realtime: instant toast on new notification
     const channel = supabase
-      .channel(`notifications-realtime-${Date.now()}`)
+      .channel(`notifications-realtime-${Math.random().toString(36).slice(2)}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
