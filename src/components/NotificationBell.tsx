@@ -159,7 +159,13 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
     }
   }, [notifications]);
 
-  // ── realtime subscription ─────────────────────────────────────────────────────
+  // ── Stable refs so the realtime effect never re-runs when callbacks change ──
+  const pushToastRef = useRef(pushToast);
+  const invalidateRef = useRef(invalidateNotifications);
+  useEffect(() => { pushToastRef.current = pushToast; }, [pushToast]);
+  useEffect(() => { invalidateRef.current = invalidateNotifications; }, [invalidateNotifications]);
+
+  // ── realtime subscription — empty deps so channel is created exactly once ───
   useEffect(() => {
     // realtime: instant toast on new notification
     const channel = supabase
@@ -175,10 +181,10 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
           knownIds.current.add(n.id);
 
           // Invalidate TanStack query to refetch
-          invalidateNotifications();
+          invalidateRef.current();
 
           // Show toast
-          pushToast(n);
+          pushToastRef.current(n);
         }
       )
       .subscribe();
@@ -187,7 +193,7 @@ export function NotificationBell({ onNavigate }: NotificationBellProps) {
       supabase.removeChannel(channel);
       toastTimers.current.forEach(t => clearTimeout(t));
     };
-  }, [pushToast, invalidateNotifications]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── close dropdown on outside click ──────────────────────────────────────────
   useEffect(() => {
