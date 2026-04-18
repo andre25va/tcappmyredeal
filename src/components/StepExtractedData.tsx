@@ -54,7 +54,7 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'transactionType',       label: 'Transaction Type',        type: 'select',  section: 'Transaction',
     options: ['buyer', 'seller', 'both'] },
   { key: 'saleContingency',       label: 'Sale Contingency',        type: 'text',    section: 'Transaction',
-    hint: 'True if contract is contingent on sale/closing of Buyer's property (line 289)' },
+    hint: "True if contract is contingent on sale/closing of Buyer's property (line 289)" },
   { key: 'contractPrice',          label: 'Sale / Contract Price',   type: 'money',   section: 'Transaction' },
   { key: 'earnestMoney',          label: 'Earnest Money',           type: 'money',   section: 'Transaction' },
   { key: 'earnestMoneyHolder',    label: 'Earnest Money Holder',    type: 'text',    section: 'Transaction' },
