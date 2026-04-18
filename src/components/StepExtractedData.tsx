@@ -564,13 +564,60 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         );
       })()}
 
-      <p className="text-sm text-base-content/60">
-        {foundCount} of {FIELD_DEFS.length} fields found.{' '}
-        {reviewCount > 0 && (
-          <><span className="text-amber-600 font-medium">{reviewCount} formula fields</span> need review. </>
-        )}
-        <span className="text-red-400 font-medium">{FIELD_DEFS.length - foundCount} not found</span> — fill in or leave blank.
-      </p>
+      {/* ── Coverage bar ── */}
+      {(() => {
+        const total      = FIELD_DEFS.length;
+        const filled     = foundCount;
+        const missing    = total - filled;
+        const pctFilled  = Math.round((filled  / total) * 100);
+        const pctReview  = Math.round((reviewCount / total) * 100);
+        const pctMissing = 100 - pctFilled;
+
+        return (
+          <div className="space-y-1.5">
+            {/* Bar */}
+            <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-base-300">
+              <div
+                className="bg-green-500 transition-all"
+                style={{ width: `${Math.max(pctFilled - pctReview, 0)}%` }}
+              />
+              {reviewCount > 0 && (
+                <div
+                  className="bg-amber-400 transition-all"
+                  style={{ width: `${pctReview}%` }}
+                />
+              )}
+              {missing > 0 && (
+                <div
+                  className="bg-red-400/60 transition-all"
+                  style={{ width: `${pctMissing}%` }}
+                />
+              )}
+            </div>
+
+            {/* Labels */}
+            <div className="flex items-center gap-3 flex-wrap text-xs text-base-content/60">
+              <span>
+                <span className="font-semibold text-green-600">{filled}</span>
+                <span className="text-base-content/40"> / {total} fields extracted</span>
+              </span>
+              {reviewCount > 0 && (
+                <span className="text-amber-500 font-medium">
+                  {reviewCount} formula — review
+                </span>
+              )}
+              {missing > 0 && (
+                <span className="text-red-400 font-medium">
+                  {missing} not found — fill in manually
+                </span>
+              )}
+              <span className="ml-auto font-mono font-bold text-base-content/50">
+                {pctFilled}%
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Sectioned Table */}
       <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 -mr-1">
