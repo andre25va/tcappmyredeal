@@ -33,6 +33,7 @@ import { AIReports } from './components/AIReports';
 import { LoginPage } from './components/LoginPage';
 import { ProfileSetupModal } from './components/ProfileSetupModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAudit } from './hooks/useAudit';
 import { supabase } from './lib/supabase';
 import { NotificationBell } from './components/NotificationBell';
@@ -887,8 +888,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppInner />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
