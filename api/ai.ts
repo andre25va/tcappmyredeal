@@ -1154,6 +1154,64 @@ async function handleExtractDeal(apiKey: string, body: any) {
     }
   }
 
+  // ── Fetch field schema from field_coordinates ──────────────────────────────
+  // This gives the AI a precise line-number map of every field on the contract
+  // so it reads the right line instead of guessing. Non-fatal if unavailable.
+  let fieldSchemaSection = '';
+  try {
+    const { data: fieldRows } = await supabase
+      .from('field_coordinates')
+      .select('field_key, label, section, contract_line_num, field_type, group_key')
+      .eq('form_slug', 'residential-sale-contract')
+      .not('contract_line_num', 'is', null)
+      .not('label', 'is', null)
+      .order('contract_line_num');
+
+    if (fieldRows && fieldRows.length > 0) {
+      // Build mutually exclusive group instructions
+      const groups: Record<string, Array<{ line: number; label: string }>> = {};
+      for (const row of fieldRows) {
+        if (row.group_key) {
+          if (!groups[row.group_key]) groups[row.group_key] = [];
+          groups[row.group_key].push({ line: row.contract_line_num, label: row.label });
+        }
+      }
+
+      // Map group_key → which output field it feeds
+      const groupOutputMap: Record<string, string> = {
+        sale_type:                'isCashSale (line 296) and isFinancedSale (line 299) — set the checked one to "true", the other to "false"',
+        sale_contingency:         'saleContingency — return "true" if contingent checkbox checked, "false" if NOT contingent checkbox checked',
+        primary_loan_type:        'loanType — return "conventional" / "fha" / "va" / "usda" / "other" based on which line is checked',
+        primary_rate_type:        'interestRateType — return the label of the checked rate type',
+        earnest_refundability:    'earnestMoneyRefundable — return "Refundable" if refundable checked, "Non-refundable" if non-refundable checked',
+        add_earnest_refundability: 'additionalEarnestRefundable — same pattern',
+      };
+
+      let groupLines = '';
+      for (const [gk, members] of Object.entries(groups)) {
+        const out = groupOutputMap[gk] || gk;
+        const opts = members.map(m => `L${m.line}="${m.label}"`).join(', ');
+        groupLines += `• GROUP ${gk} → ${out}: [${opts}] — EXACTLY ONE checkbox in this group is checked\n`;
+      }
+
+      // Key labeled individual fields (non-group)
+      const keyFields = fieldRows
+        .filter(r => !r.group_key)
+        .map(r => `  L${r.contract_line_num} [${r.field_type}] ${r.label}`)
+        .join('\n');
+
+      fieldSchemaSection = `\n\nFORM FIELD REFERENCE MAP (Heartland MLS Residential Sale Contract)
+Use the printed left-margin line numbers to locate each field precisely. These are the ACTUAL printed line numbers on the physical contract pages.
+
+CHECKBOX/RADIO GROUPS — mutually exclusive (exactly ONE checkbox per group is checked):
+${groupLines}
+KEY INDIVIDUAL FIELD LOCATIONS:
+${keyFields}`;
+    }
+  } catch (e) {
+    console.warn('[extract-deal] Field schema fetch failed, proceeding without field map:', e);
+  }
+
   const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
 
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
@@ -1210,7 +1268,7 @@ Set confidence 0.0-1.0 based on how clearly the document is a real estate purcha
 Set extractedFields to an array of field names that had non-null values found.
 Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.
 For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.
-For fieldSources: output an ARRAY. For EVERY field you extract with a non-null value, push an entry: { field: 'exactFieldName', page: (PDF page number 1-indexed), line: (printed line number if visible, otherwise null), text: 'exact raw sentence from contract — verbatim, max 200 chars' }. Example: [{ field: 'buyerAgentCommission', page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... $9,420' }]. This lets the TC verify each extracted value directly against the contract.`;
+For fieldSources: output an ARRAY. For EVERY field you extract with a non-null value, push an entry: { field: 'exactFieldName', page: (PDF page number 1-indexed), line: (printed line number if visible, otherwise null), text: 'exact raw sentence from contract — verbatim, max 200 chars' }. Example: [{ field: 'buyerAgentCommission', page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... $9,420' }]. This lets the TC verify each extracted value directly against the contract.` + fieldSchemaSection;
 
   // Build user content array — prepend blank template if available
   const userContent: any[] = [];
