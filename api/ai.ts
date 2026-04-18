@@ -399,6 +399,8 @@ const extractDealSchema = {
     contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyHolder: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    earnestMoneyForm: { anyOf: [{ type: 'string', enum: ['check', 'electronic', 'wire', 'other'] }, { type: 'null' }] },
+    earnestMoneyRefundable: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
     additionalEarnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerPaidClosingCosts: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -509,7 +511,7 @@ const extractDealSchema = {
   },
   required: [
     'address', 'city', 'state', 'zipCode', 'propertyType', 'mlsNumber', 'mlsBoard', 'legalDescription',
-    'transactionType', 'contractPrice', 'earnestMoney', 'earnestMoneyHolder', 'additionalEarnestMoney',
+    'transactionType', 'contractPrice', 'earnestMoney', 'earnestMoneyHolder', 'earnestMoneyForm', 'earnestMoneyRefundable', 'additionalEarnestMoney',
     'sellerCredit', 'sellerPaidClosingCosts', 'repairsNotToExceed', 'downPaymentAmount', 'downPaymentPercent',
     'commissionReceived', 'buyerAgentCommission', 'listingAgentCommission',
     'loanType', 'loanAmount', 'loanOfficer', 'loanOfficerCompany', 'loanApplicationDue', 'finalLoanApprovalDue',
@@ -1152,6 +1154,8 @@ Extract all available fields. For dates, return YYYY-MM-DD format. For prices/am
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
 For contractPrice: the final purchase/sale price agreed upon in the contract. Return as numeric string (e.g., "550000"). Return null if not found.
 For earnestMoney: the initial earnest money deposit amount. Return as numeric string. Return null if not found.
+For earnestMoneyForm: look at the "in the form of:" checkbox row in the earnest money section (e.g. line 178). If "Check/Electronic Funds Transfer/ACH" is checked → return 'electronic'. If "Check" only → return 'check'. If "Wire" → return 'wire'. If "Other" → return 'other'. Return null if not found.
+For earnestMoneyRefundable: look at the "(Check one) refundable / non-refundable" checkbox row (e.g. line 181). Return true if refundable is checked, false if non-refundable is checked, null if not found.
 For earnestMoneyHolder: find the "Deposited with:" field in the earnest money section (typically Para 5 or 5b, or a line labeled "Deposited with:", "Held by:", or "Escrow Holder:"). Extract the name of the entity holding the earnest money. Return null if not found.
 For additionalEarnestMoney: any second/additional earnest money deposit. Return as numeric string. Return null if not applicable.
 For sellerCredit: any seller credit or concession toward buyer's costs. Return as numeric string. Return null if not found.
@@ -1279,6 +1283,8 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
     listPrice: parsed.contractPrice,
     sellerConcessions: parsed.sellerCredit,
     emHeldWith: parsed.earnestMoneyHolder,
+    earnestMoneyForm: parsed.earnestMoneyForm,
+    earnestMoneyRefundable: parsed.earnestMoneyRefundable === true ? 'Refundable' : parsed.earnestMoneyRefundable === false ? 'Non-refundable' : null,
     mlsBoardName: parsed.mlsBoard,
     commissionAmount: parsed.commissionReceived,
   };
