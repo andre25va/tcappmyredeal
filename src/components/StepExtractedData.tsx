@@ -53,6 +53,8 @@ const FIELD_DEFS: FieldDef[] = [
   // ── Transaction ───────────────────────────────────────────────────────────
   { key: 'transactionType',       label: 'Transaction Type',        type: 'select',  section: 'Transaction',
     options: ['buyer', 'seller', 'both'] },
+  { key: 'saleContingency',       label: 'Sale Contingency',        type: 'text',    section: 'Transaction',
+    hint: 'True if contract is contingent on sale/closing of Buyer's property (line 289)' },
   { key: 'contractPrice',          label: 'Sale / Contract Price',   type: 'money',   section: 'Transaction' },
   { key: 'earnestMoney',          label: 'Earnest Money',           type: 'money',   section: 'Transaction' },
   { key: 'earnestMoneyHolder',    label: 'Earnest Money Holder',    type: 'text',    section: 'Transaction' },
@@ -73,6 +75,10 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'listingAgentCommission',label: 'Listing Agent Commission',type: 'text',    section: 'Transaction' },
 
   // ── Financing ─────────────────────────────────────────────────────────────
+  { key: 'isCashSale',          label: 'Cash Sale',           type: 'text',    section: 'Financing',
+    hint: 'True if "THIS IS A CASH SALE" checkbox is checked (line 296)' },
+  { key: 'isFinancedSale',      label: 'Financed Sale',       type: 'text',    section: 'Financing',
+    hint: 'True if "THIS IS A FINANCED SALE" checkbox is checked (line 299)' },
   { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
     options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'] },
   { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
@@ -82,6 +88,11 @@ const FIELD_DEFS: FieldDef[] = [
     hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
   { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due', type: 'text', section: 'Financing',
     hint: 'Date or relative formula, e.g. "5 calendar days before Closing Date"' },
+  { key: 'loanOccupancyType',     label: 'Occupancy Type',          type: 'select',  section: 'Financing',
+    options: ['owner-occupied', 'investment'] },
+  { key: 'interestRateType',      label: 'Interest Rate Type',      type: 'select',  section: 'Financing',
+    options: ['Fixed Rate', 'Adjustable Rate', 'Interest Only', 'Other'] },
+  { key: 'amortizationPeriodYears', label: 'Amortization Period (yrs)', type: 'text', section: 'Financing' },
 
   // ── Key Dates ─────────────────────────────────────────────────────────────
   { key: 'contractDate',        label: 'Effective Date',      type: 'date',    section: 'Key Dates' },
