@@ -358,8 +358,18 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   const initialValuesRef = React.useRef<Record<string, string>>(values);
 
   // Field source map — page/line/text for each extracted field (for ⓘ badges)
-  const fieldSources: Record<string, { page: number; line?: number; text: string }> = React.useMemo(
-    () => (extractedData as any)?.fieldSources || {},
+  const fieldSources: Record<string, { page: number; line?: number; text: string }> = React.useMemo(() => {
+    const raw = (extractedData as any)?.fieldSources;
+    if (!raw) return {};
+    // Handle both array format (new) and object format (legacy)
+    if (Array.isArray(raw)) {
+      return Object.fromEntries(
+        (raw as Array<{ field: string; page: number; line?: number | null; text: string }>)
+          .map(s => [s.field, { page: s.page, line: s.line ?? undefined, text: s.text }])
+      );
+    }
+    return raw as Record<string, { page: number; line?: number; text: string }>;
+  },
     [extractedData]
   );
 
