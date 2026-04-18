@@ -18,16 +18,17 @@ interface FieldRow {
   is_initial: boolean;
 }
 
-const FIELD_TYPE_STYLE: Record<string, { badge: string; icon: string }> = {
-  checkbox: { badge: 'badge-warning',  icon: '☑' },
-  text:     { badge: 'badge-info',     icon: '📝' },
-  date:     { badge: 'badge-success',  icon: '📅' },
-  number:   { badge: 'badge-secondary', icon: '#' },
-  radio:    { badge: 'badge-primary',  icon: '🔘' },
+/* Pill colours — no emojis so text never wraps inside a small badge */
+const FIELD_TYPE_PILL: Record<string, { bg: string; text: string; label: string }> = {
+  checkbox: { bg: 'bg-amber-100',  text: 'text-amber-800',  label: '☑ checkbox' },
+  text:     { bg: 'bg-sky-100',    text: 'text-sky-800',    label: '✎ text'     },
+  date:     { bg: 'bg-green-100',  text: 'text-green-800',  label: '📅 date'    },
+  number:   { bg: 'bg-purple-100', text: 'text-purple-800', label: '# number'   },
+  radio:    { bg: 'bg-blue-100',   text: 'text-blue-800',   label: '● radio'    },
 };
 
-const typeStyle = (t: string) =>
-  FIELD_TYPE_STYLE[t] ?? { badge: 'badge-ghost', icon: '?' };
+const typePill = (t: string) =>
+  FIELD_TYPE_PILL[t] ?? { bg: 'bg-base-200', text: 'text-base-content/60', label: t };
 
 /* ─── Known form slugs ───────────────────────────────────── */
 const FORM_OPTIONS = [
@@ -216,12 +217,16 @@ export const FormSchemaViewer: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map(f => {
-                        const ts = typeStyle(f.field_type);
+                      {rows.map((f, idx) => {
+                        const tp = typePill(f.field_type);
+                        const isEven = idx % 2 === 0;
                         return (
-                          <tr key={f.id} className="hover:bg-base-200/40 transition-colors">
+                          <tr
+                            key={f.id}
+                            className={`hover:bg-primary/5 transition-colors ${isEven ? 'bg-base-100' : 'bg-base-200/30'}`}
+                          >
                             {/* Line # */}
-                            <td>
+                            <td className="align-middle">
                               {f.contract_line_num != null ? (
                                 <span className="font-mono text-xs font-bold text-primary">
                                   L{f.contract_line_num}
@@ -232,12 +237,12 @@ export const FormSchemaViewer: React.FC = () => {
                             </td>
 
                             {/* Page */}
-                            <td>
+                            <td className="align-middle">
                               <span className="text-xs text-base-content/50">p{f.page_num}</span>
                             </td>
 
                             {/* Label */}
-                            <td>
+                            <td className="align-middle">
                               <div className="font-medium text-xs text-base-content">
                                 {f.label ?? f.field_key}
                               </div>
@@ -248,36 +253,36 @@ export const FormSchemaViewer: React.FC = () => {
                               )}
                             </td>
 
-                            {/* Type */}
-                            <td>
-                              <span className={`badge ${ts.badge} badge-xs gap-0.5`}>
-                                {ts.icon} {f.field_type}
+                            {/* Type — fixed-height pill, never wraps */}
+                            <td className="align-middle">
+                              <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${tp.bg} ${tp.text}`}>
+                                {tp.label}
                               </span>
                             </td>
 
                             {/* Valid values */}
-                            <td>
+                            <td className="align-middle">
                               {f.valid_options && f.valid_options.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex flex-wrap gap-1 items-center">
                                   {f.valid_options.map(v => (
                                     <span
                                       key={v}
-                                      className="badge badge-ghost badge-xs font-mono text-[10px]"
+                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono bg-base-300/60 text-base-content/70 whitespace-nowrap"
                                     >
                                       {v}
                                     </span>
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-base-content/25 text-xs">free-form</span>
+                                <span className="text-base-content/25 text-xs italic">free-form</span>
                               )}
                             </td>
 
                             {/* Group */}
-                            <td>
+                            <td className="align-middle">
                               {f.group_key ? (
                                 <span
-                                  className="badge badge-outline badge-xs font-mono text-[10px] truncate max-w-[120px]"
+                                  className="inline-flex items-center rounded border border-base-300 px-1.5 py-0.5 text-[10px] font-mono text-base-content/60 truncate max-w-[120px]"
                                   title={f.group_key}
                                 >
                                   {f.group_key}
@@ -288,16 +293,16 @@ export const FormSchemaViewer: React.FC = () => {
                             </td>
 
                             {/* Flags */}
-                            <td>
-                              <div className="flex gap-1 flex-wrap">
+                            <td className="align-middle">
+                              <div className="flex gap-1 flex-wrap items-center">
                                 {f.required && (
-                                  <span className="badge badge-error badge-xs">req</span>
+                                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700">req</span>
                                 )}
                                 {f.is_signature && (
-                                  <span className="badge badge-secondary badge-xs">sig</span>
+                                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700">sig</span>
                                 )}
                                 {f.is_initial && (
-                                  <span className="badge badge-secondary badge-xs">ini</span>
+                                  <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700">ini</span>
                                 )}
                               </div>
                             </td>
