@@ -396,9 +396,9 @@ const extractDealSchema = {
 
     // ── Transaction ───────────────────────────────────────────────────────────
     transactionType: { type: 'string', enum: ['buyer', 'seller'] },
-    saleContingency: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
-    isCashSale: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
-    isFinancedSale: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    saleContingency: { type: 'string', enum: ['true', 'false', 'unknown'] },
+    isCashSale: { type: 'string', enum: ['true', 'false', 'unknown'] },
+    isFinancedSale: { type: 'string', enum: ['true', 'false', 'unknown'] },
     contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyHolder: { anyOf: [{ type: 'string' }, { type: 'null' }] },
