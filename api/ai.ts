@@ -400,7 +400,7 @@ const extractDealSchema = {
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyHolder: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyForm: { anyOf: [{ type: 'string', enum: ['check', 'electronic', 'wire', 'other'] }, { type: 'null' }] },
-    earnestMoneyRefundable: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    earnestMoneyRefundable: { type: 'string' },
     additionalEarnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerCredit: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     sellerPaidClosingCosts: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -418,6 +418,9 @@ const extractDealSchema = {
     loanOfficerCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanApplicationDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     finalLoanApprovalDue: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    loanOccupancyType: { type: 'string' },
+    interestRateType: { type: 'string' },
+    amortizationPeriodYears: { anyOf: [{ type: 'string' }, { type: 'null' }] },
 
     // ── Key Dates ─────────────────────────────────────────────────────────────
     contractDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -515,6 +518,7 @@ const extractDealSchema = {
     'sellerCredit', 'sellerPaidClosingCosts', 'repairsNotToExceed', 'downPaymentAmount', 'downPaymentPercent',
     'commissionReceived', 'buyerAgentCommission', 'listingAgentCommission',
     'loanType', 'loanAmount', 'loanOfficer', 'loanOfficerCompany', 'loanApplicationDue', 'finalLoanApprovalDue',
+    'loanOccupancyType', 'interestRateType', 'amortizationPeriodYears',
     'contractDate', 'closingDate', 'possessionDate', 'surveyDeadline', 'earnestMoneyDueDate',
     'additionalEarnestMoneyDue', 'listingExpirationDate',
     'inspectionDate', 'buyerInspectionNoticeDue', 'renegotiationPeriod', 'financeDeadline',
@@ -1155,7 +1159,10 @@ For transactionType: if this is a buyer's purchase offer/agreement, return "buye
 For contractPrice: the final purchase/sale price agreed upon in the contract. Return as numeric string (e.g., "550000"). Return null if not found.
 For earnestMoney: the initial earnest money deposit amount. Return as numeric string. Return null if not found.
 For earnestMoneyForm: look at the "in the form of:" checkbox row in the earnest money section (e.g. line 178). If "Check/Electronic Funds Transfer/ACH" is checked → return 'electronic'. If "Check" only → return 'check'. If "Wire" → return 'wire'. If "Other" → return 'other'. Return null if not found.
-For earnestMoneyRefundable: look at the "(Check one) refundable / non-refundable" checkbox row (e.g. line 181). Return true if refundable is checked, false if non-refundable is checked, null if not found.
+For loanOccupancyType: find the "Type of Financing" line (typically line 311) with checkboxes "owner-occupied Loan(s)" or "investment Loan(s)". Return "owner-occupied" if owner-occupied is checked, "investment" if investment is checked, or empty string "" if not found.
+For interestRateType: find the "Interest Rate" section (typically lines 323-327) with checkboxes: Fixed Rate, Adjustable Rate, Interest Only, Other. Look at the PRIMARY LOAN column. Return "Fixed Rate", "Adjustable Rate", "Interest Only", or "Other" depending on which is checked. Return empty string "" if not found.
+For amortizationPeriodYears: find the "Amortization Period" line (typically line 329). Read the number of years (e.g., "30" for "30 years"). Return as a string (e.g., "30"). Do NOT confuse with down payment. Return null if not found.
+For earnestMoneyRefundable: look at the "(Check one) refundable / non-refundable" checkbox row (typically on the same line as the Earnest Money holder / deposited with line, e.g. line 181). Return the STRING "Refundable" if the refundable checkbox is checked (☑), return the STRING "Non-refundable" if non-refundable is checked. Return empty string "" only if the row is completely absent from the document. This is almost always present on Heartland MLS contracts.
 For earnestMoneyHolder: find the "Deposited with:" field in the earnest money section (typically Para 5 or 5b, or a line labeled "Deposited with:", "Held by:", or "Escrow Holder:"). Extract the name of the entity holding the earnest money. Return null if not found.
 For additionalEarnestMoney: any second/additional earnest money deposit. Return as numeric string. Return null if not applicable.
 For sellerCredit: any seller credit or concession toward buyer's costs. Return as numeric string. Return null if not found.
@@ -1188,8 +1195,8 @@ For buyerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Selling
 For sellerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Listing Licensee". Copy the personal name (first + last, not brokerage). Return null if not found.
 HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — "Listing Licensee" (seller's agent) and "Selling Licensee" (buyer's agent). Each column is self-contained. Extract the name from WITHIN each column only — never cross columns.
 For mlsBoard: extract the MLS board or association name (e.g., "Heartland MLS", "KCRAR"). Return null if not found.
-For loanType: On Heartland MLS / KC contracts, find the section labeled "Loan Types/Terms" (paragraph b, typically around lines 314-321). This section contains a TABLE with loan type ROWS (Conventional, FHA, VA, USDA, Other, Owner Financing) and two COLUMNS (Primary Loan, Secondary Loan). A checkmark (✓, X, or filled box) in the PRIMARY LOAN column of a specific row identifies the loan type — for example if the FHA row has a checkmark in the Primary Loan column then loanType = "fha". Also detect cash transactions where no loan section exists or "Cash" is explicitly stated. Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return null if not found.
-For downPaymentPercent: on Heartland MLS contracts, extract the LTV or down payment percentage from line 330. Return as numeric percentage string (e.g., "3" for 3%). Return null if not found.
+For loanType: On Heartland MLS / KC contracts, find the paragraph labeled "Loan Types/Terms" (paragraph b, typically around lines 313-321). This section has a two-column TABLE: "Primary Loan" and "Secondary Loan" header, then rows: Conventional, FHA, VA, USDA, Other, Owner Financing. Look for a checkmark, filled checkbox (☑ or ✓ or X or dark filled square) in the PRIMARY LOAN column specifically. The Primary Loan column is the LEFT data column. If Conventional row's Primary Loan cell has a mark → return "conventional". FHA → "fha", VA → "va", USDA → "usda", Other or Owner Financing → "other". Also return "cash" if no loan section exists or cash is explicitly stated. Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return null ONLY if the section is completely absent.
+For downPaymentPercent: on Heartland MLS contracts, look for an EXPLICITLY stated down payment percentage (e.g., "10%", "20% down"). Do NOT use the Amortization Period years (line 329 shows years like "30 years" or "15 years" — this is NOT a down payment). Do NOT use the Principal Amount/LTV dollar figure on line 330. Return a percentage string (e.g., "20") ONLY if a percentage is directly written. Return null if no percentage is explicitly stated.
 For propertyType: infer from property description. Default to "single-family".
 For contractType: "residential_sale_contract" for standard purchase agreements, "loi" for letters of intent, "addendum" for addendums, "other" for anything else.
 Return null for any field not found in the document.
@@ -1284,7 +1291,10 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
     sellerConcessions: parsed.sellerCredit,
     emHeldWith: parsed.earnestMoneyHolder,
     earnestMoneyForm: parsed.earnestMoneyForm,
-    earnestMoneyRefundable: parsed.earnestMoneyRefundable === true ? 'Refundable' : parsed.earnestMoneyRefundable === false ? 'Non-refundable' : null,
+    earnestMoneyRefundable: parsed.earnestMoneyRefundable || null,
+    loanOccupancyType: parsed.loanOccupancyType || null,
+    interestRateType: parsed.interestRateType || null,
+    amortizationPeriodYears: parsed.amortizationPeriodYears || null,
     mlsBoardName: parsed.mlsBoard,
     commissionAmount: parsed.commissionReceived,
   };

@@ -82,6 +82,11 @@ const FIELD_DEFS: FieldDef[] = [
     hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
   { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due', type: 'text', section: 'Financing',
     hint: 'Date or relative formula, e.g. "5 calendar days before Closing Date"' },
+  { key: 'loanOccupancyType',     label: 'Occupancy Type',          type: 'select',  section: 'Financing',
+    options: ['owner-occupied', 'investment'] },
+  { key: 'interestRateType',      label: 'Interest Rate Type',      type: 'select',  section: 'Financing',
+    options: ['Fixed Rate', 'Adjustable Rate', 'Interest Only', 'Other'] },
+  { key: 'amortizationPeriodYears', label: 'Amortization Period (yrs)', type: 'text', section: 'Financing' },
 
   // ── Key Dates ─────────────────────────────────────────────────────────────
   { key: 'contractDate',        label: 'Effective Date',      type: 'date',    section: 'Key Dates' },
