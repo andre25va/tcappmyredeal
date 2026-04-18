@@ -373,6 +373,34 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
     [extractedData]
   );
 
+  // Group fields by page number from fieldSources (or by section as fallback)
+  const pageGroups = React.useMemo(() => {
+    const hasSources = Object.values(fieldSources).some(s => s?.page);
+    if (hasSources) {
+      const groups: Record<string, { label: string; fields: typeof FIELD_DEFS }> = {};
+      FIELD_DEFS.forEach(field => {
+        const src = fieldSources[field.key];
+        const pageKey = src?.page ? String(src.page) : '0';
+        const label = src?.page ? `Page ${src.page}` : 'Other Fields';
+        if (!groups[pageKey]) groups[pageKey] = { label, fields: [] };
+        groups[pageKey].fields.push(field);
+      });
+      return Object.entries(groups)
+        .sort(([a], [b]) => {
+          const numA = parseInt(a); const numB = parseInt(b);
+          if (numA === 0) return 1; if (numB === 0) return -1;
+          return numA - numB;
+        })
+        .map(([pageKey, group]) => ({ key: pageKey, ...group }));
+    }
+    // Fallback: group by section
+    return SECTIONS.map(section => ({
+      key: section,
+      label: section,
+      fields: FIELD_DEFS.filter(f => f.section === section),
+    }));
+  }, [fieldSources]);
+
   const setValue = (key: string, val: string) =>
     setValues(prev => ({ ...prev, [key]: val }));
 
@@ -411,22 +439,8 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
     return wasFound && !!hint;
   }).length;
 
-  // --- Accordion state ---
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    SECTIONS.forEach(section => {
-      const fields = FIELD_DEFS.filter(f => f.section === section);
-      const hasAttention = fields.some(f => {
-        const raw = extractedData?.[f.key];
-        const wasFound = raw !== null && raw !== undefined && raw !== '';
-        const isTier1 = !wasFound;
-        const isTier2 = wasFound && !!f.hint;
-        return isTier1 || isTier2;
-      });
-      init[section] = hasAttention;
-    });
-    return init;
-  });
+  // --- Accordion state — all collapsed by default, TC expands page by page ---
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const toggleSection = (section: string) =>
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -541,16 +555,16 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
       {/* Sectioned Table */}
       <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 -mr-1">
-        {SECTIONS.map(section => {
-          const allFields = FIELD_DEFS.filter(f => f.section === section);
+        {pageGroups.map(group => {
+          const allFields = group.fields;
 
-          // Only render section if at least one field was found OR it's a primary section
-          const primarySections = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties'];
-          const sectionHasData = allFields.some(f => {
+          // Skip empty groups (no data and not a primary group)
+          const primaryLabels = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties', 'Page 1', 'Page 2'];
+          const groupHasData = allFields.some(f => {
             const raw = extractedData?.[f.key];
             return raw !== null && raw !== undefined && raw !== '';
           });
-          if (!primarySections.includes(section) && !sectionHasData) return null;
+          if (!primaryLabels.includes(group.label) && !groupHasData) return null;
 
           // Classify fields into tiers
           const tier1Fields = allFields.filter(f => getFieldTier(f, extractedData) === 1);
@@ -563,17 +577,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           // Ordered fields: tier1 first, then tier2, then tier3
           const orderedFields = [...tier1Fields, ...tier2Fields, ...tier3Fields];
 
-          const isOpen = openSections[section] ?? true;
+          const isOpen = openSections[group.key] ?? false;
 
           return (
-            <div key={section} className="rounded-xl border border-base-300 overflow-hidden">
-              {/* Section Header — clickable toggle */}
+            <div key={group.key} className="rounded-xl border border-base-300 overflow-hidden">
+              {/* Page Header — clickable toggle */}
               <button
-                onClick={() => toggleSection(section)}
+                onClick={() => toggleSection(group.key)}
                 className="w-full bg-base-200/60 px-3 py-1.5 border-b border-base-300 flex items-center justify-between text-left"
               >
                 <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">{section}</p>
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">{group.label}</p>
                   {tier1Count > 0 && (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
                       🔴 {tier1Count} missing
@@ -585,14 +599,14 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                     </span>
                   )}
                   {tier1Count === 0 && tier2Count === 0 && (
-                    <span className="text-[10px] text-green-600 font-medium">✅ {allFields.length} verified</span>
+                    <span className="text-[10px] text-green-600 font-medium">✅ {orderedFields.filter(f => {const r=extractedData?.[f.key]; return r!==null&&r!==undefined&&r!=='';}).length}/{allFields.length} found</span>
                   )}
                 </div>
                 {/* Chevron */}
                 <ChevronDown size={14} className={`text-base-content/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>
 
-              {/* Section Fields — hidden when collapsed */}
+              {/* Fields — hidden when collapsed */}
               {isOpen && (
                 <div className="divide-y divide-base-200">
                   {orderedFields.map(field => {
@@ -647,6 +661,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                           {field.hint && (
                             <p className="text-[10px] text-base-content/35 leading-tight mt-0.5">{field.hint}</p>
                           )}
+                          <p className="text-[9px] text-base-content/25 uppercase tracking-wide mt-0.5">{field.section}</p>
                         </div>
 
                         {/* Input */}
