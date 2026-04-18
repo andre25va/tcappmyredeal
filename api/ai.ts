@@ -396,6 +396,9 @@ const extractDealSchema = {
 
     // ── Transaction ───────────────────────────────────────────────────────────
     transactionType: { type: 'string', enum: ['buyer', 'seller'] },
+    saleContingency: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    isCashSale: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    isFinancedSale: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
     contractPrice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoney: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     earnestMoneyHolder: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -514,7 +517,7 @@ const extractDealSchema = {
   },
   required: [
     'address', 'city', 'state', 'zipCode', 'propertyType', 'mlsNumber', 'mlsBoard', 'legalDescription',
-    'transactionType', 'contractPrice', 'earnestMoney', 'earnestMoneyHolder', 'earnestMoneyForm', 'earnestMoneyRefundable', 'additionalEarnestMoney',
+    'transactionType', 'saleContingency', 'isCashSale', 'isFinancedSale', 'contractPrice', 'earnestMoney', 'earnestMoneyHolder', 'earnestMoneyForm', 'earnestMoneyRefundable', 'additionalEarnestMoney',
     'sellerCredit', 'sellerPaidClosingCosts', 'repairsNotToExceed', 'downPaymentAmount', 'downPaymentPercent',
     'commissionReceived', 'buyerAgentCommission', 'listingAgentCommission',
     'loanType', 'loanAmount', 'loanOfficer', 'loanOfficerCompany', 'loanApplicationDue', 'finalLoanApprovalDue',
@@ -1159,6 +1162,9 @@ For transactionType: if this is a buyer's purchase offer/agreement, return "buye
 For contractPrice: the final purchase/sale price agreed upon in the contract. Return as numeric string (e.g., "550000"). Return null if not found.
 For earnestMoney: the initial earnest money deposit amount. Return as numeric string. Return null if not found.
 For earnestMoneyForm: look at the "in the form of:" checkbox row in the earnest money section (e.g. line 178). If "Check/Electronic Funds Transfer/ACH" is checked → return 'electronic'. If "Check" only → return 'check'. If "Wire" → return 'wire'. If "Other" → return 'other'. Return null if not found.
+For saleContingency (line 286-292): true if the line 289 checkbox "This Contract IS contingent upon the sale and/or Closing of a BUYER'S Property" is checked (☑). Return false if the line 288 "NOT contingent" checkbox is checked. Return null if section not present.
+For isCashSale (line 296): true if the "THIS IS A CASH SALE" checkbox is checked (☑), false if unchecked. Return null if section absent.
+For isFinancedSale (line 299): true if the "THIS IS A FINANCED SALE" checkbox is checked (☑), false if unchecked. Return null if section absent.
 For loanOccupancyType: find the "Type of Financing" line (typically line 311) with checkboxes "owner-occupied Loan(s)" or "investment Loan(s)". Return "owner-occupied" if owner-occupied is checked, "investment" if investment is checked, or empty string "" if not found.
 For interestRateType: find the "Interest Rate" section (typically lines 323-327) with checkboxes: Fixed Rate, Adjustable Rate, Interest Only, Other. Look at the PRIMARY LOAN column. Return "Fixed Rate", "Adjustable Rate", "Interest Only", or "Other" depending on which is checked. Return empty string "" if not found.
 For amortizationPeriodYears: find the "Amortization Period" line (typically line 329). Read the number of years (e.g., "30" for "30 years"). Return as a string (e.g., "30"). Do NOT confuse with down payment. Return null if not found.
