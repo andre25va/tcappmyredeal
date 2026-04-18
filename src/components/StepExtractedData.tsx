@@ -357,6 +357,12 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   // Capture original AI-extracted values once (for correction tracking)
   const initialValuesRef = React.useRef<Record<string, string>>(values);
 
+  // Field source map — page/line/text for each extracted field (for ⓘ badges)
+  const fieldSources: Record<string, { page: number; line?: number; text: string }> = React.useMemo(
+    () => (extractedData as any)?.fieldSources || {},
+    [extractedData]
+  );
+
   const setValue = (key: string, val: string) =>
     setValues(prev => ({ ...prev, [key]: val }));
 
@@ -494,7 +500,6 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
       {/* Template-assisted / Vision-only banner */}
       {(() => {
         const templateUsed = (extractedData as any)?.templateUsed;
-        const fieldSources: Record<string, { page: number; line?: number; text: string }> = (extractedData as any)?.fieldSources || {};
         return (
           <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
             templateUsed
