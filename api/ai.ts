@@ -491,6 +491,19 @@ const extractDealSchema = {
         required: ['label', 'checked', 'section'],
       },
     },
+    fieldSources: {
+      type: 'object',
+      description: 'Source location for each extracted field',
+      additionalProperties: {
+        type: 'object',
+        properties: {
+          page: { type: 'number' },
+          line: { type: 'number' },
+          text: { type: 'string' },
+        },
+        required: ['page', 'text'],
+      },
+    },
   },
   required: [
     'address', 'city', 'state', 'zipCode', 'propertyType', 'mlsNumber', 'mlsBoard', 'legalDescription',
@@ -507,7 +520,7 @@ const extractDealSchema = {
     'titleCompany',
     'asIsSale', 'inspectionWaived', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
     'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
-    'confidence', 'extractedFields', 'fieldScores', 'allCheckboxes',
+    'confidence', 'extractedFields', 'fieldScores', 'allCheckboxes', 'fieldSources',
   ],
 };
 
@@ -1143,7 +1156,7 @@ For sellerCredit: any seller credit or concession toward buyer's costs. Return a
 For sellerPaidClosingCosts: amount seller agreed to pay toward buyer's closing costs. Return as numeric string. Return null if not found.
 For repairsNotToExceed: maximum repair obligation amount from inspection negotiations. Return as numeric string. Return null if not found.
 For commissionReceived: the buyer's agent (selling side) commission amount. If only a percentage is stated (e.g., "3%"), return the raw percentage string. Return null if not found.
-For buyerAgentCommission: buyer's agent commission percentage or amount as stated. Return null if not found.
+For buyerAgentCommission: In Heartland MLS / KC contracts, look for paragraph f (Total Additional Seller Expenses), item 1: 'SELLER Compensation to Broker assisting BUYER. SELLER agrees to pay Broker assisting BUYER from SELLER'S funds at Closing' — the dollar amount on that line IS the buyer agent commission (typically around line 207). Return the dollar amount as a numeric string (e.g. '9420'). Do NOT put this value in sellerPaidClosingCosts. Return null if not found.
 For listingAgentCommission: listing agent commission percentage or amount as stated. Return null if not found.
 For loanApplicationDue: deadline for buyer to apply for loan. Return as YYYY-MM-DD. Return null if not found.
 For finalLoanApprovalDue: deadline for final loan approval/commitment. Return as YYYY-MM-DD. Return null if not found.
@@ -1177,7 +1190,8 @@ Return null for any field not found in the document.
 Set confidence 0.0-1.0 based on how clearly the document is a real estate purchase agreement.
 Set extractedFields to an array of field names that had non-null values found.
 Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.
-For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.`;
+For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.
+For fieldSources: for EVERY field you extract with a non-null value, include an entry keyed by the exact field name. Each entry: page (PDF page number 1-indexed), line (printed line number in contract if visible, otherwise omit), text (exact raw sentence from the contract — copy verbatim, max 200 chars). Example: { buyerAgentCommission: { page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... 9420' } }. This lets the TC verify each extracted value directly against the contract.`;
 
   // Build user content array — prepend blank template if available
   const userContent: any[] = [];
@@ -1252,6 +1266,7 @@ For allCheckboxes: catalog EVERY checkbox found in the contract regardless of wh
   return {
     ...parsed,
     templateUsed: !!templateBase64,
+    fieldSources: (parsed.fieldSources as Record<string, { page: number; line?: number; text: string }>) || {},
     buyerAgentName,
     sellerAgentName,
     // Old key aliases
