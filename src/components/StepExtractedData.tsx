@@ -134,6 +134,8 @@ const FIELD_DEFS: FieldDef[] = [
     hint: 'e.g. "5 calendar days after HOA Document Delivery Deadline"' },
 
   // ── Home Warranty ─────────────────────────────────────────────────────────
+  { key: 'warrantyArranger',    label: 'Warranty Arranged By',   type: 'text',   section: 'Home Warranty',
+    hint: '"Licensee assisting SELLER" or "Licensee assisting BUYER" (line 91)' },
   { key: 'homeWarrantyPaidBy',  label: 'Home Warranty Paid By',  type: 'text',   section: 'Home Warranty',
     hint: 'e.g. BUYER, SELLER, BUYER waives, N/A' },
   { key: 'homeWarrantyAmount',  label: 'Home Warranty Amount',   type: 'money',  section: 'Home Warranty' },
