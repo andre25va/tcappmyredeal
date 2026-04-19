@@ -455,7 +455,8 @@ const extractDealSchema = {
     homeWarrantyPaidBy: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     homeWarrantyAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     homeWarrantyCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    homeWarranty: { type: 'boolean' },
+    homeWarranty: { type: 'string', enum: ['true', 'false', 'waived'] },
+    warrantyArranger: { anyOf: [{ type: 'string' }, { type: 'null' }] },
 
     // ── Parties ───────────────────────────────────────────────────────────────
     titleCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -527,7 +528,7 @@ const extractDealSchema = {
     'inspectionDate', 'buyerInspectionNoticeDue', 'renegotiationPeriod', 'financeDeadline',
     'appraisalDeliveryDate', 'appraisalDueToSeller', 'appraisalNegotiationPeriod',
     'titleCommitmentDeliveryDate', 'titleObjectionPeriod', 'hoaDocumentDeliveryDeadline', 'buyerHoaReviewDeadline',
-    'homeWarrantyPaidBy', 'homeWarrantyAmount', 'homeWarrantyCompany', 'homeWarranty',
+    'homeWarrantyPaidBy', 'homeWarrantyAmount', 'homeWarrantyCompany', 'homeWarranty', 'warrantyArranger',
     'titleCompany',
     'asIsSale', 'inspectionWaived', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
     'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
@@ -1253,6 +1254,8 @@ For buyerHoaReviewDeadline: buyer's HOA review/termination deadline. Return as Y
 For homeWarrantyPaidBy: who pays for home warranty ("buyer", "seller", or "split"). Return null if no warranty.
 For homeWarrantyAmount: home warranty cost. Return as numeric string. Return null if not found.
 For homeWarrantyCompany: home warranty provider name. Return null if not found.
+For homeWarranty: return "true" if a home warranty is being purchased at cost, "waived" if buyer waives the opportunity, "false" if not mentioned.
+For warrantyArranger: line 91 — who is responsible for arranging the warranty plan. Return exactly "Licensee assisting SELLER" or "Licensee assisting BUYER" based on which checkbox is checked. Return null if no warranty or not specified.
 For sellerNames: MECHANICAL EXTRACTION ONLY — locate line labeled "SELLER:" near top of page 1. Copy exactly what appears after "SELLER:". Return null if not found.
 For buyerNames: MECHANICAL EXTRACTION ONLY — locate line labeled "BUYER:" near top of page 1. Copy exactly what appears after "BUYER:". Strip professional designations (ASP, GRI, ABR, REALTOR). Return null if not found.
 For buyerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Selling Licensee". Copy the personal name (first + last, not brokerage). Return null if not found.

@@ -255,6 +255,13 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [contractObjectUrl, setContractObjectUrl] = useState<string | null>(null);
   const [showPdfPanel, setShowPdfPanel] = useState(false);
   const [pdfJump, setPdfJump] = useState<{page: number; counter: number} | null>(null);
+
+  // Auto-open PDF panel when entering Review & Verify (step 2) so TC can compare side-by-side
+  useEffect(() => {
+    if (step === 2 && contractObjectUrl) {
+      setShowPdfPanel(true);
+    }
+  }, [step, contractObjectUrl]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [disambigClientCandidates, setDisambigClientCandidates] = useState<ContactRecord[] | null>(null);
