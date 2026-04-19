@@ -415,7 +415,7 @@ const extractDealSchema = {
     listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
 
     // ── Financing ─────────────────────────────────────────────────────────────
-    loanType: { anyOf: [{ type: 'string', enum: ['conventional', 'fha', 'va', 'usda', 'cash', 'other'] }, { type: 'null' }] },
+    loanType: { type: 'string' },
     loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficerCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -1262,7 +1262,7 @@ For buyerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Selling
 For sellerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Listing Licensee". Copy the personal name (first + last, not brokerage). Return null if not found.
 HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — "Listing Licensee" (seller's agent) and "Selling Licensee" (buyer's agent). Each column is self-contained. Extract the name from WITHIN each column only — never cross columns.
 For mlsBoard: extract the MLS board or association name (e.g., "Heartland MLS", "KCRAR"). Return null if not found.
-For loanType: On Heartland MLS / KC contracts, find the paragraph labeled "Loan Types/Terms" (paragraph b, typically around lines 313-321). This section has a two-column TABLE: "Primary Loan" and "Secondary Loan" header, then rows: Conventional, FHA, VA, USDA, Other, Owner Financing. Look for a checkmark, filled checkbox (☑ or ✓ or X or dark filled square) in the PRIMARY LOAN column specifically. The Primary Loan column is the LEFT data column. If Conventional row's Primary Loan cell has a mark → return "conventional". FHA → "fha", VA → "va", USDA → "usda", Other or Owner Financing → "other". Also return "cash" if no loan section exists or cash is explicitly stated. Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return null ONLY if the section is completely absent.
+For loanType: On Heartland MLS / KC contracts, find the paragraph labeled "Loan Types/Terms" (paragraph b, typically around lines 313-321). This section has a two-column TABLE: "Primary Loan" and "Secondary Loan" header, then rows: Conventional, FHA, VA, USDA, Other, Owner Financing. Look for a checkmark, filled checkbox (☑ or ✓ or X or dark filled square) in the PRIMARY LOAN column specifically. The Primary Loan column is the LEFT data column. If Conventional row's Primary Loan cell has a mark → return "conventional". FHA → "fha", VA → "va", USDA → "usda", Other or Owner Financing → "other". Also return "cash" if isCashSale is "true" or no loan section exists. Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return empty string "" ONLY if the loan section is completely absent from the document. NEVER return null.
 For downPaymentPercent: on Heartland MLS contracts, look for an EXPLICITLY stated down payment percentage (e.g., "10%", "20% down"). Do NOT use the Amortization Period years (line 329 shows years like "30 years" or "15 years" — this is NOT a down payment). Do NOT use the Principal Amount/LTV dollar figure on line 330. Return a percentage string (e.g., "20") ONLY if a percentage is directly written. Return null if no percentage is explicitly stated.
 For propertyType: infer from property description. Default to "single-family".
 For contractType: "residential_sale_contract" for standard purchase agreements, "loi" for letters of intent, "addendum" for addendums, "other" for anything else.
