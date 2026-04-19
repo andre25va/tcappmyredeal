@@ -393,7 +393,13 @@ export const MLSDirectory: React.FC<Props> = ({ mls, onUpdate }) => {
           {/* ── Tab content ── */}
           {rightTab === 'schema' ? (
             <div className="flex-1 overflow-hidden">
-              <FormSchemaViewer />
+              <FormSchemaViewer
+                templatePdfPath={
+                  selectedEntry.documents
+                    ?.find(d => d.category === 'contract' && d.template_pdf_path)
+                    ?.template_pdf_path ?? null
+                }
+              />
             </div>
           ) : (
             /* ── Documents tab (existing content) ── */

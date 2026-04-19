@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, TableProperties, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Loader2, TableProperties, ChevronDown, ChevronRight, Info, PanelLeft, PanelLeftClose } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface FieldRow {
@@ -38,13 +38,21 @@ const FORM_OPTIONS = [
 ];
 
 /* ─── Component ─────────────────────────────────────────── */
-export const FormSchemaViewer: React.FC = () => {
+interface FormSchemaViewerProps {
+  templatePdfPath?: string | null;
+}
+
+export const FormSchemaViewer: React.FC<FormSchemaViewerProps> = ({ templatePdfPath }) => {
   const [formSlug, setFormSlug]         = useState(FORM_OPTIONS[0].slug);
   const [fields, setFields]             = useState<FieldRow[]>([]);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [collapsed, setCollapsed]       = useState<Record<string, boolean>>({});
   const [search, setSearch]             = useState('');
+  const [showPdf, setShowPdf]           = useState(false);
+  const [pdfUrl, setPdfUrl]             = useState<string | null>(null);
+  const [activePage, setActivePage]     = useState(1);
+  const [jumpKey, setJumpKey]           = useState(0);
 
   /* ── Load fields when slug changes ── */
   useEffect(() => {
@@ -68,6 +76,19 @@ export const FormSchemaViewer: React.FC = () => {
     load();
     return () => { cancelled = true; };
   }, [formSlug]);
+
+  /* ── Resolve public URL for template PDF ── */
+  useEffect(() => {
+    if (!templatePdfPath) { setPdfUrl(null); setShowPdf(false); return; }
+    const { data } = supabase.storage.from('form-templates').getPublicUrl(templatePdfPath);
+    setPdfUrl(data?.publicUrl ?? null);
+  }, [templatePdfPath]);
+
+  /* ── Jump to page helper ── */
+  const jumpToPage = (page: number) => {
+    setActivePage(page);
+    setJumpKey(k => k + 1);
+  };
 
   /* ── Group by section ── */
   const filtered = search.trim()
@@ -116,6 +137,18 @@ export const FormSchemaViewer: React.FC = () => {
             <option key={o.slug} value={o.slug}>{o.label}</option>
           ))}
         </select>
+
+        {/* PDF preview toggle — only when a template is available */}
+        {pdfUrl && (
+          <button
+            onClick={() => setShowPdf(p => !p)}
+            className={`btn btn-xs gap-1 ${showPdf ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+            title={showPdf ? 'Hide PDF preview' : 'Show PDF side-by-side'}
+          >
+            {showPdf ? <PanelLeftClose size={12} /> : <PanelLeft size={12} />}
+            {showPdf ? 'Hide PDF' : 'Preview PDF'}
+          </button>
+        )}
       </div>
 
       {/* ── Stats row ── */}
@@ -144,8 +177,27 @@ export const FormSchemaViewer: React.FC = () => {
         </div>
       )}
 
-      {/* ── Body ── */}
-      <div className="flex-1 overflow-auto px-4 py-3">
+      {/* ── Body — split layout when PDF is visible ── */}
+      <div className="flex-1 overflow-hidden flex flex-row min-h-0">
+
+        {/* PDF panel */}
+        {showPdf && pdfUrl && (
+          <div className="w-[46%] flex-none border-r border-base-300 flex flex-col bg-base-100">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-base-200 border-b border-base-300 flex-none">
+              <span className="text-xs font-semibold text-base-content/60">Blank Template PDF</span>
+              <span className="text-xs text-base-content/40 tabular-nums">Page {activePage}</span>
+            </div>
+            <iframe
+              key={jumpKey}
+              src={`${pdfUrl}#page=${activePage}&toolbar=1&navpanes=0`}
+              className="flex-1 w-full"
+              title="Contract PDF Preview"
+            />
+          </div>
+        )}
+
+        {/* Schema table panel */}
+      <div className={`${showPdf && pdfUrl ? 'flex-1 min-w-0' : 'flex-1'} overflow-auto px-4 py-3`}>
         {loading && (
           <div className="flex items-center justify-center h-40 gap-2 text-base-content/40">
             <Loader2 size={18} className="animate-spin" />
@@ -223,7 +275,9 @@ export const FormSchemaViewer: React.FC = () => {
                         return (
                           <tr
                             key={f.id}
-                            className={`hover:bg-primary/5 transition-colors ${isEven ? 'bg-base-100' : 'bg-base-200/30'}`}
+                            className={`hover:bg-primary/5 transition-colors ${isEven ? 'bg-base-100' : 'bg-base-200/30'} ${showPdf && pdfUrl ? 'cursor-pointer' : ''}`}
+                            onClick={() => { if (showPdf && pdfUrl && f.page_num) jumpToPage(f.page_num); }}
+                            title={showPdf && pdfUrl && f.page_num ? `Jump PDF to page ${f.page_num}` : undefined}
                           >
                             {/* Line # */}
                             <td className="align-middle">
@@ -330,6 +384,7 @@ export const FormSchemaViewer: React.FC = () => {
           </div>
         )}
       </div>
+      </div>{/* end split wrapper */}
     </div>
   );
 };
