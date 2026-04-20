@@ -84,7 +84,7 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'isFinancedSale',      label: 'Financed Sale',       type: 'text',    section: 'Financing',
     hint: '"true" if "THIS IS A FINANCED SALE" checkbox is checked (line 299)' },
   { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
-    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'] },
+    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Other', 'Owner Financing'] },
   { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
   { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing' },
   { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing' },

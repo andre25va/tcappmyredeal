@@ -415,7 +415,7 @@ const extractDealSchema = {
     listingAgentCommission: { anyOf: [{ type: 'string' }, { type: 'null' }] },
 
     // ── Financing ─────────────────────────────────────────────────────────────
-    loanType: { type: 'string' },
+    loanType: { type: 'string', enum: ['Conventional', 'FHA', 'VA', 'USDA', 'Other', 'Owner Financing', ''] },
     loanAmount: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficer: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     loanOfficerCompany: { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -1182,7 +1182,7 @@ async function handleExtractDeal(apiKey: string, body: any) {
       const groupOutputMap: Record<string, string> = {
         sale_type:                'isCashSale (line 296) and isFinancedSale (line 299) — set the checked one to "true", the other to "false"',
         sale_contingency:         'saleContingency — return "true" if contingent checkbox checked, "false" if NOT contingent checkbox checked',
-        primary_loan_type:        'loanType — return "conventional" / "fha" / "va" / "usda" / "other" based on which line is checked',
+        primary_loan_type:        'loanType — return EXACTLY one of: "Conventional", "FHA", "VA", "USDA", "Other", "Owner Financing" (exact case, no lowercase) based on which row is checked in the Primary Loan column. NEVER return empty string if isFinancedSale is true.',
         primary_rate_type:        'interestRateType — return the label of the checked rate type',
         earnest_refundability:    'earnestMoneyRefundable — return "Refundable" if refundable checked, "Non-refundable" if non-refundable checked',
         add_earnest_refundability: 'additionalEarnestRefundable — same pattern',
@@ -1262,7 +1262,7 @@ For buyerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Selling
 For sellerAgentName: MECHANICAL EXTRACTION ONLY — find section labeled "Listing Licensee". Copy the personal name (first + last, not brokerage). Return null if not found.
 HEARTLAND MLS / KC CONTRACT NOTE: These contracts show two side-by-side columns — "Listing Licensee" (seller's agent) and "Selling Licensee" (buyer's agent). Each column is self-contained. Extract the name from WITHIN each column only — never cross columns.
 For mlsBoard: extract the MLS board or association name (e.g., "Heartland MLS", "KCRAR"). Return null if not found.
-For loanType: On Heartland MLS / KC contracts, find the paragraph labeled "Loan Types/Terms" (paragraph b, typically around lines 313-321). This section has a two-column TABLE: "Primary Loan" and "Secondary Loan" header, then rows: Conventional, FHA, VA, USDA, Other, Owner Financing. Look for a checkmark, filled checkbox (☑ or ✓ or X or dark filled square) in the PRIMARY LOAN column specifically. The Primary Loan column is the LEFT data column. If Conventional row's Primary Loan cell has a mark → return "conventional". FHA → "fha", VA → "va", USDA → "usda", Other or Owner Financing → "other". Also return "cash" if isCashSale is "true" or no loan section exists. Return exactly one of: "conventional", "fha", "va", "usda", "cash", "other". Return empty string "" ONLY if the loan section is completely absent from the document. NEVER return null.
+For loanType: On Heartland MLS / KC contracts, find the paragraph labeled "Loan Types/Terms" (paragraph b, lines 313-321). Two-column TABLE — "Primary Loan" is the LEFT column, "Secondary Loan" is the RIGHT column. Rows: Conventional (L316), FHA (L317), VA (L318), USDA (L319), Other (L320), Owner Financing (L321). Find which row has a checkmark/filled box in the LEFT (Primary Loan) column. Return EXACTLY the capitalized string: "Conventional", "FHA", "VA", "USDA", "Other", or "Owner Financing". CRITICAL — use EXACT capitalization shown here, never lowercase. If isFinancedSale is "true" you MUST return one of these six values — never return empty string. Return empty string "" ONLY if this is a cash sale. NEVER return null.
 For downPaymentPercent: on Heartland MLS contracts, look for an EXPLICITLY stated down payment percentage (e.g., "10%", "20% down"). Do NOT use the Amortization Period years (line 329 shows years like "30 years" or "15 years" — this is NOT a down payment). Do NOT use the Principal Amount/LTV dollar figure on line 330. Return a percentage string (e.g., "20") ONLY if a percentage is directly written. Return null if no percentage is explicitly stated.
 For propertyType: infer from property description. Default to "single-family".
 For contractType: "residential_sale_contract" for standard purchase agreements, "loi" for letters of intent, "addendum" for addendums, "other" for anything else.
