@@ -53,7 +53,7 @@ const FIELD_DEFS: FieldDef[] = [
   // ── Transaction ───────────────────────────────────────────────────────────
   { key: 'transactionType',       label: 'Transaction Type',        type: 'select',  section: 'Transaction',
     options: ['buyer', 'seller', 'both'] },
-  { key: 'saleContingency',       label: 'Sale Contingency',        type: 'text',    section: 'Transaction',
+  { key: 'saleContingency',       label: 'Sale Contingency',        type: 'select',  section: 'Transaction',  options: ['IS Contingent', 'NOT Contingent'],
     hint: "\"true\" if contract IS contingent on sale/closing of Buyer's property (line 290)" },
   { key: 'contractPrice',          label: 'Sale / Contract Price',   type: 'money',   section: 'Transaction' },
   { key: 'earnestMoney',          label: 'Earnest Money',           type: 'money',   section: 'Transaction' },
@@ -79,12 +79,10 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'listingAgentCommission',label: 'Listing Agent Commission',type: 'text',    section: 'Transaction' },
 
   // ── Financing ─────────────────────────────────────────────────────────────
-  { key: 'isCashSale',          label: 'Cash Sale',           type: 'text',    section: 'Financing',
+  { key: 'saleType',            label: 'Sale Type',           type: 'select',  section: 'Financing',  options: ['Cash', 'Financed'],
     hint: '"true" if "THIS IS A CASH SALE" checkbox is checked (line 296)' },
-  { key: 'isFinancedSale',      label: 'Financed Sale',       type: 'text',    section: 'Financing',
-    hint: '"true" if "THIS IS A FINANCED SALE" checkbox is checked (line 299)' },
   { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
-    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Other', 'Owner Financing'] },
+    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'] },
   { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
   { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing' },
   { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing' },
