@@ -254,14 +254,16 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     }
   }, [autoOpenType]);
 
-  // Auto-select buyer-side lead agent when new request modal opens
+  // Auto-select when exactly 1 agent exists on the deal (either side)
+  // TC may represent both sides — buyer agent + listing agent both appear in picker
   useEffect(() => {
     if (!showNewModal) return;
-    const buyerLeads = (deal.participants ?? []).filter(
-      p => p.dealRole === 'lead_agent' && p.side === 'buyer' && p.contactEmail,
+    // Gather all agents on the deal regardless of side
+    const allAgents = (deal.participants ?? []).filter(
+      p => (p.dealRole === 'lead_agent' || p.dealRole === 'agent') && p.contactEmail,
     );
-    if (buyerLeads.length === 1) {
-      const p = buyerLeads[0];
+    if (allAgents.length === 1) {
+      const p = allAgents[0];
       setSelectedContacts([{
         participantId: p.id,
         contactId: p.contactId || p.id,
@@ -272,7 +274,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         phone: p.contactPhone || null,
       }]);
     }
-    // 2+ buyer leads → leave unselected, picker shows both — TC picks
+    // 2+ agents (buyer + listing, or multiple on same side) → leave unselected, TC picks
   }, [showNewModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New request form state
