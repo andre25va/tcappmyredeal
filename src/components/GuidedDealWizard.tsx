@@ -2571,7 +2571,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   ])}
 
                   {/* Finance deadlines — financed only */}
-                  {form.loanType && form.loanType !== 'cash' && (
+                  {form.saleType === 'Financed' && (
                     <>
                       {dateCard('loanApplicationDue', 'loanApplicationDueFormula', 'Loan Application Due', [
                         { label: '3d', days: 3 }, { label: '5d', days: 5 }, { label: '7d', days: 7 },
@@ -2971,7 +2971,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
               const selectedAgentClient = (agentClients ?? []).find(c => c.id === form.agentClientId);
               const isTeamClient = (selectedAgentClient as any)?.accountType === 'team' || (selectedAgentClient as any)?.account_type === 'team';
-              const isCash = form.loanType === 'cash';
+              const isCash = form.saleType === 'Cash';
 
               const renderSection = (title: string, items: any[], type: 'dd' | 'compliance') => {
                 if (items.length === 0) return null;
