@@ -901,6 +901,10 @@ export interface RequestRecord {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  // N6: nudge loop tracking
+  dueBy?: string | null;
+  nudgeCount?: number;
+  lastNudgedAt?: string | null;
   // Joined / nested
   dealAddress?: string;
   events?: RequestEvent[];

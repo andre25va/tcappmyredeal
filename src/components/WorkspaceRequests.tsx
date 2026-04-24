@@ -159,6 +159,9 @@ function mapRow(r: any): RequestRecord {
     createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    dueBy: r.due_by ?? null,
+    nudgeCount: r.nudge_count ?? 0,
+    lastNudgedAt: r.last_nudged_at ?? null,
     events: (r.request_events || []).map((e: any): RequestEvent => ({
       id: e.id,
       requestId: e.request_id,
@@ -251,8 +254,30 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     }
   }, [autoOpenType]);
 
+  // Auto-select buyer-side lead agent when new request modal opens
+  useEffect(() => {
+    if (!showNewModal) return;
+    const buyerLeads = (deal.participants ?? []).filter(
+      p => p.dealRole === 'lead_agent' && p.side === 'buyer' && p.contactEmail,
+    );
+    if (buyerLeads.length === 1) {
+      const p = buyerLeads[0];
+      setSelectedContacts([{
+        participantId: p.id,
+        contactId: p.contactId || p.id,
+        name: p.contactName || p.contactEmail || '',
+        role: p.dealRole,
+        side: p.side,
+        email: p.contactEmail || null,
+        phone: p.contactPhone || null,
+      }]);
+    }
+    // 2+ buyer leads → leave unselected, picker shows both — TC picks
+  }, [showNewModal]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // New request form state
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
+  const [dueBy, setDueBy] = useState('');
   // Multi-select recipients
   const [selectedContacts, setSelectedContacts] = useState<DealContact[]>([]);
   const [newNotes, setNewNotes] = useState('');
@@ -379,6 +404,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         expected_response_type: typeConfig.expectedResponseType,
         created_by: profile?.name || 'Staff',
         task_id: taskId || null,
+        due_by: dueBy ? new Date(dueBy).toISOString() : null,
       }).select().single();
 
       if (error) throw error;
@@ -441,6 +467,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         expected_response_type: typeConfig.expectedResponseType,
         created_by: profile?.name || 'Staff',
         task_id: taskId || null,
+        due_by: dueBy ? new Date(dueBy).toISOString() : null,
       }).select().single();
 
       if (error) throw error;
@@ -681,6 +708,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     setNewType('earnest_money_receipt');
     setSelectedContacts([]);
     setNewNotes('');
+    setDueBy('');
   };
 
   const getTypeLabel = (type: RequestType) => REQUEST_TYPES.find(t => t.type === type)?.label || type;
@@ -837,6 +865,16 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
                   <p className="text-[10px] text-base-content/30 pl-14">Reply token will be inserted into subject automatically on send.</p>
                 </div>
               </div>
+              {/* Due By */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">Due By (optional)</label>
+                <input
+                  type="date"
+                  className="input input-bordered input-sm w-full"
+                  value={dueBy}
+                  onChange={e => setDueBy(e.target.value)}
+                />
+              </div>
               <div>
                 <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">Internal Notes (optional)</label>
                 <textarea className="textarea textarea-bordered textarea-sm w-full" rows={2} placeholder="Add any internal context or instructions…" value={newNotes} onChange={e => setNewNotes(e.target.value)} />
@@ -960,6 +998,14 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-orange-50 text-orange-700 border-orange-200">
                 <Eye size={10} /> Review needed
               </span>
+            )}
+            {isWaiting && (request.nudgeCount ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-amber-50 text-amber-700 border-amber-200">
+                <Bell size={10} /> {request.nudgeCount} nudge{request.nudgeCount !== 1 ? 's' : ''} sent
+              </span>
+            )}
+            {request.dueBy && !isClosed && (
+              <span className="text-xs text-base-content/40">Due {fmtDate(request.dueBy)}</span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
