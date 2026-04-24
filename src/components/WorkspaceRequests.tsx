@@ -258,9 +258,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   // TC may represent both sides — buyer agent + listing agent both appear in picker
   useEffect(() => {
     if (!showNewModal) return;
-    // Gather all agents on the deal regardless of side
+    // Gather all lead agents on the deal regardless of side (buyer or listing)
     const allAgents = (deal.participants ?? []).filter(
-      p => (p.dealRole === 'lead_agent' || p.dealRole === 'agent') && p.contactEmail,
+      p => p.dealRole === 'lead_agent' && p.contactEmail,
     );
     if (allAgents.length === 1) {
       const p = allAgents[0];
