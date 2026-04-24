@@ -265,6 +265,14 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
     },
   });
 
+  /* A4: Auto-run compliance on first open if no check has ever been run */
+  useEffect(() => {
+    if (!loadingCheck && !latestCheck && !runCheckMutation.isPending) {
+      runCheckMutation.mutate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingCheck, latestCheck]);
+
   /* Derived state */
   const rules = extractRules(latestCheck ?? null);
   const violations = rules.filter(r => r.status === 'fail');
@@ -350,8 +358,8 @@ export const WorkspaceCompliance: React.FC<Props> = ({ deal }) => {
         </div>
       )}
 
-      {/* ─── Loading ─── */}
-      {loadingCheck && (
+      {/* ─── Loading (query fetch OR auto-run mutation in progress) ─── */}
+      {(loadingCheck || (runCheckMutation.isPending && !latestCheck)) && (
         <div className="flex items-center justify-center py-12">
           <span className="loading loading-spinner loading-md text-primary" />
         </div>
