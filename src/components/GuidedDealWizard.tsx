@@ -195,7 +195,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
-    loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
+    loanType: '' as '' | 'Conventional' | 'FHA' | 'VA' | 'USDA' | 'Other' | 'Owner Financing',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '', extractedDpPct: '',
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', sellerCredit: '', additionalSellerCosts: '',
     asIsSale: false, inspectionWaived: false,
@@ -2347,7 +2347,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </div>
 
                 {/* ── Loan fields (financed only) ── */}
-                {form.loanType && form.loanType !== 'cash' && (
+                {form.saleType === 'Financed' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
