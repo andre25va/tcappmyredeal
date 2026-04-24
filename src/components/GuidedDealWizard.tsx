@@ -195,7 +195,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     contractDate: today, closingDate: '',
     agentClientId: '',
     specialNotes: '',
-    loanType: '' as '' | 'Conventional' | 'FHA' | 'VA' | 'USDA' | 'Other' | 'Owner Financing',
+    loanType: '' as '' | 'conventional' | 'fha' | 'va' | 'usda' | 'cash' | 'other',
     loanAmount: '', downPaymentAmount: '', downPaymentPercent: '', extractedDpPct: '',
     earnestMoney: '', earnestMoneyDueDate: '', sellerConcessions: '', sellerCredit: '', additionalSellerCosts: '',
     asIsSale: false, inspectionWaived: false,
@@ -2347,7 +2347,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 </div>
 
                 {/* ── Loan fields (financed only) ── */}
-                {form.saleType === 'Financed' && (
+                {form.loanType && form.loanType !== 'cash' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-base-content/50 mb-1 block">Loan Amount</label>
@@ -2571,7 +2571,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   ])}
 
                   {/* Finance deadlines — financed only */}
-                  {form.saleType === 'Financed' && (
+                  {form.loanType && form.loanType !== 'cash' && (
                     <>
                       {dateCard('loanApplicationDue', 'loanApplicationDueFormula', 'Loan Application Due', [
                         { label: '3d', days: 3 }, { label: '5d', days: 5 }, { label: '7d', days: 7 },
@@ -2971,7 +2971,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
               const selectedAgentClient = (agentClients ?? []).find(c => c.id === form.agentClientId);
               const isTeamClient = (selectedAgentClient as any)?.accountType === 'team' || (selectedAgentClient as any)?.account_type === 'team';
-              const isCash = form.saleType === 'Cash';
+              const isCash = form.loanType === 'cash';
 
               const renderSection = (title: string, items: any[], type: 'dd' | 'compliance') => {
                 if (items.length === 0) return null;
