@@ -1501,6 +1501,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
     onAdd(deal);
     setIsCreating(false);
+
+    // A4: Fire compliance check in the background — no await, no UI block.
+    // By the time TC navigates to the Compliance tab the first check is ready.
+    supabase.functions.invoke('run-compliance', { body: { deal_id: deal.id } })
+      .catch(err => console.warn('[GuidedDealWizard] Background compliance check failed:', err));
   };
 
   const stepTitles = ['', 'Upload Contract', 'Verify Data', 'Deal Info', 'Key Dates', 'Parties', 'Checklist Preview'];
