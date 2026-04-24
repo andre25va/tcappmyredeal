@@ -235,6 +235,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
   const [shiftEffective, setShiftEffective] = useState('');
   const [shiftClosing, setShiftClosing] = useState('');
   const [shiftSaving, setShiftSaving] = useState(false);
+  const [cascadeMsg, setCascadeMsg] = useState<string | null>(null);
 
 
   /* ---- Seed from deal dates ---- */
@@ -330,8 +331,36 @@ export default function WorkspaceTimeline({ deal }: Props) {
       .from('deal_timeline')
       .update({ label: editLabel, due_date: editDate || null, notes: editNotes || null })
       .eq('id', m.id);
-    if (err) setError(err.message);
-    else await invalidateDealTimeline(deal.id);
+    if (err) { setError(err.message); setEditingId(null); return; }
+
+    // R3 — Auto-cascade formula milestones when closing date changes inline
+    const dateChanged = (editDate || null) !== (m.due_date ?? null);
+    if (m.milestone === 'closing' && dateChanged && formulaMilestones.length > 0) {
+      const newClosing = editDate || null;
+      const effectiveAnchor = (deal as Record<string, any>).contractDate ?? (deal as Record<string, any>).contract_date ?? null;
+      const cascadeUpdates: { id: string; newDate: string | null }[] = [];
+      for (const fm of formulaMilestones) {
+        if (fm.id === m.id) continue; // skip the milestone being edited
+        const newDate = computeFormula(fm.formula, effectiveAnchor, newClosing);
+        if (newDate && newDate !== fm.due_date) cascadeUpdates.push({ id: fm.id, newDate });
+      }
+      if (cascadeUpdates.length > 0) {
+        for (const u of cascadeUpdates) {
+          await supabase.from('deal_timeline').update({ due_date: u.newDate }).eq('id', u.id);
+        }
+      }
+      // Sync closing date back to deals table
+      if (newClosing) {
+        await supabase.from('deals').update({ closing_date: newClosing }).eq('id', deal.id);
+      }
+      const msg = cascadeUpdates.length > 0
+        ? `📐 Recalculated ${cascadeUpdates.length} formula milestone${cascadeUpdates.length > 1 ? 's' : ''}`
+        : '📐 No formula milestones changed';
+      setCascadeMsg(msg);
+      setTimeout(() => setCascadeMsg(null), 4000);
+    }
+
+    await invalidateDealTimeline(deal.id);
     setEditingId(null);
   };
 
@@ -451,6 +480,13 @@ export default function WorkspaceTimeline({ deal }: Props) {
           <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>
             <X className="w-3 h-3" />
           </button>
+        </div>
+      )}
+
+      {/* Cascade success toast */}
+      {cascadeMsg && (
+        <div className="alert alert-success shadow-sm">
+          <span className="text-sm">{cascadeMsg}</span>
         </div>
       )}
 
