@@ -933,6 +933,22 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           homeWarranty: d.homeWarranty ?? p.homeWarranty,
           homeWarrantyCompany: d.homeWarrantyCompany || p.homeWarrantyCompany,
           legalDescription: d.legalDescription || p.legalDescription,
+          // ── B1 fix: 15 fields AI extracts but setForm never wired ───────────
+          additionalEarnestMoney: d.additionalEarnestMoney || p.additionalEarnestMoney,
+          additionalEarnestMoneyDue: d.additionalEarnestMoneyDue || p.additionalEarnestMoneyDue,
+          sellerPaidClosingCosts: d.sellerPaidClosingCosts || p.sellerPaidClosingCosts,
+          repairsNotToExceed: d.repairsNotToExceed || p.repairsNotToExceed,
+          commissionReceived: d.commissionReceived || p.commissionReceived,
+          homeWarrantyAmount: d.homeWarrantyAmount || p.homeWarrantyAmount,
+          homeWarrantyPaidBy: (d.homeWarrantyPaidBy as '' | 'buyer' | 'seller') || p.homeWarrantyPaidBy,
+          appraisalDeliveryDate: d.appraisalDeliveryDate || p.appraisalDeliveryDate,
+          loanApplicationDue: d.loanApplicationDue || p.loanApplicationDue,
+          finalLoanApprovalDue: d.finalLoanApprovalDue || p.finalLoanApprovalDue,
+          buyerInspectionNoticeDue: d.buyerInspectionNoticeDue || p.buyerInspectionNoticeDue,
+          renegotiationPeriod: d.renegotiationPeriod || p.renegotiationPeriod,
+          titleCommitmentDeliveryDate: d.titleCommitmentDeliveryDate || p.titleCommitmentDeliveryDate,
+          surveyDeadline: d.surveyDeadline || p.surveyDeadline,
+          hoaDocumentDeliveryDeadline: d.hoaDocumentDeliveryDeadline || p.hoaDocumentDeliveryDeadline,
         };
         // Auto-calculate down payment from extracted contract price + loan amount.
         // The recalc handlers (fWithRecalc) only fire on manual field changes, so we
