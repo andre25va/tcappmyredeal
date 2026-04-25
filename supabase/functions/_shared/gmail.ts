@@ -1,5 +1,6 @@
 // Shared Gmail API helper for all Edge Functions
 // Uses OAuth2 refresh token to get access tokens and send emails
+// v2: UTF-8 safe base64UrlEncode — fixes btoa crash on emoji subject lines
 
 const GMAIL_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
@@ -126,9 +127,10 @@ function buildMimeMessage(email: EmailPayload): string {
   return lines.join('\r\n');
 }
 
-// Base64url encode (RFC 4648)
+// Base64url encode (RFC 4648) — UTF-8 safe
+// Uses unescape(encodeURIComponent()) to handle emojis and non-Latin1 chars
 function base64UrlEncode(str: string): string {
-  return btoa(str)
+  return btoa(unescape(encodeURIComponent(str)))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');

@@ -1,4 +1,5 @@
-// send-briefing Edge Function - v26
+// send-briefing Edge Function - v27
+// v27: UTF-8 safe subject lines — plain text labels instead of raw emojis in subject
 // v26: Deal-centric layout — one card per deal, inline tasks grouped under each deal,
 //      urgent closing banners, TC action emphasis, persistent reminder language
 
@@ -174,32 +175,32 @@ serve(async (req: Request) => {
       return '#6b7280';
     };
 
-    const taskBtnHtml = (taskId: string, label = '📬 Draft Follow-Up', color = '#2563eb') =>
+    const taskBtnHtml = (taskId: string, label = 'Draft Follow-Up', color = '#2563eb') =>
       `<a href="${FOLLOWUP_BASE_URL}?task_id=${taskId}" target="_blank" style="display:inline-block;background:${color};color:#ffffff;font-size:11px;font-weight:600;padding:5px 12px;border-radius:5px;text-decoration:none;white-space:nowrap;">${label}</a>`;
 
-    // ── Build Email ──
+    // -- Build Email --
     let emailHtml = `<!DOCTYPE html><html><body style="background-color:#f1f5f9;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:660px;margin:0 auto;padding:0 16px;">
 
 <!-- Header -->
 <div style="text-align:center;padding:28px 0 20px 0;">
-  <div style="font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-0.5px;">🏠 TC Command</div>
+  <div style="font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-0.5px;">TC Command</div>
   <div style="font-size:13px;color:#64748b;margin-top:4px;">${dateStr}</div>
 </div>`;
 
-    // ── 🚨 Critical Closing Alert Banner ──
+    // -- Critical Closing Alert Banner --
     if (closingCritical.length > 0) {
       emailHtml += `<div style="background:#7f1d1d;border-radius:10px;padding:18px 20px;margin-bottom:20px;">
-  <div style="font-size:15px;font-weight:800;color:#fef2f2;margin-bottom:8px;">🚨 CLOSING ALERT — Action Required Today</div>`;
+  <div style="font-size:15px;font-weight:800;color:#fef2f2;margin-bottom:8px;">CLOSING ALERT — Action Required Today</div>`;
       for (const d of closingCritical) {
         const label = d.daysToClosing === 0 ? 'CLOSING TODAY' : d.daysToClosing === 1 ? 'CLOSING TOMORROW' : `CLOSING IN ${d.daysToClosing} DAYS`;
-        emailHtml += `<div style="font-size:13px;color:#fecaca;margin-top:4px;">⚡ <strong style="color:#ffffff;">${d.address}</strong> — ${label}</div>`;
+        emailHtml += `<div style="font-size:13px;color:#fecaca;margin-top:4px;"><strong style="color:#ffffff;">${d.address}</strong> — ${label}</div>`;
       }
       emailHtml += `<div style="font-size:12px;color:#fca5a5;margin-top:10px;">These deals need your full attention first. Complete all remaining tasks before close.</div>
 </div>`;
     }
 
-    // ── Summary Row ──
+    // -- Summary Row --
     const stageCounts = { total: allDeals.length, contract: 0, ctc: 0, dd: 0 };
     for (const deal of allDeals) {
       const s = (deal.status || '').toLowerCase();
@@ -213,7 +214,7 @@ serve(async (req: Request) => {
     ['#1e3a5f', '#dbeafe', stageCounts.total, 'Active Deals'],
     ['#7f1d1d', '#fee2e2', totalOverdue, 'Overdue Tasks'],
     ['#713f12', '#fef9c3', totalDueToday, 'Due Today'],
-    ['#14532d', '#dcfce7', closingCritical.length, 'Closing ≤3 Days'],
+    ['#14532d', '#dcfce7', closingCritical.length, 'Closing in 3 Days'],
   ].map(([tc, bg, val, label]) =>
     `<div style="flex:1;background:${bg};border-radius:8px;padding:14px 10px;text-align:center;">
       <div style="font-size:28px;font-weight:800;color:${tc};">${val}</div>
@@ -222,19 +223,19 @@ serve(async (req: Request) => {
   ).join('')}
 </div>`;
 
-    // ── Deal Cards ──
+    // -- Deal Cards --
     if (actionableDeals.length > 0) {
-      emailHtml += `<div style="font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">📋 Your Deals — Action Needed</div>`;
+      emailHtml += `<div style="font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.7px;margin-bottom:10px;">Your Deals — Action Needed</div>`;
 
       for (const deal of actionableDeals) {
         const isCritical = deal.daysToClosing !== null && deal.daysToClosing <= 3 && deal.daysToClosing >= 0;
         const borderColor = isCritical ? '#dc2626' : deal.overdueTasks.length > 0 ? '#f59e0b' : '#e2e8f0';
         const topBadgeBg = isCritical ? '#dc2626' : deal.overdueTasks.length > 0 ? '#d97706' : statusColor(deal.status);
         const closingText = deal.daysToClosing !== null
-          ? deal.daysToClosing <= 0 ? '🔴 CLOSING TODAY'
-          : deal.daysToClosing === 1 ? '🔴 CLOSING TOMORROW'
-          : deal.daysToClosing <= 3 ? `🟡 ${deal.daysToClosing} days to close`
-          : `🟢 ${deal.daysToClosing} days to close`
+          ? deal.daysToClosing <= 0 ? 'CLOSING TODAY'
+          : deal.daysToClosing === 1 ? 'CLOSING TOMORROW'
+          : deal.daysToClosing <= 3 ? `${deal.daysToClosing} days to close`
+          : `${deal.daysToClosing} days to close`
           : '';
 
         emailHtml += `<div style="background:#ffffff;border:2px solid ${borderColor};border-radius:10px;margin-bottom:16px;overflow:hidden;">
@@ -254,37 +255,37 @@ serve(async (req: Request) => {
 
         // Overdue tasks under this deal
         if (deal.overdueTasks.length > 0) {
-          emailHtml += `<div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">⚠️ Overdue</div>`;
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Overdue</div>`;
           for (const task of deal.overdueTasks) {
             emailHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
       <div>
         <div style="font-size:13px;font-weight:600;color:#1e293b;">${task.title}</div>
         <div style="font-size:11px;color:#dc2626;margin-top:2px;">${task.daysOverdue} day${task.daysOverdue !== 1 ? 's' : ''} overdue — due ${task.dueDate}</div>
       </div>
-      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, '📬 Draft Follow-Up', '#dc2626')}</div>
+      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, 'Draft Follow-Up', '#dc2626')}</div>
     </div>`;
           }
         }
 
         // Due Today tasks
         if (deal.dueTodayTasks.length > 0) {
-          emailHtml += `<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin:${deal.overdueTasks.length > 0 ? '12px' : '0px'} 0 8px 0;">📅 Due Today</div>`;
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin:${deal.overdueTasks.length > 0 ? '12px' : '0px'} 0 8px 0;">Due Today</div>`;
           for (const task of deal.dueTodayTasks) {
             emailHtml += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
       <div>
         <div style="font-size:13px;font-weight:600;color:#1e293b;">${task.title}</div>
         <div style="font-size:11px;color:#d97706;margin-top:2px;">Due today — complete before EOD</div>
       </div>
-      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, '📬 Draft Follow-Up', '#059669')}</div>
+      <div style="margin-left:12px;flex-shrink:0;">${taskBtnHtml(task.id, 'Draft Follow-Up', '#059669')}</div>
     </div>`;
           }
         }
 
         // Upcoming tasks (preview — no button, just awareness)
         if (deal.upcomingTasks.length > 0) {
-          emailHtml += `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px 0;">🗓 Coming Up</div>`;
+          emailHtml += `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px 0;">Coming Up</div>`;
           for (const task of deal.upcomingTasks.slice(0, 3)) {
-            emailHtml += `<div style="font-size:12px;color:#475569;padding:4px 0;">• ${task.title} <span style="color:#94a3b8;">— ${task.dueDate}</span></div>`;
+            emailHtml += `<div style="font-size:12px;color:#475569;padding:4px 0;">- ${task.title} <span style="color:#94a3b8;">— ${task.dueDate}</span></div>`;
           }
           if (deal.upcomingTasks.length > 3) {
             emailHtml += `<div style="font-size:11px;color:#94a3b8;padding:4px 0;">+${deal.upcomingTasks.length - 3} more upcoming tasks</div>`;
@@ -292,19 +293,19 @@ serve(async (req: Request) => {
         }
 
         if (deal.overdueTasks.length === 0 && deal.dueTodayTasks.length === 0 && deal.upcomingTasks.length === 0) {
-          emailHtml += `<div style="font-size:12px;color:#94a3b8;padding:6px 0;">No tasks due in the next 14 days ✓</div>`;
+          emailHtml += `<div style="font-size:12px;color:#94a3b8;padding:6px 0;">No tasks due in the next 14 days</div>`;
         }
 
         emailHtml += `</div></div>`;
       }
     } else {
       emailHtml += `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;text-align:center;margin-bottom:16px;">
-  <div style="font-size:15px;color:#166534;font-weight:700;">✅ All Clear!</div>
+  <div style="font-size:15px;color:#166534;font-weight:700;">All Clear!</div>
   <div style="font-size:13px;color:#166534;margin-top:4px;">No overdue tasks or imminent closings. Pipeline is on track.</div>
 </div>`;
     }
 
-    // ── Idle Deals (no tasks, not closing soon) ──
+    // -- Idle Deals --
     const idleDeals = dealCards.filter(d =>
       d.overdueTasks.length === 0 &&
       d.dueTodayTasks.length === 0 &&
@@ -312,7 +313,7 @@ serve(async (req: Request) => {
     );
     if (idleDeals.length > 0) {
       emailHtml += `<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:16px;">
-  <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">📁 Other Active Deals</div>
+  <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Other Active Deals</div>
   <table style="width:100%;border-collapse:collapse;font-size:12px;">`;
       for (const d of idleDeals) {
         emailHtml += `<tr style="border-bottom:1px solid #f1f5f9;">
@@ -324,9 +325,9 @@ serve(async (req: Request) => {
       emailHtml += `</table></div>`;
     }
 
-    // ── Nudge Reminder Footer ──
+    // -- Nudge Reminder Footer --
     emailHtml += `<div style="background:#1e293b;border-radius:10px;padding:16px 18px;margin-bottom:20px;text-align:center;">
-  <div style="font-size:12px;color:#94a3b8;">⏰ <strong style="color:#f1f5f9;">Reminders active</strong> — you'll receive nudges at <strong style="color:#f1f5f9;">1 PM</strong> and <strong style="color:#f1f5f9;">3 PM</strong> for anything still unfinished. Tasks stay on the list until marked complete in TC Command.</div>
+  <div style="font-size:12px;color:#94a3b8;">Reminders active — you'll receive nudges at <strong style="color:#f1f5f9;">1 PM</strong> and <strong style="color:#f1f5f9;">3 PM</strong> for anything still unfinished. Tasks stay on the list until marked complete in TC Command.</div>
 </div>`;
 
     // Footer
@@ -335,10 +336,10 @@ serve(async (req: Request) => {
 
     const recipients = config.to_addresses || ['tc@myredeal.com'];
     const subject = closingCritical.length > 0
-      ? `🚨 TC Brief — ${closingCritical.length} Closing Alert${closingCritical.length > 1 ? 's' : ''} + ${totalOverdue} Overdue`
+      ? `TC Brief - ${closingCritical.length} Closing Alert${closingCritical.length > 1 ? 's' : ''} + ${totalOverdue} Overdue`
       : totalOverdue > 0
-      ? `⚠️ TC Brief — ${totalOverdue} Overdue Task${totalOverdue !== 1 ? 's' : ''} · ${dateStr}`
-      : `✅ TC Brief — ${dateStr}`;
+      ? `TC Brief - ${totalOverdue} Overdue Task${totalOverdue !== 1 ? 's' : ''} · ${dateStr}`
+      : `TC Brief - All Clear · ${dateStr}`;
 
     const result = await sendViaGmail({ to: recipients, subject, bodyHtml: emailHtml });
 
@@ -349,7 +350,7 @@ serve(async (req: Request) => {
     await supabase.from('email_send_log').insert({
       deal_id: null,
       template_id: null,
-      template_name: 'Morning Briefing v26',
+      template_name: 'Morning Briefing v27',
       to_addresses: recipients,
       cc_addresses: [],
       subject,
