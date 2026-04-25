@@ -277,6 +277,7 @@ const MilestoneStepper: React.FC<{
   const [advanceTarget, setAdvanceTarget] = useState<DealMilestone | null>(null);
   const [targetLabel, setTargetLabel] = useState<string>('');
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showClosingConfirm, setShowClosingConfirm] = useState(false);
   const [showUnarchive, setShowUnarchive] = useState(false);
   const [unarchiveTo, setUnarchiveTo] = useState<DealMilestone>('contract-received');
   const [archiveReason, setArchiveReason] = useState('');
@@ -526,6 +527,16 @@ const MilestoneStepper: React.FC<{
         />
       )}
 
+      {!isArchived && deal.closingDate && new Date(deal.closingDate + 'T23:59:59') <= new Date() && (
+        <div className="mt-2">
+          <button
+            onClick={() => setShowClosingConfirm(true)}
+            className="btn btn-sm btn-success text-white gap-1 w-full"
+          >
+            <Check size={13} /> Confirm Closing
+          </button>
+        </div>
+      )}
       {!isArchived && !isTerminalMilestone(current) && (
         <div className="mt-2 flex justify-end">
           <button
@@ -551,6 +562,55 @@ const MilestoneStepper: React.FC<{
           >
             <RotateCcw size={11} /> Unarchive Deal
           </button>
+        </div>
+      )}
+
+      {showClosingConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowClosingConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                <Check size={20} className="text-green-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-base-content">Confirm Closing</h3>
+                <p className="text-xs text-gray-500">This will archive the deal as successfully closed</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Confirm that <span className="font-semibold">{deal.address}</span> closed on{' '}
+              <span className="font-semibold">
+                {deal.closingDate ? new Date(deal.closingDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'the scheduled date'}
+              </span>?
+              <br />
+              <span className="text-xs text-gray-400 mt-1 block">Confirmed by: {userName}</span>
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setShowClosingConfirm(false)}>Cancel</Button>
+              <button
+                onClick={() => {
+                  const updated = {
+                    ...deal,
+                    milestone: 'archived' as DealMilestone,
+                    archiveReason: 'deal-completed',
+                    activityLog: [{
+                      id: generateId(),
+                      timestamp: new Date().toISOString(),
+                      action: `Closing confirmed — deal archived`,
+                      user: userName,
+                      type: 'status_change' as ActivityType,
+                    }, ...deal.activityLog],
+                    updatedAt: new Date().toISOString(),
+                  };
+                  onUpdate(updated);
+                  setShowClosingConfirm(false);
+                }}
+                className="btn btn-sm btn-success text-white gap-1"
+              >
+                <Check size={13} /> Yes, Confirm Closing
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
