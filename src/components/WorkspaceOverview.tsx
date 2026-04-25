@@ -578,7 +578,7 @@ const MilestoneStepper: React.FC<{
               </div>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              Confirm that <span className="font-semibold">{deal.address}</span> closed on{' '}
+              Confirm that <span className="font-semibold">{deal.propertyAddress}</span> closed on{' '}
               <span className="font-semibold">
                 {deal.closingDate ? new Date(deal.closingDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'the scheduled date'}
               </span>?
