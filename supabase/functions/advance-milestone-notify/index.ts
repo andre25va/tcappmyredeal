@@ -67,8 +67,9 @@ async function getAccessToken(creds: { clientId: string; clientSecret: string; r
   return d.access_token as string;
 }
 
+// Gold standard v3 — UTF-8 safe (fixes crash on emoji/special chars in property addresses)
 function base64UrlEncode(str: string): string {
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function buildMimeMessage(email: EmailPayload): string {
