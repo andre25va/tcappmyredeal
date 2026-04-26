@@ -905,6 +905,9 @@ export interface RequestRecord {
   dueBy?: string | null;
   nudgeCount?: number;
   lastNudgedAt?: string | null;
+  // Sprint 5: Waiting On Engine
+  waitingOn?: 'buyer' | 'seller' | 'agent' | 'inspector' | 'title' | 'lender' | 'other' | null;
+  receivedAt?: string | null;
   // Joined / nested
   dealAddress?: string;
   events?: RequestEvent[];
