@@ -662,6 +662,47 @@ async function handleDealChat(apiKey: string, body: any) {
   const { question, context, history } = body;
   if (!question || !context) throw new Error('Missing question or context');
 
+  // ── Enrich context with live Supabase data ─────────────────────────────────
+  // The browser sends the in-memory deal object which may be stale for milestones,
+  // requests, and compliance. We fetch live rows server-side using the deal id.
+  const dealId = context?.deal?.id;
+  let milestones: any[] = [];
+  let requests: any[] = [];
+  let latestCompliance: any = null;
+
+  if (dealId) {
+    const [timelineRes, requestsRes, complianceRes] = await Promise.all([
+      supabase
+        .from('deal_timeline')
+        .select('id, title, state, due_date, completed_at, sort_order')
+        .eq('deal_id', dealId)
+        .order('sort_order'),
+      supabase
+        .from('requests')
+        .select('id, title, status, due_by, waiting_on, received_at, nudge_count, created_at')
+        .eq('deal_id', dealId)
+        .order('created_at', { ascending: false })
+        .limit(25),
+      supabase
+        .from('compliance_checks')
+        .select('id, status, result, created_at')
+        .eq('deal_id', dealId)
+        .order('created_at', { ascending: false })
+        .limit(1),
+    ]);
+    milestones = timelineRes.data || [];
+    requests = requestsRes.data || [];
+    latestCompliance = complianceRes.data?.[0] || null;
+  }
+
+  // Merge live data into context before sending to GPT-4o
+  const enrichedContext = {
+    ...context,
+    milestones,
+    requests,
+    latestCompliance,
+  };
+
   const systemPrompt = `You are a deal assistant for a real estate transaction coordinator (TC).
 You answer questions about ONE specific transaction file based on the provided context.
 
@@ -678,9 +719,15 @@ RULES:
 - confidence should be 0.0-1.0 reflecting how sure you are
 - factsUsed should cite specific data points from the context
 
+LIVE CONTEXT SECTIONS (fetched fresh from DB on every question):
+- milestones: deal_timeline rows — state values: "pending" | "complete" | "skipped". due_date and completed_at show timing. Use these for any milestone/deadline questions.
+- requests: requests table rows — waiting_on shows who we're blocked on (buyer/seller/agent/inspector/title/lender), received_at shows if item was received, nudge_count shows follow-up count, due_by shows deadline. Use these for any "waiting on" or pending request questions.
+- latestCompliance: most recent compliance_checks result — status and result breakdown. Use for compliance status questions.
+- dueDiligence/compliance arrays in context are from the in-memory deal object and may be less current than the above live rows.
+
 Today's date: ${new Date().toISOString().split('T')[0]}`;
 
-  const contextStr = JSON.stringify(context, null, 1);
+  const contextStr = JSON.stringify(enrichedContext, null, 1);
 
   // Build conversation with context in first message
   const messages: Array<{role: string; content: string}> = [
