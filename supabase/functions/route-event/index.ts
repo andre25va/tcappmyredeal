@@ -179,6 +179,22 @@ Deno.serve(async (req: Request) => {
     }).eq("id", eventId);
 
     // 7. Write back to Supabase tables based on event type
+
+    // email_received: if classified as confirmation/document received → mark request received_at
+    if (event.type === "email_received" && event.payload?.request_id) {
+      const classification = typeof parsedResult === "object" && parsedResult !== null
+        ? (parsedResult as Record<string, string>).classification
+        : null;
+      if (classification === "confirmation_reply" || classification === "document_received") {
+        const newStatus = classification === "document_received" ? "document_received" : "reply_received";
+        await supabase.from("requests").update({
+          status: newStatus,
+          received_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", event.payload.request_id);
+      }
+    }
+
     if (event.type === "compliance_requested" && event.deal_id && Array.isArray(parsedResult)) {
       for (const check of parsedResult as Array<{rule_id: string; status: string; explanation: string}>) {
         await supabase.from("compliance_checks").upsert({

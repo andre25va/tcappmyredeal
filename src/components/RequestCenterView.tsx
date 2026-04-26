@@ -62,6 +62,8 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
 
       if (statusFilter === 'active') {
         query = query.not('status', 'in', '(completed,cancelled,accepted,rejected)');
+      } else if (statusFilter === 'overdue') {
+        query = query.eq('status', 'overdue');
       } else if (statusFilter === 'needs_review') {
         query = query.in('status', ['reply_received', 'document_received', 'under_review']);
       } else if (statusFilter === 'closed') {
@@ -98,6 +100,10 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
         updatedAt: r.updated_at,
         dealAddress: r.deals?.property_address || '—',
         dealPipelineStage: r.deals?.pipeline_stage,
+        dueBy: r.due_by ?? null,
+        nudgeCount: r.nudge_count ?? 0,
+        waitingOn: r.waiting_on ?? null,
+        receivedAt: r.received_at ?? null,
       })));
     } catch (err) {
       console.error('Failed to load requests:', err);
@@ -153,6 +159,7 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
           </div>
           {[
             { value: 'active',       label: 'Active' },
+            { value: 'overdue',      label: '🔴 Overdue' },
             { value: 'needs_review', label: 'Needs Review' },
             { value: 'closed',       label: 'Closed' },
             { value: 'all',          label: 'All' },
@@ -202,8 +209,8 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
                   <th className="font-semibold">Type</th>
                   <th className="font-semibold">Recipient</th>
                   <th className="font-semibold">Status</th>
+                  <th className="font-semibold">Due / Party</th>
                   <th className="font-semibold">Created</th>
-                  <th className="font-semibold">Updated</th>
                   <th></th>
                 </tr>
               </thead>
@@ -211,7 +218,9 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
                 {requests.map(req => (
                   <tr
                     key={req.id}
-                    className="hover:bg-base-100 cursor-pointer transition-colors border-b border-base-100"
+                    className={`cursor-pointer transition-colors border-b border-base-100 ${
+                      req.status === 'overdue' ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-base-100'
+                    }`}
                     onClick={() => onSelectDealWithTab?.(req.dealId, 'requests')}
                   >
                     <td className="font-medium text-sm text-base-content">
@@ -239,11 +248,28 @@ export const RequestCenterView: React.FC<Props> = ({ onSelectDeal, onSelectDealW
                         {STATUS_LABELS[req.status] || req.status}
                       </span>
                     </td>
-                    <td className="text-xs text-base-content/45">
-                      {fmtDate(req.createdAt)}
+                    <td>
+                      <div className="text-xs space-y-0.5">
+                        {(req as any).dueBy && !(req as any).receivedAt && (
+                          <p className={`font-medium ${req.status === 'overdue' ? 'text-red-600' : 'text-base-content/55'}`}>
+                            Due {fmtDate((req as any).dueBy)}
+                          </p>
+                        )}
+                        {(req as any).receivedAt && (
+                          <p className="text-green-600 font-medium">✓ Received</p>
+                        )}
+                        {(req as any).waitingOn && (
+                          <p className="text-base-content/40">
+                            Waiting: {(req as any).waitingOn}
+                          </p>
+                        )}
+                        {(req as any).nudgeCount > 0 && (
+                          <p className="text-amber-600">{(req as any).nudgeCount}× nudged</p>
+                        )}
+                      </div>
                     </td>
                     <td className="text-xs text-base-content/45">
-                      {fmtDate(req.updatedAt)}
+                      {fmtDate(req.createdAt)}
                     </td>
                     <td>
                       <ChevronRight size={14} className="text-base-content/25" />

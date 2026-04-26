@@ -162,6 +162,8 @@ function mapRow(r: any): RequestRecord {
     dueBy: r.due_by ?? null,
     nudgeCount: r.nudge_count ?? 0,
     lastNudgedAt: r.last_nudged_at ?? null,
+    waitingOn: r.waiting_on ?? null,
+    receivedAt: r.received_at ?? null,
     events: (r.request_events || []).map((e: any): RequestEvent => ({
       id: e.id,
       requestId: e.request_id,
@@ -280,6 +282,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   // New request form state
   const [newType, setNewType] = useState<RequestType>('earnest_money_receipt');
   const [dueBy, setDueBy] = useState('');
+  const [waitingOn, setWaitingOn] = useState<string>('');
   // Multi-select recipients
   const [selectedContacts, setSelectedContacts] = useState<DealContact[]>([]);
   const [newNotes, setNewNotes] = useState('');
@@ -407,6 +410,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         created_by: profile?.name || 'Staff',
         task_id: taskId || null,
         due_by: dueBy ? new Date(dueBy).toISOString() : null,
+        waiting_on: waitingOn || null,
       }).select().single();
 
       if (error) throw error;
@@ -470,6 +474,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
         created_by: profile?.name || 'Staff',
         task_id: taskId || null,
         due_by: dueBy ? new Date(dueBy).toISOString() : null,
+        waiting_on: waitingOn || null,
       }).select().single();
 
       if (error) throw error;
@@ -550,7 +555,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   const handleAccept = async (request: RequestRecord) => {
     await supabase.from('requests').update({
       status: 'accepted', reviewed_by: profile?.name || 'Staff',
-      reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      reviewed_at: new Date().toISOString(),
+      received_at: request.receivedAt ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }).eq('id', request.id);
     await addEvent(request.id, 'accepted', `Accepted by ${profile?.name || 'Staff'}`);
 
@@ -578,6 +585,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
       status: 'accepted',
       reviewed_by: profile?.name || 'Staff',
       reviewed_at: new Date().toISOString(),
+      received_at: request.receivedAt ?? new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq('id', request.id);
 
@@ -696,7 +704,9 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     const newStatus: RequestStatus =
       request.expectedResponseType === 'email_reply' ? 'reply_received' : 'document_received';
     await supabase.from('requests').update({
-      status: newStatus, updated_at: new Date().toISOString(),
+      status: newStatus,
+      received_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }).eq('id', request.id);
     await addEvent(
       request.id,
@@ -711,6 +721,7 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
     setSelectedContacts([]);
     setNewNotes('');
     setDueBy('');
+    setWaitingOn('');
   };
 
   const getTypeLabel = (type: RequestType) => REQUEST_TYPES.find(t => t.type === type)?.label || type;
@@ -877,6 +888,24 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
                   onChange={e => setDueBy(e.target.value)}
                 />
               </div>
+              {/* Waiting On */}
+              <div>
+                <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">Waiting On (optional)</label>
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={waitingOn}
+                  onChange={e => setWaitingOn(e.target.value)}
+                >
+                  <option value="">Select party…</option>
+                  <option value="buyer">Buyer</option>
+                  <option value="seller">Seller</option>
+                  <option value="agent">Agent</option>
+                  <option value="inspector">Inspector</option>
+                  <option value="title">Title Company</option>
+                  <option value="lender">Lender</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
               <div>
                 <label className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-1.5 block">Internal Notes (optional)</label>
                 <textarea className="textarea textarea-bordered textarea-sm w-full" rows={2} placeholder="Add any internal context or instructions…" value={newNotes} onChange={e => setNewNotes(e.target.value)} />
@@ -945,6 +974,12 @@ export const WorkspaceRequests: React.FC<Props> = ({ deal, autoOpenType, taskId 
   );
 };
 
+// ── Waiting On labels ─────────────────────────────────────────────────────────────
+const WAITING_ON_LABELS: Record<string, string> = {
+  buyer: 'Buyer', seller: 'Seller', agent: 'Agent',
+  inspector: 'Inspector', title: 'Title Co.', lender: 'Lender', other: 'Other',
+};
+
 // ── Request Card ──────────────────────────────────────────────────────────────────
 interface RequestCardProps {
   request: RequestRecord;
@@ -985,6 +1020,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
 
   return (
     <div className={`border rounded-lg overflow-hidden transition-colors ${
+      request.status === 'overdue' ? 'border-red-300 bg-red-50/20' :
       needsReview && !isClosed ? 'border-orange-200 bg-orange-50/20' :
       isClosed ? 'border-base-200 bg-base-50' : 'border-base-300 bg-white'
     }`}>
@@ -1006,8 +1042,20 @@ const RequestCard: React.FC<RequestCardProps> = ({
                 <Bell size={10} /> {request.nudgeCount} nudge{request.nudgeCount !== 1 ? 's' : ''} sent
               </span>
             )}
-            {request.dueBy && !isClosed && (
-              <span className="text-xs text-base-content/40">Due {fmtDate(request.dueBy)}</span>
+            {request.waitingOn && !isClosed && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-blue-50 text-blue-700 border-blue-200">
+                <Clock size={10} /> Waiting on: {WAITING_ON_LABELS[request.waitingOn] || request.waitingOn}
+              </span>
+            )}
+            {request.receivedAt && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-green-50 text-green-700 border-green-200">
+                <CheckCircle size={10} /> Received {fmtDate(request.receivedAt)}
+              </span>
+            )}
+            {request.dueBy && !isClosed && !request.receivedAt && (
+              <span className={`text-xs ${request.status === 'overdue' ? 'text-red-600 font-semibold' : 'text-base-content/40'}`}>
+                Due {fmtDate(request.dueBy)}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
