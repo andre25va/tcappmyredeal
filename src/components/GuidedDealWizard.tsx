@@ -1506,6 +1506,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     // By the time TC navigates to the Compliance tab the first check is ready.
     supabase.functions.invoke('run-compliance', { body: { deal_id: deal.id } })
       .catch(err => console.warn('[GuidedDealWizard] Background compliance check failed:', err));
+
+    // N4: Fire welcome email + contract thread in the background — no await, no UI block.
+    // Sends: (1) Welcome Email → client-side contacts only, (2) Contract Thread → all parties.
+    supabase.functions.invoke('send-welcome-email', { body: { deal_id: deal.id } })
+      .catch(err => console.warn('[GuidedDealWizard] Background welcome email failed:', err));
   };
 
   const stepTitles = ['', 'Upload Contract', 'Verify Data', 'Deal Info', 'Key Dates', 'Parties', 'Checklist Preview'];
