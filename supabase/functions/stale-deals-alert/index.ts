@@ -1,12 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendViaGmail } from "./_shared/gmail.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const TC_EMAIL = "tc@myredeal.com";
 
 function formatDate(d: string | null) {
@@ -25,11 +25,13 @@ Deno.serve(async () => {
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
     const cutoff = threeDaysAgo.toISOString().split("T")[0];
 
+    // FIX #1: use property_address (not address)
+    // FIX #2: filter by pipeline_stage (not status)
     const { data: staleDeals, error } = await supabase
       .from("deals")
-      .select("id, address, closing_date, status, pipeline_stage")
+      .select("id, property_address, closing_date, pipeline_stage")
       .lte("closing_date", cutoff)
-      .neq("status", "archived")
+      .neq("pipeline_stage", "archived")
       .order("closing_date", { ascending: true });
 
     if (error) {
@@ -45,7 +47,7 @@ Deno.serve(async () => {
       .map(
         (d) => `
         <tr>
-          <td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;font-weight:500;color:#111;">${d.address || "—"}</td>
+          <td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;font-weight:500;color:#111;">${d.property_address || "—"}</td>
           <td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;color:#dc2626;font-weight:600;">${formatDate(d.closing_date)}</td>
           <td style="padding:10px 16px;border-bottom:1px solid #f0f0f0;">
             <span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">Needs Review</span>
@@ -61,7 +63,7 @@ Deno.serve(async () => {
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:0;">
   <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;">
     <div style="background:#b91c1c;padding:24px 32px;">
-      <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">⚠️ Stale Deal Alert</h1>
+      <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">Stale Deal Alert</h1>
       <p style="margin:6px 0 0;color:#fecaca;font-size:14px;">${staleDeals.length} deal${staleDeals.length > 1 ? "s" : ""} passed closing date with no confirmation</p>
     </div>
     <div style="padding:24px 32px;">
@@ -84,35 +86,24 @@ Deno.serve(async () => {
       </table>
       <div style="margin-top:24px;text-align:center;">
         <a href="https://tcappmyredeal.vercel.app" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
-          Open TC App →
+          Open TC App &rarr;
         </a>
       </div>
     </div>
     <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">MyRedeal TC Command · Stale Deal Alert</p>
+      <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">MyRedeal TC Command &middot; Stale Deal Alert</p>
     </div>
   </div>
 </body>
 </html>`;
 
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "MyRedeal TC <notifications@myredeal.com>",
-        to: [TC_EMAIL],
-        subject: `⚠️ ${staleDeals.length} Deal${staleDeals.length > 1 ? "s" : ""} Past Closing — No Confirmation`,
-        html,
-      }),
-    });
+    // FIX #3: Use Gmail (not Resend)
+    const subject = `${staleDeals.length} Deal${staleDeals.length > 1 ? "s" : ""} Past Closing - No Confirmation`;
+    const result = await sendViaGmail({ to: [TC_EMAIL], subject, bodyHtml: html });
 
-    if (!emailRes.ok) {
-      const err = await emailRes.text();
-      console.error("Email send error:", err);
-      return new Response(JSON.stringify({ error: err }), { status: 500 });
+    if (!result.success) {
+      console.error("Email send error:", result.error);
+      return new Response(JSON.stringify({ error: result.error }), { status: 500 });
     }
 
     return new Response(
