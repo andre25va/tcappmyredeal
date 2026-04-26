@@ -291,6 +291,8 @@ Deno.serve(async (req: Request) => {
         .eq("id", deal_id);
     }
 
+    // events table columns: id, type, payload, deal_id, status, source, created_at, processed_at
+    // NO agent or result columns — those don't exist
     await supabase.from("events").insert({
       type: "welcome_email_sent",
       deal_id,
@@ -298,11 +300,10 @@ Deno.serve(async (req: Request) => {
         client_side_recipients: clientSideRecipients.map((r) => r.email),
         all_recipients: allEmails,
         property_address: deal.property_address,
+        results,
       },
       status: anySent ? "processed" : "failed",
       source: "system",
-      agent: "tasklet",
-      result: { results },
       processed_at: new Date().toISOString(),
     });
 
