@@ -2988,7 +2988,6 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       )}
                     </div>
                   )}
-                </div>
               </div>
             )}
 
