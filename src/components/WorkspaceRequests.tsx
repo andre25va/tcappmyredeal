@@ -1009,6 +1009,7 @@ const RequestCard: React.FC<RequestCardProps> = ({
   getTypeLabel, fmtDate,
 }) => {
   const [snoozeOpen, setSnoozeOpen] = React.useState(false);
+  const [snoozePos, setSnoozePos] = React.useState<{ top: number; left: number } | null>(null);
   const statusCfg = STATUS_CONFIG[request.status] ?? { label: request.status, badge: 'badge-ghost' };
   const isClosed = ['completed', 'cancelled', 'accepted', 'rejected'].includes(request.status);
   const isDraft = request.status === 'draft';
@@ -1229,11 +1230,11 @@ const RequestCard: React.FC<RequestCardProps> = ({
                           >
                             <RotateCcw size={10} /> Re-request
                           </button>
-                          <div className="dropdown dropdown-end">
+                          <div className="dropdown dropdown-top dropdown-end">
                             <button tabIndex={0} className="btn btn-xs btn-ghost gap-1" onClick={e => e.stopPropagation()}>
                               <Clock size={10} /> Snooze
                             </button>
-                            <ul tabIndex={0} className="dropdown-content menu menu-xs bg-base-100 rounded-box shadow border border-base-200 z-10 w-32">
+                            <ul tabIndex={0} className="dropdown-content menu menu-xs bg-base-100 rounded-box shadow border border-base-200 z-[9999] w-32">
                               {[1, 2, 3, 5].map(d => (
                                 <li key={d}>
                                   <button onClick={e => { e.stopPropagation(); onSnoozeRecipient(rec, d); }}>
@@ -1267,12 +1268,19 @@ const RequestCard: React.FC<RequestCardProps> = ({
               <div className="relative" onClick={e => e.stopPropagation()}>
                 <button
                   className="btn btn-sm btn-ghost gap-1.5 text-amber-600 hover:bg-amber-50"
-                  onClick={() => setSnoozeOpen(v => !v)}
+                  onClick={(e) => {
+                    if (snoozeOpen) { setSnoozeOpen(false); setSnoozePos(null); }
+                    else {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setSnoozePos({ top: r.bottom + 4, left: r.left });
+                      setSnoozeOpen(true);
+                    }
+                  }}
                 >
                   <Bell size={13} /> Snooze
                 </button>
-                {snoozeOpen && (
-                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-base-200 rounded-lg shadow-lg py-1 min-w-[140px]">
+                {snoozeOpen && snoozePos && (
+                  <div style={{ position: 'fixed', top: snoozePos.top, left: snoozePos.left }} className="z-[9999] bg-white border border-base-200 rounded-lg shadow-lg py-1 min-w-[140px]">
                     <p className="px-3 py-1 text-[10px] font-semibold text-base-content/40 uppercase tracking-wide">Follow up in…</p>
                     {[1, 2, 3, 5].map(d => (
                       <button

@@ -932,6 +932,8 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
   const isContract = doc.category === 'purchase_contract';
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(doc.display_name || doc.file_name);
+  const [docMenuOpen, setDocMenuOpen] = useState(false);
+  const [docMenuPos, setDocMenuPos] = useState<{ top: number; right: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isEmail = doc.source === 'email';
   const isPdf = doc.document_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf');
@@ -1061,11 +1063,24 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
         )}
 
         {/* ⋯ Menu */}
-        <div className="relative group/menu">
-          <button className="btn btn-ghost btn-xs btn-circle" title="More options">
+        <div className="relative">
+          <button
+            className="btn btn-ghost btn-xs btn-circle"
+            title="More options"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (docMenuOpen) { setDocMenuOpen(false); setDocMenuPos(null); }
+              else {
+                const r = e.currentTarget.getBoundingClientRect();
+                setDocMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                setDocMenuOpen(true);
+              }
+            }}
+          >
             <span className="text-base-content/50 font-bold text-lg leading-none">⋯</span>
           </button>
-          <div className="absolute right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-xl shadow-lg z-20 min-w-[160px] overflow-hidden hidden group-hover/menu:block">
+          {docMenuOpen && docMenuPos && (
+          <div style={{ position: 'fixed', top: docMenuPos.top, right: docMenuPos.right }} className="bg-base-100 border border-base-300 rounded-xl shadow-lg z-[9999] min-w-[160px] overflow-hidden">
             {isPdf && (
               <button
                 onClick={() => onSummary(doc)}
@@ -1114,6 +1129,7 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
               </button>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
