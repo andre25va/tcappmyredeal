@@ -58,7 +58,7 @@ interface AIReview {
   readyToCreate: boolean;
 }
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -1513,7 +1513,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       .catch(err => console.warn('[GuidedDealWizard] Background welcome email failed:', err));
   };
 
-  const stepTitles = ['', 'Upload Contract', 'Verify Data', 'Deal Info', 'Key Dates', 'Parties', 'Checklist Preview'];
+  const stepTitles = ['', 'Upload Contract', 'Verify Data', 'Deal Info', 'Key Dates', 'Parties', 'Title & Intro', 'Checklist Preview'];
   const isMF = form.propertyType === 'multi-family';
   const severityConfig = {
     info: { bg: 'bg-blue-50 border-blue-200', icon: <Info size={16} className="text-blue-500" />, text: 'text-blue-700' },
@@ -2733,8 +2733,51 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   </div>
                 </div>
 
-                {/* ── Title Contact search + Intro Email ── */}
-                <div className="border-t border-base-300 pt-4 space-y-4">
+
+                {/* ── Agent Client ── */}
+                <div className="border-t border-base-300 pt-4 space-y-3">
+                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Agent Client</p>
+                  {selectedClient ? (
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-700 flex-none">
+                        {selectedClient.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-base-content truncate">{selectedClient.fullName}</p>
+                        {selectedClient.company && <p className="text-xs text-base-content/50 truncate">{selectedClient.company}</p>}
+                      </div>
+                      <CheckCircle2 size={16} className="text-green-500 flex-none" />
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
+                      No agent client selected yet — add one via the Deal Contacts section above.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Special Notes ── */}
+                <div className="border-t border-base-300 pt-4">
+                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Special Notes <span className="text-base-content/30 ml-1">(optional)</span>
+                  </label>
+                  <textarea
+                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
+                      form.specialNotes.trim() ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]' : ''
+                    }`}
+                    rows={4}
+                    value={form.specialNotes}
+                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
+                    placeholder="Any special instructions for this transaction..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 6 && (
+              <div className="space-y-5">
+                <h3 className="text-lg font-bold text-base-content">Title &amp; Intro Email</h3>
+                <p className="text-sm text-base-content/50">Select the title contact and send your introduction email.</p>
+
                   <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Title Contact</p>
 
                   {/* Title contacts added in Deal Contacts — shown as quick-select cards */}
@@ -2946,47 +2989,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     </div>
                   )}
                 </div>
-
-                {/* ── Agent Client ── */}
-                <div className="border-t border-base-300 pt-4 space-y-3">
-                  <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Agent Client</p>
-                  {selectedClient ? (
-                    <div className="flex items-center gap-3 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-700 flex-none">
-                        {selectedClient.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-base-content truncate">{selectedClient.fullName}</p>
-                        {selectedClient.company && <p className="text-xs text-base-content/50 truncate">{selectedClient.company}</p>}
-                      </div>
-                      <CheckCircle2 size={16} className="text-green-500 flex-none" />
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700 text-center">
-                      No agent client selected yet — add one via the Deal Contacts section above.
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Special Notes ── */}
-                <div className="border-t border-base-300 pt-4">
-                  <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">
-                    <FileText size={12} /> Special Notes <span className="text-base-content/30 ml-1">(optional)</span>
-                  </label>
-                  <textarea
-                    className={`textarea textarea-bordered w-full text-sm resize-none transition-all duration-300 ${
-                      form.specialNotes.trim() ? 'border-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.4)]' : ''
-                    }`}
-                    rows={4}
-                    value={form.specialNotes}
-                    onChange={e => setForm(p => ({ ...p, specialNotes: e.target.value }))}
-                    placeholder="Any special instructions for this transaction..."
-                  />
-                </div>
               </div>
             )}
 
-            {step === 6 && (() => {
+
+            {step === 7 && (() => {
               const REQUIRED_BY_CONFIG: Record<RequiredBy, { label: string; color: string; dot: string }> = {
                 state:     { label: 'State Required',     color: 'text-red-700 bg-red-50 border-red-200',    dot: '\ud83d\udd34' },
                 mls:       { label: 'MLS Required',       color: 'text-orange-700 bg-orange-50 border-orange-200', dot: '\ud83d\udfe0' },
