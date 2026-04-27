@@ -454,6 +454,8 @@ function AppInner() {
     setPendingWorkspaceTab(tab);
     setPendingWorkspaceRequestType(null);
     setSelectedId(id);
+    setTxPanel('workspace');
+    setView('transactions');
   };
 
   const handleSendRequest = (dealId: string, requestType: string) => {
