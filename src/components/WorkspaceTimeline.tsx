@@ -223,6 +223,7 @@ export default function WorkspaceTimeline({ deal }: Props) {
 
   // Inline action state
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -630,12 +631,19 @@ export default function WorkspaceTimeline({ deal }: Props) {
                     <div className="relative">
                       <button
                         className="btn btn-ghost btn-xs btn-square"
-                        onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)}
+                        onClick={(e) => {
+                          if (menuOpen === m.id) { setMenuOpen(null); setMenuPos(null); }
+                          else {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                            setMenuOpen(m.id);
+                          }
+                        }}
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
-                      {menuOpen === m.id && (
-                        <ul className="menu menu-sm bg-base-200 rounded-box shadow-lg absolute right-0 top-8 z-20 w-40 border border-base-300">
+                      {menuOpen === m.id && menuPos && (
+                        <ul style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }} className="menu menu-sm bg-base-200 rounded-box shadow-lg z-[9999] w-40 border border-base-300">
                           {m.status === 'pending' && (
                             <>
                               <li>
