@@ -700,10 +700,19 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                       !isDateValue(currentVal) &&
                       !isPlainNumber(currentVal);
 
+                    // Confidence left border — colored stripe on the left edge of each row
+                    const fieldScore = fieldScoreMap[field.key];
+                    const confidenceBorder =
+                      !wasFound                ? 'border-l-4 border-red-300' :
+                      fieldScore === undefined  ? 'border-l-4 border-transparent' :
+                      fieldScore >= 0.8         ? 'border-l-4 border-green-400' :
+                      fieldScore >= 0.5         ? 'border-l-4 border-amber-400' :
+                                                  'border-l-4 border-red-400';
+
                     return (
                       <div
                         key={field.key}
-                        className={`flex items-start gap-3 px-3 py-2 ${rowBg}`}
+                        className={`flex items-start gap-3 px-3 py-2 ${rowBg} ${confidenceBorder}`}
                       >
                         {/* Label */}
                         <div className="w-40 flex-none pt-1.5">
@@ -712,7 +721,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                               {field.label}
                             </span>
                             {!wasFound && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-none" title="Not found in contract" />
+                              <span className="w-2 h-2 rounded-full bg-red-400 flex-none" title="Not found in contract" />
                             )}
                             {wasFound && fieldScoreMap[field.key] !== undefined && (() => {
                               const s = fieldScoreMap[field.key];
@@ -721,7 +730,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                               const pct = Math.round(s * 100);
                               return (
                                 <span
-                                  className={`w-1.5 h-1.5 rounded-full flex-none ${color}`}
+                                  className={`w-2 h-2 rounded-full flex-none ${color}`}
                                   title={`${label} (${pct}%)`}
                                 />
                               );
