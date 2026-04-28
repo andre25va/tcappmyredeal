@@ -889,7 +889,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       source: 'manual_correction',
       org_id: (deal as any).orgId || null,
     }).then(() => {});
-    onUpdate({ [inlineEdit.field]: newValue || undefined });
+    onUpdate({ ...deal, [inlineEdit.field]: newValue || undefined });
     setInlineEdit(null);
     setInlineSaving(false);
   };
