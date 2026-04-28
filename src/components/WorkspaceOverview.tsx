@@ -730,6 +730,58 @@ const MilestoneStepper: React.FC<{
   );
 };
 
+
+// ── Field History Popover ──
+const FieldHistoryPopover: React.FC<{ dealId: string; fieldName: string; label: string }> = ({ dealId, fieldName, label }) => {
+  const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState<{ id: string; old_value: string | null; new_value: string | null; changed_by_name: string | null; changed_at: string }[]>([]);
+  const load = async () => {
+    const { data } = await supabase
+      .from('deal_field_history')
+      .select('id, old_value, new_value, changed_by_name, changed_at')
+      .eq('deal_id', dealId)
+      .eq('field_name', fieldName)
+      .order('changed_at', { ascending: false })
+      .limit(10);
+    setHistory(data || []);
+  };
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); if (!open) load(); }}
+        className="ml-1 text-gray-300 hover:text-primary transition-colors align-middle"
+        title={`View ${label} change history`}
+      ><Clock size={11} /></button>
+      {open && (
+        <div className="absolute z-[9999] top-5 left-0 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-72 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-gray-700">{label} History</span>
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 leading-none">✕</button>
+          </div>
+          {history.length === 0 ? (
+            <p className="text-gray-400 italic">No changes recorded yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {history.map(h => (
+                <div key={h.id} className="border-b border-gray-100 pb-2 last:border-0">
+                  <div className="text-gray-400">{new Date(h.changed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                    <span className="line-through text-red-400">{h.old_value || '—'}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="text-green-600 font-medium">{h.new_value || '—'}</span>
+                  </div>
+                  {h.changed_by_name && <div className="text-gray-400">by {h.changed_by_name}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactRecords = [], onGoToContacts, editTrigger, onGoToEmails, onGoToCompliance, allDeals = [], onCallStarted }) => {
   const { profile } = useAuth();
   const userName = profile?.name || 'TC Staff';
@@ -818,6 +870,34 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const handleCancel = () => setShowModal(false);
 
   const handleSave = () => {
+    // Log tracked field changes to deal_field_history (fire-and-forget)
+    const TRACKED_FIELDS = [
+      { key: 'buyerName',        dbName: 'buyer_name',        old: deal.buyerName           || '' },
+      { key: 'sellerName',       dbName: 'seller_name',       old: deal.sellerName          || '' },
+      { key: 'contractPrice',    dbName: 'purchase_price',    old: String(deal.contractPrice  || '') },
+      { key: 'closingDate',      dbName: 'closing_date',      old: deal.closingDate         || '' },
+      { key: 'contractDate',     dbName: 'contract_date',     old: deal.contractDate        || '' },
+      { key: 'earnestMoney',     dbName: 'earnest_money',     old: String(deal.earnestMoney   || '') },
+      { key: 'loanAmount',       dbName: 'loan_amount',       old: String(deal.loanAmount     || '') },
+      { key: 'titleCompanyName', dbName: 'title_company_name', old: deal.titleCompanyName   || '' },
+    ] as const;
+    const changedFields = TRACKED_FIELDS.filter(f => String((fields as any)[f.key] || '') !== f.old);
+    if (changedFields.length > 0) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.from('deal_field_history').insert(
+          changedFields.map(f => ({
+            deal_id: deal.id,
+            field_name: f.dbName,
+            old_value: f.old || null,
+            new_value: String((fields as any)[f.key] || '') || null,
+            changed_by: session?.user?.id || null,
+            changed_by_name: userName,
+            source: 'manual_correction',
+            org_id: (deal as any).orgId || null,
+          }))
+        ).then(() => {});
+      });
+    }
     const updated = log(deal, 'Deal updated', `Status: ${statusLabel(fields.status as DealStatus)}, Closing: ${formatDate(fields.closingDate)}`, userName);
     onUpdate({
       ...updated,
@@ -1360,13 +1440,13 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                 <h3 className="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">Parties</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Buyer Name(s)</label>
+                    <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">Buyer Name(s)<FieldHistoryPopover dealId={deal.id} fieldName="buyer_name" label="Buyer Name" /></label>
                     <input className="input input-bordered input-sm w-full" placeholder="Buyer full name(s)"
                       value={fields.buyerName}
                       onChange={e => setFields(p => ({ ...p, buyerName: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Seller Name(s)</label>
+                    <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">Seller Name(s)<FieldHistoryPopover dealId={deal.id} fieldName="seller_name" label="Seller Name" /></label>
                     <input className="input input-bordered input-sm w-full" placeholder="Seller full name(s)"
                       value={fields.sellerName}
                       onChange={e => setFields(p => ({ ...p, sellerName: e.target.value }))} />
@@ -1405,7 +1485,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Contract Price</label>
+                    <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">Contract Price<FieldHistoryPopover dealId={deal.id} fieldName="purchase_price" label="Contract Price" /></label>
                     <input className="input input-bordered input-sm w-full" placeholder="0.00" value={fields.contractPrice}
                       onChange={e => setFields(p => ({ ...p, contractPrice: e.target.value }))} />
                   </div>
@@ -1420,7 +1500,7 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
                       onChange={e => setFields(p => ({ ...p, contractDate: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-xs text-base-content/50 mb-1 block">Closing Date</label>
+                    <label className="text-xs text-base-content/50 mb-1 flex items-center gap-1">Closing Date<FieldHistoryPopover dealId={deal.id} fieldName="closing_date" label="Closing Date" /></label>
                     <input type="date" className="input input-bordered input-sm w-full" value={fields.closingDate}
                       onChange={e => setFields(p => ({ ...p, closingDate: e.target.value }))} />
                   </div>
