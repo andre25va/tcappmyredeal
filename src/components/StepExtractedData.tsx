@@ -144,6 +144,10 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'homeWarrantyCompany', label: 'Home Warranty Company',  type: 'text',   section: 'Home Warranty' },
 
   // ── Parties ───────────────────────────────────────────────────────────────
+  { key: 'buyerNames',          label: 'Buyer Name(s)',        type: 'text',    section: 'Parties',
+    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-buyer names flagged for review' },
+  { key: 'sellerNames',         label: 'Seller Name(s)',       type: 'text',    section: 'Parties',
+    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-seller names flagged for review' },
   { key: 'buyerAgentName',      label: "Buyer's Agent",       type: 'contact', section: 'Parties' },
   { key: 'sellerAgentName',     label: "Seller's Agent",      type: 'contact', section: 'Parties' },
   { key: 'titleCompany',        label: 'Title Company',       type: 'contact', section: 'Parties' },
@@ -160,6 +164,25 @@ const SECTIONS = [
   'Home Warranty',
   'Parties',
 ];
+
+// --- Sprint 9: Name auto-flag rule ---
+// Any name field whose value contains Trust / LLC / "and" / "&" or is >30 chars
+// gets forced to amber confidence regardless of AI score.
+const NAME_FIELDS = new Set(['buyerNames', 'sellerNames', 'buyerAgentName', 'sellerAgentName']);
+
+function shouldFlagName(value: unknown): boolean {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  const v = value.trim();
+  if (v.length > 30) return true;
+  const lower = v.toLowerCase();
+  // word-boundary checks for common complex-name patterns
+  if (/\btrust\b/i.test(v)) return true;
+  if (/\bllc\b/i.test(v)) return true;
+  if (/\binc\b/i.test(v)) return true;
+  if (/\bcorp\b/i.test(v)) return true;
+  if (/\b(and|&)\b/i.test(lower)) return true;
+  return false;
+}
 
 // --- Formula pattern detection ---
 const FORMULA_PATTERN = /\d+\s+(calendar|business)?\s*days?\s+(after|before|from)/i;
@@ -702,8 +725,11 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
                     // Confidence left border — colored stripe on the left edge of each row
                     const fieldScore = fieldScoreMap[field.key];
+                    // Sprint 9: name auto-flag — force amber if complex name pattern detected
+                    const isNameFlagged = NAME_FIELDS.has(field.key) && wasFound && shouldFlagName(currentVal);
                     const confidenceBorder =
                       !wasFound                ? 'border-l-4 border-red-300' :
+                      isNameFlagged            ? 'border-l-4 border-amber-400' :
                       fieldScore === undefined  ? 'border-l-4 border-transparent' :
                       fieldScore >= 0.8         ? 'border-l-4 border-green-400' :
                       fieldScore >= 0.5         ? 'border-l-4 border-amber-400' :
@@ -723,7 +749,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                             {!wasFound && (
                               <span className="w-2 h-2 rounded-full bg-red-400 flex-none" title="Not found in contract" />
                             )}
-                            {wasFound && fieldScoreMap[field.key] !== undefined && (() => {
+                            {wasFound && (() => {
+                              // Sprint 9: name-flagged fields always show amber dot with special label
+                              if (isNameFlagged) {
+                                return (
+                                  <span
+                                    className="w-2 h-2 rounded-full flex-none bg-amber-400"
+                                    title="Complex name detected — verify carefully"
+                                  />
+                                );
+                              }
+                              if (fieldScoreMap[field.key] === undefined) return null;
                               const s = fieldScoreMap[field.key];
                               const color = s >= 0.8 ? 'bg-green-400' : s >= 0.5 ? 'bg-amber-400' : 'bg-red-400';
                               const label = s >= 0.8 ? 'High confidence' : s >= 0.5 ? 'Medium confidence — review' : 'Low confidence — verify manually';
@@ -816,13 +852,28 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                           )}
 
                           {field.type === 'text' && (
-                            <input
-                              type="text"
-                              value={currentVal}
-                              onChange={e => setValue(field.key, e.target.value)}
-                              className="input input-sm input-bordered w-full text-sm"
-                              placeholder={!wasFound ? 'Not found — type to fill in' : ''}
-                            />
+                            <>
+                              <input
+                                type="text"
+                                value={currentVal}
+                                onChange={e => setValue(field.key, e.target.value)}
+                                className="input input-sm input-bordered w-full text-sm"
+                                placeholder={!wasFound ? 'Not found — type to fill in' : ''}
+                              />
+                              {/* Sprint 9: name auto-flag warning */}
+                              {isNameFlagged && (
+                                <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 font-medium">
+                                  <span>⚠</span>
+                                  <span>
+                                    {/\b(trust|llc|inc|corp)\b/i.test(currentVal as string)
+                                      ? 'Entity name — confirm vesting & title requirements'
+                                      : /\b(and|&)\b/i.test(currentVal as string)
+                                      ? 'Multiple parties — confirm all names are correct'
+                                      : 'Long name — verify spelling and completeness'}
+                                  </span>
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
