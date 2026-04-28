@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy } from 'lucide-react';
+import { DollarSign, Calendar, Tag, Bell, Plus, User, Phone, Mail, Users, Check, X, Clock, AlertTriangle, Archive, RotateCcw, ChevronRight, Copy, Pencil } from 'lucide-react';
 import { initPageTracking, PAGE_IDS } from '../utils/pageTracking';
 import { PageIdBadge } from './PageIdBadge';
 import { DealHealthCard } from './DealHealthCard';
@@ -790,6 +790,8 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   const [showModal, setShowModal] = useState(false);
   const [agentPopup, setAgentPopup] = useState<{ label: string; agent: AgentContact; accent: string } | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [inlineEdit, setInlineEdit] = useState<{ field: 'buyerName' | 'sellerName'; value: string } | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   useEffect(() => {
     initPageTracking(PAGE_IDS.DEAL_OVERVIEW);
@@ -868,6 +870,29 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
   };
 
   const handleCancel = () => setShowModal(false);
+
+  const handleInlineSave = async () => {
+    if (!inlineEdit) return;
+    const dbMap: Record<string, string> = { buyerName: 'buyer_name', sellerName: 'seller_name' };
+    const oldValue = String((deal as any)[inlineEdit.field] || '');
+    const newValue = inlineEdit.value.trim();
+    if (newValue === oldValue) { setInlineEdit(null); return; }
+    setInlineSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    supabase.from('deal_field_history').insert({
+      deal_id: deal.id,
+      field_name: dbMap[inlineEdit.field],
+      old_value: oldValue || null,
+      new_value: newValue || null,
+      changed_by: session?.user?.id || null,
+      changed_by_name: userName,
+      source: 'manual_correction',
+      org_id: (deal as any).orgId || null,
+    }).then(() => {});
+    onUpdate({ [inlineEdit.field]: newValue || undefined });
+    setInlineEdit(null);
+    setInlineSaving(false);
+  };
 
   const handleSave = () => {
     // Log tracked field changes to deal_field_history (fire-and-forget)
@@ -1048,6 +1073,62 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
           <span className="text-black text-sm whitespace-nowrap">— Closing {formatDate(deal.closingDate)}</span>
         </div>
         <span className="text-xs text-black/50 whitespace-nowrap flex-none">Signed {Math.abs(daysContract)}d ago</span>
+      </div>
+
+      {/* ─── Party Names ─── */}
+      <div className="bg-base-200 rounded-xl border border-base-300 p-4">
+        <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wide mb-3">Parties</p>
+        <div className="space-y-2.5">
+          {(['buyerName', 'sellerName'] as const).map(field => {
+            const label = field === 'buyerName' ? 'Buyer Name(s)' : 'Seller Name(s)';
+            const value = String((deal as any)[field] || '');
+            const isEditing = inlineEdit?.field === field;
+            return (
+              <div key={field} className="flex items-start gap-3 min-w-0">
+                <span className="text-xs text-base-content/50 w-24 flex-none pt-0.5">{label}</span>
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <input
+                      autoFocus
+                      className="input input-xs input-bordered flex-1 min-w-0"
+                      value={inlineEdit.value}
+                      onChange={e => setInlineEdit(p => p ? { ...p, value: e.target.value } : p)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleInlineSave();
+                        if (e.key === 'Escape') setInlineEdit(null);
+                      }}
+                    />
+                    <button
+                      className="btn btn-xs btn-primary"
+                      onClick={handleInlineSave}
+                      disabled={inlineSaving}
+                    >Save</button>
+                    <button
+                      className="btn btn-xs btn-ghost"
+                      onClick={() => setInlineEdit(null)}
+                    ><X size={11} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="font-medium text-sm text-base-content truncate">
+                      {value || <span className="italic text-base-content/30 font-normal text-xs">Not set</span>}
+                    </span>
+                    <button
+                      className="btn btn-ghost btn-xs btn-square p-0 min-h-0 h-5 w-5 opacity-30 hover:opacity-100 transition-opacity flex-none"
+                      onClick={() => setInlineEdit({ field, value })}
+                      title={'Correct ' + label}
+                    ><Pencil size={11} /></button>
+                    <FieldHistoryPopover
+                      dealId={deal.id}
+                      fieldName={field === 'buyerName' ? 'buyer_name' : 'seller_name'}
+                      label={label}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ─── Deal Details (read-only) ─── */}
