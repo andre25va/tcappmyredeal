@@ -11,6 +11,7 @@ import { formatCurrency, daysUntil, formatDate } from '../utils/helpers';
 import { MILESTONE_LABELS } from '../utils/taskTemplates';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/Button';
+import { DealLoopDashboard } from './DealLoopDashboard';
 
 interface Props {
   deals: Deal[];
@@ -933,6 +934,12 @@ export const HomeDashboard: React.FC<Props> = ({ deals, onSelectDeal, onGoToDeal
             </div>
           </div>
         </div>
+
+        {/* ── DEAL LOOP — Autonomous Check Engine ── */}
+        <DealLoopDashboard
+          onSelectDeal={onSelectDeal}
+          onGoToDeals={onGoToDeals}
+        />
 
       </div>
     </div>
