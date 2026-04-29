@@ -63,7 +63,7 @@ import { DealAccessPanel } from './DealAccessPanel';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/Button';
 
-type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'pending-outbox' | 'activity' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access' | 'compliance';
+type Tab = 'overview' | 'checklists' | 'tasks' | 'contacts' | 'documents' | 'requests' | 'pending-outbox' | 'activity' | 'portal-notes' | 'email' | 'ai-emails' | 'ai-chat' | 'comms' | 'timeline' | 'linked-emails' | 'amendments' | 'access' | 'compliance';
 
 interface Props {
   deal: Deal;
@@ -315,6 +315,21 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
       setMlsRerunFirstName('');
     }
   };
+  const { data: portalNotes = [], refetch: refetchPortalNotes } = useQuery({
+    queryKey: ['portal-notes', deal.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('deal_notes')
+        .select('id, content, parsed_actions, portal_contact_name, created_at, is_pinned')
+        .eq('deal_id', deal.id)
+        .eq('source', 'portal')
+        .order('created_at', { ascending: false });
+      return data ?? [];
+    },
+    enabled: tab === 'portal-notes',
+    refetchOnWindowFocus: false,
+  });
+
   const fetchSupplements = useMutation({
     mutationFn: async () => {
       const res = await fetch('https://tcmyredealapp.app.n8n.cloud/webhook/mls-supplements', {
@@ -349,6 +364,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
     { id: 'requests',       label: 'Requests',       icon: <ClipboardList size={13} />, badge: activeRequestCount > 0 ? activeRequestCount : undefined },
     { id: 'pending-outbox', label: 'Pending Outbox', icon: <Inbox size={13} /> },
     { id: 'activity',       label: 'Activity',       icon: <Clock size={13} /> },
+    { id: 'portal-notes',   label: 'Realtor Notes',  icon: <MessageCircle size={13} /> },
     { id: 'email',      label: 'Email',      icon: <FileText size={13} /> },
     { id: 'timeline',   label: 'Timeline',   icon: <GitBranch size={13} /> },
     { id: 'ai-chat',    label: 'AI Chat',    icon: <MessageCircle size={13} /> },
@@ -738,6 +754,60 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'compliance'  && <WorkspaceCompliance deal={deal} />}
         {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
+        {tab === 'portal-notes' && (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-base-content">Realtor Notes</h3>
+              <button
+                onClick={() => refetchPortalNotes()}
+                className="btn btn-xs btn-ghost gap-1"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+            <p className="text-xs text-base-content/50">Notes submitted by realtors via the client portal.</p>
+            {(portalNotes as any[]).length === 0 ? (
+              <div className="text-center py-16 text-base-content/30">
+                <MessageCircle size={36} className="mx-auto mb-3 opacity-20" />
+                <p className="text-sm font-medium">No realtor notes yet</p>
+                <p className="text-xs mt-1">When a realtor adds a note in the client portal, it appears here.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(portalNotes as any[]).map((note: any) => (
+                  <div key={note.id} className="bg-base-100 border border-base-300 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="text-xs font-semibold text-primary">{note.portal_contact_name ?? 'Portal User'}</span>
+                      <span className="text-xs text-base-content/30">·</span>
+                      <span className="text-xs text-base-content/40">
+                        {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-base-content leading-relaxed">{note.content}</p>
+                    {note.parsed_actions?.summary && (
+                      <p className="text-xs text-base-content/55 mt-2 italic border-t border-base-200 pt-2">
+                        💡 {note.parsed_actions.summary}
+                      </p>
+                    )}
+                    {(note.parsed_actions?.action_items ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {(note.parsed_actions.action_items as any[]).map((item: any, i: number) => (
+                          <span key={i} className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                            item.priority === 'high' ? 'bg-red-100 text-red-700' :
+                            item.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-base-200 text-base-content/60'
+                          }`}>
+                            📋 {item.task}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {tab === 'email'      && <WorkspaceEmailCompose deal={deal} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} currentUser={profile?.name} />}
         {tab === 'timeline'   && <DealTimeline deal={deal} />}
         {tab === 'ai-chat'    && <DealChatPanel deal={deal} onUpdate={onUpdate} />}

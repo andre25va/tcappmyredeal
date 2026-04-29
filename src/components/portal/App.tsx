@@ -25,7 +25,19 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request';
+type Screen = 'login' | 'dashboard' | 'deal' | 'sheet' | 'request' | 'notepad';
+
+interface PortalNote {
+  id: string;
+  content: string;
+  parsed_actions: {
+    summary?: string;
+    action_items?: Array<{ task: string; priority: string; names_mentioned?: string[] }>;
+  } | null;
+  portal_contact_name: string | null;
+  created_at: string;
+  is_pinned: boolean;
+}
 
 type RequestType =
   | 'Document Request'
@@ -212,6 +224,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [notes, setNotes] = useState<PortalNote[]>([]);
+  const [noteText, setNoteText] = useState('');
+  const [noteLoading, setNoteLoading] = useState(false);
 
   const activeDeal = deals.find((d) => d.id === activeDealId) ?? null;
 
@@ -258,6 +273,10 @@ export default function App() {
       if (data.requestTypes?.[0]) setRequestType(data.requestTypes[0] as RequestType);
       if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
       if (data.welcomeMessage) setWelcomeMessage(data.welcomeMessage);
+      if ((data.deals ?? []).length >= 1) {
+        // Kick off notes fetch (non-blocking) — phone/pin are in state from the form
+        setTimeout(() => fetchNotes(data.deals[0].id), 0);
+      }
       setScreen('dashboard');
     } catch {
       setError('An error occurred. Please try again.');
@@ -285,6 +304,39 @@ export default function App() {
       // silent
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // ── Portal Notes ───────────────────────────────────────────────────────────
+  const fetchNotes = async (dealId: string) => {
+    if (!dealId || !phone || !pin) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'fetch', phone, pin, deal_id: dealId }),
+      });
+      const data = await res.json();
+      if (res.ok) setNotes(data.notes ?? []);
+    } catch { /* silent */ }
+  };
+
+  const submitNote = async () => {
+    if (!noteText.trim() || !activeDealId || !phone || !pin) return;
+    setNoteLoading(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'submit', phone, pin, deal_id: activeDealId, note_text: noteText }),
+      });
+      const data = await res.json();
+      if (res.ok && data.note) {
+        setNotes(prev => [data.note, ...prev]);
+        setNoteText('');
+      }
+    } catch { /* silent */ } finally {
+      setNoteLoading(false);
     }
   };
 
@@ -753,7 +805,7 @@ export default function App() {
           )}
 
           {/* Bottom CTAs */}
-          <div className="grid grid-cols-2 gap-3 pb-6">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <button
               onClick={() => setScreen('sheet')}
               className="flex items-center justify-center gap-2 py-3 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E]/5 transition"
@@ -767,6 +819,105 @@ export default function App() {
               Make a Request
             </button>
           </div>
+          <button
+            onClick={() => { fetchNotes(activeDealId); setScreen('notepad'); }}
+            className="w-full flex items-center justify-center gap-2 py-3 mb-6 border-2 border-[#F4B942] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#F4B942]/10 transition"
+          >
+            📝 My Notes
+            {notes.length > 0 && (
+              <span className="bg-[#F4B942] text-[#1B2C5E] text-xs font-bold px-2 py-0.5 rounded-full ml-1">
+                {notes.length}
+              </span>
+            )}
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  /* ── NOTEPAD ── */
+  if (screen === 'notepad' && activeDeal) {
+    const fmt = (d: string) =>
+      new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    return (
+      <div className="min-h-screen bg-gray-50" data-page-id="portal-notepad">
+        {/* Header */}
+        <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <button
+              onClick={() => setScreen('deal')}
+              className="flex items-center gap-1.5 text-sm font-semibold hover:text-white/80 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+            <span className="text-sm font-bold">📝 My Notes</span>
+            <div className="w-8" />
+          </div>
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+          {/* Input card */}
+          <div className="bg-white rounded-2xl shadow p-5">
+            <p className="text-sm font-bold text-[#1B2C5E] mb-1">Add a note or reminder</p>
+            <p className="text-xs text-gray-400 mb-3">
+              Your TC sees these instantly — use them for quick updates, client requests, or anything you want tracked.
+            </p>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="e.g. Client wants to see a flip property ~$100K in Kansas City, MO…"
+              rows={4}
+              className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm focus:border-[#F4B942] focus:outline-none resize-none transition"
+            />
+            <button
+              onClick={submitNote}
+              disabled={noteLoading || !noteText.trim()}
+              className="mt-3 w-full py-3 bg-[#1B2C5E] text-white font-bold rounded-xl hover:bg-[#0f1a38] transition disabled:opacity-40"
+            >
+              {noteLoading ? 'Saving…' : '+ Add Note'}
+            </button>
+          </div>
+
+          {/* Notes list */}
+          {notes.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="text-sm font-medium">No notes yet</p>
+              <p className="text-xs mt-1">Add your first note above — your TC will see it right away.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 pb-6">
+              {notes.map((note) => (
+                <div key={note.id} className="bg-white rounded-2xl shadow p-4">
+                  <p className="text-sm text-gray-800 leading-relaxed">{note.content}</p>
+                  {note.parsed_actions?.summary && (
+                    <p className="text-xs text-gray-500 mt-2 italic border-t border-gray-100 pt-2">
+                      💡 {note.parsed_actions.summary}
+                    </p>
+                  )}
+                  {(note.parsed_actions?.action_items ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {(note.parsed_actions!.action_items!).map((item, i) => (
+                        <span
+                          key={i}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                            item.priority === 'high'
+                              ? 'bg-red-50 text-red-600'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          📋 {item.task}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-400 mt-3">{fmt(note.created_at)}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       </div>
     );
