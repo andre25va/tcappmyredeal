@@ -1508,6 +1508,7 @@ ${keyFields}`;
   const systemPrompt = `You are extracting real estate transaction data from a purchase agreement or contract document.
 
 Extract all available fields. For dates, return YYYY-MM-DD format. For prices/amounts, return numeric strings without formatting (e.g., "550000" not "$550,000"). For state, return the 2-letter abbreviation.
+For address: extract the property street address exactly as printed. CRITICAL — preserve hyphens in addresses. Multi-unit/duplex addresses like "5777-5779" MUST keep the hyphen as a hyphen. Never substitute an underscore for a hyphen in an address.
 
 For transactionType: if this is a buyer's purchase offer/agreement, return "buyer". If listing/seller-side document, return "seller". Default to "buyer".
 For contractPrice: the final purchase/sale price agreed upon in the contract. Return as numeric string (e.g., "550000"). Return null if not found.
@@ -1620,6 +1621,13 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error('No content in OpenAI response');
   const parsed = JSON.parse(content);
+
+  // ── Address hyphen sanitizer ─────────────────────────────────────────────────
+  // GPT-4o occasionally substitutes underscore for hyphen in multi-unit addresses
+  // (e.g., "5777_5779" for a duplex → must be "5777-5779")
+  if (parsed.address && typeof parsed.address === 'string') {
+    parsed.address = parsed.address.replace(/(\d+)_(\d+)/g, '$1-$2');
+  }
 
   // ── Agent name post-processing (Heartland MLS convention) ──────────────────
   //   Listing Licensee  → sellerAgentName (represents the seller)
