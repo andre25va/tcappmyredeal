@@ -1167,8 +1167,20 @@ ${JSON.stringify(existingCompTitles || [], null, 2)}`;
 // ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
 
 async function handleExtractDeal(apiKey: string, body: any) {
-  const { fileBase64, fileName, mlsId } = body;
-  if (!fileBase64) throw new Error('Missing fileBase64');
+  const { fileBase64: rawBase64, filePath, fileName, mlsId } = body;
+  let fileBase64 = rawBase64;
+
+  // New flow: wizard uploads PDF to Supabase Storage, passes filePath to avoid 4.5MB Vercel body limit
+  if (filePath && !fileBase64) {
+    const { data: fileBlob, error: dlErr } = await supabase.storage
+      .from('deal-documents')
+      .download(filePath);
+    if (dlErr || !fileBlob) throw new Error(`Failed to fetch contract from storage: ${dlErr?.message}`);
+    const arrayBuffer = await fileBlob.arrayBuffer();
+    fileBase64 = Buffer.from(arrayBuffer).toString('base64');
+  }
+
+  if (!fileBase64) throw new Error('Missing fileBase64 or filePath');
 
   // ── Optionally fetch blank reference template from MLS directory ─────────
   let templateBase64: string | null = null;

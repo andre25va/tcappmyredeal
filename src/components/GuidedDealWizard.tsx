@@ -839,17 +839,24 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     setExtractionBanner(null);
     setError('');
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => { const r = reader.result as string; resolve(r.split(',')[1]); };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch('/api/ai?action=extract-deal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileBase64: base64, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
-      });
+      // Upload PDF to Supabase Storage temp path to bypass Vercel's 4.5MB body limit
+      const tempPath = `temp/${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('deal-documents')
+        .upload(tempPath, file, { upsert: true });
+      if (uploadErr) throw new Error(`Temp upload failed: ${uploadErr.message}`);
+
+      let res: Response;
+      try {
+        res = await fetch('/api/ai?action=extract-deal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath: tempPath, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
+        });
+      } finally {
+        // Cleanup temp file regardless of extraction result
+        await supabase.storage.from('deal-documents').remove([tempPath]);
+      }
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
       setForm(p => {
@@ -2988,6 +2995,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       )}
                     </div>
                   )}
+                </div>
               </div>
             )}
 
