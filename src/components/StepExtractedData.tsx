@@ -393,6 +393,7 @@ function SourceBadge({ fieldKey, fieldSources, onJumpToPage }: {
 const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   dealId,
   extractedData,
+  contractDetection,
   onConfirm,
   onEdit,
   onReExtract,
