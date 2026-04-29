@@ -249,6 +249,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [extractionBanner, setExtractionBanner] = useState<{ count: number; fileName: string } | null>(null);
   const [showExtractedTable, setShowExtractedTable] = useState(false);
   const [extractedRawData, setExtractedRawData] = useState<Record<string, any> | null>(null);
+  const [contractDetection, setContractDetection] = useState<any>(null);
   const [dragOver, setDragOver] = useState(false);
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -1003,6 +1004,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       }
       setExtractionBanner({ count: d.extractedFields?.length || 0, fileName: file.name });
       setExtractedRawData(d);
+      if (d.contractDetection) setContractDetection(d.contractDetection);
       setShowExtractedTable(false);
       setStep(2); // advance to AI Review step
     } catch (err: any) {
@@ -2232,6 +2234,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
               <StepExtractedData
                 dealId={preDealId}
                 extractedData={extractedRawData}
+                contractDetection={contractDetection}
                 onConfirm={(verified) => { setExtractedRawData(verified); setStep(3); }}
                 onEdit={() => setStep(3)}
                 onReExtract={() => setStep(1)}
