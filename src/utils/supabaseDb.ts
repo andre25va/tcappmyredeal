@@ -1183,6 +1183,8 @@ export async function loadContactsFull(): Promise<ContactRecord[]> {
     preferredLanguage: (row.preferred_language || 'en') as 'en' | 'es',
     pin: row.pin ?? undefined,
     contactNumber: row.contact_number ?? undefined,
+    googleReviewUrl: row.google_review_url ?? undefined,
+    zillowReviewUrl: row.zillow_review_url ?? undefined,
   }));
 }
 
@@ -1201,6 +1203,8 @@ export async function saveContactRecord(contact: {
   pin?: string;
   teamName?: string;
   orgId?: string;
+  googleReviewUrl?: string;
+  zillowReviewUrl?: string;
 }): Promise<void> {
   const fullName = `${contact.firstName} ${contact.lastName}`.trim();
   const { error } = await supabase.from('contacts').upsert({
@@ -1219,6 +1223,8 @@ export async function saveContactRecord(contact: {
     pin: contact.pin || null,
     team_name: contact.teamName || null,
     org_id: contact.orgId ?? null,
+    google_review_url: contact.googleReviewUrl || null,
+    zillow_review_url: contact.zillowReviewUrl || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;

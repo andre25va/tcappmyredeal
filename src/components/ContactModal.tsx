@@ -78,6 +78,8 @@ export interface EditForm {
   orgId: string;
   licenses: EditLicense[];
   mlsMemberships: EditMls[];
+  googleReviewUrl: string;
+  zillowReviewUrl: string;
 }
 
 export interface EditLicense {
@@ -119,6 +121,8 @@ export function blankForm(role: ContactRole = 'agent', prefillPhone = ''): EditF
     orgId: '',
     licenses: [],
     mlsMemberships: [],
+    googleReviewUrl: '',
+    zillowReviewUrl: '',
   };
 }
 
@@ -157,6 +161,8 @@ export function contactToForm(c: ContactRecord): EditForm {
       mlsMemberNumber: m.mlsMemberNumber,
       stateCode: m.stateCode ?? '',
     })),
+    googleReviewUrl: c.googleReviewUrl ?? '',
+    zillowReviewUrl: c.zillowReviewUrl ?? '',
   };
 }
 
@@ -691,6 +697,8 @@ export function ContactModal({
         preferredLanguage: form.preferredLanguage,
         teamName: form.teamName.trim() || undefined,
         orgId: form.orgId || undefined,
+        googleReviewUrl: form.googleReviewUrl.trim() || undefined,
+        zillowReviewUrl: form.zillowReviewUrl.trim() || undefined,
       });
 
       if (form.contactType === 'agent') {
@@ -1196,6 +1204,49 @@ export function ContactModal({
                 {form.mlsMemberships.length === 0 && (
                   <p className="text-xs text-base-content/40 text-center py-3">No MLS memberships added yet</p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Review Links (agents only) */}
+          {form.contactType === 'agent' && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Star size={13} className="text-amber-500" />
+                <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">Review Links</span>
+              </div>
+              <p className="text-[11px] text-base-content/40 mb-3">
+                Used in post-close emails to clients — link buyers/sellers directly to leave a review for this agent.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="label py-0 pb-1">
+                    <span className="label-text text-xs flex items-center gap-1">
+                      ⭐ Google Review URL
+                    </span>
+                  </label>
+                  <input
+                    className="input input-sm input-bordered w-full"
+                    type="url"
+                    placeholder="https://g.page/r/..."
+                    value={form.googleReviewUrl}
+                    onChange={e => updateField('googleReviewUrl', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label py-0 pb-1">
+                    <span className="label-text text-xs flex items-center gap-1">
+                      🏡 Zillow Review URL
+                    </span>
+                  </label>
+                  <input
+                    className="input input-sm input-bordered w-full"
+                    type="url"
+                    placeholder="https://www.zillow.com/profile/..."
+                    value={form.zillowReviewUrl}
+                    onChange={e => updateField('zillowReviewUrl', e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           )}

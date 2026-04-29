@@ -332,6 +332,8 @@ export interface ContactRecord {
   contactNumber?: number;
   deleted_at?: string;
   deleted_by?: string;
+  googleReviewUrl?: string;
+  zillowReviewUrl?: string;
 }
 
 export interface OrgMemberInfo {
