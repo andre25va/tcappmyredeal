@@ -846,17 +846,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
         .upload(tempPath, file, { upsert: true });
       if (uploadErr) throw new Error(`Temp upload failed: ${uploadErr.message}`);
 
-      let res: Response;
-      try {
-        res = await fetch('/api/ai?action=extract-deal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filePath: tempPath, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
-        });
-      } finally {
-        // Cleanup temp file regardless of extraction result
-        await supabase.storage.from('deal-documents').remove([tempPath]);
-      }
+      // Fire-and-forget cleanup after fetch resolves (success or error)
+      const res = await fetch('/api/ai?action=extract-deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: tempPath, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
+      }).finally(() => {
+        supabase.storage.from('deal-documents').remove([tempPath]).catch(() => {});
+      });
       if (!res.ok) throw new Error('Extraction failed');
       const d = await res.json();
       setForm(p => {
