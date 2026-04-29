@@ -546,9 +546,9 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
     contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   }, [step]);
 
-  // Load checklist preview when reaching step 6
+  // Load checklist preview when reaching step 7
   useEffect(() => {
-    if (step !== 6) return;
+    if (step !== 7) return;
     setPreviewLoading(true);
     Promise.all([
       loadMergedChecklistItems('dd', form.mlsEntryId || null, form.agentClientId || null, form.loanType || null),
@@ -807,7 +807,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       case 3: return !!(form.propertyType); // Deal Info
       case 4: return !!(form.closingDate); // Key Dates — closing date required
       case 5: return true; // Parties — optional
-      case 6: return true; // Checklist Preview — just shows items
+      case 6: return true; // Title & Intro Email — always allow advance
+      case 7: return true; // Checklist Preview — just shows items
       default: return true;
     }
   };
