@@ -1195,6 +1195,7 @@ interface ContractDetectionResult {
   mlsBoard: string | null;
   state: string | null;
   cached: boolean;
+  patternId: string | null;
   slicedBase64: string;
 }
 
@@ -1219,6 +1220,7 @@ async function detectAndSliceContractPages(
   let formName = 'Unknown';
   let mlsBoard: string | null = hintMlsBoard;
   let state: string | null = hintState;
+  let patternId: string | null = null;
 
   // ── Layer 1: version_hash exact match (most precise) ─────────────────────
   const { data: hashMatch } = await supabase
@@ -1237,6 +1239,7 @@ async function detectAndSliceContractPages(
     mlsBoard = hashMatch.mls_board;
     state = hashMatch.state;
     cached = true;
+    patternId = hashMatch.id;
     await supabase
       .from('contract_form_patterns')
       .update({ last_used_at: new Date().toISOString() })
@@ -1259,6 +1262,7 @@ async function detectAndSliceContractPages(
       endPage = boardMatch.contract_end_page;
       formName = boardMatch.form_name;
       cached = true;
+      patternId = boardMatch.id;
       await supabase
         .from('contract_form_patterns')
         .update({ last_used_at: new Date().toISOString() })
@@ -1324,7 +1328,7 @@ If the entire document is one contract, return startPage=1 and endPage=totalPage
 
           // Save learned pattern (upsert on version_hash)
           const confidenceScore = Math.min(0.95, Math.max(0.3, det.confidence || 0.7));
-          await supabase.from('contract_form_patterns').upsert({
+          const { data: upserted } = await supabase.from('contract_form_patterns').upsert({
             mls_board: mlsBoard,
             state,
             form_name: formName,
@@ -1335,7 +1339,8 @@ If the entire document is one contract, return startPage=1 and endPage=totalPage
             confirmed_count: 1,
             confidence_score: confidenceScore,
             last_used_at: new Date().toISOString(),
-          }, { onConflict: 'version_hash' });
+          }, { onConflict: 'version_hash' }).select('id').maybeSingle();
+          if (upserted) patternId = upserted.id;
         }
       } else {
         console.warn('[detect-pages] GPT-4o-mini detection error, using full PDF:', detData.error);
@@ -1356,7 +1361,7 @@ If the entire document is one contract, return startPage=1 and endPage=totalPage
     slicedBase64 = Buffer.from(slicedBytes).toString('base64');
   }
 
-  return { startPage, endPage, totalPages, formName, mlsBoard, state, cached, slicedBase64 };
+  return { startPage, endPage, totalPages, formName, mlsBoard, state, cached, patternId, slicedBase64 };
 }
 
 // ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
@@ -1383,6 +1388,7 @@ async function handleExtractDeal(apiKey: string, body: any) {
   let contractDetection: {
     startPage: number; endPage: number; totalPages: number;
     formName: string; mlsBoard: string | null; state: string | null; cached: boolean;
+    patternId: string | null;
   } | null = null;
   let extractBase64 = fileBase64;
 
@@ -1403,6 +1409,7 @@ async function handleExtractDeal(apiKey: string, body: any) {
       mlsBoard: det.mlsBoard,
       state: det.state,
       cached: det.cached,
+      patternId: det.patternId,
     };
     console.log(`[extract-deal] Contract pages: ${det.startPage}–${det.endPage} of ${det.totalPages} (cached=${det.cached}, form="${det.formName}")`);
   } catch (detErr) {
@@ -1795,6 +1802,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
 
+
+// ── Confirm / Correct Contract Page Detection ─────────────────────────────────
+async function handleConfirmContractPages(body: any) {
+  const { patternId, confirmed, startPage, endPage } = body;
+  if (!patternId) throw new Error('Missing patternId');
+
+  const supabaseAdmin = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  if (confirmed === false && typeof startPage === 'number' && typeof endPage === 'number') {
+    // TC corrected the page range — update pattern + reset confidence
+    const { data: pat } = await supabaseAdmin
+      .from('contract_form_patterns')
+      .select('confirmed_count')
+      .eq('id', patternId)
+      .maybeSingle();
+    const currentCount = (pat as any)?.confirmed_count || 1;
+    await supabaseAdmin
+      .from('contract_form_patterns')
+      .update({
+        contract_start_page: Math.round(startPage),
+        contract_end_page: Math.round(endPage),
+        confirmed_count: currentCount + 1,
+        confidence_score: Math.min(0.95, 0.5 + currentCount * 0.1),
+        last_used_at: new Date().toISOString(),
+      })
+      .eq('id', patternId);
+  } else {
+    // TC confirmed detection was correct — bump confidence
+    const { data: pat } = await supabaseAdmin
+      .from('contract_form_patterns')
+      .select('confirmed_count, confidence_score')
+      .eq('id', patternId)
+      .maybeSingle();
+    const count = ((pat as any)?.confirmed_count || 1) + 1;
+    const newScore = Math.min(0.99, 1 - 1 / (count + 1));
+    await supabaseAdmin
+      .from('contract_form_patterns')
+      .update({
+        confirmed_count: count,
+        confidence_score: newScore,
+        last_used_at: new Date().toISOString(),
+      })
+      .eq('id', patternId);
+  }
+
+  return { success: true };
+}
+
   // Route based on action query param or request body
   const action = (req.query.action as string) || req.body?.action;
   if (!action) return res.status(400).json({ error: 'Missing action parameter' });
@@ -1849,6 +1907,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'evaluate-rules':
         result = await handleEvaluateRules(apiKey, req.body);
+        break;
+      case 'confirm-contract-pages':
+        result = await handleConfirmContractPages(req.body);
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

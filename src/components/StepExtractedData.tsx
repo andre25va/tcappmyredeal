@@ -26,9 +26,21 @@ interface ExtractedCheckbox {
   section: string;
 }
 
+interface ContractDetectionInfo {
+  startPage: number;
+  endPage: number;
+  totalPages: number;
+  formName: string;
+  mlsBoard: string | null;
+  state: string | null;
+  cached: boolean;
+  patternId: string | null;
+}
+
 interface StepExtractedDataProps {
   dealId?: string;
   extractedData: Record<string, unknown> | null;
+  contractDetection?: ContractDetectionInfo | null;
   onConfirm: (verifiedData: Record<string, unknown>) => void;
   onEdit: () => void;
   onReExtract: () => void;
@@ -450,6 +462,11 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   const setValue = (key: string, val: string) =>
     setValues(prev => ({ ...prev, [key]: val }));
 
+  const [cdOverride, setCdOverride] = React.useState(false);
+  const [cdStart, setCdStart] = React.useState('');
+  const [cdEnd, setCdEnd] = React.useState('');
+  const [cdConfirming, setCdConfirming] = React.useState(false);
+
   const hasData = extractedData && Object.keys(extractedData).some(k => {
     const v = extractedData[k];
     return v !== null && v !== undefined && v !== '';
@@ -566,6 +583,117 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           </span>
         )}
       </div>
+
+
+      {/* Contract page detection banner */}
+      {contractDetection && (
+        <div className="flex flex-col gap-2 px-3 py-2 rounded-lg text-xs font-medium border bg-indigo-50 border-indigo-200 text-indigo-800">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span>📄</span>
+              <span>
+                <strong>
+                  {contractDetection.cached ? 'Known contract — ' : 'Contract detected — '}
+                </strong>
+                pages {contractDetection.startPage}–{contractDetection.endPage} of {contractDetection.totalPages}
+                {contractDetection.formName && contractDetection.formName !== 'Unknown' && (
+                  <span className="text-indigo-600"> · {contractDetection.formName}</span>
+                )}
+              </span>
+            </div>
+            {!cdOverride && contractDetection.patternId && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={async () => {
+                    if (!contractDetection.patternId) return;
+                    setCdConfirming(true);
+                    try {
+                      await fetch('/api/ai?action=confirm-contract-pages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ patternId: contractDetection.patternId, confirmed: true }),
+                      });
+                    } finally {
+                      setCdConfirming(false);
+                    }
+                  }}
+                  disabled={cdConfirming}
+                  className="px-2 py-0.5 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold disabled:opacity-50"
+                >
+                  {cdConfirming ? '...' : '✓ Correct'}
+                </button>
+                <button
+                  onClick={() => {
+                    setCdStart(String(contractDetection.startPage));
+                    setCdEnd(String(contractDetection.endPage));
+                    setCdOverride(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 font-semibold"
+                >
+                  Override
+                </button>
+              </div>
+            )}
+          </div>
+
+          {cdOverride && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-indigo-700">Pages:</span>
+              <input
+                type="number"
+                min={1}
+                max={contractDetection.totalPages}
+                value={cdStart}
+                onChange={e => setCdStart(e.target.value)}
+                className="w-16 px-1 py-0.5 border border-indigo-300 rounded text-center text-indigo-900 bg-white"
+                placeholder="Start"
+              />
+              <span>–</span>
+              <input
+                type="number"
+                min={1}
+                max={contractDetection.totalPages}
+                value={cdEnd}
+                onChange={e => setCdEnd(e.target.value)}
+                className="w-16 px-1 py-0.5 border border-indigo-300 rounded text-center text-indigo-900 bg-white"
+                placeholder="End"
+              />
+              <span className="text-indigo-500">of {contractDetection.totalPages}</span>
+              <button
+                onClick={async () => {
+                  if (!contractDetection.patternId) return;
+                  setCdConfirming(true);
+                  try {
+                    await fetch('/api/ai?action=confirm-contract-pages', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        patternId: contractDetection.patternId,
+                        confirmed: false,
+                        startPage: Number(cdStart),
+                        endPage: Number(cdEnd),
+                      }),
+                    });
+                    setCdOverride(false);
+                  } finally {
+                    setCdConfirming(false);
+                  }
+                }}
+                disabled={cdConfirming || !cdStart || !cdEnd}
+                className="px-2 py-0.5 rounded bg-indigo-600 text-white hover:bg-indigo-700 font-semibold disabled:opacity-50"
+              >
+                {cdConfirming ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                onClick={() => setCdOverride(false)}
+                className="px-2 py-0.5 rounded bg-white border border-indigo-300 text-indigo-600 hover:bg-indigo-50"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Template-assisted / Vision-only banner */}
       {(() => {
