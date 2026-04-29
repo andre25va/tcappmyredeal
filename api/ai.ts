@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { PDFDocument } from 'pdf-lib';
+import { createHash } from 'crypto';
 
 // Module-level Supabase client (avoids multiple GoTrueClient instances)
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -533,6 +535,23 @@ const extractDealSchema = {
     'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
     'confidence', 'extractedFields', 'fieldScores', 'allCheckboxes', 'fieldSources',
   ],
+};
+
+// ── Contract Page Detection Schema ───────────────────────────────────────────
+
+const contractDetectionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    contractStartPage: { type: 'number' },
+    contractEndPage: { type: 'number' },
+    formName: { type: 'string' },
+    detectedMlsBoard: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    detectedState: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    confidence: { type: 'number' },
+    notes: { type: 'string' },
+  },
+  required: ['contractStartPage', 'contractEndPage', 'formName', 'detectedMlsBoard', 'detectedState', 'confidence', 'notes'],
 };
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -1164,10 +1183,186 @@ ${JSON.stringify(existingCompTitles || [], null, 2)}`;
 
 
 
+// ── Smart Contract Page Detection & Slicer ───────────────────────────────────
+// Lookup hierarchy: version_hash → mls_board+state → GPT-4o-mini scan fallback
+// Gets smarter with each confirmed detection (confirmed_count tracks usage).
+
+interface ContractDetectionResult {
+  startPage: number;
+  endPage: number;
+  totalPages: number;
+  formName: string;
+  mlsBoard: string | null;
+  state: string | null;
+  cached: boolean;
+  slicedBase64: string;
+}
+
+async function detectAndSliceContractPages(
+  apiKey: string,
+  fileBase64: string,
+  hintMlsBoard: string | null,
+  hintState: string | null,
+  fileName: string,
+): Promise<ContractDetectionResult> {
+  const pdfBytes = Buffer.from(fileBase64, 'base64');
+  const srcDoc = await PDFDocument.load(pdfBytes);
+  const totalPages = srcDoc.getPageCount();
+
+  // Fingerprint: SHA-256 of first 50KB — consistent for same form version/edition
+  const fingerprintBytes = pdfBytes.slice(0, Math.min(50 * 1024, pdfBytes.length));
+  const versionHash = createHash('sha256').update(fingerprintBytes).digest('hex').slice(0, 16);
+
+  let cached = false;
+  let startPage = 1;
+  let endPage = totalPages;
+  let formName = 'Unknown';
+  let mlsBoard: string | null = hintMlsBoard;
+  let state: string | null = hintState;
+
+  // ── Layer 1: version_hash exact match (most precise) ─────────────────────
+  const { data: hashMatch } = await supabase
+    .from('contract_form_patterns')
+    .select('*')
+    .eq('version_hash', versionHash)
+    .gte('confirmed_count', 2)
+    .order('confirmed_count', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (hashMatch) {
+    startPage = hashMatch.contract_start_page;
+    endPage = hashMatch.contract_end_page;
+    formName = hashMatch.form_name;
+    mlsBoard = hashMatch.mls_board;
+    state = hashMatch.state;
+    cached = true;
+    await supabase
+      .from('contract_form_patterns')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', hashMatch.id);
+
+  // ── Layer 2: mls_board + state match (good for known boards) ─────────────
+  } else if (hintMlsBoard) {
+    let boardQuery = supabase
+      .from('contract_form_patterns')
+      .select('*')
+      .eq('mls_board', hintMlsBoard)
+      .gte('confirmed_count', 3)
+      .order('confidence_score', { ascending: false })
+      .limit(1);
+    if (hintState) boardQuery = boardQuery.eq('state', hintState);
+
+    const { data: boardMatch } = await boardQuery.maybeSingle();
+    if (boardMatch) {
+      startPage = boardMatch.contract_start_page;
+      endPage = boardMatch.contract_end_page;
+      formName = boardMatch.form_name;
+      cached = true;
+      await supabase
+        .from('contract_form_patterns')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', boardMatch.id);
+    }
+  }
+
+  // ── Layer 3: GPT-4o-mini scan (cache miss) ────────────────────────────────
+  if (!cached) {
+    try {
+      const detRes = await fetch(OPENAI_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0,
+          messages: [
+            {
+              role: 'system',
+              content: `You are analyzing a multi-document PDF to identify which pages contain the PURCHASE CONTRACT only.
+Rules:
+- Identify the start and end page numbers (1-indexed) of the actual purchase/sale agreement — NOT cover sheets, supplements, MLS listing data, appraisals, or title documents.
+- formName: the exact printed title of the contract (e.g., "CONTRACT FOR PURCHASE AND SALE OF REAL ESTATE — REALTORS® of South Central Kansas").
+- detectedMlsBoard: the MLS board or association name from the contract header. null if not found.
+- detectedState: 2-letter state abbreviation of the property. null if not found.
+- confidence: 0.0–1.0 confidence in the detected page range.
+- notes: brief explanation of what you found on the first and last contract page.
+If the entire document is one contract, return startPage=1 and endPage=totalPages.`,
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'file',
+                  file: {
+                    filename: fileName || 'contract.pdf',
+                    file_data: `data:application/pdf;base64,${fileBase64}`,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: `This PDF has ${totalPages} total pages. Identify which pages contain the purchase contract only.`,
+                },
+              ],
+            },
+          ],
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'contract_page_detection', strict: true, schema: contractDetectionSchema },
+          },
+        }),
+      });
+
+      const detData = await detRes.json();
+      if (!detData.error) {
+        const det = JSON.parse(detData.choices?.[0]?.message?.content || '{}');
+        if (det.contractStartPage && det.contractEndPage) {
+          startPage = Math.max(1, Math.round(det.contractStartPage));
+          endPage = Math.min(totalPages, Math.round(det.contractEndPage));
+          formName = det.formName || 'Unknown';
+          if (det.detectedMlsBoard) mlsBoard = det.detectedMlsBoard;
+          if (det.detectedState) state = det.detectedState;
+
+          // Save learned pattern (upsert on version_hash)
+          const confidenceScore = Math.min(0.95, Math.max(0.3, det.confidence || 0.7));
+          await supabase.from('contract_form_patterns').upsert({
+            mls_board: mlsBoard,
+            state,
+            form_name: formName,
+            version_hash: versionHash,
+            contract_start_page: startPage,
+            contract_end_page: endPage,
+            total_pages_typical: totalPages,
+            confirmed_count: 1,
+            confidence_score: confidenceScore,
+            last_used_at: new Date().toISOString(),
+          }, { onConflict: 'version_hash' });
+        }
+      } else {
+        console.warn('[detect-pages] GPT-4o-mini detection error, using full PDF:', detData.error);
+      }
+    } catch (detErr) {
+      console.warn('[detect-pages] Detection threw, using full PDF:', detErr);
+    }
+  }
+
+  // ── Slice PDF to contract pages only ─────────────────────────────────────
+  let slicedBase64 = fileBase64; // fallback: full PDF unchanged
+  if (startPage !== 1 || endPage !== totalPages) {
+    const newDoc = await PDFDocument.create();
+    const pageIndices = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage - 1 + i);
+    const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+    copiedPages.forEach(p => newDoc.addPage(p));
+    const slicedBytes = await newDoc.save();
+    slicedBase64 = Buffer.from(slicedBytes).toString('base64');
+  }
+
+  return { startPage, endPage, totalPages, formName, mlsBoard, state, cached, slicedBase64 };
+}
+
 // ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
 
 async function handleExtractDeal(apiKey: string, body: any) {
-  const { fileBase64: rawBase64, filePath, fileName, mlsId } = body;
+  const { fileBase64: rawBase64, filePath, fileName, mlsId, mlsBoard: hintMlsBoard, state: hintState } = body;
   let fileBase64 = rawBase64;
 
   // New flow: wizard uploads PDF to Supabase Storage, passes filePath to avoid 4.5MB Vercel body limit
@@ -1181,6 +1376,38 @@ async function handleExtractDeal(apiKey: string, body: any) {
   }
 
   if (!fileBase64) throw new Error('Missing fileBase64 or filePath');
+
+  // ── Smart Contract Page Detection (PR #511) ───────────────────────────────
+  // Lookup: version_hash → mls_board+state → GPT-4o-mini scan fallback
+  // Non-fatal: any error falls back to full PDF extraction
+  let contractDetection: {
+    startPage: number; endPage: number; totalPages: number;
+    formName: string; mlsBoard: string | null; state: string | null; cached: boolean;
+  } | null = null;
+  let extractBase64 = fileBase64;
+
+  try {
+    const det = await detectAndSliceContractPages(
+      apiKey,
+      fileBase64,
+      hintMlsBoard || null,
+      hintState || null,
+      fileName || 'contract.pdf',
+    );
+    extractBase64 = det.slicedBase64;
+    contractDetection = {
+      startPage: det.startPage,
+      endPage: det.endPage,
+      totalPages: det.totalPages,
+      formName: det.formName,
+      mlsBoard: det.mlsBoard,
+      state: det.state,
+      cached: det.cached,
+    };
+    console.log(`[extract-deal] Contract pages: ${det.startPage}–${det.endPage} of ${det.totalPages} (cached=${det.cached}, form="${det.formName}")`);
+  } catch (detErr) {
+    console.warn('[extract-deal] Page detection failed, using full PDF:', detErr);
+  }
 
   // ── Optionally fetch blank reference template from MLS directory ─────────
   let templateBase64: string | null = null;
@@ -1348,8 +1575,10 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
   userContent.push({
     type: 'file',
     file: {
+      // If detection ran successfully, this is the sliced contract pages only.
+      // Otherwise falls back to full PDF.
       filename: fileName || 'contract.pdf',
-      file_data: `data:application/pdf;base64,${fileBase64}`,
+      file_data: `data:application/pdf;base64,${extractBase64}`,
     },
   });
   userContent.push({
@@ -1403,6 +1632,7 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
   return {
     ...parsed,
     templateUsed: !!templateBase64,
+    contractDetection, // { startPage, endPage, totalPages, formName, mlsBoard, state, cached } — wizard shows banner
     fieldSources: (() => {
       const arr = (parsed.fieldSources as Array<{ field: string; page: number; line?: number | null; text: string }>) || [];
       return Object.fromEntries(arr.map(s => [s.field, { page: s.page, line: s.line ?? undefined, text: s.text }]));
