@@ -1270,6 +1270,86 @@ async function detectAndSliceContractPages(
     }
   }
 
+  // ── Layer 2.5: 2-page header scan → form name lookup ────────────────────
+  // Cheap: slice pages 1–2 only, ask GPT-4o-mini for form title, match against DB.
+  // Hits the pattern table for previously-seen forms even with a new PDF version hash.
+  if (!cached) {
+    try {
+      const headerPageCount = Math.min(2, totalPages);
+      const headerDoc = await PDFDocument.create();
+      const headerIndices = Array.from({ length: headerPageCount }, (_, i) => i);
+      const headerCopied = await headerDoc.copyPages(srcDoc, headerIndices);
+      headerCopied.forEach(p => headerDoc.addPage(p));
+      const headerBytes = await headerDoc.save();
+      const headerBase64 = Buffer.from(headerBytes).toString('base64');
+
+      const headerRes = await fetch(OPENAI_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0,
+          max_tokens: 80,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are reading the first 1–2 pages of a real estate PDF. Return ONLY the exact printed title of the contract form (e.g. "CONTRACT FOR PURCHASE AND SALE OF REAL ESTATE"). If no clear contract title is visible, return an empty string.',
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'file', file: { filename: 'header.pdf', file_data: `data:application/pdf;base64,${headerBase64}` } },
+                { type: 'text', text: 'What is the exact printed title of this real estate contract form?' },
+              ],
+            },
+          ],
+        }),
+      });
+
+      const headerData = await headerRes.json();
+      const detectedFormTitle = (headerData.choices?.[0]?.message?.content || '').trim();
+
+      if (detectedFormTitle && detectedFormTitle.length > 5) {
+        // Use first 3 words as fuzzy key (avoids punctuation/association-name variation)
+        const fuzzyKey = detectedFormTitle.split(/\s+/).slice(0, 3).join(' ');
+        const { data: nameMatch } = await supabase
+          .from('contract_form_patterns')
+          .select('*')
+          .ilike('form_name', `%${fuzzyKey}%`)
+          .gte('confirmed_count', 2)
+          .order('confidence_score', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (nameMatch) {
+          startPage = nameMatch.contract_start_page;
+          endPage   = nameMatch.contract_end_page;
+          formName  = nameMatch.form_name;
+          if (nameMatch.mls_board) mlsBoard = nameMatch.mls_board;
+          if (nameMatch.state)     state     = nameMatch.state;
+          cached    = true;
+          patternId = nameMatch.id;
+          // Cache this new version_hash → same form pattern
+          await supabase.from('contract_form_patterns').upsert({
+            mls_board: mlsBoard,
+            state,
+            form_name: formName,
+            version_hash: versionHash,
+            contract_start_page: startPage,
+            contract_end_page:   endPage,
+            total_pages_typical: totalPages,
+            confirmed_count:     2,
+            confidence_score:    nameMatch.confidence_score,
+            last_used_at:        new Date().toISOString(),
+          }, { onConflict: 'version_hash' });
+          console.log(`[detect-pages] L2.5 form-name hit: "${formName}" pages ${startPage}–${endPage}`);
+        }
+      }
+    } catch (headerErr) {
+      console.warn('[detect-pages] L2.5 header scan failed, continuing to full scan:', headerErr);
+    }
+  }
+
   // ── Layer 3: GPT-4o-mini scan (cache miss) ────────────────────────────────
   if (!cached) {
     try {
