@@ -1270,15 +1270,25 @@ async function detectAndSliceContractPages(
     }
   }
 
-  // ── Layer 2.5: 2-page header scan → form name lookup ────────────────────
-  // Cheap: slice pages 1–2 only, ask GPT-4o-mini for form title, match against DB.
-  // Hits the pattern table for previously-seen forms even with a new PDF version hash.
+  // ── Layer 2.5: stratified probe scan → form name lookup ─────────────────
+  // PDFs arrive in many sizes and orders — a 30-page packet may have the contract
+  // starting at page 6 or later. Strategy: always grab pages 1-3, then add a
+  // ~25% and ~45% mid-doc probe for longer packets. Max 5 pages total — still
+  // far cheaper than a full-document GPT scan (Layer 3).
   if (!cached) {
     try {
-      const headerPageCount = Math.min(2, totalPages);
+      // Build probe page set
+      const probeSet = new Set<number>();
+      for (let i = 0; i < Math.min(3, totalPages); i++) probeSet.add(i);
+      if (totalPages > 6)  probeSet.add(Math.floor(totalPages * 0.25));  // ~25%
+      if (totalPages > 12) probeSet.add(Math.floor(totalPages * 0.45));  // ~45%
+      const probeIndices = [...probeSet]
+        .filter(i => i < totalPages)
+        .sort((a, b) => a - b)
+        .slice(0, 5);
+
       const headerDoc = await PDFDocument.create();
-      const headerIndices = Array.from({ length: headerPageCount }, (_, i) => i);
-      const headerCopied = await headerDoc.copyPages(srcDoc, headerIndices);
+      const headerCopied = await headerDoc.copyPages(srcDoc, probeIndices);
       headerCopied.forEach(p => headerDoc.addPage(p));
       const headerBytes = await headerDoc.save();
       const headerBase64 = Buffer.from(headerBytes).toString('base64');
@@ -1293,13 +1303,13 @@ async function detectAndSliceContractPages(
           messages: [
             {
               role: 'system',
-              content: 'You are reading the first 1–2 pages of a real estate PDF. Return ONLY the exact printed title of the contract form (e.g. "CONTRACT FOR PURCHASE AND SALE OF REAL ESTATE"). If no clear contract title is visible, return an empty string.',
+              content: 'You are reading a sample of pages from a real estate PDF packet (pages may not be sequential). Return ONLY the exact printed title of the purchase contract form if visible (e.g. "CONTRACT FOR PURCHASE AND SALE OF REAL ESTATE"). Ignore addendum titles, disclosure titles, and cover sheets. If no clear contract form title is visible, return an empty string.',
             },
             {
               role: 'user',
               content: [
-                { type: 'file', file: { filename: 'header.pdf', file_data: `data:application/pdf;base64,${headerBase64}` } },
-                { type: 'text', text: 'What is the exact printed title of this real estate contract form?' },
+                { type: 'file', file: { filename: 'probe.pdf', file_data: `data:application/pdf;base64,${headerBase64}` } },
+                { type: 'text', text: 'What is the exact printed title of the purchase contract form in this sample?' },
               ],
             },
           ],
