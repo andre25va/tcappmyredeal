@@ -2,6 +2,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendViaGmail } from "./_shared/gmail.ts";
 
+// v2: Fixed status value — app writes 'completed' not 'complete'
+// Milestones completed query and upcoming closings query both updated
+
 const TC_EMAIL = "tc@myredeal.com";
 
 function fmtDate(d: string | null): string {
@@ -58,11 +61,11 @@ Deno.serve(async (req: Request) => {
       pipelineMap[s] = (pipelineMap[s] || 0) + 1;
     }
 
-    // 3. Milestones completed this week
+    // 3. Milestones completed this week (fixed: 'completed' not 'complete')
     const { data: completedMilestones } = await supabase
       .from("deal_timeline")
       .select("id, label, due_date, updated_at, deal_id, deals(property_address)")
-      .eq("status", "complete")
+      .eq("status", "completed")
       .gte("updated_at", sevenDaysAgoISO)
       .order("updated_at", { ascending: false });
 
@@ -109,12 +112,12 @@ Deno.serve(async (req: Request) => {
     const reqReceived = (requestsThisWeek || []).filter(r => r.status === "received").length;
     const reqOverdue = (requestsThisWeek || []).filter(r => r.status === "overdue").length;
 
-    // 8. Upcoming closings in next 7 days
+    // 8. Upcoming closings in next 7 days (fixed: 'completed' not 'complete')
     const { data: upcomingClosings } = await supabase
       .from("deal_timeline")
       .select("id, label, due_date, deal_id, deals(property_address, pipeline_stage)")
       .ilike("label", "%clos%")
-      .neq("status", "complete")
+      .neq("status", "completed")
       .gte("due_date", todayISO)
       .lte("due_date", sevenDaysAheadISO)
       .order("due_date", { ascending: true });
