@@ -1510,6 +1510,11 @@ async function handleExtractDeal(apiKey: string, body: any) {
   const formSlug: string | null = contractDetection?.formName && contractDetection.formName !== 'Unknown'
     ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     : null;
+  // field_coordinates rows were seeded under legacy slugs — map derived form-name slug to stored slug
+  const COORD_SLUG_MAP: Record<string, string> = {
+    'contract-for-purchase-and-sale-of-real-estate': 'residential-sale-contract',
+  };
+  const coordsFormSlug = formSlug ? (COORD_SLUG_MAP[formSlug] ?? formSlug) : 'residential-sale-contract';
   // Record detected form slug on deal (non-fatal — best-effort)
   if (dealId && formSlug) {
     supabase.from('deals').update({ detected_form_slug: formSlug }).eq('id', dealId).then(() => {});
@@ -1554,7 +1559,7 @@ async function handleExtractDeal(apiKey: string, body: any) {
     const { data: fieldRows } = await supabase
       .from('field_coordinates')
       .select('field_key, label, section, contract_line_num, field_type, group_key')
-      .eq('form_slug', formSlug ?? 'residential-sale-contract')
+      .eq('form_slug', coordsFormSlug)
       .not('contract_line_num', 'is', null)
       .not('label', 'is', null)
       .order('contract_line_num');
@@ -1657,15 +1662,28 @@ ${keyFields}`;
   let appendixBlock = '';
   try {
     if (formSlug) {
-      const { data: appendixRows } = await supabase
+      // Fetch rows matching this form. Board-specific rows take priority over generic (mls_board IS NULL).
+      const detectedBoard = contractDetection?.mlsBoard ?? null;
+      const detectedState = contractDetection?.state ?? null;
+      let appendixQuery = supabase
         .from('form_prompt_appendix')
-        .select('appendix_text')
+        .select('appendix_text, mls_board, state')
         .eq('form_slug', formSlug)
         .order('priority', { ascending: false })
-        .limit(3);
+        .limit(5);
+
+      const { data: appendixRows } = await appendixQuery;
 
       if (appendixRows && appendixRows.length > 0) {
-        appendixBlock = '\n\n' + (appendixRows as any[]).map(r => r.appendix_text).join('\n\n');
+        // Keep board-specific rows (matching board) and generic rows (null board)
+        const filtered = (appendixRows as any[]).filter(r => {
+          const boardOk = !r.mls_board || (detectedBoard && r.mls_board === detectedBoard);
+          const stateOk = !r.state || (detectedState && r.state === detectedState);
+          return boardOk && stateOk;
+        });
+        if (filtered.length > 0) {
+          appendixBlock = '\n\n' + filtered.map(r => r.appendix_text).join('\n\n');
+        }
       }
     }
   } catch (e) {
