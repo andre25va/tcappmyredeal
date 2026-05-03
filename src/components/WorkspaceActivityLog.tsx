@@ -3,7 +3,7 @@ import { useActivityLog, useInvalidateActivityLog, type ActivityItem } from '../
 import {
   Mail, Phone, ClipboardList, MessageSquare, Plus, RefreshCw,
   Activity, ChevronDown, ChevronUp, Smartphone, UserCheck,
-  CheckSquare, ArrowRightLeft, Brain, Home,
+  CheckSquare, ArrowRightLeft, Brain, Home, ExternalLink,
 } from 'lucide-react';
 import { Deal, ActivityType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
