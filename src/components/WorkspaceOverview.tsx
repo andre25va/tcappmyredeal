@@ -1041,6 +1041,28 @@ export const WorkspaceOverview: React.FC<Props> = ({ deal, onUpdate, contactReco
       {/* ─── Milestone Stepper ─── */}
       <MilestoneStepper deal={deal} onUpdate={onUpdate} userName={userName} contactRecords={contactRecords} />
 
+      {/* ─── Representing Badge ─── */}
+      {deal.transactionType && (
+        <div className="flex items-center gap-2">
+          <Users size={14} className="text-base-content/40 flex-none" />
+          <span className="text-xs font-semibold text-base-content/50 uppercase tracking-wide">Representing:</span>
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${
+            deal.transactionType === 'buyer'
+              ? 'bg-blue-100 text-blue-700'
+              : deal.transactionType === 'seller' || deal.transactionType === 'listing'
+              ? 'bg-green-100 text-green-700'
+              : deal.transactionType === 'dual'
+              ? 'bg-purple-100 text-purple-700'
+              : 'bg-base-200 text-base-content/70'
+          }`}>
+            {deal.transactionType === 'buyer' ? 'Buy Side'
+              : deal.transactionType === 'seller' || deal.transactionType === 'listing' ? 'Sell Side'
+              : deal.transactionType === 'dual' ? 'Both Sides (Dual)'
+              : deal.transactionType}
+          </span>
+        </div>
+      )}
+
       {/* ─── Key Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
