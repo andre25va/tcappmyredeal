@@ -697,7 +697,7 @@ function AppInner() {
                   )}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {selected
-                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={(pendingWorkspaceTab ?? undefined) as any} initialRequestType={pendingWorkspaceRequestType ?? undefined} />
+                      ? <DealWorkspace deal={selected} onUpdate={handleUpdate} contactRecords={contactRecords} users={users} emailTemplates={emailTemplates} complianceTemplates={complianceTemplates} deals={deals} onCallStarted={handleCallStarted} onArchiveDeal={handleArchiveDeal} onRestoreDeal={handleRestoreDeal} onChangeStatus={handleChangeStatus} initialTab={(pendingWorkspaceTab ?? undefined) as any} initialRequestType={pendingWorkspaceRequestType ?? undefined} onOpenInboxConversation={(convId) => { setInboxInitConvId(convId); setView('inbox'); }} />
                       : (
                         <div className="flex flex-col items-center justify-center h-full text-base-content/30 gap-3">
                           <span className="text-5xl">📋</span>

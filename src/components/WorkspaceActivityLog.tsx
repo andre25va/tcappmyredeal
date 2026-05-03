@@ -13,7 +13,7 @@ import { EmptyState } from './ui/EmptyState';
 
 interface ChangeDiff { field: string; old_value: string; new_value: string; }
 
-interface Props { deal: Deal; onUpdate: (d: Deal) => void; }
+interface Props { deal: Deal; onUpdate: (d: Deal) => void; onOpenInboxConversation?: (convId: string) => void; onOpenRequestsTab?: () => void; }
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   email:          <Mail size={13} className="text-blue-600" />,
@@ -66,7 +66,7 @@ const FILTERS = [
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
+export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate, onOpenInboxConversation, onOpenRequestsTab }) => {
   const { profile } = useAuth();
   const { data: items = [], isLoading: loading } = useActivityLog(deal.id, deal.activityLog);
   const invalidateActivityLog = useInvalidateActivityLog();
@@ -236,6 +236,26 @@ export const WorkspaceActivityLog: React.FC<Props> = ({ deal, onUpdate }) => {
                           )}
                           {entry.type === 'whatsapp' && (
                             <span className="badge badge-xs bg-emerald-100 text-emerald-700 border-emerald-200 font-medium">WhatsApp</span>
+                          )}
+                          {(entry.type === 'sms' || entry.type === 'whatsapp' || entry.type === 'portal') && entry.meta?.conversationId && onOpenInboxConversation && (
+                            <button
+                              onClick={() => onOpenInboxConversation(entry.meta!.conversationId!)}
+                              className="flex items-center gap-0.5 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors"
+                              title="Open conversation in Inbox"
+                            >
+                              <ExternalLink size={10} />
+                              Inbox
+                            </button>
+                          )}
+                          {entry.type === 'request' && entry.meta?.requestId && onOpenRequestsTab && (
+                            <button
+                              onClick={() => onOpenRequestsTab()}
+                              className="flex items-center gap-0.5 text-[11px] font-medium text-orange-600 hover:text-orange-500 transition-colors"
+                              title="Open Requests tab"
+                            >
+                              <ExternalLink size={10} />
+                              Requests
+                            </button>
                           )}
                           {entry.type === 'contact_update' && (
                             <span className="badge badge-xs bg-amber-100 text-amber-700 border-amber-200 font-medium">

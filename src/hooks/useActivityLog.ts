@@ -53,7 +53,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
           .limit(100),
         supabase
           .from('messages')
-          .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id, metadata')
+          .select('id, direction, channel, body, status, sent_at, created_at, from_number, to_number, contact_id, metadata, conversation_id')
           .eq('deal_id', dealId)
           .in('channel', ['sms', 'whatsapp', 'portal'])
           .order('created_at', { ascending: false })
@@ -141,6 +141,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
             `Status: ${r.status}`,
             r.notes || '',
           ].filter(Boolean).join(' · ') || undefined,
+          meta: { requestId: r.id },
         });
       }
 
@@ -166,7 +167,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
             timestamp: m.sent_at || m.created_at,
             title: `${dirLabel} via Client Portal`,
             body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
-            meta: { status: m.status, messageId: m.id, hasAttachment: !!m.metadata?.attachments?.length },
+            meta: { status: m.status, messageId: m.id, conversationId: m.conversation_id ?? undefined, hasAttachment: !!m.metadata?.attachments?.length },
           });
         } else {
           const channel = m.channel === 'whatsapp' ? 'whatsapp' : 'sms';
@@ -179,7 +180,7 @@ export function useActivityLog(dealId: string | undefined, activityLog?: any[]) 
             timestamp: m.sent_at || m.created_at,
             title: `${dirLabel} ${channelLabel}${contact ? ` · ${contact}` : ''}`,
             body: m.body ? (m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body) : undefined,
-            meta: { status: m.status, messageId: m.id },
+            meta: { status: m.status, messageId: m.id, conversationId: m.conversation_id ?? undefined },
           });
         }
       }
