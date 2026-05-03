@@ -1108,21 +1108,25 @@ const RequestCard: React.FC<RequestCardProps> = ({
       {expanded && (
         <div className="border-t border-base-200 bg-base-50 space-y-3 pb-1">
 
-          {/* Inbound Email Viewer */}
-          {needsReview && (
+          {/* Inbound Email Viewer — shown for all non-draft requests */}
+          {!isDraft && (
             <div className="mx-4 mt-3">
               <p className="text-xs font-semibold text-base-content/40 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <Mail size={11} /> Received Reply
+                <Mail size={11} /> Linked inbound emails
               </p>
               {loadingMessages ? (
                 <div className="flex items-center gap-2 py-4">
                   <span className="loading loading-spinner loading-xs text-primary" />
-                  <span className="text-xs text-base-content/40">Loading email…</span>
+                  <span className="text-xs text-base-content/40">Loading emails…</span>
                 </div>
               ) : inboundMessages.length === 0 ? (
                 <div className="border border-dashed border-base-300 rounded-lg p-4 text-center">
-                  <p className="text-xs text-base-content/40">No linked email reply found.</p>
-                  <p className="text-xs text-base-content/30 mt-0.5">The inbound processor may still be matching it, or it was marked manually.</p>
+                  <p className="text-xs text-base-content/40">No linked emails found for this request.</p>
+                  <p className="text-xs text-base-content/30 mt-0.5">
+                    {needsReview
+                      ? 'The inbound processor may still be matching it, or it was marked manually.'
+                      : 'Replies matching this request\'s token will appear here automatically.'}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
