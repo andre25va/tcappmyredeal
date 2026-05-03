@@ -719,6 +719,7 @@ function AppInner() {
                 onDirectoryChanged={() => {
                   loadContactsFull().then(data => setContactRecords(data)).catch(console.error);
                 }}
+                onCallStarted={handleCallStarted}
                 onContactUpdated={handleContactUpdated}
               />
             </div>
@@ -761,6 +762,7 @@ function AppInner() {
                   setUnmatchedCount(unmatched);
                 }}
                 onInitHandled={() => { setInboxInitConvId(undefined); setInboxInitChannel(undefined); setInboxInitEmailSubTab(undefined); }}
+                onCallStarted={handleCallStarted}
               />
             </div>
           )}
@@ -779,13 +781,14 @@ function AppInner() {
               <CommTasksView
                 onOpenInbox={(channel, phone, email) => { setView('inbox'); }}
                 onSelectDeal={handleSelectDeal}
+                onCallStarted={handleCallStarted}
               />
             </div>
           )}
 
           {view === 'voice' && (
             <div className="flex-1 overflow-hidden">
-              <CommunicationsConsole onSelectDeal={handleSelectDeal} />
+              <CommunicationsConsole onSelectDeal={handleSelectDeal} onCallStarted={handleCallStarted} />
             </div>
           )}
 
@@ -881,6 +884,7 @@ function AppInner() {
       <AIChat
         onNavigateToDeal={(id) => { handleSelectDeal(id); }}
         onSetView={(v) => setView(v as any)}
+        onCallStarted={handleCallStarted}
       />
 
 
