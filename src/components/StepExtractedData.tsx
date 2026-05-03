@@ -534,6 +534,9 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           field_key: key,
           ai_value: initialValuesRef.current[key] || null,
           corrected_value: values[key] || null,
+          form_slug: contractDetection?.formName && contractDetection.formName !== 'Unknown'
+            ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+            : null,
         }));
       if (corrections.length > 0) {
         supabase.from('extraction_corrections').insert(corrections).then(() => {});
