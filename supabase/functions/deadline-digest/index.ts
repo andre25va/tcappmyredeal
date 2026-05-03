@@ -1,7 +1,8 @@
-// deadline-digest Edge Function v1
+// deadline-digest Edge Function v2
 // Queries deal_timeline for milestones due in ≤3 days on active deals
 // Sends TC a consolidated deadline alert email
 // Called daily by n8n at 7am CST
+// v2: Fixed status filter — app writes 'completed'/'waived'/'extended', not 'complete'/'n/a'
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { sendViaGmail } from './_shared/gmail.ts';
@@ -17,13 +18,13 @@ serve(async (req: Request) => {
     const today = new Date().toISOString().split('T')[0];
     const threeDaysFromNow = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
 
-    // Get all milestones due in ≤3 days that are not complete/n/a
+    // Get all milestones due in ≤3 days that are not completed/waived/extended
     const { data: milestones, error } = await supabase
       .from('deal_timeline')
       .select('id, deal_id, milestone, label, due_date, status')
       .gte('due_date', today)
       .lte('due_date', threeDaysFromNow)
-      .not('status', 'in', '(complete,n/a)')
+      .not('status', 'in', '(completed,waived,extended)')
       .order('due_date', { ascending: true });
 
     if (error) throw new Error('DB query failed: ' + error.message);
