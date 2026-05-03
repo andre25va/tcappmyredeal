@@ -4,7 +4,7 @@ import { initPageTracking, PAGE_IDS, logErrorWithPage } from '../utils/pageTrack
 import { PageIdBadge } from './PageIdBadge';
 import {
   X, Building2, AlertTriangle, ShoppingCart, Tag, Home, Building, Landmark, TreePine, Store, MapPin,
-  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
+  ChevronRight, ChevronLeft, Sparkles, CheckCircle2, Info, Loader2, User, Users, Mail, Phone, AlertCircle, FileText, Upload, Plus, Send, Building2 as BuildingIcon,
 } from 'lucide-react';
 import { Deal, PropertyType, DealStatus, TransactionType, DocumentRequest, ActivityEntry, ComplianceTemplate, ContactRecord, DDMasterItem, ComplianceMasterItem, ChecklistItem, ContactMlsMembership, RequiredBy } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -470,12 +470,12 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       }
       if (form.buyerAgentName) {
         const np = form.buyerAgentName.split(' ');
-        const isBuyerClient = form.transactionType === 'buyer' && !!form.agentClientId;
+        const isBuyerClient = (form.transactionType === 'buyer' || form.transactionType === 'dual') && !!form.agentClientId;
         parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'buyer', isExtracted: true, ...(isBuyerClient ? { contactId: form.agentClientId } : {}) });
       }
       if (form.sellerAgentName) {
         const np = form.sellerAgentName.split(' ');
-        const isSellerClient = form.transactionType === 'seller' && !!form.agentClientId;
+        const isSellerClient = (form.transactionType === 'seller' || form.transactionType === 'dual') && !!form.agentClientId;
         parts.push({ tempId: generateId(), firstName: np[0], lastName: np.slice(1).join(' '), email: '', phone: '', role: 'lead_agent', side: 'seller', isExtracted: true, ...(isSellerClient ? { contactId: form.agentClientId } : {}) });
       }
       if (form.loanOfficer) {
@@ -1139,14 +1139,14 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       agentName: agentClient?.fullName || '',
       agentClientId: form.agentClientId || undefined,
       // Set buyer/seller agent based on transaction type
-      buyerAgent: form.transactionType === 'buyer' && agentClient ? {
+      buyerAgent: (form.transactionType === 'buyer' || form.transactionType === 'dual') && agentClient ? {
         name: agentClient.fullName,
         phone: agentClient.phone || '',
         email: agentClient.email || '',
         isOurClient: true,
         company: (agentClient as any).company || (agentClient as any).organizationName || '',
       } : undefined,
-      sellerAgent: form.transactionType === 'seller' && agentClient ? {
+      sellerAgent: (form.transactionType === 'seller' || form.transactionType === 'dual') && agentClient ? {
         name: agentClient.fullName,
         phone: agentClient.phone || '',
         email: agentClient.email || '',
@@ -1497,7 +1497,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
           side:         mapSide(p.side, p.role) as any,
           dealRole:     p.role,
           isPrimary:    false,
-          isClientSide: (form.transactionType === 'buyer' && p.side === 'buyer') ||
+          isClientSide: form.transactionType === 'dual' ||
+                        (form.transactionType === 'buyer' && p.side === 'buyer') ||
                         (form.transactionType === 'seller' && p.side === 'seller'),
           isExtracted:  p.isExtracted,
         });
@@ -1809,6 +1810,18 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                     >
                       <Tag size={18} />
                       Seller Side
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, transactionType: 'dual' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'dual'
+                          ? 'bg-purple-500 border-purple-500 text-white'
+                          : 'bg-purple-50 border-purple-200 text-purple-600 hover:border-purple-400'
+                      }`}
+                    >
+                      <Users size={18} />
+                      Both Sides
                     </button>
                   </div>
                 </div>
@@ -2350,6 +2363,10 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
                         form.transactionType === 'seller' ? 'bg-orange-500 border-orange-500 text-white' : 'bg-orange-50 border-orange-200 text-orange-600 hover:border-orange-400'
                       }`}><Tag size={18} />Seller Side</button>
+                    <button type="button" onClick={() => setForm(p => ({ ...p, transactionType: 'dual' }))}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        form.transactionType === 'dual' ? 'bg-purple-500 border-purple-500 text-white' : 'bg-purple-50 border-purple-200 text-purple-600 hover:border-purple-400'
+                      }`}><Users size={18} />Both Sides</button>
                   </div>
                 </div>
 
