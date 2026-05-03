@@ -5,7 +5,7 @@ import {
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
   Paperclip, Lock, ArrowRight, ChevronUp, MapPin, Table2,
-  Pencil, Shield,
+  Pencil, Shield, Search,
 } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
@@ -926,9 +926,11 @@ interface DocRowProps {
   onFinancialChanges: (doc: DealDocument) => void;
   onRename: (doc: DealDocument, newName: string) => void;
   onReviewChanges?: (doc: DealDocument) => void;
+  onComplianceCheck?: (docId: string) => void;
+  complianceRunning?: boolean;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onRename, onReviewChanges }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onRename, onReviewChanges, onComplianceCheck, complianceRunning }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(doc.display_name || doc.file_name);
@@ -1035,13 +1037,16 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           <Pencil size={13} />
         </button>
 
-        {/* Compliance Check — stub for future */}
+        {/* Compliance Check — scoped deal check */}
         <button
-          disabled
-          className="btn btn-ghost btn-xs btn-circle opacity-40 cursor-not-allowed"
-          title="Compliance check — coming soon"
+          onClick={() => onComplianceCheck?.(doc.id)}
+          disabled={!onComplianceCheck || complianceRunning}
+          className={`btn btn-ghost btn-xs btn-circle ${complianceRunning ? 'opacity-60' : 'hover:text-primary'}`}
+          title="Run compliance check"
         >
-          <Shield size={13} />
+          {complianceRunning
+            ? <span className="loading loading-spinner loading-xs" />
+            : <Shield size={13} />}
         </button>
 
         {/* Preview — always available for PDFs */}
@@ -1160,6 +1165,10 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   }));
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [complianceRunning, setComplianceRunning] = useState(false);
+  const [complianceResult, setComplianceResult] = useState<{ passed: number; warning: number; failed: number } | null>(null);
   const [docTypeForUpload, setDocTypeForUpload] = useState<NonNullable<DealDocument['category']>>('purchase_contract');
   const [uploadDisplayName, setUploadDisplayName] = useState<string>(SUGGESTED_NAMES['purchase_contract'][0]);
 
@@ -1716,7 +1725,28 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   };
 
   // ─── Derived data ────────────────────────────────────────────────────────
-  const visibleDocs = docs.filter(d => showArchived || !d.archived);
+  const handleComplianceCheck = async (_docId: string) => {
+    setComplianceRunning(true);
+    setComplianceResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('run-compliance', {
+        body: { deal_id: deal.id },
+      });
+      if (!error && data?.check) {
+        setComplianceResult({
+          passed: data.check.passed_count ?? 0,
+          warning: data.check.warning_count ?? 0,
+          failed: data.check.violation_count ?? 0,
+        });
+      }
+    } catch (e) {
+      console.error('[compliance] check failed:', e);
+    } finally {
+      setComplianceRunning(false);
+    }
+  };
+
+  const visibleDocs = docs.filter(d => (showArchived || !d.archived) && (!searchQuery || (d.display_name ?? d.file_name ?? '').toLowerCase().includes(searchQuery.toLowerCase())));
   const contractDocs = visibleDocs
     .filter(d => d.category === 'purchase_contract')
     .sort((a, b) => {
@@ -1995,12 +2025,56 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
         onChange={handleFileSelect}
       />
 
+      {/* ── Search + Category Filter ─────────────────────────────────────── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 max-w-xs">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search documents…"
+              className="input input-sm input-bordered pl-8 w-full"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-1 flex-wrap">
+            {([
+              { key: 'all', label: 'All' },
+              { key: 'purchase_contract', label: '📄 Contract' },
+              { key: 'counter_offer', label: '🔄 Counter Offers' },
+              { key: 'amendment', label: '✏️ Amendments' },
+              { key: 'inspection_notice', label: '🔍 Inspection' },
+              { key: 'other', label: '📋 Other' },
+            ] as { key: string; label: string }[]).map(f => (
+              <button
+                key={f.key}
+                onClick={() => setCategoryFilter(f.key)}
+                className={`btn btn-xs normal-case ${categoryFilter === f.key ? 'btn-primary' : 'btn-ghost'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {complianceResult && (
+          <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm ${complianceResult.failed > 0 ? 'bg-error/10 border border-error/20' : complianceResult.warning > 0 ? 'bg-warning/10 border border-warning/20' : 'bg-success/10 border border-success/20'}`}>
+            <Shield size={14} className={complianceResult.failed > 0 ? 'text-error' : complianceResult.warning > 0 ? 'text-warning' : 'text-success'} />
+            <span className="font-medium text-base-content">Compliance check complete</span>
+            <span className="text-success font-medium">✅ {complianceResult.passed} passed</span>
+            {complianceResult.warning > 0 && <span className="text-warning font-medium">⚠️ {complianceResult.warning} warnings</span>}
+            {complianceResult.failed > 0 && <span className="text-error font-medium">❌ {complianceResult.failed} failed</span>}
+            <button onClick={() => setComplianceResult(null)} className="ml-auto btn btn-xs btn-ghost opacity-50">✕</button>
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <LoadingSpinner />
       ) : (
         <>
           {/* ── Purchase Contracts (pinned at top, bordered card) ─────── */}
-          {contractDocs.length > 0 && (
+          {contractDocs.length > 0 && (categoryFilter === 'all' || categoryFilter === 'purchase_contract') && (
             <section className="rounded-2xl border-2 border-primary/20 bg-primary/[0.02]">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-primary/15 bg-primary/[0.04] rounded-t-2xl">
                 <FileText size={14} className="text-primary" />
@@ -2031,6 +2105,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
                     onRename={handleRename}
+                    onComplianceCheck={handleComplianceCheck}
+                    complianceRunning={complianceRunning}
                   />
                 ))}
               </div>
@@ -2038,7 +2114,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           )}
 
           {/* ── Counter Offers ──────────────────────────────────────────────── */}
-          {counterOfferDocs.length > 0 && (
+          {counterOfferDocs.length > 0 && (categoryFilter === 'all' || categoryFilter === 'counter_offer') && (
             <section className="rounded-2xl border-2 border-amber-200 bg-amber-50/30">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200 bg-amber-50/50 rounded-t-2xl">
                 <span className="text-amber-600">🔄</span>
@@ -2062,6 +2138,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onFinancialChanges={handleFinancialChanges}
                     onRename={handleRename}
                     onReviewChanges={setComparisonDoc}
+                    onComplianceCheck={handleComplianceCheck}
+                    complianceRunning={complianceRunning}
                   />
                 ))}
               </div>
@@ -2069,7 +2147,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           )}
 
           {/* ── Amendments & Addenda ──────────────────────────────────── */}
-          {amendmentDocs.length > 0 && (
+          {amendmentDocs.length > 0 && (categoryFilter === 'all' || categoryFilter === 'amendment') && (
             <section className="rounded-2xl border border-base-300">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-base-300 bg-base-200/50 rounded-t-2xl">
                 <FileText size={14} className="text-base-content/60" />
@@ -2093,6 +2171,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onFinancialChanges={handleFinancialChanges}
                     onRename={handleRename}
                     onReviewChanges={(doc.category === 'amendment' || doc.category === 'addendum') ? setComparisonDoc : undefined}
+                    onComplianceCheck={handleComplianceCheck}
+                    complianceRunning={complianceRunning}
                   />
                 ))}
               </div>
@@ -2100,7 +2180,7 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
           )}
 
           {/* ── Inspection Documents ────────────────────────────────────────── */}
-          {inspectionDocs.length > 0 && (
+          {inspectionDocs.length > 0 && (categoryFilter === 'all' || categoryFilter === 'inspection_notice') && (
             <section className="rounded-2xl border border-teal-200 bg-teal-50/20">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-200 bg-teal-50/30 rounded-t-2xl">
                 <span>🔍</span>
@@ -2123,6 +2203,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
                     onRename={handleRename}
+                    onComplianceCheck={handleComplianceCheck}
+                    complianceRunning={complianceRunning}
                   />
                 ))}
               </div>
@@ -2151,6 +2233,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onSummary={handleSummary}
                     onFinancialChanges={handleFinancialChanges}
                     onRename={handleRename}
+                    onComplianceCheck={handleComplianceCheck}
+                    complianceRunning={complianceRunning}
                   />
                 ))}
               </div>
