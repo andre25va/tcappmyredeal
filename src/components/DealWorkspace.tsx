@@ -83,6 +83,8 @@ interface Props {
   initialTab?: Tab;
   /** If set, auto-opens the new request modal in the Requests tab. */
   initialRequestType?: string;
+  /** Open Inbox pre-selecting a conversation (from Activity log click-through). */
+  onOpenInboxConversation?: (convId: string) => void;
 }
 
 /**
@@ -178,7 +180,7 @@ function DealHeaderDates({ contractDate, closingDate }: { contractDate?: string;
   );
 }
 
-export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab, initialRequestType }) => {
+export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contactRecords = [], users = [], emailTemplates = [], complianceTemplates = [], deals = [], onCallStarted, onArchiveDeal, onRestoreDeal, onChangeStatus, initialTab, initialRequestType, onOpenInboxConversation }) => {
   const { profile, isMasterAdmin } = useAuth();
   const isViewer = profile?.role === 'viewer';
   const canManageAccess = isMasterAdmin() || profile?.role === 'admin' ||
@@ -778,7 +780,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         {tab === 'contacts'   && <WorkspaceContacts deal={deal} onUpdate={onUpdate} contactRecords={contactRecords} onCallStarted={onCallStarted} />}
         {tab === 'documents'  && <WorkspaceDocuments deal={deal} onUpdate={onUpdate} />}
         {tab === 'compliance'  && <WorkspaceCompliance deal={deal} />}
-        {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} />}
+        {tab === 'activity'   && <WorkspaceActivityLog deal={deal} onUpdate={onUpdate} onOpenInboxConversation={onOpenInboxConversation} onOpenRequestsTab={() => setTab('requests')} />}
         {tab === 'portal-notes' && (
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
