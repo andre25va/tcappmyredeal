@@ -1457,7 +1457,7 @@ If the entire document is one contract, return startPage=1 and endPage=totalPage
 // ── Extract Deal Handler (Deal Wizard AI Upload) ─────────────────────────────
 
 async function handleExtractDeal(apiKey: string, body: any) {
-  const { fileBase64: rawBase64, filePath, fileName, mlsId, mlsBoard: hintMlsBoard, state: hintState } = body;
+  const { fileBase64: rawBase64, filePath, fileName, mlsId, mlsBoard: hintMlsBoard, state: hintState, dealId } = body;
   let fileBase64 = rawBase64;
 
   // New flow: wizard uploads PDF to Supabase Storage, passes filePath to avoid 4.5MB Vercel body limit
