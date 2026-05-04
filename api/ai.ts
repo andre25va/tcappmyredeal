@@ -510,7 +510,7 @@ const extractDealSchema = {
         properties: {
           field: { type: 'string' },
           page: { type: 'number' },
-          line: { type: ['number', 'null'] },
+          line: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           text: { type: 'string' },
         },
         required: ['field', 'page', 'line', 'text'],
