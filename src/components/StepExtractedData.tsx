@@ -467,6 +467,9 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   const [cdStart, setCdStart] = React.useState('');
   const [cdEnd, setCdEnd] = React.useState('');
   const [cdConfirming, setCdConfirming] = React.useState(false);
+  const [showBlankFormModal, setShowBlankFormModal] = React.useState(false);
+  const [blankFormRequestSent, setBlankFormRequestSent] = React.useState(false);
+  const [blankFormRequesting, setBlankFormRequesting] = React.useState(false);
 
   const hasData = extractedData && Object.keys(extractedData).some(k => {
     const v = extractedData[k];
@@ -716,7 +719,13 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
             ) : (
               <>
                 <span>👁️</span>
-                <span><strong>Vision only</strong> — no blank template found for this MLS (upload one in Settings → MLS Directory to improve accuracy)</span>
+                <span><strong>Vision only</strong> — no blank template found for this form. Extraction accuracy is reduced.</span>
+                <button
+                  onClick={() => setShowBlankFormModal(true)}
+                  className="ml-auto shrink-0 px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 border border-amber-400 text-amber-800 font-semibold text-xs"
+                >
+                  Request Blank Form
+                </button>
               </>
             )}
           </div>
@@ -1067,6 +1076,90 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           <RefreshCw size={13} /> Re-extract from a different file
         </button>
       </div>
+
+      {/* Blank Form Request Modal */}
+      {showBlankFormModal && (() => {
+        const formSlug = contractDetection?.formName && contractDetection.formName !== 'Unknown'
+          ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          : null;
+        const boardLabel = contractDetection?.mlsBoard ?? 'this MLS board';
+        const stateLabel = contractDetection?.state ?? '';
+
+        const handleRequestFromAgent = async () => {
+          setBlankFormRequesting(true);
+          try {
+            await supabase.from('blank_form_requests').insert({
+              deal_id: dealId ?? null,
+              form_slug: formSlug,
+              mls_board: contractDetection?.mlsBoard ?? null,
+              state: contractDetection?.state ?? null,
+              status: 'pending',
+            });
+            setBlankFormRequestSent(true);
+          } catch (err) {
+            console.error('Failed to log blank form request', err);
+          } finally {
+            setBlankFormRequesting(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-base-content">Request a Blank Form</h3>
+                  <p className="text-xs text-base-content/60 mt-0.5">
+                    {boardLabel}{stateLabel ? ` · ${stateLabel}` : ''}
+                    {formSlug ? ` · ${formSlug}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setShowBlankFormModal(false); setBlankFormRequestSent(false); }}
+                  className="btn btn-ghost btn-xs"
+                >✕</button>
+              </div>
+
+              <p className="text-sm text-base-content/70">
+                To reach <strong>95%+ extraction accuracy</strong> for future deals on this form, we need a <strong>blank copy</strong> of the contract — with no names, prices, or deal data filled in.
+              </p>
+
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                ⚠️ Never use a filled-in deal contract as a template. Always request the blank version from the agent or broker.
+              </div>
+
+              {blankFormRequestSent ? (
+                <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-3 text-sm text-green-800 font-medium text-center">
+                  ✅ Request logged — follow up with the agent for the blank form.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleRequestFromAgent}
+                    disabled={blankFormRequesting}
+                    className="btn btn-warning btn-sm gap-2 justify-start"
+                  >
+                    📧 {blankFormRequesting ? 'Logging…' : 'Log request — I'll follow up with agent'}
+                  </button>
+                  <a
+                    href={`https://tc-redeal-forms.vercel.app/admin${formSlug ? `/forms/${formSlug}/mapper` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-outline btn-sm gap-2 justify-start"
+                    onClick={() => setShowBlankFormModal(false)}
+                  >
+                    🗺️ I have it — Open Field Mapper
+                  </a>
+                </div>
+              )}
+
+              <p className="text-xs text-base-content/40 text-center">
+                One mapping session (≈30 min) unlocks 95%+ accuracy for every future deal on this form.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
