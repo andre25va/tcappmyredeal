@@ -1139,7 +1139,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                     disabled={blankFormRequesting}
                     className="btn btn-warning btn-sm gap-2 justify-start"
                   >
-                    📧 {blankFormRequesting ? 'Logging…' : 'Log request — I'll follow up with agent'}
+                    📧 {blankFormRequesting ? 'Logging…' : "Log request — I'll follow up with agent"}
                   </button>
                   <a
                     href={`https://tc-redeal-forms.vercel.app/admin${formSlug ? `/forms/${formSlug}/mapper` : ''}`}
