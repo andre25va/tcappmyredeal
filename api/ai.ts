@@ -1663,8 +1663,8 @@ ${keyFields}`;
   try {
     if (formSlug) {
       // Fetch rows matching this form. Board-specific rows take priority over generic (mls_board IS NULL).
-      const detectedBoard = contractDetection?.mlsBoard ?? null;
-      const detectedState = contractDetection?.state ?? null;
+      const detectedBoard = contractDetection?.mlsBoard ?? hintMlsBoard ?? null;
+      const detectedState = contractDetection?.state ?? hintState ?? null;
       let appendixQuery = supabase
         .from('form_prompt_appendix')
         .select('appendix_text, mls_board, state')
