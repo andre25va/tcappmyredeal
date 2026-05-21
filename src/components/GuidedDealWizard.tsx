@@ -852,7 +852,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       const res = await fetch('/api/ai?action=extract-deal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: tempPath, fileName: file.name, mlsId: form.mlsEntryId || undefined }),
+        body: JSON.stringify({ filePath: tempPath, fileName: file.name, mlsId: form.mlsEntryId || undefined, mlsBoard: form.mlsBoard || undefined, state: form.state || undefined }),
       }).finally(() => {
         supabase.storage.from('deal-documents').remove([tempPath]).catch(() => {});
       });
@@ -2240,6 +2240,23 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                       <span className="text-xs text-amber-700 font-medium">A task will be created to review counter offer numbers</span>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {step === 2 && contractDetection && (!contractDetection.patternId || contractDetection.formName === 'Unknown') && (
+              <div className="mb-4 flex items-start gap-3 p-3 rounded-xl border border-amber-300 bg-amber-50">
+                <AlertTriangle size={16} className="text-amber-600 flex-none mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">New form — no template found</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    This contract form hasn't been mapped yet. Extraction ran with general guidance only — expect lower confidence on some fields.
+                    Once you've verified this deal, map this form at{' '}
+                    <a href="https://tc-redeal-forms.vercel.app/admin" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                      tc-redeal-forms.vercel.app
+                    </a>{' '}
+                    to unlock high-accuracy extraction for all future deals on this form.
+                  </p>
                 </div>
               </div>
             )}
