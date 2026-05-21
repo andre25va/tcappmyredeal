@@ -280,7 +280,7 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
   // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
-  const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | null>(null);
+  const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | 'agent' | null>(null);
   const { data: mlsEntriesRaw } = useMlsEntries();
   const mlsEntries = (mlsEntriesRaw ?? []).map(e => ({ id: e.id, name: e.name, state: e.state ?? '' }));
 
@@ -771,7 +771,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setDisambigClientCandidates(sameName);
     } else {
       const detected = autoDetectSideFromClient(chosen.fullName);
-      setForm(p => ({ ...p, agentClientId: id, ...(detected ? { transactionType: detected } : {}) }));
+      const primaryMls = (chosen.mlsMemberships || [])[0];
+      const autoBoard = primaryMls ? (primaryMls.mlsName || primaryMls.boardName || '') : '';
+      const autoState = primaryMls?.stateCode || '';
+      setForm(p => ({
+        ...p,
+        agentClientId: id,
+        ...(detected ? { transactionType: detected } : {}),
+        ...(!p.mlsBoard && autoBoard ? {
+          mlsBoard: autoBoard,
+          isHeartlandMls: /heartland/i.test(autoBoard),
+          mlsEntryId: resolveMlsEntryId(autoBoard, autoState || p.state),
+          ...(autoState && !p.state ? { state: autoState } : {}),
+        } : {}),
+      }));
+      if (!form.mlsBoard && autoBoard) setMlsBoardDetectedSource('agent');
       setClientSearch('');
       if (form.mlsBoard) checkMlsMismatch(id, form.mlsBoard);
     }
@@ -788,7 +802,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setDisambigClientCandidates(sameName);
     } else {
       const detected = autoDetectSideFromClient(chosen.fullName);
-      setForm(p => ({ ...p, agentClientId: selectedId, ...(detected ? { transactionType: detected } : {}) }));
+      const primaryMls = (chosen.mlsMemberships || [])[0];
+      const autoBoard = primaryMls ? (primaryMls.mlsName || primaryMls.boardName || '') : '';
+      const autoState = primaryMls?.stateCode || '';
+      setForm(p => ({
+        ...p,
+        agentClientId: selectedId,
+        ...(detected ? { transactionType: detected } : {}),
+        ...(!p.mlsBoard && autoBoard ? {
+          mlsBoard: autoBoard,
+          isHeartlandMls: /heartland/i.test(autoBoard),
+          mlsEntryId: resolveMlsEntryId(autoBoard, autoState || p.state),
+          ...(autoState && !p.state ? { state: autoState } : {}),
+        } : {}),
+      }));
+      if (!form.mlsBoard && autoBoard) setMlsBoardDetectedSource('agent');
     }
   };
 
@@ -2181,9 +2209,11 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                   )}
                 </div>
                 {mlsBoardDetectedSource && form.mlsBoard && (
-                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${mlsBoardDetectedSource === 'mls' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${mlsBoardDetectedSource === 'mls' ? 'bg-green-50 border-green-200 text-green-700' : mlsBoardDetectedSource === 'agent' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
                     {mlsBoardDetectedSource === 'mls' ? (
                       <><span>✓</span><span>MLS board confirmed from listing data</span></>
+                    ) : mlsBoardDetectedSource === 'agent' ? (
+                      <><span>✦</span><span>MLS board auto-filled from agent profile — change if this deal is on a different board</span></>
                     ) : (
                       <><span>✦</span><span>Auto-detected from contract — verify if needed</span></>
                     )}
