@@ -5,7 +5,7 @@ import {
   Plus, X, Info, Download, Sparkles, ChevronDown, ChevronRight,
   Mail, Eye, Loader2, RefreshCw, Trash2, ExternalLink, File,
   Paperclip, Lock, ArrowRight, ChevronUp, MapPin, Table2,
-  Pencil, Shield, Search,
+  Pencil, Shield, Search, ScanLine,
 } from 'lucide-react';
 import { Deal, DocumentRequest, DocRequestType, DocRequestStatus, ChecklistItem } from '../types';
 import { docTypeConfig, generateId, formatDateTime } from '../utils/helpers';
@@ -928,9 +928,11 @@ interface DocRowProps {
   onReviewChanges?: (doc: DealDocument) => void;
   onComplianceCheck?: (docId: string) => void;
   complianceRunning?: boolean;
+  visionCheck?: { violation_count: number; passed_count: number; warning_count: number; run_at: string } | null;
+  onVisionCompliance?: (doc: DealDocument) => void;
 }
 
-function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onRename, onReviewChanges, onComplianceCheck, complianceRunning }: DocRowProps) {
+function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDelete, onDownload, onLinkChecklist, onArchive, onSummary, onFinancialChanges, onRename, onReviewChanges, onComplianceCheck, complianceRunning, visionCheck, onVisionCompliance }: DocRowProps) {
   const isContract = doc.category === 'purchase_contract';
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(doc.display_name || doc.file_name);
@@ -1017,6 +1019,15 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
               <CheckCircle2 size={11} /> Extracted
             </span>
           )}
+          {visionCheck && (
+            <span
+              title={`Vision check · ${new Date(visionCheck.run_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+              className={`text-xs flex items-center gap-1 ${visionCheck.violation_count > 0 ? 'text-error' : visionCheck.warning_count > 0 ? 'text-warning' : 'text-success'}`}
+            >
+              <ScanLine size={11} />
+              {visionCheck.violation_count > 0 ? `${visionCheck.violation_count} violation${visionCheck.violation_count !== 1 ? 's' : ''}` : visionCheck.warning_count > 0 ? `${visionCheck.warning_count} warnings` : 'Vision ✓'}
+            </span>
+          )}
           {linkedItemTitles.length > 0 && (
             <span className="text-xs text-primary flex items-center gap-1">
               <Paperclip size={11} />
@@ -1037,16 +1048,26 @@ function DocRow({ doc, isOriginal, linkedItemTitles, onPreview, onExtract, onDel
           <Pencil size={13} />
         </button>
 
-        {/* Compliance Check — scoped deal check */}
+        {/* Field Compliance Check */}
         <button
           onClick={() => onComplianceCheck?.(doc.id)}
           disabled={!onComplianceCheck || complianceRunning}
           className={`btn btn-ghost btn-xs btn-circle ${complianceRunning ? 'opacity-60' : 'hover:text-primary'}`}
-          title="Run compliance check"
+          title="Run field compliance check"
         >
           {complianceRunning
             ? <span className="loading loading-spinner loading-xs" />
             : <Shield size={13} />}
+        </button>
+
+        {/* Vision Compliance — opens tc-redeal-forms with signed URL + deal params */}
+        <button
+          onClick={() => onVisionCompliance?.(doc)}
+          disabled={!onVisionCompliance}
+          className={`btn btn-ghost btn-xs btn-circle ${visionCheck ? (visionCheck.violation_count > 0 ? 'text-error' : 'text-success') : 'hover:text-violet-600'}`}
+          title={visionCheck ? `Vision check · ${visionCheck.violation_count > 0 ? visionCheck.violation_count + " violations" : "Passed"} · click to re-run` : "Run vision compliance check"}
+        >
+          <ScanLine size={13} />
         </button>
 
         {/* Preview — always available for PDFs */}
@@ -1169,6 +1190,30 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [complianceRunning, setComplianceRunning] = useState(false);
   const [complianceResult, setComplianceResult] = useState<{ passed: number; warning: number; failed: number } | null>(null);
+
+  // ── Vision compliance checks (per-document, fetched once) ────────────────
+  const { data: visionChecks = [] } = useQuery({
+    queryKey: ['vision-compliance-checks', deal.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('compliance_checks')
+        .select('document_id, violation_count, passed_count, warning_count, run_at')
+        .eq('deal_id', deal.id)
+        .eq('check_type', 'vision')
+        .order('run_at', { ascending: false });
+      return data ?? [];
+    },
+    staleTime: 60 * 1000,
+  });
+
+  // Map: document_id → latest vision check result
+  const visionChecksByDocId = React.useMemo(() => {
+    const map: Record<string, { document_id: string; violation_count: number; passed_count: number; warning_count: number; run_at: string }> = {};
+    (visionChecks as any[]).forEach((c: any) => {
+      if (c.document_id && !map[c.document_id]) map[c.document_id] = c;
+    });
+    return map;
+  }, [visionChecks]);
   const [docTypeForUpload, setDocTypeForUpload] = useState<NonNullable<DealDocument['category']>>('purchase_contract');
   const [uploadDisplayName, setUploadDisplayName] = useState<string>(SUGGESTED_NAMES['purchase_contract'][0]);
 
@@ -1746,6 +1791,20 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
     }
   };
 
+  // Opens tc-redeal-forms compliance page with signed PDF URL + deal context
+  // tc-redeal-forms reads the params, auto-loads PDF + board, and writes result
+  // back to compliance_checks with source="myredeal" after the check completes
+  const handleVisionComplianceCheck = async (doc: DealDocument) => {
+    const { data: signed } = await supabase.storage
+      .from('deal-documents')
+      .createSignedUrl(doc.storage_path, 3600);
+    if (!signed?.signedUrl) return;
+    const board = (deal as any).mlsBoard || '';
+    const params = new URLSearchParams({ pdfUrl: signed.signedUrl, dealId: deal.id, documentId: doc.id });
+    if (board) params.set('board', board);
+    window.open(`https://tc-redeal-forms.vercel.app/compliance?${params.toString()}`, '_blank');
+  };
+
   const visibleDocs = docs.filter(d => (showArchived || !d.archived) && (!searchQuery || (d.display_name ?? d.file_name ?? '').toLowerCase().includes(searchQuery.toLowerCase())));
   const contractDocs = visibleDocs
     .filter(d => d.category === 'purchase_contract')
@@ -2107,6 +2166,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onRename={handleRename}
                     onComplianceCheck={handleComplianceCheck}
                     complianceRunning={complianceRunning}
+                    visionCheck={visionChecksByDocId[doc.id] ?? null}
+                    onVisionCompliance={handleVisionComplianceCheck}
                   />
                 ))}
               </div>
@@ -2140,6 +2201,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onReviewChanges={setComparisonDoc}
                     onComplianceCheck={handleComplianceCheck}
                     complianceRunning={complianceRunning}
+                    visionCheck={visionChecksByDocId[doc.id] ?? null}
+                    onVisionCompliance={handleVisionComplianceCheck}
                   />
                 ))}
               </div>
@@ -2173,6 +2236,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onReviewChanges={(doc.category === 'amendment' || doc.category === 'addendum') ? setComparisonDoc : undefined}
                     onComplianceCheck={handleComplianceCheck}
                     complianceRunning={complianceRunning}
+                    visionCheck={visionChecksByDocId[doc.id] ?? null}
+                    onVisionCompliance={handleVisionComplianceCheck}
                   />
                 ))}
               </div>
@@ -2205,6 +2270,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onRename={handleRename}
                     onComplianceCheck={handleComplianceCheck}
                     complianceRunning={complianceRunning}
+                    visionCheck={visionChecksByDocId[doc.id] ?? null}
+                    onVisionCompliance={handleVisionComplianceCheck}
                   />
                 ))}
               </div>
@@ -2235,6 +2302,8 @@ export function WorkspaceDocuments({ deal, onUpdate }: Props) {
                     onRename={handleRename}
                     onComplianceCheck={handleComplianceCheck}
                     complianceRunning={complianceRunning}
+                    visionCheck={visionChecksByDocId[doc.id] ?? null}
+                    onVisionCompliance={handleVisionComplianceCheck}
                   />
                 ))}
               </div>
