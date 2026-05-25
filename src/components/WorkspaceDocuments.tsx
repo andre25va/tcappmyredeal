@@ -21,6 +21,7 @@ import {
 } from '../utils/contractExtraction';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 import { Button } from './ui/Button';
+import { useQuery } from '@tanstack/react-query';
 import { useDealDocuments, useInvalidateDealDocuments } from '../hooks/useDealDocuments';
 import { useDocumentLog, useInvalidateDocumentLog } from '../hooks/useDocumentLog';
 import { useChecklistDocLinks, useInvalidateChecklistDocLinks } from '../hooks/useChecklistDocLinks';
