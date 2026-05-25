@@ -1510,11 +1510,26 @@ async function handleExtractDeal(apiKey: string, body: any) {
   const formSlug: string | null = contractDetection?.formName && contractDetection.formName !== 'Unknown'
     ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     : null;
-  // field_coordinates rows were seeded under legacy slugs — map derived form-name slug to stored slug
-  const COORD_SLUG_MAP: Record<string, string> = {
-    'contract-for-purchase-and-sale-of-real-estate': 'residential-sale-contract',
-  };
-  const coordsFormSlug = formSlug ? (COORD_SLUG_MAP[formSlug] ?? formSlug) : 'residential-sale-contract';
+  // Board detected from contract scan or hint passed by wizard
+  const detectedBoard: string | null = contractDetection?.mlsBoard ?? hintMlsBoard ?? null;
+
+  // Board-aware field_coordinates slug routing.
+  // Both Heartland and SCKMLS share the same GPT-detected form title
+  // ("CONTRACT FOR PURCHASE AND SALE OF REAL ESTATE") so the derived slug is
+  // identical — we must use the board to pick the right coordinate set.
+  let coordsFormSlug: string;
+  if (!formSlug) {
+    coordsFormSlug = 'residential-sale-contract'; // Heartland default
+  } else if (detectedBoard && /south.central/i.test(detectedBoard)) {
+    // SCKMLS: use their versioned slug — do NOT remap to Heartland's slug
+    coordsFormSlug = 'contract-for-purchase-and-sale-of-real-estate-residential-1200-rel-12-2024-fillable';
+  } else {
+    // Heartland + other boards: apply legacy slug remapping
+    const COORD_SLUG_MAP: Record<string, string> = {
+      'contract-for-purchase-and-sale-of-real-estate': 'residential-sale-contract',
+    };
+    coordsFormSlug = COORD_SLUG_MAP[formSlug] ?? formSlug;
+  }
   // Record detected form slug on deal (non-fatal — best-effort)
   if (dealId && formSlug) {
     supabase.from('deals').update({ detected_form_slug: formSlug }).eq('id', dealId).then(() => {});
@@ -1663,7 +1678,7 @@ ${keyFields}`;
   try {
     if (formSlug) {
       // Fetch rows matching this form. Board-specific rows take priority over generic (mls_board IS NULL).
-      const detectedBoard = contractDetection?.mlsBoard ?? hintMlsBoard ?? null;
+      // detectedBoard already computed above (board-aware slug routing block)
       const detectedState = contractDetection?.state ?? hintState ?? null;
       let appendixQuery = supabase
         .from('form_prompt_appendix')
