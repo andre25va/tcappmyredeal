@@ -48,7 +48,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Caught:', error, info);
     this.setState({ errorInfo: info });
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       this.decodeError(error, info);
     }
   }
@@ -80,7 +80,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (!this.state.hasError) return this.props.children;
 
-    const isDev = process.env.NODE_ENV === 'development';
+    const isDev = import.meta.env.DEV;
     const { decoded, loading, error } = this.state;
 
     if (!isDev) {
@@ -180,7 +180,7 @@ export function useErrorDecoder() {
     error: unknown,
     context?: Record<string, unknown>
   ): Promise<DecodedError | null> => {
-    if (process.env.NODE_ENV !== 'development') return null;
+    if (!import.meta.env.DEV) return null;
     const err = error instanceof Error ? error : new Error(String(error));
     try {
       const res = await fetch('/api/debug-error', {
