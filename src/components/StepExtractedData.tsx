@@ -45,6 +45,7 @@ interface StepExtractedDataProps {
   onEdit: () => void;
   onReExtract: () => void;
   onJumpToPage?: (page: number) => void;
+  mlsBoard?: string;
 }
 
 // --- Field Definitions ---
@@ -398,6 +399,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   onEdit,
   onReExtract,
   onJumpToPage,
+  mlsBoard,
 }) => {
   const [values, setValues] = useState<Record<string, string>>(() => {
     if (!extractedData) return {};
@@ -428,16 +430,38 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
     [extractedData]
   );
 
-  // Group fields by page number from fieldSources (or by section as fallback)
+  // ── Fetch field_coordinates page map for this MLS board ─────────────────
+  // Used to assign unextracted fields to their correct page (not "Other Fields")
+  const [coordPageMap, setCoordPageMap] = React.useState<Record<string, number>>({});
+  React.useEffect(() => {
+    if (!mlsBoard) return;
+    supabase
+      .from('field_coordinates')
+      .select('field_key, page_num')
+      .eq('mls_board', mlsBoard)
+      .then(({ data }) => {
+        if (!data) return;
+        const map: Record<string, number> = {};
+        for (const row of data as Array<{ field_key: string; page_num: number }>) {
+          if (row.field_key && row.page_num) map[row.field_key] = row.page_num;
+        }
+        setCoordPageMap(map);
+      });
+  }, [mlsBoard]);
+
+  // Group fields by page number from fieldSources + coordPageMap fallback (or by section as last resort)
   const pageGroups = React.useMemo(() => {
     try {
-      const hasSources = fieldSources && Object.values(fieldSources).some((s: any) => s?.page);
+      const hasSources = (fieldSources && Object.values(fieldSources).some((s: any) => s?.page))
+        || Object.keys(coordPageMap).length > 0;
       if (hasSources) {
         const groups: Record<string, { label: string; fields: FieldDef[] }> = {};
         FIELD_DEFS.forEach(field => {
           const src = (fieldSources as any)[field.key];
-          const pageKey = src?.page ? String(src.page) : '0';
-          const label = src?.page ? `Page ${src.page}` : 'Other Fields';
+          const fallbackPage = coordPageMap[field.key];
+          const resolvedPage = src?.page || fallbackPage || 0;
+          const pageKey = resolvedPage ? String(resolvedPage) : '0';
+          const label = resolvedPage ? `Page ${resolvedPage}` : 'Other Fields';
           if (!groups[pageKey]) groups[pageKey] = { label, fields: [] };
           groups[pageKey].fields.push(field);
         });
@@ -458,7 +482,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
       label: section,
       fields: FIELD_DEFS.filter(f => f.section === section),
     }));
-  }, [fieldSources]);
+  }, [fieldSources, coordPageMap]);
 
   const setValue = (key: string, val: string) =>
     setValues(prev => ({ ...prev, [key]: val }));
