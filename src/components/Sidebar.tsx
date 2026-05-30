@@ -1,14 +1,14 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X, Radio,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X, Radio, FileSignature,
 } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
   | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
-  | 'email-review' | 'requests' | 'broadcasts';
+  | 'email-review' | 'requests' | 'broadcasts' | 'contracts';
 
 const APP_VERSION = 'v2026.03.18.17';
 
@@ -16,6 +16,7 @@ const APP_VERSION = 'v2026.03.18.17';
 const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: string }[] = [
   { view: 'dashboard',     label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
   { view: 'transactions',  label: 'Transactions', icon: <FileText size={18} /> },
+  { view: 'contracts',     label: 'Contracts',    icon: <FileSignature size={18} /> },
   { view: 'contacts',      label: 'Contacts',     icon: <Users size={18} /> },
   { view: 'mls',           label: 'MLS',          icon: <Building2 size={18} /> },
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
