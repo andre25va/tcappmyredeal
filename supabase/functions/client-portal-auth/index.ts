@@ -1,6 +1,6 @@
-// client-portal-auth Edge Function — v11
+// client-portal-auth Edge Function — v12
 // Source of truth: deal_timeline table (TC app manages it; portal reads it)
-// Falls back to empty array if no rows seeded yet for a deal
+// v12: adds latestContract from contract_submissions per deal
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
@@ -138,7 +138,6 @@ serve(async (req: Request) => {
 
     const dealIds = [...new Set(participations.map((p) => p.deal_id))];
 
-    // Exclude archived/closed/terminated/cancelled/withdrawn at DB level
     const { data: deals, error: dealsErr } = await supabase
       .from('deals')
       .select(`
@@ -161,7 +160,6 @@ serve(async (req: Request) => {
     const activeDealIds = deals.map((d) => d.id);
 
     // v10: deal_timeline is the single source of truth for milestones
-    // TC app seeds + manages these rows; portal reads them live
     const { data: allTimelines } = await supabase
       .from('deal_timeline')
       .select('deal_id, milestone, label, status, due_date, sort_order')
@@ -215,13 +213,40 @@ serve(async (req: Request) => {
       }
     }
 
+    // v12: latest contract submission per deal
+    const { data: allContracts } = await supabase
+      .from('contract_submissions')
+      .select('deal_id, status, submitted_data, pdf_url, sent_at, signed_at, updated_at')
+      .in('deal_id', activeDealIds)
+      .order('updated_at', { ascending: false });
+
+    // Keep only the most-recent submission per deal
+    const contractsMap: Record<string, {
+      status: string;
+      contract_uid: string | null;
+      pdf_url: string | null;
+      sent_at: string | null;
+      signed_at: string | null;
+    }> = {};
+    for (const row of allContracts ?? []) {
+      if (!contractsMap[row.deal_id]) {
+        contractsMap[row.deal_id] = {
+          status: row.status ?? 'draft',
+          contract_uid: (row.submitted_data as any)?.contract_uid ?? null,
+          pdf_url: row.pdf_url ?? null,
+          sent_at: row.sent_at ?? null,
+          signed_at: row.signed_at ?? null,
+        };
+      }
+    }
+
     const clientDeals = deals.map((d) => {
       const dd = (d.deal_data ?? {}) as Record<string, any>;
 
       const earnestMoneyDueDate = dd.earnestMoneyDueDate ?? dd.earnest_money_due_date ?? d.earnest_money_due_date ?? null;
       const inspectionDate = dd.inspectionDate ?? dd.inspection_date ?? null;
       const financeDeadline = dd.financeDeadline ?? dd.finance_deadline ?? null;
-      const milestone = dd.milestone ?? null; // raw TC app milestone value (for status label)
+      const milestone = dd.milestone ?? null;
 
       const participantsForDeal = (allParticipants ?? [])
         .filter((p) => p.deal_id === d.id)
@@ -238,12 +263,11 @@ serve(async (req: Request) => {
           };
         })
         .sort((a, b) => {
-          // Client's lead agent always first
           if (a._isClientLeadAgent && !b._isClientLeadAgent) return -1;
           if (!a._isClientLeadAgent && b._isClientLeadAgent) return 1;
           return 0;
         })
-        .map(({ _isClientLeadAgent: _, ...p }) => p); // strip internal sort flag
+        .map(({ _isClientLeadAgent: _, ...p }) => p);
 
       const taskCounts = taskCountsMap[d.id] ?? { completed: 0, total: 0 };
 
@@ -271,10 +295,11 @@ serve(async (req: Request) => {
         possessionDate: d.possession_date ?? null,
         milestone,
         participants: participantsForDeal,
-        // v10: live deal_timeline rows — empty array if not yet seeded
         milestones: timelinesMap[d.id] ?? [],
         tasksCompleted: taskCounts.completed,
         tasksTotal: taskCounts.total,
+        // v12: latest contract submission (null if no submissions yet)
+        latestContract: contractsMap[d.id] ?? null,
       };
     });
 
