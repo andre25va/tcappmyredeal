@@ -1,7 +1,5 @@
-// fetch-mls-number Edge Function
-// Uses OpenAI web search to find rich MLS property data for a given property address
-// Supports single and split (duplex) addresses
-
+// fetch-mls-number Edge Function v2
+// Supports: (1) address+city search, (2) mlsNumber-only lookup
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 const corsHeaders = {
@@ -15,11 +13,12 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { address, city, state, zipCode, secondaryAddress } = await req.json();
+    const { address, city, state, zipCode, secondaryAddress, mlsNumber } = await req.json();
 
-    if (!address || !city) {
+    // Must have either (address + city) or mlsNumber
+    if (!mlsNumber && (!address || !city)) {
       return new Response(
-        JSON.stringify({ error: 'Address and city are required' }),
+        JSON.stringify({ error: 'Provide either (address + city) or mlsNumber' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -32,27 +31,41 @@ serve(async (req: Request) => {
       );
     }
 
-    const cityStateZip = [city, state, zipCode].filter(Boolean).join(', ');
+    let searchQuery: string;
 
-    // Build the full address string — handle split duplex addresses
-    let fullAddress: string;
-    if (secondaryAddress && secondaryAddress.trim()) {
-      fullAddress = `"${address}" AND "${secondaryAddress.trim()}" in ${cityStateZip} (duplex — two units of the same property)`;
+    if (mlsNumber && !address) {
+      // MLS # only search
+      const stateLabel = state === 'KS' ? 'Kansas' : state === 'MO' ? 'Missouri' : (state || 'Kansas City area');
+      searchQuery = `Search Zillow, Realtor.com, Redfin, Heartland MLS, or any MLS listing site for the property with MLS listing number: ${mlsNumber}${stateLabel ? ` in ${stateLabel}` : ''}.
+Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, address, city, zipCode, county, legalDescription.
+county: the county name where the property is located (e.g., "Jackson County").
+legalDescription: the full legal description of the property (e.g., "Lot 14, Block 3, Timber Ridge Subdivision"). Return null if unavailable.
+mlsBoardName: the name of the MLS board or association this listing belongs to (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if unknown.
+propertyType must be one of: Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other.
+listingStatus must be one of: Active, Pending, Under Contract, Contingent, Sold, Closed.
+pool must be a boolean (true or false).
+If the listing cannot be found, return exactly: {"found":false}
+If found, return: {"found":true,"data":{...all fields...}}`;
     } else {
-      fullAddress = `${address}, ${cityStateZip}`;
-    }
-
-    const searchQuery = `Search Zillow, Realtor.com, Redfin, or any MLS listing site for the property: "${fullAddress}".
-
-CRITICAL: Your most important task is to find the MLS listing number (also called "MLS #", "Listing ID", or "Property ID") for this property. Check the listing page URL and page content carefully — it is almost always displayed prominently on Zillow, Redfin, and Realtor.com listing pages. On Zillow it appears near the bottom as "MLS #XXXXXXX". On Redfin it appears as "MLS# XXXXXXX". On Realtor.com it appears as "MLS ID XXXXXXX". Never return null for mlsNumber unless you have exhaustively searched and truly cannot find it anywhere.
-
-Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if truly unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool.
+      // Address-based search (original logic)
+      const cityStateZip = [city, state, zipCode].filter(Boolean).join(', ');
+      let fullAddress: string;
+      if (secondaryAddress && secondaryAddress.trim()) {
+        fullAddress = `"${address}" AND "${secondaryAddress.trim()}" in ${cityStateZip} (duplex — two units of the same property)`;
+      } else {
+        fullAddress = `${address}, ${cityStateZip}`;
+      }
+      searchQuery = `Search Zillow, Realtor.com, Redfin, or MLS listing sites for the property: "${fullAddress}".
+Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields (use null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, county, legalDescription.
+county: the county name where the property is located (e.g., "Jackson County").
+legalDescription: the full legal description of the property (e.g., "Lot 14, Block 3, Timber Ridge Subdivision"). Return null if unavailable.
 mlsBoardName: the name of the MLS board or association this listing belongs to (e.g., "Heartland MLS", "KCRAR", "CAR MLS"). Return null if unknown.
 propertyType must be one of: Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other.
 listingStatus must be one of: Active, Pending, Under Contract, Contingent, Sold, Closed.
 pool must be a boolean (true or false).
 If the property cannot be found at all, return exactly: {"found":false}
 If found, return: {"found":true,"data":{...all fields...}}`;
+    }
 
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -78,7 +91,6 @@ If found, return: {"found":true,"data":{...all fields...}}`;
 
     const apiData = await response.json();
 
-    // Extract text from Responses API output format
     const outputText = (apiData.output || [])
       .filter((item: any) => item.type === 'message')
       .flatMap((item: any) => item.content || [])
@@ -94,14 +106,12 @@ If found, return: {"found":true,"data":{...all fields...}}`;
       );
     }
 
-    // Strip markdown code fences if present
     let jsonText = outputText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
 
-    // Try to parse the JSON
     let parsed: any;
     try {
       parsed = JSON.parse(jsonText);
@@ -120,7 +130,6 @@ If found, return: {"found":true,"data":{...all fields...}}`;
       );
     }
 
-    // Return the rich property data
     return new Response(
       JSON.stringify(parsed),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
