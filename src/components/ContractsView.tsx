@@ -35,6 +35,9 @@ interface ContractSubmission {
   sent_at: string | null;
   signed_at: string | null;
   contract_forms?: { form_name: string; form_slug: string };
+  buyer_name?: string | null;
+  seller_name?: string | null;
+  contacts?: { first_name: string; last_name: string } | null;
 }
 
 interface DealSubmissionCount {
