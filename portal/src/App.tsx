@@ -1026,6 +1026,24 @@ function PortalApp() {
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Days to Close</span>
                         {daysAwayBadge(days)}
                       </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5" /> Contract
+                        </span>
+                        {deal.latestContract ? (
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                            deal.latestContract.status === 'signed'    ? 'bg-emerald-100 text-emerald-700' :
+                            deal.latestContract.status === 'submitted' ? 'bg-yellow-100 text-yellow-700' :
+                                                                          'bg-gray-100 text-gray-600'
+                          }`}>
+                            {deal.latestContract.status === 'signed'    ? '✅ Signed' :
+                             deal.latestContract.status === 'submitted' ? '✍️ Awaiting Sig' :
+                                                                          '📝 Draft'}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-gray-400 italic">No contract yet</span>
+                        )}
+                      </div>
                     </div>
                     <div className="px-5 pb-4 space-y-2">
                       <button
