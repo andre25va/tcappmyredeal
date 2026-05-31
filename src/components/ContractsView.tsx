@@ -362,6 +362,18 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ deals, onGoToAmend
                             {sub.sent_at   && ` \u00b7 Sent ${formatDate(sub.sent_at)}`}
                             {sub.signed_at && ` \u00b7 Signed ${formatDate(sub.signed_at)}`}
                           </p>
+                          {(sub.buyer_name || sub.seller_name) && (
+                            <p className="text-xs text-base-content/50 mt-0.5">
+                              {sub.buyer_name && <span>🏠 Buyer: <strong>{sub.buyer_name}</strong></span>}
+                              {sub.buyer_name && sub.seller_name && <span className="mx-1">·</span>}
+                              {sub.seller_name && <span>Seller: <strong>{sub.seller_name}</strong></span>}
+                            </p>
+                          )}
+                          {sub.contacts && (
+                            <p className="text-xs text-base-content/40 mt-0.5">
+                              Agent: {sub.contacts.first_name} {sub.contacts.last_name}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 flex-none flex-wrap justify-end">
