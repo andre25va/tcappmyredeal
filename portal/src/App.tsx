@@ -1022,7 +1022,7 @@ function PortalApp() {
                       </button>
                       {isAgentPortal && (
                         <a
-                          href={`https://tc-redeal-forms.vercel.app/contracts/new?deal_id=${deal.id}`}
+                          href={`https://tc-redeal-forms.vercel.app/contracts/new?dealId=${deal.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-full flex items-center justify-center gap-1.5 py-2.5 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E] hover:text-white transition text-sm"
