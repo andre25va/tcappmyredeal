@@ -925,25 +925,40 @@ function PortalApp() {
             {isAgentPortal ? `${deals.length} Deal${deals.length !== 1 ? 's' : ''} Total` : `${deals.length} Active Deal${deals.length !== 1 ? 's' : ''}`}
           </p>
 
-          {/* Agent stat cards */}
-          {isAgentPortal && stats && (
+          {/* Agent stat cards — always show for agents, zeros when no deals yet */}
+          {isAgentPortal && (
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-[#1B2C5E]">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Active Deals</p>
-                <p className="text-2xl font-bold text-[#1B2C5E]">{stats.activeDealCount}</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{stats?.activeDealCount ?? 0}</p>
               </div>
               <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-[#F4B942]">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Pipeline Volume</p>
-                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats.pipelineVolume)}</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats?.pipelineVolume ?? 0)}</p>
               </div>
               <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-emerald-500">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Closed This Year</p>
-                <p className="text-2xl font-bold text-[#1B2C5E]">{stats.closedDealCount}</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{stats?.closedDealCount ?? 0}</p>
               </div>
               <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-emerald-400">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Closed Volume</p>
-                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats.closedVolume)}</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats?.closedVolume ?? 0)}</p>
               </div>
+            </div>
+          )}
+
+          {/* Agent: New Contract button — always visible for agents */}
+          {isAgentPortal && (
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Your Deals</p>
+              <a
+                href="https://tc-redeal-forms.vercel.app/contracts/new"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#F4B942] text-[#1B2C5E] font-bold rounded-xl shadow hover:bg-yellow-400 transition text-sm"
+              >
+                <span className="text-base leading-none">+</span> New Contract
+              </a>
             </div>
           )}
 
@@ -952,14 +967,14 @@ function PortalApp() {
               <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <InboxIcon className="w-7 h-7 text-gray-400" />
               </div>
-              <h3 className="text-base font-semibold text-[#1B2C5E] mb-2">No Active Deals</h3>
+              <h3 className="text-base font-semibold text-[#1B2C5E] mb-2">
+                {isAgentPortal ? 'No Deals Yet' : 'No Active Deals'}
+              </h3>
               <p className="text-sm text-gray-500 mb-6">
-                We couldn&apos;t find any active deals linked to your account right now.
-                If you believe this is an error, please contact your Transaction Coordinator at{' '}
-                <a href="mailto:tc@myredeal.com" className="text-[#1B2C5E] font-semibold hover:underline">
-                  tc@myredeal.com
-                </a>
-                .
+                {isAgentPortal
+                  ? 'No deals are linked to your account yet. Use the button above to start a new contract, or contact your TC.'
+                  : <>We couldn&apos;t find any active deals linked to your account right now. If you believe this is an error, please contact your Transaction Coordinator at{' '}<a href="mailto:tc@myredeal.com" className="text-[#1B2C5E] font-semibold hover:underline">tc@myredeal.com</a>.</>
+                }
               </p>
               <button
                 onClick={reset}
@@ -970,20 +985,6 @@ function PortalApp() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Agent: New Contract button */}
-              {isAgentPortal && (
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Your Deals</p>
-                  <a
-                    href="https://tc-redeal-forms.vercel.app/contracts/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 bg-[#F4B942] hover:bg-[#e0a835] text-[#1B2C5E] font-bold text-sm px-4 py-2 rounded-xl shadow transition"
-                  >
-                    <span className="text-lg leading-none">+</span> New Contract
-                  </a>
-                </div>
-              )}
               {deals.map((deal) => {
                 const days = daysToClose(deal.closingDate);
                 return (
