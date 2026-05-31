@@ -1,6 +1,7 @@
-// client-portal-auth Edge Function — v12
+// client-portal-auth Edge Function — v13
 // Source of truth: deal_timeline table (TC app manages it; portal reads it)
 // v12: adds latestContract from contract_submissions per deal
+// v13: adds stats + agent portal support (contact_type=agent sees all deals + volume/commission stats)
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
@@ -106,7 +107,7 @@ serve(async (req: Request) => {
 
     const { data: contacts, error: contactErr } = await supabase
       .from('contacts')
-      .select('id, first_name, last_name, phone')
+      .select('id, first_name, last_name, phone, contact_type')
       .eq('pin', pin)
       .is('deleted_at', null);
 
@@ -122,6 +123,7 @@ serve(async (req: Request) => {
     }
 
     const contactName = `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+    const isAgent = (contact as any).contact_type === 'agent';
 
     let dpQuery = supabase.from('deal_participants').select('deal_id, deal_role').eq('contact_id', contact.id);
     if (allowedRoles && allowedRoles.length > 0) dpQuery = dpQuery.in('deal_role', allowedRoles);
@@ -133,20 +135,26 @@ serve(async (req: Request) => {
     }
 
     if (!participations || participations.length === 0) {
-      return jsonResponse({ contactName, deals: [], welcomeMessage, requestTypes });
+      return jsonResponse({ contactName, contactType: isAgent ? 'agent' : 'client', deals: [], welcomeMessage, requestTypes });
     }
 
     const dealIds = [...new Set(participations.map((p) => p.deal_id))];
 
-    const { data: deals, error: dealsErr } = await supabase
+    // Agents see ALL deals (including closed) for stats; buyers/sellers see active only
+    let dealsQuery = supabase
       .from('deals')
       .select(`
         id, property_address, city, state, status, closing_date, deal_ref,
         purchase_price, earnest_money, loan_type, loan_amount, down_payment, seller_concessions,
         property_type, mls_number, contract_date, earnest_money_due_date, possession_date, deal_data
       `)
-      .in('id', dealIds)
-      .not('status', 'in', '(closed,terminated,cancelled,withdrawn,archived)');
+      .in('id', dealIds);
+
+    if (!isAgent) {
+      dealsQuery = dealsQuery.not('status', 'in', '(closed,terminated,cancelled,withdrawn,archived)');
+    }
+
+    const { data: deals, error: dealsErr } = await dealsQuery;
 
     if (dealsErr) {
       console.error('Deals lookup error:', dealsErr);
@@ -154,10 +162,10 @@ serve(async (req: Request) => {
     }
 
     if (!deals || deals.length === 0) {
-      return jsonResponse({ contactName, deals: [], welcomeMessage, requestTypes });
+      return jsonResponse({ contactName, contactType: isAgent ? 'agent' : 'client', deals: [], welcomeMessage, requestTypes });
     }
 
-    const activeDealIds = deals.map((d) => d.id);
+    const activeDealIds = dealsToShow.map((d) => d.id);
 
     // v10: deal_timeline is the single source of truth for milestones
     const { data: allTimelines } = await supabase
@@ -213,6 +221,26 @@ serve(async (req: Request) => {
       }
     }
 
+    // v13: stats for agent portals
+    const CLOSED_STATUSES = ['closed', 'terminated', 'cancelled', 'withdrawn', 'archived'];
+    const ACTIVE_STATUSES = ['contract', 'under_contract', 'active', 'pending', 'emd_due', 'due_diligence', 'inspection_period', 'clear_to_close', 'ctc'];
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+
+    const activeDeals = deals.filter((d) => !CLOSED_STATUSES.includes(d.status ?? ''));
+    const closedThisYear = deals.filter(
+      (d) => d.status === 'closed' && d.closing_date && d.closing_date >= yearStart
+    );
+
+    const closedDealCount = closedThisYear.length;
+    const closedVolume = closedThisYear.reduce((sum, d) => sum + (Number(d.purchase_price) || 0), 0);
+    const pipelineVolume = activeDeals.reduce((sum, d) => sum + (Number(d.purchase_price) || 0), 0);
+    const activeDealCount = activeDeals.length;
+
+    const stats = { activeDealCount, pipelineVolume, closedDealCount, closedVolume };
+
+    // For non-agents, restrict to active deals only for the deal cards shown
+    const dealsToShow = isAgent ? deals : activeDeals;
+
     // v12: latest contract submission per deal
     const { data: allContracts } = await supabase
       .from('contract_submissions')
@@ -240,7 +268,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const clientDeals = deals.map((d) => {
+    const clientDeals = dealsToShow.map((d) => {
       const dd = (d.deal_data ?? {}) as Record<string, any>;
 
       const earnestMoneyDueDate = dd.earnestMoneyDueDate ?? dd.earnest_money_due_date ?? d.earnest_money_due_date ?? null;
@@ -305,9 +333,11 @@ serve(async (req: Request) => {
 
     return jsonResponse({
       contactName,
+      contactType: isAgent ? 'agent' : 'client',
       deals: clientDeals,
       welcomeMessage,
       requestTypes,
+      stats,
       portalSettings: {
         showStatus: cfg.portal_show_status !== false,
         showClosingDate: cfg.portal_show_closing_date !== false,

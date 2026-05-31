@@ -151,6 +151,13 @@ const AVATAR_COLORS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function formatVolume(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  if (n === 0) return '$0';
+  return `$${n.toLocaleString()}`;
+}
+
 function formatDate(s: string | null): string {
   if (!s) return 'TBD';
   const d = new Date(s + 'T00:00:00');
@@ -501,6 +508,8 @@ function PortalApp() {
   ]);
   const [portalSettings, setPortalSettings] = useState<PortalSettings>(DEFAULT_PORTAL_SETTINGS);
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [stats, setStats] = useState<{ activeDealCount: number; pipelineVolume: number; closedDealCount: number; closedVolume: number } | null>(null);
+  const [contactType, setContactType] = useState<'agent' | 'client'>('client');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing] = useState(false);
@@ -559,6 +568,7 @@ function PortalApp() {
     },
     onSuccess: (data) => {
       setContactName(data.contactName ?? '');
+      setContactType(data.contactType === 'agent' ? 'agent' : 'client');
       const activeDeals = (data.deals ?? []).filter((d: any) => d.status !== 'archived');
       setDeals(activeDeals);
       if (activeDeals.length >= 1) setActiveDealId(activeDeals[0].id);
@@ -566,6 +576,7 @@ function PortalApp() {
       if (data.requestTypes?.[0]) setRequestType(data.requestTypes[0] as RequestType);
       if (data.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...data.portalSettings });
       if (data.welcomeMessage) setWelcomeMessage(data.welcomeMessage);
+      if (data.stats) setStats(data.stats);
       setScreen('dashboard');
     },
     onError: (err: Error) => setError(err.message),
@@ -601,8 +612,10 @@ function PortalApp() {
   React.useEffect(() => {
     if (!refreshData) return;
     setDeals((refreshData.deals ?? []).filter((d: any) => d.status !== 'archived'));
+    if (refreshData.contactType) setContactType(refreshData.contactType === 'agent' ? 'agent' : 'client');
     if (refreshData.requestTypes?.length) setAvailableRequestTypes(refreshData.requestTypes);
     if (refreshData.portalSettings) setPortalSettings({ ...DEFAULT_PORTAL_SETTINGS, ...refreshData.portalSettings });
+    if (refreshData.stats) setStats(refreshData.stats);
   }, [refreshData]);
 
   const handleRefresh = async () => {
@@ -780,6 +793,8 @@ function PortalApp() {
     setMessage('');
     setError('');
     setWelcomeMessage('');
+    setStats(null);
+    setContactType('client');
     setPortalSettings(DEFAULT_PORTAL_SETTINGS);
   };
 
@@ -880,6 +895,7 @@ function PortalApp() {
   /* ── DASHBOARD ── */
   if (screen === 'dashboard') {
     const firstName = contactName.split(' ')[0] || contactName;
+    const isAgentPortal = contactType === 'agent';
     return (
       <div className="min-h-screen bg-gray-50">
         <header className="bg-[#1B2C5E] text-white px-4 py-4 shadow-lg">
@@ -906,8 +922,30 @@ function PortalApp() {
         <main className="max-w-2xl mx-auto px-4 py-6">
           <h2 className="text-2xl font-bold text-[#1B2C5E] mb-1">Welcome back, {firstName}!</h2>
           <p className="text-gray-500 text-sm mb-6">
-            {deals.length} Active Deal{deals.length !== 1 ? 's' : ''}
+            {isAgentPortal ? `${deals.length} Deal${deals.length !== 1 ? 's' : ''} Total` : `${deals.length} Active Deal${deals.length !== 1 ? 's' : ''}`}
           </p>
+
+          {/* Agent stat cards */}
+          {isAgentPortal && stats && (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-[#1B2C5E]">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Active Deals</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{stats.activeDealCount}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-[#F4B942]">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Pipeline Volume</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats.pipelineVolume)}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-emerald-500">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Closed This Year</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{stats.closedDealCount}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow p-4 border-l-4 border-emerald-400">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Closed Volume</p>
+                <p className="text-2xl font-bold text-[#1B2C5E]">{formatVolume(stats.closedVolume)}</p>
+              </div>
+            </div>
+          )}
 
           {deals.length === 0 ? (
             <div className="bg-white rounded-2xl shadow p-10 text-center">
@@ -953,6 +991,14 @@ function PortalApp() {
                           {deal.status}
                         </span>
                       </div>
+                      {isAgentPortal && deal.purchasePrice && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sale Price</span>
+                          <span className="text-sm font-bold text-emerald-600">
+                            {formatVolume(Number(deal.purchasePrice))}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />
