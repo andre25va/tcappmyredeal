@@ -1013,13 +1013,23 @@ function PortalApp() {
                         {daysAwayBadge(days)}
                       </div>
                     </div>
-                    <div className="px-5 pb-4">
+                    <div className="px-5 pb-4 space-y-2">
                       <button
                         onClick={() => { setActiveDealId(deal.id); setDealTab('overview'); setScreen('deal'); }}
                         className="w-full bg-[#F4B942] text-[#1B2C5E] font-bold py-2.5 rounded-xl hover:bg-[#e0a830] transition flex items-center justify-center gap-1.5"
                       >
                         View Deal <ChevronRight className="w-4 h-4" />
                       </button>
+                      {isAgentPortal && (
+                        <a
+                          href={`https://tc-redeal-forms.vercel.app/contracts/new?deal_id=${deal.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-1.5 py-2.5 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E] hover:text-white transition text-sm"
+                        >
+                          <FileText className="w-4 h-4" /> Fill Out Contract
+                        </a>
+                      )}
                     </div>
                   </div>
                 );
