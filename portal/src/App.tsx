@@ -510,6 +510,9 @@ function PortalApp() {
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [stats, setStats] = useState<{ activeDealCount: number; pipelineVolume: number; closedDealCount: number; closedVolume: number } | null>(null);
   const [contactType, setContactType] = useState<'agent' | 'client'>('client');
+  const [contactId, setContactId] = useState<string>('');
+  const [contactEmail, setContactEmail] = useState<string>('');
+  const [contactCompany, setContactCompany] = useState<string>('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing] = useState(false);
@@ -569,6 +572,9 @@ function PortalApp() {
     onSuccess: (data) => {
       setContactName(data.contactName ?? '');
       setContactType(data.contactType === 'agent' ? 'agent' : 'client');
+      setContactId(data.contactId ?? '');
+      setContactEmail(data.contactEmail ?? '');
+      setContactCompany(data.contactCompany ?? '');
       const activeDeals = (data.deals ?? []).filter((d: any) => d.status !== 'archived');
       setDeals(activeDeals);
       if (activeDeals.length >= 1) setActiveDealId(activeDeals[0].id);
@@ -788,6 +794,9 @@ function PortalApp() {
     setPhone('');
     setPin('');
     setContactName('');
+    setContactId('');
+    setContactEmail('');
+    setContactCompany('');
     setDeals([]);
     setActiveDealId('');
     setMessage('');
@@ -952,7 +961,7 @@ function PortalApp() {
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Your Deals</p>
               <a
-                href="https://tc-redeal-forms.vercel.app/contracts/new"
+                href={`https://tc-redeal-forms.vercel.app/contracts/new${contactId ? '?agentContactId=' + contactId + '&agentName=' + encodeURIComponent(contactName) + '&agentEmail=' + encodeURIComponent(contactEmail) + '&agentPhone=' + encodeURIComponent(phone) + '&agentCompany=' + encodeURIComponent(contactCompany) : ''}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#F4B942] text-[#1B2C5E] font-bold rounded-xl shadow hover:bg-yellow-400 transition text-sm"
@@ -1055,7 +1064,7 @@ function PortalApp() {
                       </button>
                       {isAgentPortal && (
                         <a
-                          href={`https://tc-redeal-forms.vercel.app/contracts/new?dealId=${deal.id}`}
+                          href={`https://tc-redeal-forms.vercel.app/contracts/new?dealId=${deal.id}${contactId ? '&agentContactId=' + contactId + '&agentName=' + encodeURIComponent(contactName) + '&agentEmail=' + encodeURIComponent(contactEmail) + '&agentPhone=' + encodeURIComponent(phone) + '&agentCompany=' + encodeURIComponent(contactCompany) : ''}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-full flex items-center justify-center gap-1.5 py-2.5 border-2 border-[#1B2C5E] text-[#1B2C5E] font-bold rounded-xl hover:bg-[#1B2C5E] hover:text-white transition text-sm"
