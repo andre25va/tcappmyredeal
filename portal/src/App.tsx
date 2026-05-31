@@ -970,6 +970,20 @@ function PortalApp() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Agent: New Contract button */}
+              {isAgentPortal && (
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Your Deals</p>
+                  <a
+                    href="https://tc-redeal-forms.vercel.app/contracts/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-[#F4B942] hover:bg-[#e0a835] text-[#1B2C5E] font-bold text-sm px-4 py-2 rounded-xl shadow transition"
+                  >
+                    <span className="text-lg leading-none">+</span> New Contract
+                  </a>
+                </div>
+              )}
               {deals.map((deal) => {
                 const days = daysToClose(deal.closingDate);
                 return (
