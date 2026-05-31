@@ -12,7 +12,7 @@ const corsHeaders = {
 // ---------------------------------------------------------------------------
 // Railway MLS Listing Fetcher
 // ---------------------------------------------------------------------------
-const RAILWAY_LISTING_URL = 'https://mls-listing-fetcher-production.up.railway.app';
+const RAILWAY_LISTING_URL = 'https://mls.srv1462857.hstgr.cloud';
 
 async function fetchFromRailway(mlsNumber: string): Promise<any | null> {
   try {
