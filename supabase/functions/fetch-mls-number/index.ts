@@ -1,9 +1,10 @@
-// fetch-mls-number Edge Function v13
+// fetch-mls-number Edge Function v15
 // Architecture:
-//   address provided → Realist VPS (zip, county, apn, owner) + OpenAI (legal desc)
-//   mlsNumber only   → OpenAI (address resolution only) → Realist VPS + OpenAI (legal desc)
-//                      fallback: OpenAI full web search if address resolution or Realist fails
+//   address provided → Realist VPS (zip, county, apn, owner) + OpenAI legal desc
+//   mlsNumber only   → VPS /resolve-mls (OpenAI gpt-4o-search-preview in Node.js) → Realist VPS → OpenAI legal desc
+//                      fallback: OpenAI full web search if VPS resolution or Realist fails
 //   both provided    → Realist + OpenAI combined
+// v15 fix: MLS# address resolution moved to VPS (gpt-4o-search-preview, no Deno timeout issues)
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 const corsHeaders = {
@@ -21,10 +22,7 @@ async function fetchFromRealist(address: string, city?: string, state?: string, 
     const res = await fetch(`${VPS_URL}/property?address=${encodeURIComponent(fullAddress)}`, {
       signal: AbortSignal.timeout(45000),
     });
-    if (!res.ok) {
-      console.warn(`Realist VPS returned ${res.status}`);
-      return null;
-    }
+    if (!res.ok) { console.warn(`Realist VPS returned ${res.status}`); return null; }
     const data = await res.json();
     if (data.error) { console.warn('Realist error:', data.error); return null; }
     return data;
@@ -34,43 +32,27 @@ async function fetchFromRealist(address: string, city?: string, state?: string, 
   }
 }
 
-// ─── OpenAI: resolve MLS# → address only ─────────────────────────────────────
-async function fetchAddressFromMls(
-  mlsNumber: string, stateLabel: string, openAiKey: string
+// ─── VPS: resolve MLS# → address via gpt-4o-search-preview ──────────────────
+async function fetchAddressFromMlsViaVPS(
+  mlsNumber: string, openAiKey: string
 ): Promise<{ address: string; city: string; state: string; zip: string } | null> {
   try {
-    const prompt = `Search Zillow, Realtor.com, Redfin, or any real estate broker website for MLS listing number ${mlsNumber} in the Kansas City metro area (Heartland MLS, covering MO and KS).
-Look for pages that say "MLS #${mlsNumber}" or "MLS ${mlsNumber}" or similar.
-Return ONLY a valid JSON object with no markdown, no explanation:
-{"address": "123 Main St", "city": "Kansas City", "state": "MO", "zip": "64112"}
-If the listing is not found anywhere, return exactly: null`;
-
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    console.log(`[v15] Calling VPS /resolve-mls for MLS# ${mlsNumber}...`);
+    const res = await fetch(`${VPS_URL}/resolve-mls`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        tools: [{ type: 'web_search_preview' }],
-        input: prompt,
-      }),
-      signal: AbortSignal.timeout(30000),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mlsNumber, apiKey: openAiKey }),
+      signal: AbortSignal.timeout(70000),
     });
-
-    if (!response.ok) return null;
-    const apiData = await response.json();
-    const text = (apiData.output || [])
-      .filter((i: any) => i.type === 'message')
-      .flatMap((i: any) => i.content || [])
-      .filter((c: any) => c.type === 'output_text')
-      .map((c: any) => c.text).join('').trim();
-
-    if (!text || text.toLowerCase() === 'null') return null;
-    const jsonText = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(jsonText);
-    if (parsed?.address) return parsed;
+    if (!res.ok) { console.warn(`VPS /resolve-mls returned ${res.status}`); return null; }
+    const data = await res.json();
+    console.log(`[v15] VPS resolve-mls result: found=${data.found}, address=${data.address}`);
+    if (data.found && data.address) {
+      return { address: data.address, city: data.city, state: data.state, zip: data.zip };
+    }
     return null;
   } catch (err) {
-    console.warn('OpenAI address resolution failed:', err);
+    console.warn('VPS /resolve-mls failed:', err);
     return null;
   }
 }
@@ -92,7 +74,7 @@ If you cannot find it, return exactly: null`;
         tools: [{ type: 'web_search_preview' }],
         input: prompt,
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(40000),
     });
 
     if (!response.ok) return null;
@@ -117,6 +99,7 @@ async function fetchFromOpenAI(searchQuery: string, openAiKey: string): Promise<
     method: 'POST',
     headers: { 'Authorization': `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: 'gpt-4o', tools: [{ type: 'web_search_preview' }], input: searchQuery }),
+    signal: AbortSignal.timeout(55000),
   });
   if (!response.ok) return null;
   const apiData = await response.json();
@@ -228,7 +211,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // ─── MLS# only → resolve address → Realist ─────────────────────────────
+    // ─── MLS# only → VPS resolve-mls → Realist ─────────────────────────────
     if (!openAiKey) {
       return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -236,12 +219,11 @@ serve(async (req: Request) => {
 
     const stateLabel = state === 'KS' ? 'Kansas' : state === 'MO' ? 'Missouri' : (state || 'Kansas City area');
 
-    // Step 1: Ask OpenAI for the address from the MLS#
-    console.log(`Resolving address for MLS# ${mlsNumber}...`);
-    const resolvedAddress = await fetchAddressFromMls(mlsNumber.trim(), stateLabel, openAiKey);
+    // Step 1: Ask VPS to resolve MLS# → address (uses gpt-4o-search-preview)
+    const resolvedAddress = await fetchAddressFromMlsViaVPS(mlsNumber.trim(), openAiKey);
 
     if (resolvedAddress?.address) {
-      console.log(`Resolved address: ${JSON.stringify(resolvedAddress)} — hitting Realist...`);
+      console.log(`[v15] Resolved: ${JSON.stringify(resolvedAddress)} — hitting Realist...`);
 
       // Step 2: Feed that address to Realist
       const realistData = await fetchFromRealist(
@@ -269,9 +251,9 @@ serve(async (req: Request) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      console.warn('Realist failed after address resolution, falling back to full OpenAI search...');
+      console.warn('[v15] Realist failed after address resolution, falling back to full OpenAI search...');
     } else {
-      console.warn('Address resolution failed, falling back to full OpenAI search...');
+      console.warn('[v15] VPS address resolution failed, falling back to full OpenAI search...');
     }
 
     // Final fallback: full OpenAI web search for the MLS#
