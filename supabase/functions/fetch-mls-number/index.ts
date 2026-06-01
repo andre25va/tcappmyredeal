@@ -1,10 +1,8 @@
-// fetch-mls-number Edge Function v15
-// Architecture:
-//   address provided → Realist VPS (zip, county, apn, owner) + OpenAI legal desc
-//   mlsNumber only   → VPS /resolve-mls (OpenAI gpt-4o-search-preview in Node.js) → Realist VPS → OpenAI legal desc
-//                      fallback: OpenAI full web search if VPS resolution or Realist fails
-//   both provided    → Realist + OpenAI combined
-// v15 fix: MLS# address resolution moved to VPS (gpt-4o-search-preview, no Deno timeout issues)
+// fetch-mls-number Edge Function v16
+// Changes from v15:
+//   - County made REQUIRED in all OpenAI prompts (emphasized, example provided)
+//   - After any OpenAI fallback path, if legalDescription is null but we have address+county, fire fetchLegalFromOpenAI
+//   - buildAddressQuery + buildMlsQuery updated for stricter county/legal extraction
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 const corsHeaders = {
@@ -37,7 +35,7 @@ async function fetchAddressFromMlsViaVPS(
   mlsNumber: string, openAiKey: string
 ): Promise<{ address: string; city: string; state: string; zip: string } | null> {
   try {
-    console.log(`[v15] Calling VPS /resolve-mls for MLS# ${mlsNumber}...`);
+    console.log(`[v16] Calling VPS /resolve-mls for MLS# ${mlsNumber}...`);
     const res = await fetch(`${VPS_URL}/resolve-mls`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -46,7 +44,7 @@ async function fetchAddressFromMlsViaVPS(
     });
     if (!res.ok) { console.warn(`VPS /resolve-mls returned ${res.status}`); return null; }
     const data = await res.json();
-    console.log(`[v15] VPS resolve-mls result: found=${data.found}, address=${data.address}`);
+    console.log(`[v16] VPS resolve-mls result: found=${data.found}, address=${data.address}`);
     if (data.found && data.address) {
       return { address: data.address, city: data.city, state: data.state, zip: data.zip };
     }
@@ -93,7 +91,7 @@ If you cannot find it, return exactly: null`;
   }
 }
 
-// ─── OpenAI: full property search (final fallback) ───────────────────────────
+// ─── OpenAI: full property search ────────────────────────────────────────────
 async function fetchFromOpenAI(searchQuery: string, openAiKey: string): Promise<any | null> {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -160,6 +158,18 @@ function toTitleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
+// ─── Enrich OpenAI result with legal description if missing ──────────────────
+async function enrichWithLegal(result: any, openAiKey: string): Promise<any> {
+  if (!result?.found || !result?.data) return result;
+  if (result.data.legalDescription) return result; // already have it
+  const { address, city, state, zipCode, county } = result.data;
+  if (!address || !county) return result; // not enough info
+  console.log(`[v16] legalDescription missing — running dedicated fetch for ${address}, ${county} County`);
+  const legal = await fetchLegalFromOpenAI(address, city || '', state || '', zipCode || '', county, openAiKey);
+  if (legal) result.data.legalDescription = legal;
+  return result;
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -204,7 +214,9 @@ serve(async (req: Request) => {
       const fullAddress = secondaryAddress?.trim()
         ? `"${address}" AND "${secondaryAddress.trim()}" in ${cityStateZip}`
         : `${address}, ${cityStateZip}`;
-      const openAiResult = await fetchFromOpenAI(buildAddressQuery(fullAddress), openAiKey);
+      let openAiResult = await fetchFromOpenAI(buildAddressQuery(fullAddress), openAiKey);
+      // v16: enrich with dedicated legal description call if missing
+      if (openAiResult && openAiKey) openAiResult = await enrichWithLegal(openAiResult, openAiKey);
       return new Response(
         JSON.stringify(openAiResult || { found: false }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -223,7 +235,7 @@ serve(async (req: Request) => {
     const resolvedAddress = await fetchAddressFromMlsViaVPS(mlsNumber.trim(), openAiKey);
 
     if (resolvedAddress?.address) {
-      console.log(`[v15] Resolved: ${JSON.stringify(resolvedAddress)} — hitting Realist...`);
+      console.log(`[v16] Resolved: ${JSON.stringify(resolvedAddress)} — hitting Realist...`);
 
       // Step 2: Feed that address to Realist
       const realistData = await fetchFromRealist(
@@ -251,13 +263,15 @@ serve(async (req: Request) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      console.warn('[v15] Realist failed after address resolution, falling back to full OpenAI search...');
+      console.warn('[v16] Realist failed after address resolution, falling back to full OpenAI search...');
     } else {
-      console.warn('[v15] VPS address resolution failed, falling back to full OpenAI search...');
+      console.warn('[v16] VPS address resolution failed, falling back to full OpenAI search...');
     }
 
     // Final fallback: full OpenAI web search for the MLS#
-    const openAiResult = await fetchFromOpenAI(buildMlsQuery(mlsNumber.trim(), stateLabel), openAiKey);
+    let openAiResult = await fetchFromOpenAI(buildMlsQuery(mlsNumber.trim(), stateLabel), openAiKey);
+    // v16: enrich with dedicated legal description call if missing
+    if (openAiResult && openAiKey) openAiResult = await enrichWithLegal(openAiResult, openAiKey);
     return new Response(
       JSON.stringify(openAiResult || { found: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -272,14 +286,30 @@ serve(async (req: Request) => {
 
 function buildAddressQuery(fullAddress: string): string {
   return `Search Zillow, Realtor.com, Redfin, or MLS listing sites for the property: "${fullAddress}".
-Return ONLY a valid JSON object (no markdown) with these fields (null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, address, city, zipCode, county, legalDescription.
-propertyType: one of Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other. pool: boolean.
-If not found return {"found":false}, if found return {"found":true,"data":{...}}`;
+Return ONLY a valid JSON object (no markdown, no extra text) with EXACTLY these fields (use null if not found):
+mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, address, city, zipCode, county, legalDescription.
+
+IMPORTANT:
+- county: the county name (e.g. "Johnson", "Jackson", "Clay", "Platte") — this is REQUIRED, always include it
+- legalDescription: the full legal description from county records (e.g. "Lot 14 Block 3 Timber Ridge Subdivision") — include if found
+- propertyType: one of Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other
+- pool: boolean
+
+If property not found return {"found":false}
+If found return {"found":true,"data":{...all fields above...}}`;
 }
 
 function buildMlsQuery(mlsNumber: string, stateLabel: string): string {
   return `Search Zillow, Realtor.com, Redfin, Heartland MLS for MLS listing number: ${mlsNumber} in ${stateLabel}.
-Return ONLY a valid JSON object (no markdown) with these fields (null if unknown): mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, address, city, zipCode, county, legalDescription.
-county: county name (e.g. "Jackson"). legalDescription: full legal desc from deed/records. propertyType: one of Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other. pool: boolean.
-If not found return {"found":false}, if found return {"found":true,"data":{...}}`;
+Return ONLY a valid JSON object (no markdown, no extra text) with EXACTLY these fields (use null if not found):
+mlsNumber, mlsBoardName, propertyType, listPrice, bedrooms, bathrooms, sqftLiving, yearBuilt, listingStatus, daysOnMarket, listingAgentName, listingOfficeName, subdivision, hoaFee, garage, pool, address, city, zipCode, county, legalDescription.
+
+IMPORTANT:
+- county: the county name (e.g. "Johnson", "Jackson", "Clay", "Platte") — this is REQUIRED, always include it
+- legalDescription: the full legal description from county records or deed (e.g. "Lot 23 Stoneview 1st Plat City of Lenexa Johnson County Kansas") — include if found
+- propertyType: one of Single Family, Condo, Townhouse, Multi-Family, Land, Commercial, Other
+- pool: boolean
+
+If not found return {"found":false}
+If found return {"found":true,"data":{...all fields above...}}`;
 }
