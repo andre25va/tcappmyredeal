@@ -1,4 +1,4 @@
-// fetch-mls-number Edge Function v12
+// fetch-mls-number Edge Function v13
 // Architecture:
 //   address provided → Realist VPS (zip, county, apn, owner) + OpenAI (legal desc)
 //   mlsNumber only   → OpenAI (address resolution only) → Realist VPS + OpenAI (legal desc)
@@ -39,10 +39,11 @@ async function fetchAddressFromMls(
   mlsNumber: string, stateLabel: string, openAiKey: string
 ): Promise<{ address: string; city: string; state: string; zip: string } | null> {
   try {
-    const prompt = `Find the street address for MLS listing number ${mlsNumber} in ${stateLabel} (Heartland MLS / Kansas City area).
-Return ONLY a valid JSON object with no markdown:
+    const prompt = `Search Zillow, Realtor.com, Redfin, or any real estate broker website for MLS listing number ${mlsNumber} in the Kansas City metro area (Heartland MLS, covering MO and KS).
+Look for pages that say "MLS #${mlsNumber}" or "MLS ${mlsNumber}" or similar.
+Return ONLY a valid JSON object with no markdown, no explanation:
 {"address": "123 Main St", "city": "Kansas City", "state": "MO", "zip": "64112"}
-If not found, return exactly: null`;
+If the listing is not found anywhere, return exactly: null`;
 
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -52,7 +53,7 @@ If not found, return exactly: null`;
         tools: [{ type: 'web_search_preview' }],
         input: prompt,
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) return null;
