@@ -279,6 +279,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
   const [duplicateDealAction, setDuplicateDealAction] = useState<'pending' | 'archive_and_create' | 'create_anyway' | 'go_to_existing' | null>(null);
   const [mlsFetching, setMlsFetching] = useState(false);
   const [mlsFetchStatus, setMlsFetchStatus] = useState<'' | 'found' | 'not_found'>('');
+  const [legalDescFetching, setLegalDescFetching] = useState(false);
+  const [legalDescFetchError, setLegalDescFetchError] = useState('');
   // 'pdf' = auto-detected from contract PDF, 'mls' = confirmed/updated from MLS fetch
   const [mlsBoardDetectedSource, setMlsBoardDetectedSource] = useState<'pdf' | 'mls' | 'agent' | null>(null);
   const { data: mlsEntriesRaw } = useMlsEntries();
@@ -723,6 +725,33 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
       setMlsFetchStatus('not_found');
     } finally {
       setMlsFetching(false);
+    }
+  };
+
+  const fetchLegalDescription = async () => {
+    const addressParts = [form.address.trim(), form.city.trim(), form.state.trim(), form.zipCode.trim()].filter(Boolean);
+    if (addressParts.length < 2) return;
+    const fullAddress = addressParts.join(', ');
+    setLegalDescFetching(true);
+    setLegalDescFetchError('');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await fetch(
+        `https://mls.srv1462857.hstgr.cloud/property?address=${encodeURIComponent(fullAddress)}`,
+        { signal: controller.signal }
+      );
+      const data = await res.json();
+      if (data.legalDescription) {
+        setForm(p => ({ ...p, legalDescription: data.legalDescription }));
+      } else {
+        setLegalDescFetchError('Legal description not found — enter manually');
+      }
+    } catch (err: any) {
+      setLegalDescFetchError(err.name === 'AbortError' ? 'Timed out — enter manually' : 'Fetch failed — enter manually');
+    } finally {
+      clearTimeout(timer);
+      setLegalDescFetching(false);
     }
   };
 
@@ -2226,7 +2255,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 )}
                 {/* Legal Description */}
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Legal Description</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-base-content/50">Legal Description</label>
+                    <button
+                      type="button"
+                      onClick={fetchLegalDescription}
+                      disabled={legalDescFetching || !form.address.trim()}
+                      className="btn btn-xs btn-warning gap-1"
+                    >
+                      {legalDescFetching ? <span className="loading loading-spinner loading-xs" /> : '🏠'}
+                      {legalDescFetching ? 'Fetching…' : 'Fetch Legal Desc'}
+                    </button>
+                  </div>
+                  {legalDescFetchError && (
+                    <p className="text-xs text-error mb-1">{legalDescFetchError}</p>
+                  )}
                   <textarea
                     className="textarea textarea-bordered w-full text-sm resize-none"
                     rows={3}
@@ -2549,7 +2592,21 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
 
                 {/* ── Legal Description ── */}
                 <div>
-                  <label className="text-xs text-base-content/50 mb-1 block">Legal Description <span className="text-base-content/30">(optional)</span></label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-base-content/50">Legal Description <span className="text-base-content/30">(optional)</span></label>
+                    <button
+                      type="button"
+                      onClick={fetchLegalDescription}
+                      disabled={legalDescFetching || !form.address.trim()}
+                      className="btn btn-xs btn-warning gap-1"
+                    >
+                      {legalDescFetching ? <span className="loading loading-spinner loading-xs" /> : '🏠'}
+                      {legalDescFetching ? 'Fetching…' : 'Fetch Legal Desc'}
+                    </button>
+                  </div>
+                  {legalDescFetchError && (
+                    <p className="text-xs text-error mb-1">{legalDescFetchError}</p>
+                  )}
                   <input className="input input-bordered w-full" value={form.legalDescription} onChange={f('legalDescription')} />
                 </div>
 
