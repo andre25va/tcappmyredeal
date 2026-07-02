@@ -13,6 +13,7 @@ export interface TCProfile {
   id: string;
   phone: string;
   name: string;
+  email?: string;             // populated when email is included in session/profile response
   role: 'tc' | 'admin' | 'viewer';
   timezone: string;
   initials: string;
