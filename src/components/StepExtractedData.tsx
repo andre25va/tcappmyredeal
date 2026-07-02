@@ -908,13 +908,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         {(Array.isArray(pageGroups) ? pageGroups : []).map(group => {
           const allFields = (group?.fields) || [];
 
-          // Skip empty groups (no data and not a primary group)
-          const primaryLabels = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties', 'Page 1', 'Page 2'];
-          const groupHasData = allFields.some(f => {
-            const raw = extractedData?.[f.key];
-            return raw !== null && raw !== undefined && raw !== '';
-          });
-          if (!primaryLabels.includes(group.label) && !groupHasData) return null;
+          // Always show all sections — missing fields stay in their section, not hidden
 
           // Classify fields into tiers
           const tier1Fields = allFields.filter(f => getFieldTier(f, extractedData) === 1);
