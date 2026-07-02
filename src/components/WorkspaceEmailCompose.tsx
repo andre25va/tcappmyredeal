@@ -419,6 +419,21 @@ export default function WorkspaceEmailCompose({
     loadAgentTeamCC();
   }, [deal.id]);
 
+  // ── Pick up pending contract email draft from validation modal ─────────────
+  useEffect(() => {
+    const raw = sessionStorage.getItem('contractEmailDraft');
+    if (!raw) return;
+    try {
+      const { subject: draftSubject, body: draftBody } = JSON.parse(raw);
+      if (draftSubject) setSubject(draftSubject);
+      if (draftBody)    setBodyText(draftBody);
+      sessionStorage.removeItem('contractEmailDraft');
+    } catch {
+      // ignore malformed draft
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deal.id]);
+
   const handleSelectTemplate = useCallback(
     (templateId: string) => {
       setSelectedTemplateId(templateId);

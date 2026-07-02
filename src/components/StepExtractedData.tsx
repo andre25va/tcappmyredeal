@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, RefreshCw, Search, ChevronRight, ChevronDown, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { validateContract, buildViolationEmailBody, type ValidationViolation } from '../utils/contractValidation';
 
 // --- Types ---
 interface ContactSuggestion {
@@ -46,6 +47,8 @@ interface StepExtractedDataProps {
   onReExtract: () => void;
   onJumpToPage?: (page: number) => void;
   mlsBoard?: string;
+  orgId?: string;
+  propertyAddress?: string;
 }
 
 // --- Field Definitions ---
@@ -400,6 +403,8 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   onReExtract,
   onJumpToPage,
   mlsBoard,
+  orgId,
+  propertyAddress,
 }) => {
   const [values, setValues] = useState<Record<string, string>>(() => {
     if (!extractedData) return {};
@@ -533,10 +538,16 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   // --- Accordion state — all collapsed by default, TC expands page by page ---
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
+  // ── Contract validation state ─────────────────────────────────────────────
+  const [pendingViolations, setPendingViolations] = React.useState<ValidationViolation[]>([]);
+  const [pendingVerifiedData, setPendingVerifiedData] = React.useState<Record<string, unknown> | null>(null);
+  const [showValidationModal, setShowValidationModal] = React.useState(false);
+  const [creatingTasks, setCreatingTasks] = React.useState(false);
+
   const toggleSection = (section: string) =>
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
 
-  const handleConfirm = () => {
+  const buildVerifiedData = (): Record<string, unknown> => {
     const verified: Record<string, unknown> = { ...(extractedData || {}) };
     FIELD_DEFS.forEach(({ key, type }) => {
       const v = values[key];
@@ -548,28 +559,91 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         verified[key] = v;
       }
     });
-    // Save AI corrections in background if dealId provided
-    if (dealId) {
-      const corrections = FIELD_DEFS
-        .filter(({ key }) => {
-          const aiVal = initialValuesRef.current[key] ?? '';
-          const userVal = values[key] ?? '';
-          return aiVal !== userVal;
-        })
-        .map(({ key }) => ({
-          deal_id: dealId,
-          field_key: key,
-          ai_value: initialValuesRef.current[key] || null,
-          corrected_value: values[key] || null,
-          form_slug: contractDetection?.formName && contractDetection.formName !== 'Unknown'
-            ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-            : null,
-        }));
-      if (corrections.length > 0) {
-        supabase.from('extraction_corrections').insert(corrections).then(() => {});
-      }
+    return verified;
+  };
+
+  const saveCorrections = (verified: Record<string, unknown>) => {
+    if (!dealId) return;
+    const corrections = FIELD_DEFS
+      .filter(({ key }) => {
+        const aiVal = initialValuesRef.current[key] ?? '';
+        const userVal = values[key] ?? '';
+        return aiVal !== userVal;
+      })
+      .map(({ key }) => ({
+        deal_id: dealId,
+        field_key: key,
+        ai_value: initialValuesRef.current[key] || null,
+        corrected_value: values[key] || null,
+        form_slug: contractDetection?.formName && contractDetection.formName !== 'Unknown'
+          ? contractDetection.formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          : null,
+      }));
+    if (corrections.length > 0) {
+      supabase.from('extraction_corrections').insert(corrections).then(() => {});
     }
+  };
+
+  const handleConfirm = () => {
+    const verified = buildVerifiedData();
+    saveCorrections(verified);
+
+    // Run contract validation
+    const stringValues: Record<string, string> = {};
+    FIELD_DEFS.forEach(({ key }) => { stringValues[key] = values[key] ?? ''; });
+    const violations = validateContract(stringValues);
+
+    if (violations.length > 0) {
+      setPendingViolations(violations);
+      setPendingVerifiedData(verified);
+      setShowValidationModal(true);
+      return;
+    }
+
     onConfirm(verified);
+  };
+
+  const handleContinueWithTasks = async () => {
+    if (!pendingVerifiedData) return;
+    setCreatingTasks(true);
+    try {
+      // Create deal tasks for each violation if dealId is available
+      if (dealId && pendingViolations.length > 0) {
+        await supabase.from('tasks').insert(
+          pendingViolations.map(v => ({
+            deal_id: dealId,
+            org_id: orgId ?? null,
+            title: `⚠️ ${v.label} — ${v.message}`,
+            category: 'contract_review',
+            priority: 'high',
+            status: 'pending',
+            due_date: new Date().toISOString().slice(0, 10),
+          }))
+        );
+      }
+      // Store email draft in sessionStorage for email composer to pick up
+      const address = propertyAddress || (pendingVerifiedData.address as string) || 'the property';
+      sessionStorage.setItem('contractEmailDraft', JSON.stringify({
+        subject: `Action Required — Contract Items Need Attention: ${address}`,
+        body: buildViolationEmailBody(address, pendingViolations),
+      }));
+    } catch (err) {
+      console.error('Failed to create validation tasks:', err);
+    } finally {
+      setCreatingTasks(false);
+      setShowValidationModal(false);
+      onConfirm(pendingVerifiedData);
+      setPendingViolations([]);
+      setPendingVerifiedData(null);
+    }
+  };
+
+  const handleContinueWithoutTasks = () => {
+    if (!pendingVerifiedData) return;
+    setShowValidationModal(false);
+    onConfirm(pendingVerifiedData);
+    setPendingViolations([]);
+    setPendingVerifiedData(null);
   };
 
   // Empty / no-data state
@@ -1185,6 +1259,85 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         );
       })()}
     </div>
+
+      {/* ── Contract Validation Modal ─────────────────────────────────────── */}
+      {showValidationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-base-100 rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 space-y-4">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-100 rounded-full p-2">
+                <AlertCircle size={22} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base-content text-base">Contract Issues Found</h3>
+                <p className="text-xs text-base-content/50">Review before submitting — you can still continue</p>
+              </div>
+            </div>
+
+            {/* Violations list */}
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {pendingViolations.filter(v => v.severity === 'error').map(v => (
+                <div key={v.fieldKey} className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <span className="text-red-500 mt-0.5 flex-none">🔴</span>
+                  <div>
+                    <p className="text-sm font-semibold text-red-800">{v.label}</p>
+                    <p className="text-xs text-red-600">{v.message}</p>
+                  </div>
+                </div>
+              ))}
+              {pendingViolations.filter(v => v.severity === 'warning').map(v => (
+                <div key={v.fieldKey} className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <span className="text-amber-500 mt-0.5 flex-none">🟡</span>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">{v.label}</p>
+                    <p className="text-xs text-amber-600">{v.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Task info */}
+            {dealId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                <strong>Auto-create tasks</strong> — clicking "Create Tasks & Continue" will create {pendingViolations.length} deal task{pendingViolations.length !== 1 ? 's' : ''} and prepare an email draft to your client's agent.
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2 pt-1">
+              {dealId ? (
+                <button
+                  onClick={handleContinueWithTasks}
+                  disabled={creatingTasks}
+                  className="btn btn-warning btn-sm gap-2 w-full"
+                >
+                  {creatingTasks ? (
+                    <><span className="loading loading-spinner loading-xs" /> Creating tasks…</>
+                  ) : (
+                    <><CheckCircle2 size={14} /> Create {pendingViolations.length} Task{pendingViolations.length !== 1 ? 's' : ''} + Draft Email & Continue</>
+                  )}
+                </button>
+              ) : null}
+              <button
+                onClick={handleContinueWithoutTasks}
+                disabled={creatingTasks}
+                className="btn btn-ghost btn-sm gap-2 w-full text-base-content/60"
+              >
+                Continue Without Creating Tasks
+              </button>
+              <button
+                onClick={() => setShowValidationModal(false)}
+                disabled={creatingTasks}
+                className="btn btn-outline btn-sm gap-2 w-full"
+              >
+                ← Go Back & Fix Issues
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 };
 
