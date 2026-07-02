@@ -236,6 +236,7 @@ async function executeTool(
   args: Record<string, unknown>,
   supabase: ReturnType<typeof createClient<any>>,
   openaiKey: string,
+  orgId: string,
 ): Promise<string> {
   try {
     switch (name) {
@@ -247,6 +248,7 @@ async function executeTool(
         let query = supabase
           .from('deals')
           .select('id, property_address, city, state, status, pipeline_stage, closing_date, purchase_price, transaction_type, agent_name, created_at')
+          .eq('org_id', orgId)
           .order('closing_date', { ascending: true })
           .limit(limit);
 
@@ -284,7 +286,8 @@ async function executeTool(
         const search = (args.search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state, zip, mls_number, deal_type, transaction_type, status, pipeline_stage, contract_date, closing_date, purchase_price, earnest_money, agent_name, notes');
+          .select('id, property_address, city, state, zip, mls_number, deal_type, transaction_type, status, pipeline_stage, contract_date, closing_date, purchase_price, earnest_money, agent_name, notes')
+          .eq('org_id', orgId);
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add deals in TC Command first.' });
         const match = data.find((r: any) => {
@@ -316,7 +319,8 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state, pipeline_stage, closing_date');
+          .select('id, property_address, city, state, pipeline_stage, closing_date')
+          .eq('org_id', orgId);
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add a deal first.' });
 
@@ -361,6 +365,7 @@ async function executeTool(
         const { data, error } = await supabase
           .from('deals')
           .select('property_address, city, state, status, pipeline_stage, closing_date')
+          .eq('org_id', orgId)
           .gte('closing_date', today)
           .lte('closing_date', futureDate)
           .order('closing_date', { ascending: true });
@@ -388,7 +393,8 @@ async function executeTool(
         const today = new Date().toISOString().slice(0, 10);
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id, deals(id, property_address, city, state)')
+          .select('id, title, due_date, priority, category, status, deal_id, deals!inner(id, property_address, city, state, org_id)')
+          .eq('deals.org_id', orgId)
           .lt('due_date', today)
           .neq('status', 'completed')
           .order('due_date', { ascending: true });
@@ -417,7 +423,8 @@ async function executeTool(
         const today = new Date().toISOString().slice(0, 10);
         const { data: structuredTasks, error: stError } = await supabase
           .from('tasks')
-          .select('id, title, due_date, priority, category, status, deal_id, deals(id, property_address, city, state)')
+          .select('id, title, due_date, priority, category, status, deal_id, deals!inner(id, property_address, city, state, org_id)')
+          .eq('deals.org_id', orgId)
           .eq('due_date', today)
           .neq('status', 'completed');
 
@@ -443,7 +450,8 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data, error } = await supabase
           .from('deals')
-          .select('id, property_address, city, state');
+          .select('id, property_address, city, state')
+          .eq('org_id', orgId);
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals exist yet. Create a deal first, then add tasks to it.' });
 
@@ -481,7 +489,8 @@ async function executeTool(
         const query = (args.query as string).toLowerCase();
         const { data: contacts, error: cError } = await supabase
           .from('contacts')
-          .select('first_name, last_name, email, phone, contact_type, company');
+          .select('first_name, last_name, email, phone, contact_type, company')
+          .eq('org_id', orgId);
 
         const matches: any[] = [];
 
@@ -505,7 +514,8 @@ async function executeTool(
       case 'get_deal_summary': {
         const { data, error } = await supabase
           .from('deals')
-          .select('status, pipeline_stage, purchase_price, closing_date, state');
+          .select('status, pipeline_stage, purchase_price, closing_date, state')
+          .eq('org_id', orgId);
         if (error) return JSON.stringify({ error: error.message });
         if (!data || data.length === 0) {
           return JSON.stringify({
@@ -551,7 +561,8 @@ async function executeTool(
         const search = (args.deal_search as string).toLowerCase();
         const { data } = await supabase
           .from('deals')
-          .select('property_address, city, state, zip, closing_date, purchase_price, status, pipeline_stage');
+          .select('property_address, city, state, zip, closing_date, purchase_price, status, pipeline_stage')
+          .eq('org_id', orgId);
         if (!data || data.length === 0) return JSON.stringify({ error: 'No deals found. Add a deal first.' });
         const match = data.find((r: any) => {
           return (r.property_address || '').toLowerCase().includes(search)
@@ -630,9 +641,12 @@ export default async function handler(req: any, res: any) {
   const supabase = createClient<any>(supabaseUrl, supabaseKey);
 
   try {
-    const { messages } = req.body;
+    const { messages, orgId } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'messages array is required' });
+    }
+    if (!orgId || typeof orgId !== 'string') {
+      return res.status(400).json({ error: 'orgId is required' });
     }
 
     const fullMessages = [
@@ -678,7 +692,7 @@ export default async function handler(req: any, res: any) {
         const fnName = toolCall.function.name;
         let fnArgs: Record<string, unknown> = {};
         try { fnArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { fnArgs = {}; }
-        const result = await executeTool(fnName, fnArgs, supabase, openaiKey);
+        const result = await executeTool(fnName, fnArgs, supabase, openaiKey, orgId);
 
         // Capture explicit navigation actions
         if (fnName === 'navigate_to_deal' || fnName === 'navigate_to_view') {
@@ -753,6 +767,7 @@ export default async function handler(req: any, res: any) {
               .from('deals')
               .select('id, property_address, city, state')
               .eq('id', uniqueDealIds[0])
+              .eq('org_id', orgId)
               .single();
             if (dealRow) {
               navigateTo = {
@@ -778,6 +793,7 @@ export default async function handler(req: any, res: any) {
     supabase.from('activity_log').insert({
       action: 'chat_message',
       entity_type: 'ai_chat',
+      org_id: orgId,
       description: `AI Chat: ${messages[messages.length - 1]?.content?.substring(0, 200)}`,
       metadata: JSON.stringify({ toolsUsed: rounds > 0, rounds, navigated: !!navigateTo }),
     }).then(() => {}, () => {});
