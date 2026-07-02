@@ -466,7 +466,8 @@ function ChangeComparisonModal({ doc, deal, onConfirm, onDismiss }: ChangeCompar
       const extractionMap: Record<string, string> = {};
       data.fields.forEach(f => { if (f.value != null && f.value !== '') extractionMap[f.key] = f.value; });
       if (Object.keys(extractionMap).length > 0) {
-        supabase.from('deal_documents').update({ extraction_data: extractionMap }).eq('id', doc.id).then(() => {});
+        const { error: saveError } = await supabase.from('deal_documents').update({ extraction_data: extractionMap }).eq('id', doc.id);
+        if (saveError) console.error('[WorkspaceDocuments] Failed to save extraction data:', saveError.message);
       }
 
       // Auto-check all fields that are CHANGED vs current deal

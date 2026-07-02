@@ -152,7 +152,7 @@ async function handleVerifyOtp(req: VercelRequest, res: VercelResponse) {
     if (!otp) return res.status(400).json({ error: 'Code expired or not found. Request a new one.' });
 
     await supabase.from('otp_codes').update({ attempts: otp.attempts + 1 }).eq('id', otp.id);
-    if (otp.attempts >= 5) {
+    if (otp.attempts >= 4) {
       await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
       return res.status(400).json({ error: 'Too many attempts. Please request a new code.' });
     }
@@ -388,7 +388,7 @@ async function handleDemoLogin(req: VercelRequest, res: VercelResponse) {
     if (!otp) return res.status(400).json({ error: 'Code expired or not found. Request a new one.' });
 
     await supabase.from('otp_codes').update({ attempts: otp.attempts + 1 }).eq('id', otp.id);
-    if (otp.attempts >= 5) {
+    if (otp.attempts >= 4) {
       await supabase.from('otp_codes').update({ used: true }).eq('id', otp.id);
       return res.status(400).json({ error: 'Too many attempts. Please request a new code.' });
     }

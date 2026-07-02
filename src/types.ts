@@ -451,6 +451,7 @@ export interface Deal {
   downPayment?: number;
   earnestMoney?: number;           // Earnest money deposit amount
   earnestMoneyDueDate?: string;
+  earnestMoneyRefundable?: string;          // 'Refundable' | 'Non-refundable' | ''
   sellerConcessions?: number;
   totalSellerCredits?: number;
 
