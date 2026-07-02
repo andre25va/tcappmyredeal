@@ -394,6 +394,20 @@ function SourceBadge({ fieldKey, fieldSources, onJumpToPage }: {
   );
 }
 
+
+// Format a raw numeric string as a comma-separated money value (e.g. "32000" -> "32,000.00")
+function formatMoney(raw: string): string {
+  if (!raw && raw !== '0') return '';
+  const num = parseFloat(raw.replace(/,/g, ''));
+  if (isNaN(num)) return raw;
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Strip formatting to get raw numeric string for storage
+function stripMoney(formatted: string): string {
+  return formatted.replace(/,/g, '');
+}
+
 const StepExtractedData: React.FC<StepExtractedDataProps> = ({
   dealId,
   extractedData,
@@ -1057,16 +1071,17 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
 
                           {field.type === 'money' && (
                             <div className="relative">
-                              {currentVal && (
+                              {(currentVal || currentVal === '0') && (
                                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-base-content/40 pointer-events-none">$</span>
                               )}
                               <input
-                                type="number"
-                                value={currentVal}
-                                onChange={e => setValue(field.key, e.target.value)}
+                                type="text"
+                                inputMode="decimal"
+                                value={formatMoney(currentVal)}
+                                onChange={e => setValue(field.key, stripMoney(e.target.value))}
+                                onFocus={e => { e.target.value = stripMoney(e.target.value); }}
+                                onBlur={e => { setValue(field.key, stripMoney(e.target.value)); }}
                                 className={`input input-sm input-bordered w-full text-sm ${currentVal ? 'pl-6' : ''}`}
-                                min="0"
-                                step="0.01"
                                 placeholder={!wasFound ? 'Not found — type to fill in' : '0.00'}
                               />
                             </div>
