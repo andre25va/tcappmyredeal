@@ -1627,6 +1627,28 @@ ${keyFields}`;
     console.warn('[extract-deal] Field schema fetch failed, proceeding without field map:', e);
   }
 
+
+  // ── Form Brain field-level extraction hints ────────────────────────────────
+  // Pull extraction_hint from form_template_fields for this form.
+  // These hints are managed in the Form Brain (DB) — no code deploy needed to update them.
+  // Appended LAST so they override any conflicting hardcoded instructions above.
+  let formBrainHintsBlock = '';
+  try {
+    const { data: brainFields } = await supabase
+      .from('form_template_fields')
+      .select('label, extraction_hint')
+      .eq('form_slug', coordsFormSlug)
+      .not('extraction_hint', 'is', null)
+      .not('extraction_hint', 'eq', '');
+
+    if (brainFields && brainFields.length > 0) {
+      const hintLines = brainFields.map((f: any) => `• ${f.label}: ${f.extraction_hint}`).join('\n');
+      formBrainHintsBlock = `\n\nFORM BRAIN FIELD-LEVEL HINTS (highest priority — these override any conflicting guidance above):\n${hintLines}`;
+    }
+  } catch (e) {
+    console.warn('[extract-deal] Form Brain hints fetch failed (non-fatal):', e);
+  }
+
   // ── Known corrections block ─────────────────────────────────────────────────
   // Pull top recurring TC corrections for this form type and inject as hints.
   // These are real corrections from past extractions — highest-signal guidance available.
@@ -1763,7 +1785,7 @@ Set confidence 0.0-1.0 based on how clearly the document is a real estate purcha
 Set extractedFields to an array of field names that had non-null values found.
 Set fieldScores to an array of { field, score } objects where score is 0.0–1.0. Only include fields actually found. Use 0.9+ for clearly printed values, 0.6–0.8 for interpreted values, 0.3–0.5 for ambiguous values.
 For allCheckboxes: catalog EVERY checkbox found in the contract regardless of whether it maps to a predefined field. For each checkbox return: label (the text next to the checkbox — be descriptive), checked (true if the box is checked/filled/marked, false if empty), section (the contract section it appears in, e.g. "Financing", "Inspection", "As-Is", "HOA", "Home Warranty", "Possession", "Closing Costs", "Commission", "Earnest Money", "Appraisal", "Title", "Other"). Return an empty array if no checkboxes are found.
-For fieldSources: output an ARRAY. For EVERY field you extract with a non-null value, push an entry: { field: 'exactFieldName', page: (PDF page number 1-indexed), line: (printed line number if visible, otherwise null), text: 'exact raw sentence from contract — verbatim, max 200 chars' }. Example: [{ field: 'buyerAgentCommission', page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... $9,420' }]. This lets the TC verify each extracted value directly against the contract.` + fieldSchemaSection + knownCorrectionsBlock + appendixBlock;
+For fieldSources: output an ARRAY. For EVERY field you extract with a non-null value, push an entry: { field: 'exactFieldName', page: (PDF page number 1-indexed), line: (printed line number if visible, otherwise null), text: 'exact raw sentence from contract — verbatim, max 200 chars' }. Example: [{ field: 'buyerAgentCommission', page: 4, line: 207, text: 'SELLER agrees to pay Broker assisting BUYER from SELLER funds at Closing ... $9,420' }]. This lets the TC verify each extracted value directly against the contract.` + fieldSchemaSection + knownCorrectionsBlock + appendixBlock + formBrainHintsBlock;
 
   // Build user content array — prepend blank template if available
   const userContent: any[] = [];
