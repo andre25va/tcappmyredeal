@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PropertyEmailModal } from './PropertyEmailModal';
 import { X, Send, Loader2, Bot, User, Sparkles, Trash2, ArrowRight, MapPin, LayoutDashboard, Building2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ChatMessage {
   id: string;
@@ -30,6 +31,7 @@ const QUICK_ACTIONS = [
 ];
 
 export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView, onCallStarted: _onCallStarted }) => {
+  const { primaryOrgId } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -85,7 +87,7 @@ export const AIChat: React.FC<AIChatProps> = ({ onNavigateToDeal, onSetView, onC
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, orgId: primaryOrgId() }),
       });
 
       if (!res.ok) {
