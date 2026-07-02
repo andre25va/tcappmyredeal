@@ -98,10 +98,13 @@ const FIELD_DEFS: FieldDef[] = [
   { key: 'saleType',            label: 'Sale Type',           type: 'select',  section: 'Financing',  options: ['Cash', 'Financed'],
     hint: '"true" if "THIS IS A CASH SALE" checkbox is checked (line 296)' },
   { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
-    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'] },
+    options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'],
+    hint: 'Loan type from pre-approval or financing section (Conventional, FHA, VA, USDA, etc.)' },
   { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
-  { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing' },
-  { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing' },
+  { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing',
+    hint: 'Loan officer personal name from pre-approval section (lines ~348-365)' },
+  { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing',
+    hint: 'Lender company name from "BUYER IS PRE-APPROVED" checkbox section (lines ~348-365), e.g. "Mike Mena Creative Lending"' },
   { key: 'loanApplicationDue',  label: 'Loan Application Due',type: 'text',    section: 'Financing',
     hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
   { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due', type: 'text', section: 'Financing',
@@ -905,13 +908,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
         {(Array.isArray(pageGroups) ? pageGroups : []).map(group => {
           const allFields = (group?.fields) || [];
 
-          // Skip empty groups (no data and not a primary group)
-          const primaryLabels = ['Property', 'Transaction', 'Financing', 'Key Dates', 'Parties', 'Page 1', 'Page 2'];
-          const groupHasData = allFields.some(f => {
-            const raw = extractedData?.[f.key];
-            return raw !== null && raw !== undefined && raw !== '';
-          });
-          if (!primaryLabels.includes(group.label) && !groupHasData) return null;
+          // Always show all sections — missing fields stay in their section, not hidden
 
           // Classify fields into tiers
           const tier1Fields = allFields.filter(f => getFieldTier(f, extractedData) === 1);
@@ -924,7 +921,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
           // Ordered fields: tier1 first, then tier2, then tier3
           const orderedFields = [...tier1Fields, ...tier2Fields, ...tier3Fields];
 
-          const isOpen = openSections[group.key] ?? false;
+          const isOpen = openSections[group.key] ?? true;
 
           return (
             <div key={group.key} className="rounded-xl border border-base-300 overflow-hidden">
