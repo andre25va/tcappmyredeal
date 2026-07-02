@@ -341,7 +341,7 @@ export const DealWorkspace: React.FC<Props> = ({ deal, onUpdate, onBack, contact
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mlsNumber: deal.mlsNumber,
-          toEmail: 'tc@myredeal.com',
+          toEmail: profile?.email || 'tc@myredeal.com',
           folderEmail: deal.transaction_folder_email || undefined,
         }),
       });
