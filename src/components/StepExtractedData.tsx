@@ -10,7 +10,7 @@ interface ContactSuggestion {
   contact_type: string;
 }
 
-type FieldType = 'text' | 'date' | 'money' | 'number' | 'select' | 'contact';
+type FieldType = 'text' | 'date' | 'money' | 'number' | 'select' | 'contact' | 'checkbox';
 
 interface FieldDef {
   key: string;
@@ -18,6 +18,7 @@ interface FieldDef {
   type: FieldType;
   options?: string[];
   section: string;
+  subSection?: string;
   hint?: string;
 }
 
@@ -55,134 +56,240 @@ interface StepExtractedDataProps {
 // Sections: Property | Transaction | Financing | Key Dates | Inspection | Appraisal | Title & HOA | Home Warranty | Parties
 const FIELD_DEFS: FieldDef[] = [
 
-  // ── Property ──────────────────────────────────────────────────────────────
-  { key: 'address',             label: 'Street Address',      type: 'text',    section: 'Property' },
-  { key: 'city',                label: 'City',                type: 'text',    section: 'Property' },
-  { key: 'state',               label: 'State',               type: 'text',    section: 'Property' },
-  { key: 'zipCode',             label: 'ZIP Code',            type: 'text',    section: 'Property' },
-  { key: 'propertyType',        label: 'Property Type',       type: 'select',  section: 'Property',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PARTIES & PROPERTY
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'buyerNames',     label: 'Buyer Name(s)',              type: 'text',   section: 'Parties & Property', subSection: 'Buyers',
+    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-buyer names flagged for review' },
+  { key: 'buyer_name_1',   label: 'Buyer 1 Full Name',          type: 'text',   section: 'Parties & Property', subSection: 'Buyers' },
+  { key: 'buyer_name_2',   label: 'Buyer 2 Full Name',          type: 'text',   section: 'Parties & Property', subSection: 'Buyers' },
+  { key: 'sellerNames',    label: 'Seller Name(s)',              type: 'text',   section: 'Parties & Property', subSection: 'Sellers',
+    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-seller names flagged for review' },
+  { key: 'seller_name_1',  label: 'Seller 1 Full Name',         type: 'text',   section: 'Parties & Property', subSection: 'Sellers' },
+  { key: 'seller_name_2',  label: 'Seller 2 Full Name',         type: 'text',   section: 'Parties & Property', subSection: 'Sellers' },
+  { key: 'address',        label: 'Street Address',             type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'city',           label: 'City',                       type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'state',          label: 'State',                      type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'zipCode',        label: 'ZIP Code',                   type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'county',         label: 'County',                     type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'propertyType',   label: 'Property Type',              type: 'select', section: 'Parties & Property', subSection: 'Property',
     options: ['Single Family', 'Condo', 'Townhouse', 'Multi-Family', 'Land', 'Commercial', 'Other'] },
-  { key: 'mlsNumber',           label: 'MLS Number',          type: 'text',    section: 'Property' },
-  { key: 'mlsBoard',            label: 'MLS Board',           type: 'text',    section: 'Property' },
-  { key: 'legalDescription',    label: 'Legal Description',   type: 'text',    section: 'Property' },
+  { key: 'mlsNumber',      label: 'MLS Number',                 type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'mlsBoard',       label: 'MLS Board',                  type: 'text',   section: 'Parties & Property', subSection: 'Property' },
+  { key: 'legalDescription', label: 'Legal Description',        type: 'text',   section: 'Parties & Property', subSection: 'Property' },
 
-  // ── Transaction ───────────────────────────────────────────────────────────
-  { key: 'transactionType',       label: 'Transaction Type',        type: 'select',  section: 'Transaction',
-    options: ['buyer', 'seller', 'both'] },
-  { key: 'saleContingency',       label: 'Sale Contingency',        type: 'select',  section: 'Transaction',  options: ['IS Contingent', 'NOT Contingent'],
-    hint: "\"true\" if contract IS contingent on sale/closing of Buyer's property (line 290)" },
-  { key: 'contractPrice',          label: 'Sale / Contract Price',   type: 'money',   section: 'Transaction' },
-  { key: 'earnestMoney',          label: 'Earnest Money',           type: 'money',   section: 'Transaction' },
-  { key: 'earnestMoneyHolder',    label: 'Earnest Money Holder',    type: 'text',    section: 'Transaction' },
-  { key: 'earnestMoneyForm',      label: 'EM Payment Form',         type: 'text',    section: 'Transaction',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PURCHASE PRICE & EARNEST MONEY
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'contractPrice',         label: 'Sale / Contract Price',      type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price' },
+  { key: 'purchase_price',        label: 'Purchase Price',             type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price' },
+  { key: 'sellerCredit',          label: 'Seller Credit / Concessions',type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price',
+    hint: 'Price concessions — separate from closing cost contribution' },
+  { key: 'sellerPaidClosingCosts',label: 'Seller Paid Closing Costs',  type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price',
+    hint: 'Amount seller contributes toward buyer closing costs' },
+  { key: 'downPaymentAmount',     label: 'Down Payment',               type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price' },
+  { key: 'downPaymentPercent',    label: 'Down Payment %',             type: 'number', section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price' },
+  { key: 'repairsNotToExceed',    label: 'Repairs Not to Exceed',      type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Purchase Price' },
+
+  // Earnest Money
+  { key: 'earnestMoney',          label: 'Earnest Money',              type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnest_money_amount',  label: 'Earnest Money Amount',       type: 'money',  section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnestMoneyHolder',    label: 'Earnest Money Holder',       type: 'text',   section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnest_deposited_with',label: 'Earnest Deposited With',     type: 'text',   section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnestMoneyForm',      label: 'EM Payment Form (legacy)',   type: 'text',   section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money',
     hint: 'How earnest money is delivered — check, electronic/ACH, wire, or other' },
-  { key: 'earnestMoneyRefundable', label: 'EM Refundable',          type: 'select',  section: 'Transaction',
+  { key: 'em_payment_check',      label: 'EM Payment: Check',          type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'em_payment_eft',        label: 'EM Payment: Electronic/ACH', type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'em_payment_other',      label: 'EM Payment: Other',          type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnestMoneyRefundable',label: 'EM Refundable (legacy)',     type: 'select', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money',
     options: ['Refundable', 'Non-refundable'],
     hint: 'Whether earnest money is refundable or non-refundable (L181)' },
-  { key: 'additionalEarnestMoney',label: 'Additional Earnest Money',type: 'money',   section: 'Transaction' },
-  { key: 'additionalEarnestRefundable', label: 'Additional EM Refundable', type: 'select', section: 'Transaction',
+  { key: 'earnest_refundable_check',    label: 'EM is Refundable',     type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+  { key: 'earnest_nonrefundable_check', label: 'EM is Non-Refundable', type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Earnest Money' },
+
+  // Additional Earnest Money
+  { key: 'additionalEarnestMoney',        label: 'Additional Earnest Money',      type: 'money',    section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_amount',          label: 'Additional EM Amount',          type: 'money',    section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_deposited_with',  label: 'Additional EM Deposited With',  type: 'text',     section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_payment_check',   label: 'Add. EM Payment: Check',        type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_payment_eft',     label: 'Add. EM Payment: Electronic/ACH', type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_payment_other',   label: 'Add. EM Payment: Other',        type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additionalEarnestRefundable',   label: 'Additional EM Refundable (legacy)', type: 'select', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money',
     options: ['Refundable', 'Non-refundable'],
     hint: 'Whether additional earnest money is refundable or non-refundable (L191)' },
-  { key: 'sellerCredit',          label: 'Seller Credit / Concessions', type: 'money', section: 'Transaction',
-    hint: 'Price concessions — separate from closing cost contribution' },
-  { key: 'sellerPaidClosingCosts',label: 'Seller Paid Closing Costs', type: 'money', section: 'Transaction',
-    hint: 'Amount seller contributes toward buyer closing costs' },
-  { key: 'repairsNotToExceed',    label: 'Repairs Not to Exceed',   type: 'money',   section: 'Transaction' },
-  { key: 'downPaymentAmount',     label: 'Down Payment',            type: 'money',   section: 'Transaction' },
-  { key: 'downPaymentPercent',    label: 'Down Payment %',          type: 'number',  section: 'Transaction' },
-  { key: 'commissionReceived',    label: 'Commission Received',     type: 'money',   section: 'Transaction' },
-  { key: 'buyerAgentCommission',  label: 'Buyer Agent Commission',  type: 'text',    section: 'Transaction' },
-  { key: 'listingAgentCommission',label: 'Listing Agent Commission',type: 'text',    section: 'Transaction' },
+  { key: 'additional_em_refundable_check',    label: 'Add. EM is Refundable',     type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
+  { key: 'additional_em_nonrefundable_check', label: 'Add. EM is Non-Refundable', type: 'checkbox', section: 'Purchase Price & Earnest Money', subSection: 'Additional Earnest Money' },
 
-  // ── Financing ─────────────────────────────────────────────────────────────
-  { key: 'saleType',            label: 'Sale Type',           type: 'select',  section: 'Financing',  options: ['Cash', 'Financed'],
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HOME WARRANTY
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'warranty_waive_check',          label: 'Buyer Waives Warranty',        type: 'checkbox', section: 'Home Warranty' },
+  { key: 'warranty_seller_check',         label: 'Warranty Paid By: Seller',     type: 'checkbox', section: 'Home Warranty' },
+  { key: 'warranty_buyer_check',          label: 'Warranty Paid By: Buyer',      type: 'checkbox', section: 'Home Warranty' },
+  { key: 'warrantyArranger',              label: 'Warranty Arranged By (legacy)', type: 'text',    section: 'Home Warranty',
+    hint: '"Licensee assisting SELLER" or "Licensee assisting BUYER" (line 91)' },
+  { key: 'warranty_arranger_seller_check',label: 'Warranty Arranger: Seller Licensee', type: 'checkbox', section: 'Home Warranty' },
+  { key: 'warranty_arranger_buyer_check', label: 'Warranty Arranger: Buyer Licensee',  type: 'checkbox', section: 'Home Warranty' },
+  { key: 'homeWarrantyPaidBy',   label: 'Home Warranty Paid By (legacy)', type: 'text',  section: 'Home Warranty',
+    hint: 'e.g. BUYER, SELLER, BUYER waives, N/A' },
+  { key: 'warranty_cost',        label: 'Warranty Cost',                 type: 'money', section: 'Home Warranty' },
+  { key: 'homeWarrantyAmount',   label: 'Home Warranty Amount (legacy)', type: 'money', section: 'Home Warranty' },
+  { key: 'warranty_vendor',      label: 'Warranty Company',              type: 'text',  section: 'Home Warranty' },
+  { key: 'homeWarrantyCompany',  label: 'Home Warranty Company (legacy)',type: 'text',  section: 'Home Warranty' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LICENSED BROKER DISCLOSURE
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'broker_seller_licensed_check', label: 'Seller Is a Licensed Broker', type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Seller' },
+  { key: 'broker_seller_licensed_mo',    label: 'Seller Licensed: Missouri',   type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Seller' },
+  { key: 'broker_seller_licensed_ks',    label: 'Seller Licensed: Kansas',     type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Seller' },
+  { key: 'broker_buyer_licensed_check',  label: 'Buyer Is a Licensed Broker',  type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Buyer' },
+  { key: 'broker_buyer_licensed_mo',     label: 'Buyer Licensed: Missouri',    type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Buyer' },
+  { key: 'broker_buyer_licensed_ks',     label: 'Buyer Licensed: Kansas',      type: 'checkbox', section: 'Licensed Broker Disclosure', subSection: 'Buyer' },
+  { key: 'broker_family_relationship_check', label: 'Family/Business Relationship Exists', type: 'checkbox', section: 'Licensed Broker Disclosure' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FINANCING
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'transactionType',     label: 'Transaction Type', type: 'select', section: 'Financing',
+    options: ['buyer', 'seller', 'both'] },
+  { key: 'saleType',            label: 'Sale Type (legacy)',  type: 'select', section: 'Financing', options: ['Cash', 'Financed'],
     hint: '"true" if "THIS IS A CASH SALE" checkbox is checked (line 296)' },
-  { key: 'loanType',            label: 'Loan Type',           type: 'select',  section: 'Financing',
+  { key: 'financing_conventional_check', label: 'Conventional Loan', type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'financing_fha_check',          label: 'FHA Loan',          type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'financing_va_check',           label: 'VA Loan',           type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'financing_cash_check',         label: 'Cash Sale',         type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'financing_other_check',        label: 'Other Financing',   type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'financing_assumption_check',   label: 'Loan Assumption',   type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'seller_financing_check',       label: 'Seller Financing',  type: 'checkbox', section: 'Financing', subSection: 'Loan / Sale Type' },
+  { key: 'loanType',            label: 'Loan Type (legacy)',  type: 'select', section: 'Financing', subSection: 'Loan Details',
     options: ['Conventional', 'FHA', 'VA', 'USDA', 'Cash', 'Other'],
     hint: 'Loan type from pre-approval or financing section (Conventional, FHA, VA, USDA, etc.)' },
-  { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',   section: 'Financing' },
-  { key: 'loanOfficer',         label: 'Loan Officer',        type: 'contact', section: 'Financing',
-    hint: 'Loan officer personal name from pre-approval section (lines ~348-365)' },
-  { key: 'loanOfficerCompany',  label: 'Lender Company',      type: 'text',    section: 'Financing',
-    hint: 'Lender company name from "BUYER IS PRE-APPROVED" checkbox section (lines ~348-365), e.g. "Mike Mena Creative Lending"' },
-  { key: 'loanApplicationDue',  label: 'Loan Application Due',type: 'text',    section: 'Financing',
-    hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
-  { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due', type: 'text', section: 'Financing',
-    hint: 'Date or relative formula, e.g. "5 calendar days before Closing Date"' },
-  { key: 'loanOccupancyType',     label: 'Occupancy Type',          type: 'select',  section: 'Financing',
+  { key: 'loanAmount',          label: 'Loan Amount',         type: 'money',  section: 'Financing', subSection: 'Loan Details' },
+  { key: 'loan_occupancy_owner_check',      label: 'Occupancy: Owner-Occupied', type: 'checkbox', section: 'Financing', subSection: 'Loan Details' },
+  { key: 'loan_occupancy_investment_check', label: 'Occupancy: Investment',     type: 'checkbox', section: 'Financing', subSection: 'Loan Details' },
+  { key: 'loanOccupancyType',   label: 'Occupancy Type (legacy)', type: 'select', section: 'Financing', subSection: 'Loan Details',
     options: ['owner-occupied', 'investment'] },
-  { key: 'interestRateType',      label: 'Interest Rate Type',      type: 'select',  section: 'Financing',
+  { key: 'interest_rate_fixed_check',      label: 'Rate Type: Fixed',     type: 'checkbox', section: 'Financing', subSection: 'Loan Details' },
+  { key: 'interest_rate_adjustable_check', label: 'Rate Type: Adjustable',type: 'checkbox', section: 'Financing', subSection: 'Loan Details' },
+  { key: 'interestRateType',    label: 'Interest Rate Type (legacy)', type: 'select', section: 'Financing', subSection: 'Loan Details',
     options: ['Fixed Rate', 'Adjustable Rate', 'Interest Only', 'Other'] },
-  { key: 'amortizationPeriodYears', label: 'Amortization Period (yrs)', type: 'text', section: 'Financing' },
+  { key: 'loan_interest_rate',  label: 'Interest Rate (max %)', type: 'text',  section: 'Financing', subSection: 'Loan Details' },
+  { key: 'loan_years',          label: 'Loan Term (years)',      type: 'text',  section: 'Financing', subSection: 'Loan Details' },
+  { key: 'amortizationPeriodYears', label: 'Amortization Period (yrs) (legacy)', type: 'text', section: 'Financing', subSection: 'Loan Details' },
+  { key: 'buyer_preapproval_yes_check', label: 'Buyer IS Pre-Approved',     type: 'checkbox', section: 'Financing', subSection: 'Lender & Pre-Approval' },
+  { key: 'buyer_preapproval_no_check',  label: 'Buyer IS NOT Pre-Approved', type: 'checkbox', section: 'Financing', subSection: 'Lender & Pre-Approval' },
+  { key: 'lender_name',         label: 'Lender / Loan Officer',  type: 'text',    section: 'Financing', subSection: 'Lender & Pre-Approval' },
+  { key: 'lender_company',      label: 'Lender Company',         type: 'text',    section: 'Financing', subSection: 'Lender & Pre-Approval' },
+  { key: 'loanOfficer',         label: 'Loan Officer (legacy)',  type: 'contact', section: 'Financing', subSection: 'Lender & Pre-Approval',
+    hint: 'Loan officer personal name from pre-approval section (lines ~348-365)' },
+  { key: 'loanOfficerCompany',  label: 'Lender Company (legacy)',type: 'text',    section: 'Financing', subSection: 'Lender & Pre-Approval',
+    hint: 'Lender company name from "BUYER IS PRE-APPROVED" checkbox section (lines ~348-365), e.g. "Mike Mena Creative Lending"' },
+  { key: 'loanApplicationDue',  label: 'Loan Application Due',   type: 'text',    section: 'Financing', subSection: 'Lender & Pre-Approval',
+    hint: 'Date or relative formula, e.g. "5 calendar days after Inspection Period Ends"' },
+  { key: 'finalLoanApprovalDue',label: 'Final Loan Approval Due',type: 'text',    section: 'Financing', subSection: 'Lender & Pre-Approval',
+    hint: 'Date or relative formula, e.g. "5 calendar days before Closing Date"' },
 
-  // ── Key Dates ─────────────────────────────────────────────────────────────
-  { key: 'contractDate',        label: 'Effective Date',      type: 'date',    section: 'Key Dates' },
-  { key: 'closingDate',         label: 'Closing Date',        type: 'date',    section: 'Key Dates' },
-  { key: 'possessionDate',      label: 'Possession Date',     type: 'date',    section: 'Key Dates' },
-  { key: 'surveyDeadline',      label: 'Survey Deadline',     type: 'text',    section: 'Key Dates',
-    hint: 'Date or relative formula, e.g. "10 calendar days before Closing Date"' },
-  { key: 'earnestMoneyDueDate', label: 'Earnest Money Due',   type: 'text',    section: 'Key Dates',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KEY DATES
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'contractDate',        label: 'Effective Date',         type: 'date',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'contract_date',       label: 'Contract / Effective Date', type: 'date', section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'closingDate',         label: 'Closing Date',           type: 'date',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'closing_date',        label: 'Closing Date',           type: 'date',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'closing_company',     label: 'Closing Company',        type: 'text',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'possessionDate',      label: 'Possession Date',        type: 'date',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'possession_date',     label: 'Possession Date',        type: 'date',  section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'possession_at_closing_check', label: 'Possession AT Closing', type: 'checkbox', section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'daily_rental_rate',   label: 'Daily Rental Rate',      type: 'money', section: 'Key Dates', subSection: 'Closing & Possession' },
+  { key: 'earnestMoneyDueDate', label: 'Earnest Money Due',       type: 'text',  section: 'Key Dates', subSection: 'Earnest Money Deadlines',
     hint: 'Date or relative formula, e.g. "3 calendar days after Effective Date"' },
-  { key: 'additionalEarnestMoneyDue', label: 'Additional EM Due', type: 'text', section: 'Key Dates',
+  { key: 'additionalEarnestMoneyDue', label: 'Additional EM Due', type: 'text', section: 'Key Dates', subSection: 'Earnest Money Deadlines',
     hint: 'Date or relative formula' },
-  { key: 'listingExpirationDate', label: 'Listing Expiration', type: 'date',   section: 'Key Dates' },
-
-  // ── Inspection ────────────────────────────────────────────────────────────
-  { key: 'inspectionDate',          label: 'Inspection Period Ends',       type: 'text', section: 'Inspection',
+  { key: 'inspectionDate',           label: 'Inspection Period Ends',      type: 'text', section: 'Key Dates', subSection: 'Inspection Deadlines',
     hint: 'Date or relative formula, e.g. "11 calendar days after Effective Date"' },
-  { key: 'buyerInspectionNoticeDue',label: 'Buyer Inspection Notice Due',  type: 'text', section: 'Inspection',
+  { key: 'buyerInspectionNoticeDue', label: 'Buyer Inspection Notice Due', type: 'text', section: 'Key Dates', subSection: 'Inspection Deadlines',
     hint: 'Date or relative formula, e.g. "0 calendar days after Inspection Period Ends"' },
-  { key: 'renegotiationPeriod',     label: 'Renegotiation Period',         type: 'text', section: 'Inspection',
+  { key: 'renegotiationPeriod',      label: 'Renegotiation Period',        type: 'text', section: 'Key Dates', subSection: 'Inspection Deadlines',
     hint: 'e.g. "5 calendar days after Buyer Inspection Notice Due"' },
-  { key: 'financeDeadline',         label: 'Finance / Contingency Deadline', type: 'date', section: 'Inspection' },
-
-  // ── Appraisal ─────────────────────────────────────────────────────────────
-  { key: 'appraisalDeliveryDate',     label: 'Appraisal Report Delivery',     type: 'text', section: 'Appraisal',
+  { key: 'financeDeadline',          label: 'Finance / Contingency Deadline', type: 'date', section: 'Key Dates', subSection: 'Loan Deadlines' },
+  { key: 'appraisalDeliveryDate',     label: 'Appraisal Report Delivery',      type: 'text', section: 'Key Dates', subSection: 'Appraisal Deadlines',
     hint: 'Date or relative formula' },
-  { key: 'appraisalDueToSeller',      label: 'Appraisal Report Due to Seller',type: 'text', section: 'Appraisal',
+  { key: 'appraisalDueToSeller',      label: 'Appraisal Report Due to Seller', type: 'text', section: 'Key Dates', subSection: 'Appraisal Deadlines',
     hint: 'e.g. "5 calendar days after Appraisal Report Delivery Date"' },
-  { key: 'appraisalNegotiationPeriod',label: 'Appraisal Negotiation Period',  type: 'text', section: 'Appraisal',
+  { key: 'appraisalNegotiationPeriod',label: 'Appraisal Negotiation Period',   type: 'text', section: 'Key Dates', subSection: 'Appraisal Deadlines',
     hint: 'e.g. "5 calendar days after Appraisal Report Due to Seller"' },
-
-  // ── Title & HOA ───────────────────────────────────────────────────────────
-  { key: 'titleCommitmentDeliveryDate',label: 'Title Commitment Delivery', type: 'text', section: 'Title & HOA',
+  { key: 'surveyDeadline',             label: 'Survey Deadline',              type: 'text', section: 'Key Dates', subSection: 'Title & HOA Deadlines',
+    hint: 'Date or relative formula, e.g. "10 calendar days before Closing Date"' },
+  { key: 'titleCommitmentDeliveryDate',label: 'Title Commitment Delivery',    type: 'text', section: 'Key Dates', subSection: 'Title & HOA Deadlines',
     hint: 'Date or relative formula' },
-  { key: 'titleObjectionPeriod',       label: 'Title Objection Period',    type: 'text', section: 'Title & HOA',
+  { key: 'titleObjectionPeriod',       label: 'Title Objection Period',       type: 'text', section: 'Key Dates', subSection: 'Title & HOA Deadlines',
     hint: 'e.g. "5 calendar days after Title Commitment Delivery Date"' },
-  { key: 'hoaDocumentDeliveryDeadline',label: 'HOA Document Delivery',     type: 'text', section: 'Title & HOA',
+  { key: 'hoaDocumentDeliveryDeadline',label: 'HOA Document Delivery',        type: 'text', section: 'Key Dates', subSection: 'Title & HOA Deadlines',
     hint: 'Date or relative formula' },
-  { key: 'buyerHoaReviewDeadline',     label: 'Buyer HOA Review Deadline', type: 'text', section: 'Title & HOA',
+  { key: 'buyerHoaReviewDeadline',     label: 'Buyer HOA Review Deadline',    type: 'text', section: 'Key Dates', subSection: 'Title & HOA Deadlines',
     hint: 'e.g. "5 calendar days after HOA Document Delivery Deadline"' },
+  { key: 'listingExpirationDate',      label: 'Listing Expiration',           type: 'date', section: 'Key Dates' },
 
-  // ── Home Warranty ─────────────────────────────────────────────────────────
-  { key: 'warrantyArranger',    label: 'Warranty Arranged By',   type: 'text',   section: 'Home Warranty',
-    hint: '"Licensee assisting SELLER" or "Licensee assisting BUYER" (line 91)' },
-  { key: 'homeWarrantyPaidBy',  label: 'Home Warranty Paid By',  type: 'text',   section: 'Home Warranty',
-    hint: 'e.g. BUYER, SELLER, BUYER waives, N/A' },
-  { key: 'homeWarrantyAmount',  label: 'Home Warranty Amount',   type: 'money',  section: 'Home Warranty' },
-  { key: 'homeWarrantyCompany', label: 'Home Warranty Company',  type: 'text',   section: 'Home Warranty' },
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INSPECTION & SURVEY
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'inspection_days',     label: 'Inspection Period (days)', type: 'number',   section: 'Inspection & Survey', subSection: 'Inspection' },
+  { key: 'inspection_waived_check', label: 'Inspection Waived',   type: 'checkbox', section: 'Inspection & Survey', subSection: 'Inspection' },
+  { key: 'repair_limit',        label: 'Repair Limit ($)',         type: 'money',    section: 'Inspection & Survey', subSection: 'Inspection' },
+  { key: 'survey_days',         label: 'Survey Period (days)',     type: 'number',   section: 'Inspection & Survey', subSection: 'Survey' },
 
-  // ── Parties ───────────────────────────────────────────────────────────────
-  { key: 'buyerNames',          label: 'Buyer Name(s)',        type: 'text',    section: 'Parties',
-    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-buyer names flagged for review' },
-  { key: 'sellerNames',         label: 'Seller Name(s)',       type: 'text',    section: 'Parties',
-    hint: 'Exactly as listed on contract — Trusts, LLCs, and multi-seller names flagged for review' },
-  { key: 'buyerAgentName',      label: "Buyer's Agent",       type: 'contact', section: 'Parties' },
-  { key: 'sellerAgentName',     label: "Seller's Agent",      type: 'contact', section: 'Parties' },
-  { key: 'titleCompany',        label: 'Title Company',       type: 'contact', section: 'Parties' },
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTINGENCIES
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'saleContingency',         label: 'Sale Contingency (legacy)', type: 'select', section: 'Contingencies',
+    options: ['IS Contingent', 'NOT Contingent'],
+    hint: '"true" if contract IS contingent on sale/closing of Buyer property (line 290)' },
+  { key: 'sale_contingent_check',     label: 'Contract IS Contingent',     type: 'checkbox', section: 'Contingencies' },
+  { key: 'sale_not_contingent_check', label: 'Contract is NOT Contingent', type: 'checkbox', section: 'Contingencies' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BROKERAGE RELATIONSHIPS
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'seller_licensee_seller_agent_check',        label: "Seller Licensee: Seller's Agent",    type: 'checkbox', section: 'Brokerage Relationships', subSection: "Seller's Licensee" },
+  { key: 'seller_licensee_transaction_broker_check',  label: 'Seller Licensee: Transaction Broker', type: 'checkbox', section: 'Brokerage Relationships', subSection: "Seller's Licensee" },
+  { key: 'listing_broker_name',   label: 'Listing Broker Name',    type: 'text',    section: 'Brokerage Relationships', subSection: "Seller's Licensee" },
+  { key: 'buyer_licensee_buyer_agent_check',          label: "Buyer Licensee: Buyer's Agent",      type: 'checkbox', section: 'Brokerage Relationships', subSection: "Buyer's Licensee" },
+  { key: 'buyer_licensee_transaction_broker_check',   label: 'Buyer Licensee: Transaction Broker',  type: 'checkbox', section: 'Brokerage Relationships', subSection: "Buyer's Licensee" },
+  { key: 'selling_broker_name',   label: 'Selling Broker Name',    type: 'text',    section: 'Brokerage Relationships', subSection: "Buyer's Licensee" },
+  { key: 'commissionReceived',    label: 'Commission Received',     type: 'money',   section: 'Brokerage Relationships', subSection: 'Compensation' },
+  { key: 'listing_agent_commission', label: 'Listing Agent Commission', type: 'text', section: 'Brokerage Relationships', subSection: 'Compensation' },
+  { key: 'buyer_agent_commission',   label: 'Buyer Agent Commission',   type: 'text', section: 'Brokerage Relationships', subSection: 'Compensation' },
+  { key: 'buyerAgentCommission',  label: 'Buyer Agent Commission (legacy)',  type: 'text', section: 'Brokerage Relationships', subSection: 'Compensation' },
+  { key: 'listingAgentCommission',label: 'Listing Agent Commission (legacy)',type: 'text', section: 'Brokerage Relationships', subSection: 'Compensation' },
+  { key: 'buyerAgentName',        label: "Buyer's Agent",          type: 'contact', section: 'Brokerage Relationships', subSection: "Buyer's Licensee" },
+  { key: 'sellerAgentName',       label: "Seller's Agent",         type: 'contact', section: 'Brokerage Relationships', subSection: "Seller's Licensee" },
+  { key: 'titleCompany',          label: 'Title Company',           type: 'contact', section: 'Brokerage Relationships' },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADDENDA
+  // ═══════════════════════════════════════════════════════════════════════════
+  { key: 'addendum_sellers_disc_check', label: 'Addendum: Seller Disclosure',    type: 'checkbox', section: 'Addenda' },
+  { key: 'addendum_lead_check',         label: 'Addendum: Lead-Based Paint',     type: 'checkbox', section: 'Addenda' },
+  { key: 'addendum_contingency_check',  label: 'Addendum: Sale Contingency',     type: 'checkbox', section: 'Addenda' },
+  { key: 'addendum_other_1',            label: 'Other Addendum',                 type: 'text',     section: 'Addenda' },
+
 ];
 
 const SECTIONS = [
-  'Property',
-  'Transaction',
+  'Parties & Property',
+  'Purchase Price & Earnest Money',
+  'Home Warranty',
+  'Licensed Broker Disclosure',
   'Financing',
   'Key Dates',
-  'Inspection',
-  'Appraisal',
-  'Title & HOA',
-  'Home Warranty',
-  'Parties',
+  'Inspection & Survey',
+  'Contingencies',
+  'Brokerage Relationships',
+  'Addenda',
 ];
+
+
 
 // --- Sprint 9: Name auto-flag rule ---
 // Any name field whose value contains Trust / LLC / "and" / "&" or is >30 chars
@@ -953,7 +1060,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
               {/* Fields — hidden when collapsed */}
               {isOpen && (
                 <div className="divide-y divide-base-200">
-                  {orderedFields.map(field => {
+                  {orderedFields.map((field, _fieldIdx) => {
                     const originalRaw = extractedData?.[field.key];
                     const wasFound = originalRaw !== null && originalRaw !== undefined && originalRaw !== '';
                     const currentVal = values[field.key] ?? '';
@@ -986,9 +1093,18 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                       fieldScore >= 0.5         ? 'border-l-4 border-amber-400' :
                                                   'border-l-4 border-red-400';
 
+                    // Sub-section header when subSection changes
+                    const prevField = _fieldIdx > 0 ? orderedFields[_fieldIdx - 1] : null;
+                    const showSubHeader = !!(field.subSection && field.subSection !== prevField?.subSection);
+
                     return (
+                      <React.Fragment key={field.key}>
+                      {showSubHeader && (
+                        <div className="px-3 pt-2 pb-1 bg-base-200/30 border-b border-base-200">
+                          <p className="text-[10px] font-semibold text-base-content/30 uppercase tracking-wider">{field.subSection}</p>
+                        </div>
+                      )}
                       <div
-                        key={field.key}
                         className={`flex items-start gap-3 px-3 py-2 ${rowBg} ${confidenceBorder}`}
                       >
                         {/* Label */}
@@ -1103,6 +1219,25 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                             />
                           )}
 
+                          {field.type === 'checkbox' && (
+                            <div className="flex items-center gap-3 py-1">
+                              <button
+                                type="button"
+                                onClick={() => setValue(field.key, currentVal === 'true' ? 'false' : 'true')}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                                  currentVal === 'true' ? 'bg-primary' : 'bg-base-300'
+                                }`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                                  currentVal === 'true' ? 'translate-x-4.5' : 'translate-x-0.5'
+                                }`} />
+                              </button>
+                              <span className={`text-xs font-medium ${currentVal === 'true' ? 'text-primary' : 'text-base-content/40'}`}>
+                                {currentVal === 'true' ? 'Checked ✓' : currentVal === 'false' ? 'Not checked' : 'Not found'}
+                              </span>
+                            </div>
+                          )}
+
                           {field.type === 'text' && (
                             <>
                               <input
@@ -1129,6 +1264,7 @@ const StepExtractedData: React.FC<StepExtractedDataProps> = ({
                           )}
                         </div>
                       </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>
