@@ -2340,6 +2340,8 @@ export const GuidedDealWizard: React.FC<Props> = ({ onAdd, onClose, complianceTe
                 extractedData={extractedRawData}
                 contractDetection={contractDetection}
                 mlsBoard={form.mlsBoard || undefined}
+                orgId={primaryOrgId() ?? undefined}
+                propertyAddress={form.address?.trim() || undefined}
                 onConfirm={(verified) => { setExtractedRawData(verified); setStep(3); }}
                 onEdit={() => setStep(3)}
                 onReExtract={() => setStep(1)}
