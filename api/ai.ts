@@ -1887,13 +1887,13 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
   // ── Derive boolean checkbox fields from legacy string fields (backward compat) ──
   // If AI didn't populate new boolean fields, derive from legacy earnestMoneyForm / earnestMoneyRefundable.
   const emForm = (parsed.earnestMoneyForm as string | null) || null;
-  if (parsed.em_payment_check === null && emForm) {
+  if (!parsed.em_payment_check && !parsed.em_payment_eft && !parsed.em_payment_other && emForm) {
     parsed.em_payment_check    = emForm === 'check'       ? true : false;
     parsed.em_payment_eft      = emForm === 'electronic'  ? true : false;
     parsed.em_payment_other    = emForm === 'other'       ? true : false;
   }
   const emRefund = (parsed.earnestMoneyRefundable as string | null) || null;
-  if (parsed.earnest_refundable_check === null && emRefund) {
+  if (!parsed.earnest_refundable_check && !parsed.earnest_nonrefundable_check && emRefund) {
     parsed.earnest_refundable_check    = emRefund === 'Refundable'     ? true : false;
     parsed.earnest_nonrefundable_check = emRefund === 'Non-refundable' ? true : false;
   }
