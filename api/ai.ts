@@ -488,6 +488,17 @@ const extractDealSchema = {
         required: ['field', 'score'],
       },
     },
+    // ── Checkbox boolean fields (new schema — matched to FIELD_DEFS keys) ────────
+    em_payment_check:               { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    em_payment_eft:                 { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    em_payment_other:               { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    earnest_refundable_check:       { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    earnest_nonrefundable_check:    { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    additional_em_payment_check:    { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    additional_em_payment_eft:      { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    additional_em_payment_other:    { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    additional_em_refundable_check: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+    additional_em_nonrefundable_check: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
     allCheckboxes: {
       type: 'array',
       items: {
@@ -534,6 +545,10 @@ const extractDealSchema = {
     'asIsSale', 'inspectionWaived', 'contractType', 'listingLicenseeName', 'sellingLicenseeName',
     'buyerNames', 'sellerNames', 'buyerIsCompany', 'sellerIsCompany', 'buyerCompanyName', 'sellerCompanyName',
     'confidence', 'extractedFields', 'fieldScores', 'allCheckboxes', 'fieldSources',
+    'em_payment_check', 'em_payment_eft', 'em_payment_other',
+    'earnest_refundable_check', 'earnest_nonrefundable_check',
+    'additional_em_payment_check', 'additional_em_payment_eft', 'additional_em_payment_other',
+    'additional_em_refundable_check', 'additional_em_nonrefundable_check',
   ],
 };
 
@@ -1742,6 +1757,10 @@ For loanOccupancyType: find the occupancy or financing type checkboxes in the lo
 For interestRateType: find the interest rate type section with checkboxes for Fixed Rate, Adjustable Rate, Interest Only, or Other. If the contract uses a Primary Loan / Secondary Loan column layout, look at the Primary Loan column. Return "Fixed Rate", "Adjustable Rate", "Interest Only", or "Other" depending on which is checked. Return empty string "" if not found.
 For amortizationPeriodYears: find the amortization period or loan term in the financing section. Read the number of years (e.g., "30" for "30 years"). Return as a string (e.g., "30"). Do NOT confuse with down payment amounts or percentages. Return null if not found.
 For earnestMoneyRefundable: Find the refundability checkboxes in the Earnest Money section (look for a line labeled "(Check one) refundable / non-refundable" or equivalent language). There are exactly TWO checkboxes next to the words "refundable" and "non-refundable". Look carefully at which checkbox has a mark (☑, ✓, X, or filled square). CRITICAL: Do NOT rely on position (left vs right, first vs second) — instead READ THE TEXT LABEL immediately adjacent to the checked box. If the checked box is next to the word "refundable" (and that word is NOT preceded by "non-") → return the STRING "Refundable". If the checked box is next to the word "non-refundable" → return the STRING "Non-refundable". The layout order may vary by form version — always trust the label, not the position. Return empty string "" only if this line is completely absent from the document. NEVER return null.
+For em_payment_check / em_payment_eft / em_payment_other: Line 178 (Earnest Money section). Three checkboxes labeled "□ Check", "□ Electronic Funds Transfer/ACH", "□ Other". Set the matching boolean to true, the others to false. If none are checked, set all to null.
+For earnest_refundable_check / earnest_nonrefundable_check: Line 181 (Check one) checkboxes. Set earnest_refundable_check=true if the "refundable" box is checked (and NOT non-refundable). Set earnest_nonrefundable_check=true if the "non-refundable" box is checked. Set the unchecked one to false. If neither checked, set both null.
+For additional_em_payment_check / additional_em_payment_eft / additional_em_payment_other: Line ~190 (Additional Earnest Money section). Same pattern as em_payment_* above. Set all null if Additional EM section is blank or zero.
+For additional_em_refundable_check / additional_em_nonrefundable_check: Line 191 (Additional EM Check one). Same pattern as earnest_refundable_check / earnest_nonrefundable_check. Set all null if Additional EM section is blank.
 For earnestMoneyHolder: find the "Deposited with:" field in the earnest money section (typically Para 5 or 5b, or a line labeled "Deposited with:", "Held by:", or "Escrow Holder:"). Extract the name of the entity holding the earnest money. Return null if not found.
 For additionalEarnestMoney: any second/additional earnest money deposit. Return as numeric string. Return null if not applicable.
 For sellerCredit: any seller credit or concession toward buyer's costs. Return as numeric string. Return null if not found.
@@ -1863,6 +1882,20 @@ For fieldSources: output an ARRAY. For EVERY field you extract with a non-null v
   } else {
     sellerAgentName = (parsed.listingLicenseeName as string) || (parsed.sellerAgentName as string) || null;
     buyerAgentName  = (parsed.sellingLicenseeName as string) || (parsed.buyerAgentName as string) || null;
+  }
+
+  // ── Derive boolean checkbox fields from legacy string fields (backward compat) ──
+  // If AI didn't populate new boolean fields, derive from legacy earnestMoneyForm / earnestMoneyRefundable.
+  const emForm = (parsed.earnestMoneyForm as string | null) || null;
+  if (parsed.em_payment_check === null && emForm) {
+    parsed.em_payment_check    = emForm === 'check'       ? true : false;
+    parsed.em_payment_eft      = emForm === 'electronic'  ? true : false;
+    parsed.em_payment_other    = emForm === 'other'       ? true : false;
+  }
+  const emRefund = (parsed.earnestMoneyRefundable as string | null) || null;
+  if (parsed.earnest_refundable_check === null && emRefund) {
+    parsed.earnest_refundable_check    = emRefund === 'Refundable'     ? true : false;
+    parsed.earnest_nonrefundable_check = emRefund === 'Non-refundable' ? true : false;
   }
 
   // ── Return with backward-compat aliases for any wizard code using old keys ──
