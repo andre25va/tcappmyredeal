@@ -27,6 +27,7 @@ import { Topbar } from './components/Topbar';
 import { AIChat } from './components/AIChat';
 import { ActiveCallOverlay } from './components/ActiveCallOverlay';
 import { Inbox } from './components/Inbox';
+import { SmsInbox } from './components/SmsInbox';
 import { CommTasksView } from './components/CommTasksView';
 import { CommunicationsConsole } from './components/CommunicationsConsole';
 import { AIReports } from './components/AIReports';
@@ -51,6 +52,7 @@ const VIEW_PAGE_IDS: Record<string, string> = {
   mls:             PAGE_IDS.MLS_DIRECTORY,
   compliance:      PAGE_IDS.COMPLIANCE,
   inbox:           PAGE_IDS.INBOX,
+  texts:           PAGE_IDS.SMS_INBOX,
   'email-review':  PAGE_IDS.EMAIL_REVIEW,
   tasks:           PAGE_IDS.COMM_TASKS,
   voice:           PAGE_IDS.VOICE,
@@ -72,7 +74,7 @@ if (!sessionStorage.getItem(LS_CLEARED_KEY)) {
 }
 
 function AppInner() {
-  const { profile, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
+  const { profile, token, loading: authLoading, isFirstLogin, logout, primaryOrgId } = useAuth();
   const { logAction } = useAudit();
 
   // ── ALL useState/useEffect hooks must be declared before any conditional returns ──
@@ -95,6 +97,7 @@ function AppInner() {
   const [amberFilter, setAmberFilter]       = useState(false);
   const [quickAddRole, setQuickAddRole]     = useState<'agent' | 'contact' | null>(null);
   const [inboxUnread, setInboxUnread]       = useState(0);
+  const [textsUnread, setTextsUnread]       = useState(0);
   const [tasksPending, setTasksPending]     = useState(0);
   const [voicePending, setVoicePending]     = useState(0);
   const [emailQueuePending, setEmailQueuePending] = useState(0);
@@ -222,6 +225,23 @@ function AppInner() {
     const t = setInterval(fetchUnread, 60000);
     return () => clearInterval(t);
   }, [profile]);
+
+  // ── Poll SMS inbox unread count ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!profile || !token || profile.role === 'viewer') return;
+    const fetchTextsUnread = async () => {
+      try {
+        const resp = await fetch('/api/sms-inbox', { headers: { Authorization: `Bearer ${token}` } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const total = (data.conversations || []).reduce((sum: number, row: { unread_count?: number }) => sum + (row.unread_count || 0), 0);
+        setTextsUnread(total);
+      } catch { /* silent */ }
+    };
+    fetchTextsUnread();
+    const timer = setInterval(fetchTextsUnread, 30000);
+    return () => clearInterval(timer);
+  }, [profile, token]);
 
   // ── Poll comm tasks pending count ────────────────────────────────────────────
   useEffect(() => {
@@ -526,6 +546,7 @@ function AppInner() {
     mobileOpen,
     onCloseMobile: () => setMobileOpen(false),
     inboxUnread,
+    textsUnread,
     tasksPending,
     voicePending,
     emailQueuePending,
@@ -587,7 +608,7 @@ function AppInner() {
           <div className="flex items-center h-14 px-3 gap-2 w-full">
             <MobileMenuButton onClick={() => setMobileOpen(true)} pendingAlerts={totalPending} />
             <span className="font-bold text-sm text-base-content flex-1">
-              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : view === 'broadcasts' ? 'Broadcasts' : view === 'contracts' ? 'Contracts' : 'Settings'}
+              {view === 'dashboard' ? 'Dashboard' : view === 'transactions' ? 'Transactions' : view === 'contacts' ? 'Contacts' : view === 'mls' ? 'MLS' : view === 'compliance' ? 'Compliance' : view === 'inbox' ? 'Inbox' : view === 'texts' ? 'Texts' : view === 'email-review' ? 'Email Queue' : view === 'tasks' ? 'Comm Tasks' : view === 'voice' ? 'Voice' : view === 'reports' ? 'AI Reports' : view === 'requests' ? 'Requests' : view === 'broadcasts' ? 'Broadcasts' : view === 'contracts' ? 'Contracts' : 'Settings'}
             </span>
             <NotificationBell onNavigate={handleNotificationNavigate} />
             {!isViewer && (
@@ -749,6 +770,12 @@ function AppInner() {
                   setView('transactions');
                 }}
               />
+            </div>
+          )}
+
+          {view === 'texts' && (
+            <div className="flex-1 overflow-hidden">
+              <SmsInbox onUnreadChange={setTextsUnread} />
             </div>
           )}
 

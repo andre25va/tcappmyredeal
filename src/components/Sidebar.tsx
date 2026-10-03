@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   LayoutDashboard, FileText, Users, Building2, ShieldCheck,
-  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X, Radio, FileSignature,
+  MessageSquare, CheckSquare, Phone, BarChart2, Settings, LogOut, Menu, Bell, Inbox, ClipboardList, X, Radio, FileSignature, Smartphone,
 } from 'lucide-react';
 import { PageIdBadge } from './PageIdBadge';
 
 export type View =
   | 'dashboard' | 'transactions' | 'contacts' | 'mls'
-  | 'compliance' | 'inbox' | 'tasks' | 'voice' | 'reports' | 'settings'
+  | 'compliance' | 'inbox' | 'texts' | 'tasks' | 'voice' | 'reports' | 'settings'
   | 'email-review' | 'requests' | 'broadcasts' | 'contracts';
 
 const APP_VERSION = 'v2026.03.18.17';
@@ -21,6 +21,7 @@ const NAV_ITEMS: { view: View; label: string; icon: React.ReactNode; badge?: str
   { view: 'mls',           label: 'MLS',          icon: <Building2 size={18} /> },
   { view: 'compliance',    label: 'Compliance',   icon: <ShieldCheck size={18} /> },
   { view: 'inbox',         label: 'Inbox',        icon: <MessageSquare size={18} /> },
+  { view: 'texts',         label: 'Texts',        icon: <Smartphone size={18} /> },
   { view: 'email-review',  label: 'Email Queue',  icon: <Inbox size={18} /> },
   { view: 'broadcasts',    label: 'Broadcasts',   icon: <Radio size={18} /> },
   { view: 'tasks',         label: 'Comm Tasks',   icon: <CheckSquare size={18} /> },
@@ -37,6 +38,7 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   inboxUnread: number;
+  textsUnread: number;
   tasksPending: number;
   voicePending: number;
   emailQueuePending: number;
@@ -63,11 +65,12 @@ export const MobileMenuButton: React.FC<{ onClick: () => void; pendingAlerts?: n
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({
   view, onSetView, mobileOpen, onCloseMobile,
-  inboxUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
+  inboxUnread, textsUnread, tasksPending, voicePending, emailQueuePending, requestsPending,
   onLogout, userName, userRole, userInitials, pageId,
 }) => {
   const getBadge = (v: View): number => {
     if (v === 'inbox') return inboxUnread;
+    if (v === 'texts') return textsUnread;
     if (v === 'tasks') return tasksPending;
     if (v === 'voice') return voicePending;
     if (v === 'email-review') return emailQueuePending;
@@ -77,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const SidebarContent = () => {
     const visibleNavItems = userRole === 'viewer'
-      ? NAV_ITEMS.filter(item => !['inbox', 'email-review', 'tasks', 'voice', 'settings', 'broadcasts'].includes(item.view))
+      ? NAV_ITEMS.filter(item => !['inbox', 'texts', 'email-review', 'tasks', 'voice', 'settings', 'broadcasts'].includes(item.view))
       : NAV_ITEMS;
 
     return (

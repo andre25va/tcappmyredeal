@@ -21,6 +21,7 @@ export const PAGE_IDS = {
   // Sidebar Views
   COMPLIANCE:            'compliance-page',
   INBOX:                 'inbox-page',
+  SMS_INBOX:             'sms-inbox-page',
   EMAIL_REVIEW:          'email-review-page',
   COMM_TASKS:            'comm-tasks-page',
   VOICE:                 'voice-page',
